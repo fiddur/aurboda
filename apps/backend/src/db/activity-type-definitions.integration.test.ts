@@ -472,6 +472,94 @@ describe('Hierarchical activity types', () => {
     })
   })
 
+  describe('mergeActivityTypeDefinition with setData', () => {
+    beforeEach(async () => {
+      await query(getTestUser(), `DELETE FROM activity_type_definitions WHERE name IN ('beer', 'drink')`)
+    })
+
+    const seedBeer = async (user: string) => {
+      await insertActivityTypeDefinition(user, {
+        display_category: 'other',
+        display_name: 'Beer',
+        name: 'beer',
+      })
+      await insertActivityTypeDefinition(user, {
+        display_category: 'other',
+        display_name: 'Drink',
+        name: 'drink',
+      })
+      const at = (day: number) => ({
+        activity_type: 'beer',
+        source: 'aurboda' as const,
+        start_time: new Date(`2025-04-${String(day).padStart(2, '0')}T18:00:00Z`),
+      })
+      return {
+        absent: await insertActivity(user, { ...at(1), data: { drinks: 2 } }),
+        both: await insertActivity(user, { ...at(2), data: { kind: 'lager' } }),
+        noData: await insertActivity(user, at(3)),
+        nullKind: await insertActivity(user, { ...at(4), data: { drinks: 1, kind: null } }),
+      }
+    }
+
+    test('sets each key where it is absent or null and keeps existing values', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer', size: 'pint' })
+
+      expect(result?.activities_reassigned).toBe(4)
+      expect(result?.activities_data_set).toBe(4)
+      expect((await getActivityById(user, ids.absent))?.data).toEqual({
+        drinks: 2,
+        kind: 'beer',
+        size: 'pint',
+      })
+      expect((await getActivityById(user, ids.both))?.data).toEqual({ kind: 'lager', size: 'pint' })
+      expect((await getActivityById(user, ids.noData))?.data).toEqual({ kind: 'beer', size: 'pint' })
+      expect((await getActivityById(user, ids.nullKind))?.data).toEqual({
+        drinks: 1,
+        kind: 'beer',
+        size: 'pint',
+      })
+    })
+
+    test('does not count a row that already has every key', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer' })
+
+      expect(result?.activities_reassigned).toBe(4)
+      expect(result?.activities_data_set).toBe(3)
+      expect((await getActivityById(user, ids.both))?.data).toEqual({ kind: 'lager' })
+    })
+
+    test('gives a soft-deleted row the value too without counting it', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+      await deleteActivity(user, ids.absent)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink', { kind: 'beer' })
+
+      expect(result?.activities_reassigned).toBe(3)
+      expect(result?.activities_data_set).toBe(2)
+      const deleted = await getActivityById(user, ids.absent, true)
+      expect(deleted?.activity_type).toBe('drink')
+      expect(deleted?.data).toEqual({ drinks: 2, kind: 'beer' })
+    })
+
+    test('leaves data untouched without setData', async () => {
+      const user = getTestUser()
+      const ids = await seedBeer(user)
+
+      const result = await mergeActivityTypeDefinition(user, 'beer', 'drink')
+
+      expect(result?.activities_data_set).toBe(0)
+      expect((await getActivityById(user, ids.absent))?.data).toEqual({ drinks: 2 })
+      expect((await getActivityById(user, ids.nullKind))?.data).toEqual({ drinks: 1, kind: null })
+    })
+  })
+
   describe('rename with FK cascade', () => {
     test('renaming a parent updates children parent_type via CASCADE', async () => {
       const user = getTestUser()

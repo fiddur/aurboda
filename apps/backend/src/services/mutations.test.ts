@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as TimeSeriesModule from '../db/time-series.ts'
 import type { Activity } from '../db/types.ts'
@@ -396,7 +396,7 @@ describe('addActivity', () => {
   })
 
   test('does not call onMutated on validation failure', async () => {
-    vi.mocked(db.ensureActivityType).mockResolvedValue(false)
+    vi.mocked(db.activityTypeExists).mockResolvedValueOnce(false)
     const onMutated = vi.fn()
 
     await addActivity(
@@ -409,7 +409,6 @@ describe('addActivity', () => {
     )
 
     expect(onMutated).not.toHaveBeenCalled()
-    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
   })
 })
 
@@ -2094,5 +2093,86 @@ describe('mergeActivities', () => {
       new Date('2024-03-15T10:00:00Z'),
       new Date('2024-03-15T12:30:00Z'),
     )
+  })
+})
+
+describe('a type the user does not have', () => {
+  const synced = {
+    activity_type: 'exercise',
+    end_time: new Date('2024-03-15T11:00:00Z'),
+    id: 'activity-123',
+    source: 'aurboda' as const,
+    start_time: new Date('2024-03-15T10:00:00Z'),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(false)
+  })
+
+  afterEach(() => {
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+  })
+
+  test('adding a variant name is refused with a hint at the built-in type', async () => {
+    const result = await addActivity('testuser', { activity_type: 'beer', start_time: new Date() })
+    expect(result).toEqual({
+      error:
+        'Unknown activity type: "beer". "beer" is the built-in type "alcohol" with kind "beer": use activity_type "alcohol" with data {"kind":"beer"}',
+      success: false,
+    })
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+    expect(db.upsertActivity).not.toHaveBeenCalled()
+  })
+
+  test('changing to a variant name is refused with the hint', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(synced)
+    const result = await updateActivity('testuser', 'activity-123', { activity_type: 'back_pain' })
+    expect(result).toEqual({
+      error:
+        'Unknown activity type: "back_pain". "back_pain" is the built-in type "pain" with location "back": use activity_type "pain" with data {"location":"back"}',
+      id: 'activity-123',
+      success: false,
+    })
+    expect(db.updateActivity).not.toHaveBeenCalled()
+  })
+
+  test('a name that is neither a type nor a variant gets no hint', async () => {
+    const result = await addActivity('testuser', { activity_type: 'driving', start_time: new Date() })
+    expect(result.error).toBe('Unknown activity type: "driving"')
+  })
+
+  test('a catalogue type is validated against the catalogue fields before it is adopted', async () => {
+    const result = await addActivity('testuser', {
+      activity_type: 'headache',
+      data: { severity: 11 },
+      start_time: new Date(),
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Field "severity" value 11 is above the maximum 10')
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+  })
+
+  test('a valid write adopts the catalogue type', async () => {
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
+    const result = await addActivity('testuser', {
+      activity_type: 'headache',
+      data: { severity: 3 },
+      start_time: new Date(),
+    })
+    expect(result.success).toBe(true)
+    expect(db.ensureActivityType).toHaveBeenCalledWith('testuser', 'headache')
+  })
+
+  test('a refused type change does not adopt the type', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(synced)
+    const result = await updateActivity('testuser', 'activity-123', {
+      activity_type: 'headache',
+      data: { severity: -1 },
+    })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Field "severity" value -1 is below the minimum 0')
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+    expect(db.updateActivity).not.toHaveBeenCalled()
   })
 })

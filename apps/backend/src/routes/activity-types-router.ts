@@ -45,6 +45,7 @@ import {
 import { getActivityRecords } from '../services/activity-records.ts'
 import {
   addActivityTypeDefinition,
+  addCatalogFieldsToActivityType,
   deleteActivityTypeDefinition,
   listActivityTypeDefinitions,
   mergeActivityType,
@@ -243,14 +244,27 @@ export const createActivityTypesRouter = (authMiddleware: RequestHandler): Typed
     authMiddleware,
     validateBody(mergeActivityTypeBodySchema),
     async (req, res) => {
-      const { source, target } = req.body
+      const { set_data, source, target } = req.body
       const user = req.user!
-      const result = await mergeActivityType(user, source, target)
+      const result = await mergeActivityType(user, source, target, set_data)
       if (!result.success) {
         const status = result.error?.includes('not found') ? 404 : 400
         return res.status(status).json({ error: result.error, success: false })
       }
       res.json(result)
+    },
+  )
+
+  router.post<{ name: string }, ActivityTypeDefinitionResponse>(
+    '/:name/catalog-fields',
+    authMiddleware,
+    async (req, res) => {
+      const result = await addCatalogFieldsToActivityType(req.user!, req.params.name)
+      if (!result.success) {
+        const status = result.error?.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
     },
   )
 

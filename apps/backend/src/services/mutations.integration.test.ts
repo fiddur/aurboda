@@ -224,6 +224,34 @@ describe('updateActivity on a merged view (integration)', () => {
       expect((await getActivityById(user, added.id!))?.activity_type).toBe('sauna')
     })
 
+    test('a refused add leaves no new type', async () => {
+      const user = getTestUser()
+      const added = await addActivity(user, {
+        activity_type: 'headache',
+        data: { severity: 11 },
+        start_time: new Date('2026-11-12T09:30:00Z'),
+      })
+      expect(added.success).toBe(false)
+      expect(await getActivityTypeDefinition(user, 'headache')).toBeNull()
+      expect(await getActivityTypeDefinition(user, 'symptom')).toBeNull()
+    })
+
+    test('a refused type change leaves no new type', async () => {
+      const user = getTestUser()
+      const base = await addActivity(user, {
+        activity_type: 'meditation',
+        start_time: new Date('2026-11-12T10:30:00Z'),
+      })
+      const changed = await updateActivity(user, base.id!, {
+        activity_type: 'headache',
+        data: { severity: 11 },
+      })
+      expect(changed.success).toBe(false)
+      expect(changed.error).toContain('Field "severity" value 11 is above the maximum 10')
+      expect(await getActivityTypeDefinition(user, 'headache')).toBeNull()
+      expect((await getActivityById(user, base.id!))?.activity_type).toBe('meditation')
+    })
+
     test('a name outside the catalogue is still refused', async () => {
       const user = getTestUser()
       const added = await addActivity(user, {

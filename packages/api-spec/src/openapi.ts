@@ -521,7 +521,7 @@ const openApiDocument = createDocument({
     '/activity-type-catalog': {
       get: {
         description:
-          "List Aurboda's built-in catalogue of activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name. A type not in use becomes one of the user's types the first time an activity uses its name, or when `POST /activity-types` is given only its name. `q` matches word prefixes of the name, display name and aliases.",
+          "List Aurboda's built-in catalogue of activity types for things logged by hand (intake, meals and diet, health, symptoms, recovery, context), each with its fields. `in_use` says whether the user already has a type of that name, `missing_fields` which catalogue fields that type lacks (`POST /activity-types/{name}/catalog-fields` adds them), and `variants` the names that are the type with a field value set (`beer` is `alcohol` with kind beer). A type not in use becomes one of the user's types the first time an activity uses its name, or when `POST /activity-types` is given only its name. `q` matches word prefixes of the name, display name and aliases.",
         requestParams: { query: activityTypeCatalogQuerySchema },
         responses: {
           200: {

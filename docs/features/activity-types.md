@@ -33,6 +33,21 @@ Built-in types cannot be deleted but their display metadata (color, icon, displa
 Besides those, every Health Connect exercise session type (`running`, `yoga`,
 `strength_training`, ...) is a built-in type of the `exercise` category.
 
+### Merging types
+
+A custom type can be merged into another type (`POST /activity-types/merge` with
+`{ source, target }`, `merge_activity_type`): every activity of the source moves to the target,
+soft-deleted ones included, the aliases are joined, deduction rules, child types and routes follow,
+and the source is deleted. The target may be a type from the
+[activity type catalogue](activity-type-catalog.md) not used yet; the merge adds it first.
+
+`set_data` gives every moved activity a field value it has no value for yet, so merging `beer` into
+`alcohol` with `{ "kind": "beer" }` keeps which drinks were beer. A key is filled only where the
+activity has none or `null`; a value it already has is kept. Each key must be a scalar field of the
+target's [data schema](#data-schema-and-categorical-fields) and each value must pass that field's
+type, choices and bounds, or nothing is merged. The answer counts the activities moved
+(`activities_reassigned`) and the ones that got a value (`activities_data_set`), live ones only.
+
 ### Single lifts are exercises, not types
 
 Early Health Connect versions had 21 session types that are single lifts rather than kinds of
@@ -420,6 +435,10 @@ types in the `exercise` display category.
 - `GET /activity-type-catalog?q=` -- The built-in [activity type catalogue](activity-type-catalog.md),
   each entry with `in_use`
 - `PATCH /activity-types/:name` -- Update display metadata
+- `POST /activity-types/:name/catalog-fields` -- Add the catalogue fields a type of a catalogue
+  name lacks (see [Types you already have](activity-type-catalog.md#types-you-already-have))
+- `POST /activity-types/merge` -- Merge a custom type into another, with optional `set_data`
+  (see [Merging types](#merging-types))
 - `DELETE /activity-types/:name` -- Delete a custom type (built-ins protected)
 - `GET /activity-types/:name/sessions` -- Sessions with HR summaries and list-item measures;
   `start`/`end` (default all time), `group_by=<field>` for groups, `filter_field` +
@@ -450,7 +469,7 @@ types in the `exercise` display category.
 - `GET /activity-types/:name/item-values/unmapped?field=<item path>` -- Logged names matching no
   catalogue entry, with suggestions
 
-MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `update_activity_type`, `delete_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
+MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
 
 ## Garmin Meditation Recognition
 

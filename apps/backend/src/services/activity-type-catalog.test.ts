@@ -9,13 +9,17 @@ import { describe, expect, test } from 'vitest'
 
 import {
   catalogAdoptionChain,
+  catalogVariantHint,
   findCatalogActivityType,
+  findCatalogVariant,
   getCatalogActivityType,
   loadActivityTypeCatalog,
+  missingCatalogFields,
   normalizeCatalogText,
   searchActivityTypeCatalog,
   toActivityTypeCatalogEntry,
 } from './activity-type-catalog.ts'
+import { validatePartialActivityData } from './data-schema-validation.ts'
 
 const entry = (
   overrides: Partial<StoredActivityTypeCatalogEntry> & Pick<StoredActivityTypeCatalogEntry, 'name'>,
@@ -32,7 +36,21 @@ const entry = (
 
 const catalog: StoredActivityTypeCatalog = {
   entries: [
-    entry({ display_name: 'Cold exposure', group: 'recovery', name: 'cold_exposure' }),
+    entry({
+      data_schema: {
+        fields: [
+          { enum_values: ['cold_plunge', 'ice_bath'], name: 'kind', type: 'string' },
+          { name: 'temperature', type: 'number' },
+        ],
+      },
+      display_name: 'Cold exposure',
+      group: 'recovery',
+      name: 'cold_exposure',
+      variants: [
+        { aliases: [], data: { kind: 'cold_plunge' }, display_name: 'Cold plunge', name: 'cold_plunge' },
+        { aliases: ['ice bathing'], data: { kind: 'ice_bath' }, display_name: 'Ice bath', name: 'ice_bath' },
+      ],
+    }),
     entry({ display_name: 'Symptom', name: 'symptom' }),
     entry({ display_name: 'Headache', group: 'symptoms', name: 'headache', parent_type: 'symptom' }),
     entry({
@@ -119,12 +137,75 @@ describe('searchActivityTypeCatalog', () => {
   test('does not match inside a word', () => {
     expect(searchActivityTypeCatalog(catalog, 'ache')).toEqual([])
   })
+
+  test("matches the words of an entry's variants", () => {
+    expect(searchActivityTypeCatalog(catalog, 'ice').map((e) => e.name)).toEqual(['cold_exposure'])
+    expect(searchActivityTypeCatalog(catalog, 'plunge').map((e) => e.name)).toEqual(['cold_exposure'])
+    expect(searchActivityTypeCatalog(catalog, 'bathing').map((e) => e.name)).toEqual(['cold_exposure'])
+  })
+})
+
+describe('findCatalogVariant', () => {
+  test('finds by name, display name or alias, ignoring case and punctuation', () => {
+    for (const text of ['ice_bath', 'Ice Bath', 'ICE-BATHING']) {
+      const match = findCatalogVariant(catalog, text)
+      expect(match?.entry.name, text).toBe('cold_exposure')
+      expect(match?.variant.name, text).toBe('ice_bath')
+    }
+  })
+
+  test('is undefined for an entry name or an unknown text', () => {
+    expect(findCatalogVariant(catalog, 'cold_exposure')).toBeUndefined()
+    expect(findCatalogVariant(catalog, 'sauna')).toBeUndefined()
+  })
+
+  test('leaves findCatalogActivityType to entries only', () => {
+    expect(findCatalogActivityType(catalog, 'ice bath')).toBeUndefined()
+  })
+})
+
+describe('missingCatalogFields', () => {
+  const coldExposure = getCatalogActivityType(catalog, 'cold_exposure')!
+
+  test('is every catalogue field without a schema', () => {
+    expect(missingCatalogFields(coldExposure, undefined).map((f) => f.name)).toEqual(['kind', 'temperature'])
+    expect(missingCatalogFields(coldExposure, null).map((f) => f.name)).toEqual(['kind', 'temperature'])
+  })
+
+  test('is the fields the schema has no field of the same name for', () => {
+    const schema = { fields: [{ label: 'Temp', name: 'temperature', type: 'string' as const }] }
+    expect(missingCatalogFields(coldExposure, schema)).toEqual([
+      { enum_values: ['cold_plunge', 'ice_bath'], name: 'kind', type: 'string' },
+    ])
+  })
+
+  test('is empty when the schema has them all, or the entry has no fields', () => {
+    expect(missingCatalogFields(coldExposure, coldExposure.data_schema)).toEqual([])
+    expect(missingCatalogFields(getCatalogActivityType(catalog, 'symptom')!, undefined)).toEqual([])
+  })
+})
+
+describe('catalogVariantHint', () => {
+  test('names the built-in type and the data to use', () => {
+    expect(catalogVariantHint(catalog, 'ice_bath')).toBe(
+      '"ice_bath" is the built-in type "cold_exposure" with kind "ice_bath": use activity_type "cold_exposure" with data {"kind":"ice_bath"}',
+    )
+  })
+
+  test('is undefined for a name that is no variant', () => {
+    expect(catalogVariantHint(catalog, 'cold_exposure')).toBeUndefined()
+    expect(catalogVariantHint(catalog, 'driving')).toBeUndefined()
+  })
 })
 
 describe('toActivityTypeCatalogEntry', () => {
   test('adds in_use', () => {
     const headache = getCatalogActivityType(catalog, 'headache')!
-    expect(toActivityTypeCatalogEntry(headache, true)).toEqual({ ...headache, in_use: true })
+    expect(toActivityTypeCatalogEntry(headache, true, ['severity'])).toEqual({
+      ...headache,
+      in_use: true,
+      missing_fields: ['severity'],
+    })
   })
 })
 
@@ -189,6 +270,50 @@ describe('the shipped catalogue', () => {
     for (const e of shipped.entries) {
       expect(reserved).not.toContain(e.name)
       if (e.name !== 'guided_breathing') expect(Object.keys(exerciseTypes)).not.toContain(e.name)
+    }
+  })
+
+  test('has version 2026.11.2 and 37 variants', () => {
+    expect(shipped.version).toBe('2026.11.2')
+    expect(shipped.entries.flatMap((e) => e.variants ?? [])).toHaveLength(37)
+  })
+
+  test("every variant's data is valid for its entry's schema", () => {
+    for (const e of shipped.entries) {
+      for (const variant of e.variants ?? []) {
+        expect(validatePartialActivityData(variant.data, e.data_schema), `${e.name}/${variant.name}`).toEqual(
+          {
+            valid: true,
+          },
+        )
+      }
+    }
+  })
+
+  test('no variant label equals a label of an entry or of another variant', () => {
+    const entryLabels = new Set(
+      shipped.entries.flatMap((e) => [e.name, e.display_name, ...e.aliases].map(normalizeCatalogText)),
+    )
+    const owners = new Map<string, string>()
+    for (const e of shipped.entries) {
+      for (const variant of e.variants ?? []) {
+        for (const label of [variant.name, variant.display_name, ...variant.aliases]) {
+          const key = normalizeCatalogText(label)
+          expect(entryLabels.has(key), `${label} of ${variant.name} is an entry label`).toBe(false)
+          const owner = owners.get(key)
+          expect(
+            owner === undefined || owner === variant.name,
+            `${label} is on ${owner} and ${variant.name}`,
+          ).toBe(true)
+          owners.set(key, variant.name)
+        }
+      }
+    }
+  })
+
+  test('has a data_schema for meditation and guided_breathing, which the seeded built-ins take', () => {
+    for (const name of ['meditation', 'guided_breathing']) {
+      expect(getCatalogActivityType(shipped, name)?.data_schema?.fields.length, name).toBeGreaterThan(0)
     }
   })
 

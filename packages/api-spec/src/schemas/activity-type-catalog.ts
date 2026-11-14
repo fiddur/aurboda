@@ -37,6 +37,22 @@ export const activityTypeCatalogSameAsSchema = z
 
 export type ActivityTypeCatalogSameAs = z.infer<typeof activityTypeCatalogSameAsSchema>
 
+export const activityTypeCatalogVariantSchema = z
+  .object({
+    aliases: z.array(z.string()).meta({ description: 'Other names of exactly this variant' }),
+    data: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .meta({ description: 'The field values that make the variant, e.g. `{ "kind": "beer" }`' }),
+    display_name: z.string().min(1).meta({ description: 'Human-readable display name' }),
+    name: activityTypeCatalogNameSchema.meta({ description: 'Snake_case name of the variant' }),
+  })
+  .meta({
+    description: 'A name that is this type with field values set, e.g. `beer` is `alcohol` with kind beer',
+    id: 'ActivityTypeCatalogVariant',
+  })
+
+export type ActivityTypeCatalogVariant = z.infer<typeof activityTypeCatalogVariantSchema>
+
 const activityTypeCatalogEntryShape = {
   aliases: z.array(z.string()).meta({ description: 'Other names that identify exactly this type' }),
   color: z
@@ -53,6 +69,9 @@ const activityTypeCatalogEntryShape = {
   }),
   parent_type: activityTypeCatalogNameSchema.optional().meta({ description: 'Parent activity type name' }),
   same_as: activityTypeCatalogSameAsSchema,
+  variants: z.array(activityTypeCatalogVariantSchema).optional().meta({
+    description: 'Names that are this type with field values set, e.g. `beer` is `alcohol` with kind beer',
+  }),
 }
 
 export const storedActivityTypeCatalogEntrySchema = z.object(activityTypeCatalogEntryShape).meta({
@@ -87,6 +106,10 @@ export const activityTypeCatalogEntrySchema = z
     in_use: z.boolean().meta({
       description:
         "Whether the user already has a type with this name; a type in use is the user's own and may differ from this definition",
+    }),
+    missing_fields: z.array(z.string()).meta({
+      description:
+        "Names of the catalogue fields the user's type of this name does not have; empty when the type is not in use or has them all",
     }),
   })
   .meta({ description: 'An activity type of the built-in catalogue', id: 'ActivityTypeCatalogEntry' })

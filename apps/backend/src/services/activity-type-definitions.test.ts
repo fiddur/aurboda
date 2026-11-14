@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import * as db from '../db/index.ts'
 import {
   addActivityTypeDefinition,
+  addCatalogFieldsToActivityType,
   deleteActivityTypeDefinition,
   listActivityTypeCatalog,
   listActivityTypeDefinitions,
@@ -16,9 +17,9 @@ import {
 vi.mock('../db', () => ({
   adoptCatalogActivityType: vi.fn(),
   deleteActivityTypeDefinition: vi.fn(),
+  ensureActivityType: vi.fn(),
   getActivityTypeDefinition: vi.fn(),
   getActivityTypeDefinitions: vi.fn(),
-  getActivityTypeNames: vi.fn(),
   insertActivityTypeDefinition: vi.fn(),
   mergeActivityTypeDefinition: vi.fn(),
   renameActivityTypeDefinition: vi.fn(),
@@ -242,8 +243,18 @@ describe('addActivityTypeDefinition with the built-in catalogue', () => {
   })
 
   describe('listActivityTypeCatalog', () => {
+    const def = (name: string, data_schema?: { fields: { name: string; type: 'number' | 'string' }[] }) => ({
+      color: '#000000',
+      data_schema,
+      display_category: 'other' as const,
+      display_name: name,
+      is_builtin: false,
+      name,
+      show_on_timeline: true,
+    })
+
     test('marks the types in use', async () => {
-      vi.mocked(db.getActivityTypeNames).mockResolvedValue(['sauna', 'sleep'])
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([def('sauna'), def('sleep')])
       const result = await listActivityTypeCatalog(user, undefined, catalog)
       expect(result.version).toBe('test')
       expect(result.groups).toEqual(catalog.groups)
@@ -254,10 +265,78 @@ describe('addActivityTypeDefinition with the built-in catalogue', () => {
       ])
     })
 
+    test('lists the catalogue fields a type in use lacks', async () => {
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([
+        def('sauna'),
+        def('headache', { fields: [{ name: 'severity', type: 'number' }] }),
+      ])
+      const result = await listActivityTypeCatalog(user, undefined, catalog)
+      expect(result.entries.map((e) => [e.name, e.missing_fields])).toEqual([
+        ['sauna', ['rounds']],
+        ['symptom', []],
+        ['headache', []],
+      ])
+    })
+
     test('filters by q', async () => {
-      vi.mocked(db.getActivityTypeNames).mockResolvedValue([])
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([])
       const result = await listActivityTypeCatalog(user, 'head', catalog)
       expect(result.entries.map((e) => e.name)).toEqual(['headache'])
+    })
+  })
+
+  describe('addCatalogFieldsToActivityType', () => {
+    const sauna = {
+      color: '#000000',
+      display_category: 'wellness' as const,
+      display_name: 'Bastu',
+      is_builtin: false,
+      name: 'sauna',
+      show_on_timeline: true,
+    }
+
+    test('is a not-found error for a type the user does not have', async () => {
+      const result = await addCatalogFieldsToActivityType(user, 'sauna', catalog)
+      expect(result).toEqual({ error: 'Activity type "sauna" not found', success: false })
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('is an error for a type that is not in the catalogue', async () => {
+      vi.mocked(db.getActivityTypeDefinition).mockResolvedValue({ ...sauna, name: 'driving' })
+      const result = await addCatalogFieldsToActivityType(user, 'driving', catalog)
+      expect(result).toEqual({ error: '"driving" is not a built-in catalogue type', success: false })
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('changes nothing when no field is missing', async () => {
+      const complete = { ...sauna, data_schema: { fields: [{ name: 'rounds', type: 'string' as const }] } }
+      vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(complete)
+      const result = await addCatalogFieldsToActivityType(user, 'sauna', catalog)
+      expect(result).toEqual({ data: complete, success: true })
+      expect(db.updateActivityTypeDefinition).not.toHaveBeenCalled()
+    })
+
+    test('appends the missing fields after the existing ones', async () => {
+      const notes = { name: 'notes', type: 'string' as const }
+      vi.mocked(db.getActivityTypeDefinition).mockResolvedValue({
+        ...sauna,
+        data_schema: { fields: [notes] },
+      })
+      vi.mocked(db.updateActivityTypeDefinition).mockResolvedValue(sauna)
+      const result = await addCatalogFieldsToActivityType(user, 'sauna', catalog)
+      expect(result).toEqual({ data: sauna, success: true })
+      expect(db.updateActivityTypeDefinition).toHaveBeenCalledWith(user, 'sauna', {
+        data_schema: { fields: [notes, { min: 0, name: 'rounds', type: 'number' }] },
+      })
+    })
+
+    test('gives a type without a schema all the catalogue fields', async () => {
+      vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(sauna)
+      vi.mocked(db.updateActivityTypeDefinition).mockResolvedValue(sauna)
+      await addCatalogFieldsToActivityType(user, 'sauna', catalog)
+      expect(db.updateActivityTypeDefinition).toHaveBeenCalledWith(user, 'sauna', {
+        data_schema: { fields: [{ min: 0, name: 'rounds', type: 'number' }] },
+      })
     })
   })
 })
@@ -399,25 +478,83 @@ describe('mergeActivityType', () => {
     expect(result.error).toContain('Cannot merge built-in')
   })
 
-  test('returns error when source or target not found', async () => {
+  const targetDef = {
+    aliases: ['sauna', 'old_sauna'],
+    color: '#ef4444',
+    data_schema: {
+      fields: [
+        { enum_values: ['dry', 'steam'], name: 'kind', type: 'string' as const },
+        { name: 'sets', type: 'list' as const },
+      ],
+    },
+    display_category: 'wellness' as const,
+    display_name: 'Sauna',
+    is_builtin: false,
+    name: 'sauna',
+    show_on_timeline: true,
+  }
+  const sourceDef = { ...targetDef, aliases: ['old_sauna'], data_schema: undefined, name: 'old_sauna' }
+
+  const alcoholCatalog: StoredActivityTypeCatalog = {
+    entries: [
+      {
+        aliases: [],
+        color: '#000000',
+        data_schema: { fields: [{ enum_values: ['beer', 'wine'], name: 'kind', type: 'string' }] },
+        display_category: 'intake',
+        display_name: 'Alcohol',
+        group: 'intake',
+        icon: '',
+        name: 'alcohol',
+        same_as: {},
+      },
+    ],
+    groups: [],
+    version: 'test',
+  }
+
+  const givenTypes = (...defs: (typeof targetDef | typeof sourceDef)[]) => {
+    vi.mocked(db.getActivityTypeDefinition).mockImplementation(
+      async (_user, name) => defs.find((d) => d.name === name) ?? null,
+    )
+    vi.mocked(db.ensureActivityType).mockImplementation(async (_user, name) =>
+      defs.some((d) => d.name === name),
+    )
+  }
+
+  test('returns error when the source is not found, without adopting the target', async () => {
+    givenTypes(targetDef)
+
+    const result = await mergeActivityType(user, 'old_type', 'sauna')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+    expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test("returns error when the target is neither the user's nor a catalogue type", async () => {
+    givenTypes(sourceDef)
+
+    const result = await mergeActivityType(user, 'old_sauna', 'new_type')
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not found')
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+    expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test('returns error when the db merge finds nothing', async () => {
+    givenTypes(sourceDef, targetDef)
     vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue(null)
 
-    const result = await mergeActivityType(user, 'old_type', 'new_type')
+    const result = await mergeActivityType(user, 'old_sauna', 'sauna')
     expect(result.success).toBe(false)
     expect(result.error).toContain('not found')
   })
 
   test('merges custom type into target successfully', async () => {
-    const targetDef = {
-      aliases: ['sauna', 'old_sauna'],
-      color: '#ef4444',
-      display_category: 'wellness' as const,
-      display_name: 'Sauna',
-      is_builtin: false,
-      name: 'sauna',
-      show_on_timeline: true,
-    }
+    givenTypes(sourceDef, targetDef)
     vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue({
+      activities_data_set: 0,
       activities_reassigned: 5,
       deduction_rules_updated: 1,
       target: targetDef,
@@ -429,6 +566,91 @@ describe('mergeActivityType', () => {
     expect(result.activities_reassigned).toBe(5)
     expect(result.deduction_rules_updated).toBe(1)
     expect(result.target).toEqual(targetDef)
-    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'sauna')
+    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'sauna', undefined)
+  })
+
+  test('adopts a catalogue target before merging into it', async () => {
+    givenTypes(sourceDef)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
+    vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue({
+      activities_data_set: 0,
+      activities_reassigned: 1,
+      deduction_rules_updated: 0,
+      target: targetDef,
+    })
+
+    const result = await mergeActivityType(user, 'old_sauna', 'alcohol', undefined, alcoholCatalog)
+
+    expect(result.success).toBe(true)
+    expect(db.ensureActivityType).toHaveBeenCalledWith(user, 'alcohol', alcoholCatalog)
+    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'alcohol', undefined)
+  })
+
+  test('refuses bad set_data for a catalogue target without adopting it', async () => {
+    givenTypes(sourceDef)
+
+    const result = await mergeActivityType(user, 'old_sauna', 'alcohol', { kind: 'mead' }, alcoholCatalog)
+
+    expect(result).toEqual({
+      error: 'set_data is not valid for "alcohol": Field "kind" value "mead" is not one of: beer, wine',
+      success: false,
+    })
+    expect(db.ensureActivityType).not.toHaveBeenCalled()
+    expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test('passes valid set_data on and reports activities_data_set', async () => {
+    givenTypes(sourceDef, targetDef)
+    vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue({
+      activities_data_set: 4,
+      activities_reassigned: 5,
+      deduction_rules_updated: 0,
+      target: targetDef,
+    })
+
+    const result = await mergeActivityType(user, 'old_sauna', 'sauna', { kind: 'steam' })
+
+    expect(result).toMatchObject({ activities_data_set: 4, activities_reassigned: 5, success: true })
+    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'sauna', { kind: 'steam' })
+  })
+
+  test('treats an empty set_data as none', async () => {
+    givenTypes(sourceDef, targetDef)
+    vi.mocked(db.mergeActivityTypeDefinition).mockResolvedValue({
+      activities_data_set: 0,
+      activities_reassigned: 1,
+      deduction_rules_updated: 0,
+      target: targetDef,
+    })
+
+    await mergeActivityType(user, 'old_sauna', 'sauna', {})
+
+    expect(db.mergeActivityTypeDefinition).toHaveBeenCalledWith(user, 'old_sauna', 'sauna', undefined)
+  })
+
+  test('refuses set_data the target schema does not allow, merging nothing', async () => {
+    givenTypes(sourceDef, targetDef)
+
+    const result = await mergeActivityType(user, 'old_sauna', 'sauna', {
+      colour: 'red',
+      kind: 'wet',
+      sets: [],
+    })
+
+    expect(result).toEqual({
+      error:
+        'set_data is not valid for "sauna": Field "colour" is not a field of this type; Field "kind" value "wet" is not one of: dry, steam; Field "sets" is a list and cannot be set this way',
+      success: false,
+    })
+    expect(db.mergeActivityTypeDefinition).not.toHaveBeenCalled()
+  })
+
+  test('refuses set_data for a target without a schema', async () => {
+    givenTypes(sourceDef, { ...sourceDef, name: 'plain' })
+
+    const result = await mergeActivityType(user, 'old_sauna', 'plain', { kind: 'dry' })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('set_data is not valid for "plain": Field "kind" is not a field of this type')
   })
 })
