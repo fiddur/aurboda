@@ -74,7 +74,8 @@ file name with yours. Run them from the directory with the compose file.
 
    ```sh
    (echo 'SET ROLE "alice";'; gunzip -c aurboda-alice-2026-11-06.sql.gz \
-     | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout') \
+     | grep -v -e '^COMMENT ON EXTENSION' -e '^SET transaction_timeout' \
+         -e '^\\restrict ' -e '^\\unrestrict ') \
      | docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U aurboda_service -d aurboda_alice
    ```
 
@@ -83,6 +84,16 @@ file name with yours. Run them from the directory with the compose file.
    dump made by a newer `pg_dump` than the target server sets `transaction_timeout`, which PostgreSQL
    16 does not know, so `grep -v` drops both; with `ON_ERROR_STOP=1` anything else that fails stops the restore and shows
    the error.
+
+   `grep -v` also drops the `\restrict <key>` line at the top of the dump and the `\unrestrict <key>`
+   line at its end, which `pg_dump` writes since 16.10. A `psql` older than that, such as the 16.4 in
+   the `postgis/postgis:16-3.4-alpine` image of `docker-compose.yml`, stops on them as an invalid
+   command. A newer `psql` uses them to refuse any backslash command inside the dump, so that a
+   tampered dump cannot run programs on the machine doing the restore. Dropping them takes little
+   away here: the restore runs the dump's SQL over a superuser connection (`SET ROLE` does not stop a
+   dump from `RESET ROLE`), and a superuser can already run programs on the database server with
+   `COPY … TO PROGRAM`, which in this setup is the container `psql` runs in. So restore only a dump
+   you trust, such as one you downloaded from your own account.
 
 4. **Start Aurboda and log in** (`docker compose start aurboda`). The next request migrates the restored schema to the target server's version, so a dump
    from an older Aurboda restores into a newer one.
@@ -99,6 +110,7 @@ A restore into a server without Docker works the same way: run the `psql` comman
 against that server.
 
 The backend's integration test (`apps/backend/src/services/export-dump.integration.test.ts`) dumps a
-database with the real `pg_dump` and restores it with exactly these steps;
+database with the real `pg_dump` and restores it with exactly these steps, through the `psql` of the
+same `postgis/postgis` image `docker-compose.yml` runs;
 `exported-shared-food.integration.test.ts` does the same with shared food items in the data and
 checks the matching against libraries that have them under the same id, under another id, or not at all.

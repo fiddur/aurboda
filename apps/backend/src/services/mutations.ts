@@ -782,9 +782,10 @@ export async function updateActivity(
   // Enqueue outbound HC sync only for aurboda activities that the user owns —
   // override rows (override_target_ids set) represent data that already
   // exists on the synced source, so pushing them to HC would create
-  // duplicates.
+  // duplicates. An activity in progress still has its old-type record
+  // deleted: it may have been synced before it was set back in progress.
   try {
-    if (updated.source === 'aurboda' && !updated.override_target_ids?.length && !isInProgress(updated.data)) {
+    if (updated.source === 'aurboda' && !updated.override_target_ids?.length) {
       const oldWasSyncable = isHealthConnectSyncableActivity(before.activity_type)
       const newIsSyncable = isHealthConnectSyncableActivity(updated.activity_type)
 
@@ -805,7 +806,7 @@ export async function updateActivity(
         }
       }
 
-      if (newIsSyncable) {
+      if (newIsSyncable && !isInProgress(updated.data)) {
         const hcRecordType =
           activityTypeToHealthConnectType[
             updated.activity_type as keyof typeof activityTypeToHealthConnectType

@@ -35,13 +35,18 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   sum, so the race chart plots the running best instead of a running total. A session
   without the filtered exercise is not data: it adds nothing and does not move
   `last_updated`.
-- **Spec frozen once a remote member joins:** a member from another instance keeps the
-  spec it joined with in its participation, so a host may not change the spec under it
-  (#1324). Once the challenge has an active remote member, `PUT /challenges/:id` and the
-  `update_challenge` MCP tool refuse a `spec` that differs from the stored one (REST
-  `409`); an unchanged `spec` in the body passes. Name, dates, timezone, visibility and
-  `announce_winner` stay editable. Members on the host's own instance are scored from the
-  current spec, so they do not freeze it.
+- **Spec, dates and timezone frozen once a remote member joins:** a member from another
+  instance keeps the spec, start, end and timezone it joined with in its participation and
+  scores over that window, so a host may not change them under it (#1324, #1573). Once the
+  challenge has an active remote member, `PUT /challenges/:id` and the `update_challenge`
+  MCP tool refuse a `spec`, `start_ts`, `end_ts` or `timezone` that differs from the
+  stored one (REST `409`, _"The scoring can't change…"_ or _"The dates and timezone can't
+  change…"_); an unchanged value in the body passes. Name, visibility, `announce_winner`
+  and the banner stay editable, and a host can still fix the dates before anyone remote
+  joins. The check is part of the `UPDATE` itself (`WHERE NOT EXISTS` an active remote
+  member), so a member joining between reading and writing the challenge cannot slip
+  past it. Members on the host's own instance are scored from the current challenge, so
+  they do not freeze it.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -523,8 +528,9 @@ answers its name, host (`host_identity`, `host_handle`), window, timezone and sp
 joining; it fails with the join's statuses (400 not a challenge link, 404 no such challenge
 here, 502 host unreadable or not scorable here). A hosted challenge carries
 `announce_winner` (create/update/read; see _Completion & winner announcement_). An update
-that changes the spec of a challenge with a remote member is refused (`409` over REST; see
-_Spec frozen once a remote member joins_ under _Model_).
+that changes the spec, dates or timezone of a challenge with a remote member is refused
+(`409` over REST; see _Spec, dates and timezone frozen once a remote member joins_ under
+_Model_).
 
 Banner: `POST /challenges/:id/banner` (multipart, field `banner`; 400 for a missing,
 unsupported or undecodable file, 404 for a challenge that isn't yours) and

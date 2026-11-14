@@ -16,7 +16,6 @@ import {
   getParticipationById,
   getParticipationByToken,
   getParticipationByUrl,
-  hasRemoteChallengeMember,
   listChallengeMembers,
   listChallengeParticipations,
   listChallenges,
@@ -256,17 +255,18 @@ describe('Challenges integration', () => {
     expect(await getChallengeMemberByIdentity(user, c.id, 'https://other/u/x')).toBeNull()
   })
 
-  test('reports whether an active remote member has joined', async () => {
+  test('a guarded update only writes while no active remote member has joined', async () => {
     const user = getTestUser()
     const c = await createChallenge(user, sampleInput('remote'))
     const other = await createChallenge(user, sampleInput('other'))
+    const guarded = { unlessRemoteMember: true }
     await upsertChallengeMember(user, c.id, {
       display_name: 'host',
       identity_base_url: 'https://aurboda.net/u/host',
       kind: 'local',
       local_user: 'host',
     })
-    expect(await hasRemoteChallengeMember(user, c.id)).toBe(false)
+    expect((await updateChallenge(user, c.id, { timezone: 'UTC' }, guarded))?.timezone).toBe('UTC')
 
     const remote = await upsertChallengeMember(user, c.id, {
       data_endpoint_url: 'https://foo.bar/challenge-data/tok',
@@ -274,11 +274,14 @@ describe('Challenges integration', () => {
       identity_base_url: 'https://foo.bar/u/bob',
       kind: 'remote',
     })
-    expect(await hasRemoteChallengeMember(user, c.id)).toBe(true)
-    expect(await hasRemoteChallengeMember(user, other.id)).toBe(false)
+    const moved = new Date('2026-06-02T00:00:00Z')
+    expect(await updateChallenge(user, c.id, { start_ts: moved }, guarded)).toBeNull()
+    expect((await getChallengeById(user, c.id))?.start_ts).toEqual(c.start_ts)
+    expect((await updateChallenge(user, c.id, { name: 'Renamed' }))?.name).toBe('Renamed')
+    expect((await updateChallenge(user, other.id, { start_ts: moved }, guarded))?.start_ts).toEqual(moved)
 
     await query(user, `UPDATE challenge_members SET status = 'withdrawn' WHERE id = $1`, [remote.id])
-    expect(await hasRemoteChallengeMember(user, c.id)).toBe(false)
+    expect((await updateChallenge(user, c.id, { start_ts: moved }, guarded))?.start_ts).toEqual(moved)
   })
 
   test('looks up + deletes a participation by url (join idempotency support)', async () => {

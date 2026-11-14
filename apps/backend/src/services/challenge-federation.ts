@@ -578,7 +578,7 @@ const fetchRemotePreview = async (
     end_ts: challenge.end_ts,
     host_identity: challenge.host_identity,
     name: challenge.name,
-    spec: challenge.spec,
+    spec: specToApi(toSpecFields(challenge.spec)),
     start_ts: challenge.start_ts,
     timezone: challenge.timezone,
   }

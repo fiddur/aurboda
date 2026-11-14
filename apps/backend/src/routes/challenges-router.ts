@@ -53,7 +53,7 @@ import {
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
-import { SPEC_LOCKED_MESSAGE, updateHostedChallenge } from '../services/challenge-update.ts'
+import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -191,8 +191,8 @@ export const createChallengesRouter = (
       if (result.status === 'not_found') {
         return res.status(404).json({ error: 'Challenge not found', success: false })
       }
-      if (result.status === 'spec_locked') {
-        return res.status(409).json({ error: SPEC_LOCKED_MESSAGE, success: false })
+      if (result.status !== 'updated') {
+        return res.status(409).json({ error: LOCKED_MESSAGES[result.status], success: false })
       }
       res.json({ challenge: serialize(result.record, webHost, user), success: true })
     },
