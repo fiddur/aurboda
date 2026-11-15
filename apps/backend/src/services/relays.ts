@@ -156,6 +156,8 @@ const sendFollow = async (deps: RelayDeps, record: RelayRecord): Promise<RelayRe
       { identifier: INSTANCE_ACTOR_ID },
       relayRecipient(record),
       relayFollow(ctx.getActorUri(INSTANCE_ACTOR_ID), deps.origin, record),
+      // Sent now, not queued: the admin adding the relay sees this delivery's error as `last_error`.
+      { immediate: true },
     )
     if (record.last_error == null) return record
     return (await deps.store.setRelayError(record.id, null)) ?? record

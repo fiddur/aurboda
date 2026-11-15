@@ -327,9 +327,22 @@ Like an edit, the `Update` reaches only the servers of the author's followers (a
 a public post): a server that cached a post without anyone there following its author, say through a
 boost or a search, keeps the old policy.
 Only `Update`s are sent, so running it again is harmless. It answers `202` with the number of posts
-(`posts`) at once and delivers them one after another in the background; a post whose delivery takes
-over a minute counts as failed and the run moves on. The server log has a line when the run starts
-(posts) and when it ends (posts, failed). A second request while one is still delivering is `409`.
+(`posts`) at once and hands them to delivery one after another in the background; with the delivery
+queue each is queued and a failed inbox retried, without it each is delivered in turn and a post whose
+delivery takes over a minute counts as failed. The server log has a line when the run starts (posts)
+and when it ends (posts, failed). A second request while one is still running is `409`.
+
+**Servers that could not be reached** (Admin Settings → **Federation**; REST
+`GET /admin/federation/delivery-failures`; MCP `list_federation_delivery_failures`, both
+admin-only). Outgoing activities are queued and retried with backoff (see
+[Delivery queue](features/feed.md#delivery-queue)); every failed attempt is recorded per inbox host
+in the central `federation_delivery_failures` table: the latest inbox, HTTP status (none when no
+answer came, e.g. a refused connection) and a short status line (status code and reason or the
+network error, never a response body), the number of failed attempts since the host last accepted a
+delivery, and when the run of failures started. The list shows hosts whose latest attempts failed,
+most recent first; a host leaves it once it accepts a delivery again. A `404` or `410` is given up on
+at once. Removing followers on dead servers is not automatic. A server without a job queue delivers
+synchronously and records nothing here.
 
 **Public tag pages** (`public_tag_pages`, `public_tag_retention_days`, Admin Settings → **Public
 tag pages**, `PATCH /admin/settings`): up to 20 hashtags, each with a public page at

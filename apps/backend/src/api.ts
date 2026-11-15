@@ -115,6 +115,7 @@ import {
   toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
+import { federationDelivery } from './services/activitypub/delivery-queue.ts'
 import {
   buildActorPerson,
   createFeedFederation,
@@ -634,6 +635,8 @@ const main = async () => {
     void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
   }
 
+  const federationQueueAbort = new AbortController()
+  const queuedDelivery = await federationDelivery(boss, centralDb)
   // ActivityPub federation object (one instance, shared by the actor mount, the
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
@@ -657,7 +660,13 @@ const main = async () => {
       relays: createRelayInboxHooks(centralDb),
       tagFollows: createPublicTagInboxHooks(centralDb),
     },
+    queuedDelivery ?? undefined,
   )
+  if (queuedDelivery != null) {
+    feedFederation
+      .startQueue(undefined, { signal: federationQueueAbort.signal })
+      .catch((error: unknown) => console.error('⚠️ Federation delivery queue stopped:', error))
+  }
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = {
     apiBaseUrl,
@@ -1358,6 +1367,7 @@ const main = async () => {
     now: () => Date.now(),
     startTimer: startUnrefTimer,
     stopJobs: async () => {
+      federationQueueAbort.abort()
       await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
     },
     stopTimers: () => {

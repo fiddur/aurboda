@@ -1,4 +1,9 @@
-import type { PublicTagBlockKind, PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
+import type {
+  FederationDeliveryFailure,
+  PublicTagBlockKind,
+  PublicTagFollow,
+  RelayStyle,
+} from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -35,6 +40,7 @@ import {
   fetchAdminSettings,
   fetchHiddenPublicTagPosts,
   fetchPublicTagBlocks,
+  fetchFederationDeliveryFailures,
   fetchRelays,
   generateInvitation,
   officialFeedPath,
@@ -1225,7 +1231,51 @@ function FederationSection() {
         </p>
       </div>
       <RelaysField />
+      <DeliveryFailuresField />
     </section>
+  )
+}
+
+const failureTitle = (failure: FederationDeliveryFailure): string =>
+  [
+    `Last inbox: ${failure.last_inbox}`,
+    `Failing since ${new Date(failure.first_failed_at).toLocaleString()}`,
+    failure.last_succeeded_at == null
+      ? 'No delivery accepted since recording began'
+      : `Last accepted ${new Date(failure.last_succeeded_at).toLocaleString()}`,
+  ].join('\n')
+
+function DeliveryFailuresField() {
+  const { data: failures = [] } = useQuery({
+    queryFn: fetchFederationDeliveryFailures,
+    queryKey: ['adminFederationDeliveryFailures'],
+  })
+
+  return (
+    <div class="form-field">
+      <label>Servers that could not be reached</label>
+      {failures.length === 0 ? (
+        <p class="field-description">No server is failing deliveries.</p>
+      ) : (
+        <ul class="relay-list">
+          {failures.map((failure) => (
+            <li key={failure.inbox_host} class="relay-row" title={failureTitle(failure)}>
+              <span class="relay-url">{failure.inbox_host}</span>
+              <span class="relay-style">{failure.last_error}</span>
+              <span class="relay-style">
+                {failure.failures} {failure.failures === 1 ? 'failure' : 'failures'}
+              </span>
+              <span class="relay-style">{new Date(failure.last_failed_at).toLocaleString()}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p class="field-description">
+        Posts and other activities are queued and retried with backoff for about two to three days; a server
+        answering 404 or 410 is given up on at once. A server leaves this list once it accepts a delivery
+        again.
+      </p>
+    </div>
   )
 }
 
