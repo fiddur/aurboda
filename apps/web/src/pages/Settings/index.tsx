@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
@@ -29,6 +30,7 @@ import './style.css'
 
 export function Settings() {
   const isLoggedIn = auth.value.token
+  const { query } = useLocation()
   const queryClient = useQueryClient()
 
   const { data: userSettings, isLoading } = useQuery({
@@ -361,7 +363,7 @@ export function Settings() {
 
       <MealPreferencesSettings />
 
-      <PasskeySettings />
+      <PasskeySettings recovered={query.recovered === 'passkey'} />
 
       <section class="settings-section">
         <p class="section-description">

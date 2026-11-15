@@ -1,3 +1,4 @@
+export * from './account-recovery.ts'
 export * from './activities.ts'
 export * from './activity-features.ts'
 export * from './activity-measures.ts'

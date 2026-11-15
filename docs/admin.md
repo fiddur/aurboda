@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, Garmin Personal API keys, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
+integration credentials, email (SMTP), Garmin Personal API keys, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -14,8 +14,10 @@ server start with no signup date and `pre_existing` set, since their signup date
 The row also holds the account's optional **email** address, given at signup or later in Settings
 (**Profile**), over REST (`GET`/`PUT /account/email`, body `{ "email": "…" }`, `null` or an empty
 string clears it) or over MCP (`get_my_email`, `set_my_email`). It is private: only the user and
-the server's admins see it, it is never shown publicly and never federated. Nothing sends email to
-it yet; it is meant for account recovery and plan reminders (#1510). Setting it never creates the
+the server's admins see it, it is never shown publicly and never federated. When the server sends
+email (see [Email (SMTP)](#email-smtp)), a new address gets a verification link and, once verified,
+lets the user reset a password or recover a passkey-only account (see
+[account-recovery.md](account-recovery.md)); `email_verified_at` on the row records when. Setting it never creates the
 row: for an account without one (its signup could not write it; the next server start does) the
 `PUT` answers `409` and `set_my_email` a tool error, and a signup's email is dropped with a logged
 error, so a missing row still gets its trial from the backfill. The optional **display name**
@@ -38,17 +40,21 @@ with a `Retry-After` header in seconds and the usual error body,
 constants in `apps/backend/src/services/rate-limit.ts`, set well above what a person or the Android
 app does; there is no admin setting for them.
 
-| What                                                                                                                                                                     | Keyed by  | Limit                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | -------------------------------- |
-| `POST /login`, the passkey sign-in and passkey signup options (`/webauthn/auth/*`, `/webauthn/signup/options`), OAuth `/authorize`, `/token`, `/register`                | client IP | 30 at once, then one every 2 s   |
-| `POST /signup`, `POST /webauthn/signup/verify` (new accounts)                                                                                                            | client IP | 5 at once, then one every 10 min |
-| Everything under `/public`, `/u` and `/oembed`: public posts, articles and their images, OG images, avatars, banners, dashboards, tag pages, the structured feed payload | client IP | 300 at once, then three a second |
-| Avatar, challenge banner and feed picture uploads, REST and MCP's `add_feed_image` together                                                                              | account   | 30 at once, then one every 6 s   |
+| What                                                                                                                                                                     | Keyed by  | Limit                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------ |
+| `POST /login`, the passkey sign-in and passkey signup options (`/webauthn/auth/*`, `/webauthn/signup/options`), OAuth `/authorize`, `/token`, `/register`                | client IP | 30 at once, then one every 2 s       |
+| `POST /signup`, `POST /webauthn/signup/verify` (new accounts)                                                                                                            | client IP | 5 at once, then one every 10 min     |
+| Everything under `/public`, `/u` and `/oembed`: public posts, articles and their images, OG images, avatars, banners, dashboards, tag pages, the structured feed payload | client IP | 300 at once, then three a second     |
+| Avatar, challenge banner and feed picture uploads, REST and MCP's `add_feed_image` together                                                                              | account   | 30 at once, then one every 6 s       |
+| `POST /account/email/verify`, `/account/recovery/request`, `/account/recovery/complete` (the emailed links)                                                              | client IP | shared with `POST /login` above      |
+| Email verification links (`POST /account/email/verification`, a changed address, `send_email_verification`)                                                              | account   | 3 an hour, then `429`                |
+| Password reset and recovery links                                                                                                                                        | account   | 3 an hour, the rest dropped silently |
+| Admin test mails (`POST /admin/email/test`)                                                                                                                              | admin     | 10 an hour                           |
 
 **Failed password logins** (`POST /login` and the OAuth sign-in form) are counted per username and
 per client IP. After 5 failures for a username (20 from an IP) each further attempt waits 1 s,
 doubling with every failure up to one minute; the counts are forgotten 15 minutes after the last
-failure, and a correct password clears the username's. The wait never grows past a minute, so
+failure, and a correct password, or a password reset by an emailed link, clears the username's. The wait never grows past a minute, so
 nobody can lock someone else out, and while it lasts even the right password is answered `429`
 (the web sign-in page shows the wait). Passkey sign-in is not slowed by failed passwords.
 
@@ -60,6 +66,43 @@ out of the box; behind another reverse proxy set `TRUST_PROXY` (see
 [Behind your own proxy](docker.md#behind-your-own-proxy)). Until then the backend cannot tell
 visitors apart, so it leaves the per-IP limits off rather than put everyone in one bucket, and logs
 a warning saying so once; the per-username and per-account limits still apply.
+
+## Email (SMTP)
+
+The server sends a little account mail: the link that verifies a user's email address, password
+reset and passkey recovery links, and the notice after a recovery (see
+[account-recovery.md](account-recovery.md)). It is **off by default**: until the admin sets an SMTP
+host and a From address under Admin Settings → **Email (SMTP)**, nothing is sent, addresses stay
+unverified, and no recovery link is offered anywhere (the public `/status` answers
+`email_enabled: false`).
+
+| Field     | What                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| SMTP host | The provider's SMTP server. Empty turns email off.                                                    |
+| Port      | Default 587.                                                                                          |
+| Security  | `STARTTLS` (usually 587, the default), `TLS` from the start (usually 465), or `None` (a local relay). |
+| User name | The SMTP login; empty when the server needs none.                                                     |
+| Password  | Stored like the other server secrets and never returned: the settings only say that one is set.       |
+| From      | The sender, `no-reply@example.org` or `Aurboda <no-reply@example.org>`. Empty turns email off.        |
+
+Common providers:
+
+| Provider                         | Host                                | Port / security | Login                                    |
+| -------------------------------- | ----------------------------------- | --------------- | ---------------------------------------- |
+| Amazon SES                       | `email-smtp.<region>.amazonaws.com` | 587 / STARTTLS  | SES SMTP credentials                     |
+| Postmark                         | `smtp.postmarkapp.com`              | 587 / STARTTLS  | server API token as user and password    |
+| Mailgun                          | `smtp.mailgun.org`                  | 587 / STARTTLS  | the domain's SMTP user and password      |
+| Fastmail, Gmail, other mailboxes | the provider's SMTP host            | 465 / TLS       | the address and an app-specific password |
+
+The From address must be one the provider lets you send as. **Send test mail** sends a fixed test
+message to the address typed next to it, or else to the admin's own account email, and shows the
+SMTP error (connection refused, authentication failed, …) when it fails, so the settings can be
+fixed right there. Over REST that is `POST /admin/email/test` `{ to? }`; like the other server
+settings it has no MCP tool. Settings are read at every send, so a change applies at once; a
+connection gives up after a few seconds. The backend logs only "Sent <kind> mail" or the SMTP error
+class, never a recipient, a link or a token.
+
+Session tokens are stateless, so a password reset does not sign out the account's other sessions.
 
 ## Usage counters
 

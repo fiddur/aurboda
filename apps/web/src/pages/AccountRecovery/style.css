@@ -1,0 +1,22 @@
+.recovery-page h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.recovery-page .recovery-message {
+  line-height: 1.5;
+}
+
+.recovery-page .recovery-message.error {
+  color: #d32f2f;
+}
+
+.recovery-page a {
+  color: var(--color-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .recovery-page .recovery-message.error {
+    color: #ff6b6b;
+  }
+}

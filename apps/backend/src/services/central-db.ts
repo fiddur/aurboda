@@ -4,10 +4,16 @@
  * - Admin user list
  */
 
-import { NUTRIENT_FIELD_NAMES, type OfficialFeedSetting } from '@aurboda/api-spec'
+import { NUTRIENT_FIELD_NAMES, type OfficialFeedSetting, type SmtpSecurity } from '@aurboda/api-spec'
 import pg from 'pg'
 
 import { createRolePool, type Queryable, type UserDb, withTransaction } from '../db/pool.ts'
+import {
+  type AccountEmailTokensApi,
+  createAccountEmailTokensApi,
+  CREATE_ACCOUNT_EMAIL_TOKENS_INDEXES,
+  CREATE_ACCOUNT_EMAIL_TOKENS_TABLE,
+} from './central-account-email-tokens.ts'
 import {
   createDeletedUsernamesApi,
   CREATE_DELETED_USERNAMES_TABLE,
@@ -92,6 +98,12 @@ export interface ServerSettings {
   public_tag_retention_days: number
   sentry_dsn: string
   signup_mode: SignupMode
+  smtp_from: string
+  smtp_host: string
+  smtp_password: string
+  smtp_port: number
+  smtp_security: SmtpSecurity
+  smtp_user: string
   strava_client_id: string
   strava_client_secret: string
   tag_actor_host: string
@@ -159,6 +171,7 @@ export interface CentralDbDeps {
 
 export interface CentralDb
   extends
+    AccountEmailTokensApi,
     SharedFoodItemsApi,
     CentralImportJobsApi,
     DeletedUsernamesApi,
@@ -503,6 +516,8 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_USER_ACCOUNTS_TABLE)
       for (const stmt of ALTER_USER_ACCOUNTS_PLAN_COLUMNS) await client.query(stmt)
       for (const stmt of ALTER_USER_ACCOUNTS_PROFILE_COLUMNS) await client.query(stmt)
+      await client.query(CREATE_ACCOUNT_EMAIL_TOKENS_TABLE)
+      for (const stmt of CREATE_ACCOUNT_EMAIL_TOKENS_INDEXES) await client.query(stmt)
       await client.query(CREATE_DELETED_USERNAMES_TABLE)
       await client.query(CREATE_USER_USAGE_DAILY_TABLE)
       for (const stmt of CREATE_USER_USAGE_DAILY_INDEXES) await client.query(stmt)
@@ -526,6 +541,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       )
     },
 
+    ...createAccountEmailTokensApi(getClient, deps.withTransaction),
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),

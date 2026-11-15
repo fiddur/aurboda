@@ -6,6 +6,13 @@ import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
 import { isAllowedWhenReadOnly } from './read-only.ts'
+import {
+  recoveryCompleteBodySchema,
+  recoveryCompleteResponseSchema,
+  recoveryRequestBodySchema,
+  recoveryRequestResponseSchema,
+  verifyEmailBodySchema,
+} from './schemas/account-recovery.ts'
 import { activitiesResponseSchema } from './schemas/activities.ts'
 import {
   activityTypeCatalogQuerySchema,
@@ -13,6 +20,8 @@ import {
 } from './schemas/activity-type-catalog.ts'
 import {
   addRelayBodySchema,
+  adminTestEmailBodySchema,
+  adminTestEmailResponseSchema,
   deleteAccountBodySchema,
   federationDeliveryFailuresResponseSchema,
   loginBodySchema,
@@ -20,6 +29,7 @@ import {
   relayResponseSchema,
   relaysResponseSchema,
   resendPostUpdatesResponseSchema,
+  serverStatusResponseSchema,
 } from './schemas/admin.ts'
 import { skipAutoshareBodySchema, skipAutoshareResponseSchema } from './schemas/autoshare-rules.ts'
 import {
@@ -34,7 +44,12 @@ import {
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
-import { iso8601DateTimeSchema, metricTypeSchema, timeWeightedAveragesNote } from './schemas/common.ts'
+import {
+  baseResponseSchemaMeta,
+  iso8601DateTimeSchema,
+  metricTypeSchema,
+  timeWeightedAveragesNote,
+} from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import {
   exerciseCatalogEntryResponseSchema,
@@ -122,7 +137,11 @@ import {
   topAppsQuerySchema,
   topAppsResponseSchema,
 } from './schemas/productivity.ts'
-import { accountEmailResponseSchema, updateAccountEmailBodySchema } from './schemas/profile.ts'
+import {
+  accountEmailResponseSchema,
+  sendEmailVerificationResponseSchema,
+  updateAccountEmailBodySchema,
+} from './schemas/profile.ts'
 import {
   mergeRoutesBodySchema,
   mergeRoutesResponseSchema,
@@ -1165,6 +1184,20 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/status': {
+      get: {
+        description:
+          'Public facts about this server the login and signup pages read: the signup mode, billing, contacts, whether it has an official feed and public tag pages, and whether it sends email (`email_enabled`: the login page offers a password reset or passkey recovery link only then).',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: serverStatusResponseSchema } },
+            description: 'Server status',
+          },
+        },
+        summary: 'Server status',
+        tags: ['Auth'],
+      },
+    },
     '/login': {
       post: {
         description: 'Authenticate with username and password to receive access and refresh tokens.',
@@ -2085,7 +2118,7 @@ const openApiDocument = createDocument({
     '/account/email': {
       get: {
         description:
-          "The authenticated user's email address. It is private: only the user and the server's admins see it, and it is never public or federated.",
+          "The authenticated user's email address, whether it is verified, and whether this server sends email. It is private: only the user and the server's admins see it, and it is never public or federated.",
         responses: {
           200: {
             content: { 'application/json': { schema: accountEmailResponseSchema } },
@@ -2098,7 +2131,7 @@ const openApiDocument = createDocument({
       },
       put: {
         description:
-          "Set or clear the authenticated user's email address (null or an empty string clears it). Private: only the user and the server's admins see it. Nothing sends email to it yet. Allowed for a read-only account.",
+          "Set or clear the authenticated user's email address (null or an empty string clears it). Private: only the user and the server's admins see it. A changed address is unverified; when the server sends email, a verification link goes to it (at most 3 a hour). Allowed for a read-only account.",
         requestBody: { content: { 'application/json': { schema: updateAccountEmailBodySchema } } },
         responses: {
           200: {
@@ -2120,6 +2153,90 @@ const openApiDocument = createDocument({
         tags: ['Settings'],
       },
     },
+    '/account/email/verification': {
+      post: {
+        description:
+          "Send a new verification link to the authenticated user's email address (valid 24 hours; it replaces any earlier link). At most 3 verification mails per account per hour. Allowed for a read-only account.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sendEmailVerificationResponseSchema } },
+            description: 'Sent, or already verified',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No email address is set',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'This server does not send email',
+          },
+          429: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Too many verification mails for this account in the last hour',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The mail server refused or could not be reached',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Resend my email verification link',
+        tags: ['Settings'],
+      },
+    },
+    '/account/email/verify': {
+      post: {
+        description:
+          'Confirm an account email address with the token from its emailed link (the web page `/verify-email?token=…` posts it). Public: the token is the credential. It verifies only while the account still has the address the link was sent to. Unknown, used and expired tokens get the same answer. No MCP twin, like `/login`.',
+        requestBody: { content: { 'application/json': { schema: verifyEmailBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'The address is verified',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The link is invalid, used or expired',
+          },
+        },
+        summary: 'Verify an email address',
+        tags: ['Auth'],
+      },
+    },
+    '/account/recovery/request': {
+      post: {
+        description:
+          "Ask for a password reset or passkey recovery link by username or email address. Always the same answer, whatever matched: the lookup and the mail happen afterwards. A username gets a link at that account's verified email; an email address gets one per account with that verified address (at most 5). Unverified addresses never get mail, and an account gets at most 3 links an hour. The link (`/recover?token=…`) is valid 30 minutes, once. Public and rate-limited per client IP. No MCP twin, like `/login`.",
+        requestBody: { content: { 'application/json': { schema: recoveryRequestBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: recoveryRequestResponseSchema } },
+            description: 'Accepted (says nothing about whether an account matched)',
+          },
+        },
+        summary: 'Request an account recovery link',
+        tags: ['Auth'],
+      },
+    },
+    '/account/recovery/complete': {
+      post: {
+        description:
+          "Use a recovery link: with `new_password`, sets the account's password; without it, changes nothing about the password. Either way the answer is a session token like `/login`'s, with the username, so the user can then add a new passkey. The link works once, within 30 minutes, and only while the address it went to is still the account's verified email. Works for a read-only account. Public and rate-limited per client IP. No MCP twin, like `/login`.",
+        requestBody: { content: { 'application/json': { schema: recoveryCompleteBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: recoveryCompleteResponseSchema } },
+            description: 'Signed in',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The link is invalid, used or expired',
+          },
+        },
+        summary: 'Complete account recovery',
+        tags: ['Auth'],
+      },
+    },
     '/account/plan': {
       get: {
         description:
@@ -2133,6 +2250,34 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Get my plan',
         tags: ['Settings'],
+      },
+    },
+    '/admin/email/test': {
+      post: {
+        description:
+          "Send a fixed test mail with the server's SMTP settings, to `to` or else the admin's own account email (verified or not). The answer carries the SMTP error on failure, to fix the settings by. At most 10 an hour per admin. Admin-only; REST only, like the other server settings.",
+        requestBody: { content: { 'application/json': { schema: adminTestEmailBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: adminTestEmailResponseSchema } },
+            description: 'Sent',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No address given and the admin has no account email, or email is not configured',
+          },
+          429: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Too many test mails',
+          },
+          502: {
+            content: { 'application/json': { schema: adminTestEmailResponseSchema } },
+            description: 'The mail server refused or could not be reached; `error` says why',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Send a test mail',
+        tags: ['Auth'],
       },
     },
     '/admin/federation/delivery-failures': {

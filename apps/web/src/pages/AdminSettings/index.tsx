@@ -12,6 +12,7 @@ import { useCallback, useState } from 'preact/hooks'
 
 import type { AdminSettings, InvitationResult, SignupMode } from '../../state/api'
 
+import { EmailSmtpSettings } from '../../components/EmailSmtpSettings'
 import { formatTagsInput, parseTagFilterInput } from '../../components/hashtags'
 import { ImportPanel } from '../../components/ImportPanel'
 import {
@@ -1514,6 +1515,8 @@ export function AdminSettings() {
       </section>
 
       <BillingSection />
+
+      <EmailSmtpSettings />
 
       <IntegrationsSection />
 

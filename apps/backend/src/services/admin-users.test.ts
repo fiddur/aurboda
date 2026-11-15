@@ -125,6 +125,7 @@ describe('listUsersOverview', () => {
         {
           created_at: signup,
           email: 'alice@example.com',
+          email_verified_at: null,
           inserted_at: signup,
           paid_until: null,
           plan: null,
@@ -136,6 +137,7 @@ describe('listUsersOverview', () => {
         {
           created_at: null,
           email: null,
+          email_verified_at: null,
           inserted_at: signup,
           paid_until: null,
           plan: null,
@@ -178,6 +180,7 @@ describe('listUsersOverview', () => {
         {
           created_at: signup,
           email: null,
+          email_verified_at: null,
           inserted_at: signup,
           paid_until: null,
           plan: 'trial',
@@ -189,6 +192,7 @@ describe('listUsersOverview', () => {
         {
           created_at: signup,
           email: null,
+          email_verified_at: null,
           inserted_at: signup,
           paid_until: null,
           plan: 'trial',
@@ -329,6 +333,7 @@ describe('getUserUsage', () => {
         {
           created_at: signup,
           email: 'alice@example.com',
+          email_verified_at: null,
           inserted_at: signup,
           paid_until: null,
           plan: null,

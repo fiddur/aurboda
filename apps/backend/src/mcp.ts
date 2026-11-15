@@ -20,6 +20,7 @@ import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { AccountDeleter } from './services/account-deletion.ts'
+import type { AccountEmailDeps } from './services/account-email.ts'
 import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
@@ -128,6 +129,8 @@ const SERVER_INSTRUCTIONS =
   'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
+  /** The account email and its verification (`get_my_email`, `set_my_email`, `send_email_verification`). */
+  accountEmail?: AccountEmailDeps
   /** Account deletion (`delete_my_account`, `delete_user`). */
   accountDeleter?: AccountDeleter
   /** Refuses mutating tools for a read-only account (plan expired past the grace period). */
@@ -246,7 +249,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerFederationDeliveryTools(server, user, deps.centralDb)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
-    registerAccountEmailTools(server, user, deps.centralDb)
+    if (deps.accountEmail) registerAccountEmailTools(server, user, deps.accountEmail)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)

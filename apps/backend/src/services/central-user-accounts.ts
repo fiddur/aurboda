@@ -15,6 +15,8 @@ export interface UserAccount {
   plan_note: string | null
   /** Private: only the user and the server's admins see it. */
   email: string | null
+  /** When `email` was confirmed by its emailed link; null while unverified. */
+  email_verified_at: Date | null
 }
 
 export interface UserPlanFields {
@@ -42,10 +44,11 @@ export const ALTER_USER_ACCOUNTS_PLAN_COLUMNS = [
 
 export const ALTER_USER_ACCOUNTS_PROFILE_COLUMNS = [
   'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email TEXT',
+  'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ',
 ]
 
 const COLUMNS =
-  'username, created_at, pre_existing, inserted_at, plan, trial_ends_at, paid_until, plan_note, email'
+  'username, created_at, pre_existing, inserted_at, plan, trial_ends_at, paid_until, plan_note, email, email_verified_at'
 
 const PLAN_COLUMNS = ['plan', 'trial_ends_at', 'paid_until', 'plan_note'] as const
 
@@ -54,6 +57,7 @@ const toDate = (value: unknown): Date | null => (value ? new Date(value as strin
 const mapRow = (row: Record<string, unknown>): UserAccount => ({
   created_at: toDate(row.created_at),
   email: (row.email as string | null) ?? null,
+  email_verified_at: toDate(row.email_verified_at),
   inserted_at: new Date(row.inserted_at as string),
   paid_until: toDate(row.paid_until),
   plan: (row.plan as AccountPlan | null) ?? null,
@@ -93,11 +97,19 @@ export interface UserAccountsApi {
    */
   updateUserPlan: (username: string, fields: UserPlanFields) => Promise<UserAccount>
   /**
-   * Sets the account's email (null clears it). Resolves to the row as stored, or null when the
+   * Sets the account's email (null clears it); a different address clears its verification, the
+   * same one keeps it. Resolves to the row as stored, or null when the
    * account has no row: inserting one here would make it a plan-less pre-existing account and keep
    * the startup backfill from starting its trial.
    */
   setUserEmail: (username: string, email: string | null) => Promise<UserAccount | null>
+  /**
+   * Marks the account's email verified, only while it still is `email`. Resolves to whether it
+   * did.
+   */
+  markEmailVerified: (username: string, email: string) => Promise<boolean>
+  /** The accounts whose verified email is `email`, compared without case, at most `limit`. */
+  listAccountsByVerifiedEmail: (email: string, limit: number) => Promise<UserAccount[]>
 }
 
 export const createUserAccountsApi = (getClient: () => Promise<Queryable>): UserAccountsApi => ({
@@ -136,6 +148,17 @@ export const createUserAccountsApi = (getClient: () => Promise<Queryable>): User
     return result.rows.length > 0 ? mapRow(result.rows[0]) : null
   },
 
+  listAccountsByVerifiedEmail: async (email, limit) => {
+    const client = await getClient()
+    const result = await client.query(
+      `SELECT ${COLUMNS} FROM user_accounts
+       WHERE lower(email) = lower($1) AND email_verified_at IS NOT NULL
+       ORDER BY username LIMIT $2`,
+      [email, limit],
+    )
+    return result.rows.map(mapRow)
+  },
+
   listUserAccounts: async () => {
     const client = await getClient()
     const result = await client.query(`SELECT ${COLUMNS} FROM user_accounts ORDER BY username`)
@@ -148,10 +171,22 @@ export const createUserAccountsApi = (getClient: () => Promise<Queryable>): User
     return result.rowCount ?? 0
   },
 
+  markEmailVerified: async (username, email) => {
+    const client = await getClient()
+    const result = await client.query(
+      'UPDATE user_accounts SET email_verified_at = NOW() WHERE username = $1 AND email = $2',
+      [username, email],
+    )
+    return (result.rowCount ?? 0) > 0
+  },
+
   setUserEmail: async (username, email) => {
     const client = await getClient()
     const result = await client.query(
-      `UPDATE user_accounts SET email = $2 WHERE username = $1 RETURNING ${COLUMNS}`,
+      `UPDATE user_accounts
+       SET email = $2,
+           email_verified_at = CASE WHEN email IS NOT DISTINCT FROM $2 THEN email_verified_at END
+       WHERE username = $1 RETURNING ${COLUMNS}`,
       [username, email],
     )
     return result.rows.length > 0 ? mapRow(result.rows[0]) : null

@@ -1,7 +1,14 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
-import { auth, ensureStatusLoaded, login, loginWithPasskey, signupAllowed } from '../../state/auth'
+import {
+  auth,
+  emailEnabled,
+  ensureStatusLoaded,
+  login,
+  loginWithPasskey,
+  signupAllowed,
+} from '../../state/auth'
 import './style.css'
 
 export function Login() {
@@ -80,6 +87,12 @@ export function Login() {
           {loading ? 'Logging in...' : 'Login'}
         </button>
       </form>
+
+      {emailEnabled.value && (
+        <p class="signup-link">
+          <a href="/recover-request">Forgot your password or lost your passkey?</a>
+        </p>
+      )}
 
       {signupAllowed.value && (
         <p class="signup-link">

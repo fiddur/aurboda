@@ -227,6 +227,15 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
 }
 
 /**
+ * Sets a user's password: the Postgres role's, which `loginToUserDb` checks. The caller validates
+ * the username (`isValidUsername`) and refuses an empty password, which `pg` would treat as none.
+ */
+export const setUserPassword = async (adminClient: Client, user: string, password: string) => {
+  if (!password) throw new Error('A password must not be empty')
+  await query(adminClient, format('ALTER USER %I WITH ENCRYPTED PASSWORD %L', user, password))
+}
+
+/**
  * Drop a user's database and role: signup rollback and account deletion.
  * Every step runs even when an earlier one fails, so a failed DROP DATABASE
  * still drops what it can; the first DROP failure is rethrown at the end.

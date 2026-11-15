@@ -20,6 +20,7 @@ const deleteWhereUsername =
   async (tx, username) =>
     (await tx.query(`DELETE FROM ${table} WHERE username = $1`, [username])).rowCount ?? 0
 
+export const deleteAccountEmailTokenRows = deleteWhereUsername('account_email_tokens')
 export const deleteAdminRow = deleteWhereUsername('admins')
 export const deleteOAuthAuthorizationCodes = deleteWhereUsername('oauth_authorization_codes')
 export const deleteOAuthTokens = deleteWhereUsername('oauth_tokens')
@@ -38,6 +39,7 @@ export const deleteLocalPublicTagPosts: CentralUserDelete = async (tx, username)
   (await tx.query('DELETE FROM public_tag_posts WHERE local_user = $1', [username])).rowCount ?? 0
 
 export const CENTRAL_USER_DELETES: Record<string, CentralUserDelete> = {
+  account_email_tokens: deleteAccountEmailTokenRows,
   admins: deleteAdminRow,
   import_jobs: forgetImportJobStarter,
   oauth_authorization_codes: deleteOAuthAuthorizationCodes,

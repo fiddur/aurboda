@@ -19,6 +19,7 @@ const day = (offset: number) => new Date(NOW.getTime() + offset * 86_400_000)
 const account = (username: string, trialEndsAt: Date): UserAccount => ({
   created_at: day(-200),
   email: null,
+  email_verified_at: null,
   inserted_at: day(-200),
   paid_until: null,
   plan: 'trial',
