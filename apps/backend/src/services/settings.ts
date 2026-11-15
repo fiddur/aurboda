@@ -200,6 +200,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   meal_slots: true,
   onboarding_dismissed_at: true,
   onboarding_manual_done: true,
+  report_import_mapping: true,
   rescue_time_key: true,
   sensitivity_areas: true,
   sex: true,

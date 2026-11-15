@@ -176,11 +176,12 @@ describe('addRelay', () => {
     expect(result.record).toMatchObject({ actor_uri: null, inbox_uri: TAGS_RELAY, state: 'pending' })
     expect(result.record.follow_activity_id).toBe(`${ORIGIN}/actor/follows/${result.record.id}`)
     expect(store.rows.size).toBe(1)
-    const [sender, recipient, follow] = sendActivity.mock.calls[0]
+    const [sender, recipient, follow, options] = sendActivity.mock.calls[0]
     expect(sender).toEqual({ identifier: '~actor' })
     expect(recipient.inboxId.href).toBe(TAGS_RELAY)
     expect(follow).toBeInstanceOf(Follow)
     expect(follow.id.href).toBe(result.record.follow_activity_id)
+    expect(options).toEqual({ immediate: true })
   })
 
   test('a litepub relay is resolved for its actor and inbox', async () => {

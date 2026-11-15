@@ -48,7 +48,10 @@ import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
 import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
-import { registerAdminFederationTools } from './mcp/admin-federation-tools.ts'
+import {
+  registerAdminFederationTools,
+  registerFederationDeliveryTools,
+} from './mcp/admin-federation-tools.ts'
 import { registerAdminPublicTagTools } from './mcp/admin-public-tag-tools.ts'
 import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
@@ -240,6 +243,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     if (deps.postUpdateResender) {
       registerAdminFederationTools(server, user, deps.centralDb, deps.postUpdateResender)
     }
+    registerFederationDeliveryTools(server, user, deps.centralDb)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
     registerAccountEmailTools(server, user, deps.centralDb)

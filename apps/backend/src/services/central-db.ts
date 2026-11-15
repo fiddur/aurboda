@@ -14,6 +14,11 @@ import {
   type DeletedUsernamesApi,
 } from './central-deleted-usernames.ts'
 import {
+  createFederationDeliveryFailuresApi,
+  CREATE_FEDERATION_DELIVERY_FAILURES_TABLE,
+  type FederationDeliveryFailuresApi,
+} from './central-federation-delivery.ts'
+import {
   ALTER_SHARED_FOOD_ITEMS_COLUMNS,
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
@@ -157,6 +162,7 @@ export interface CentralDb
     SharedFoodItemsApi,
     CentralImportJobsApi,
     DeletedUsernamesApi,
+    FederationDeliveryFailuresApi,
     PublicTagsApi,
     RelaysApi,
     SharedNutrientRecommendationsApi,
@@ -503,6 +509,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
 
       await client.query(CREATE_INSTANCE_ACTOR_TABLE)
       await client.query(CREATE_RELAYS_TABLE)
+      await client.query(CREATE_FEDERATION_DELIVERY_FAILURES_TABLE)
       await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
       await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
       for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
@@ -522,6 +529,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedFoodItemsApi(getClient),
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),
+    ...createFederationDeliveryFailuresApi(getClient),
     ...createPublicTagsApi(getClient),
     ...createRelaysApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),

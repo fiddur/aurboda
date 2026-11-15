@@ -10,6 +10,8 @@ import type {
   AdminUsersResponse,
   BaseResponse,
   DeleteAccountBody,
+  FederationDeliveryFailure,
+  FederationDeliveryFailuresResponse,
   PublicTagBlock,
   PublicTagBlockResponse,
   PublicTagBlocksResponse,
@@ -123,6 +125,15 @@ export const fetchRelays = async (): Promise<Relay[]> => {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data.relays ?? []
+}
+
+export const fetchFederationDeliveryFailures = async (): Promise<FederationDeliveryFailure[]> => {
+  const { token } = auth.value
+  const response = await axios.get<FederationDeliveryFailuresResponse>(
+    `${API_URL}/admin/federation/delivery-failures`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.failures ?? []
 }
 
 export const addRelay = async (body: AddRelayBody): Promise<Relay> => {

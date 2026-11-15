@@ -89,6 +89,7 @@ const PublicArticles = lazyPage(() => import('./pages/PublicArticles/index.jsx')
 const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
 const PublicPost = lazyPage(() => import('./pages/PublicPost/index.jsx'), 'PublicPost')
 const AddReport = lazyPage(() => import('./pages/Reports/AddReport.jsx'), 'AddReport')
+const ImportReports = lazyPage(() => import('./pages/Reports/ImportReports.jsx'), 'ImportReports')
 const Reports = lazyPage(() => import('./pages/Reports/index.jsx'), 'Reports')
 const ReportDetail = lazyPage(() => import('./pages/Reports/ReportDetail.jsx'), 'ReportDetail')
 const CategoryDetail = lazyPage(
@@ -154,6 +155,7 @@ function AppShell() {
             <Route path="/meals" component={Meals} />
             <Route path="/meal-type/:name" component={MealTypeMeta} />
             <Route path="/reports/add" component={AddReport} />
+            <Route path="/reports/import" component={ImportReports} />
             <Route path="/reports/:id" component={ReportDetail} />
             <Route path="/reports" component={Reports} />
             <Route path="/detail/:type/:id" component={EntityDetail} />

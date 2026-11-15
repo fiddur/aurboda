@@ -6,6 +6,7 @@ import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
 import { displayNameInputSchema } from './profile.ts'
+import { reportImportMappingSchema } from './reports.ts'
 import { defaultSleepNeedMinutes, sleepNeedMinutesSchema } from './sleep.ts'
 import { garminDataTypeSchema } from './sync.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
@@ -404,6 +405,10 @@ export const userSettingsResponseSchema = baseResponseSchema
     home_assistant_token_set: z.boolean().default(false).meta({
       description:
         'Whether a Home Assistant access token is stored (the settings API never returns the token itself)',
+    }),
+    report_import_mapping: reportImportMappingSchema.nullable().default(null).meta({
+      description:
+        'The column mapping of the last spreadsheet import of lab reports, to start the next one from (null before the first)',
     }),
     rescue_time_key: z.string().nullable().default(null).meta({ description: 'RescueTime API key' }),
     strava_connected: z

@@ -39,13 +39,36 @@ Actor collections are advertised at `…/inbox`, `…/outbox`, and `…/follower
   collections are currently empty; the inbox accepts but does not yet process
   inbound activities).
 
+## Outbound delivery
+
+Outgoing activities are signed and posted to each recipient's inbox through a
+persistent queue (Fedify's outbox and fan-out queues, kept in pg-boss in the
+server's own database), so a follower's server that is down when a post is
+shared still gets it later:
+
+- A failed delivery is retried with exponential backoff: the first retry after
+  one to two minutes, each wait four times the last, capped at 12 hours between
+  attempts, ten attempts in all (roughly two to three days). A server that keeps
+  failing within minutes has its deliveries held for a while (Fedify's circuit
+  breaker) instead of hammered; a held delivery is dropped after three days.
+- An inbox answering `404 Not Found` or `410 Gone` is given up on at once.
+- Only outgoing activities are queued; incoming ones are processed as they
+  arrive.
+- Followers-only posts are queued like public ones. The queued job holds the
+  activity and the signing key in the server's own database; nothing of a
+  payload is written to the logs.
+- The relay `Follow` an admin sends is posted at once instead, so its error
+  shows on the relay straight away.
+- Servers whose inboxes could not be reached are listed for admins (see
+  [`docs/admin.md`](docs/admin.md#federation)).
+- A server without a job queue (no database credentials for pg-boss) delivers
+  synchronously instead, without retries; the startup log says which mode is
+  active.
+
 ## Planned (tracked in #831)
 
 - **Inbound:** verify HTTP Signatures; handle `Follow` → `Accept`; store
   `Like`/`Announce`/`Create` (reply).
-- **Outbound delivery:** a retrying delivery queue that signs and posts
-  `Create` / `Update` / `Delete` activities to followers' inboxes when a user
-  shares, edits, or unshares an activity.
 - **Outbox:** paged `OrderedCollection` of a user's public posts.
 
 ## Aurboda extensions

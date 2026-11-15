@@ -14,6 +14,7 @@ import {
   type AdminUserPlanResponse,
   type DeleteAccountBody,
   deleteAccountBodySchema,
+  type FederationDeliveryFailuresResponse,
   type InvitationResponse,
   type PublicTagBlockResponse,
   type PublicTagBlocksResponse,
@@ -42,6 +43,7 @@ import type { RelayActions } from '../services/relays.ts'
 import { readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
+import { listFederationDeliveryFailures } from '../services/central-federation-delivery.ts'
 import {
   normalizeOfficialFeedSetting,
   readOfficialFeedSetting,
@@ -496,6 +498,15 @@ export const createAdminRouter = (
       },
     )
   }
+
+  router.get<Record<string, never>, FederationDeliveryFailuresResponse>(
+    '/federation/delivery-failures',
+    authMiddleware,
+    adminMiddleware,
+    async (_req, res) => {
+      res.json({ failures: await listFederationDeliveryFailures(centralDb), success: true })
+    },
+  )
 
   if (postUpdates) {
     router.post<Record<string, never>, ResendPostUpdatesResponse>(

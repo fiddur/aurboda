@@ -1,6 +1,13 @@
-import { addReportBodySchema, reportsQuerySchema, tzSchema, updateReportBodySchema } from '@aurboda/api-spec'
+import {
+  addReportBodySchema,
+  importReportsBodySchema,
+  reportsQuerySchema,
+  tzSchema,
+  updateReportBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import { importReports } from '../services/report-import.ts'
 import {
   addReport,
   deleteReportById,
@@ -28,6 +35,17 @@ export const registerReportTools = (server: McpServer, user: string) => {
         return errorResponse(result.error ?? 'Failed to add report')
       }
       return tzJsonResponse(result, tz)
+    },
+  )
+
+  server.tool(
+    'import_reports',
+    'Import lab results from a spreadsheet table given as text (tab-, semicolon- or comma-separated; decimal comma or point). mapping says which column (index from 0) holds what: layout "long" has one row per result with date, metric and value columns; layout "wide" has one row per test and one column per date, the date in the header. Creates one report per date, resolving and converting each result as add_report does. A result the user already has (a report on that date with the same metric) is skipped as "exists", so re-importing a sheet adds only what is new; new results for a date that already has a report of the same report_type are added to it. Rows that cannot be read are reported as errors and left out; other rows still import. Run with dry_run true first to preview. The mapping is remembered in the user settings (report_import_mapping).',
+    { ...importReportsBodySchema.shape },
+    async (params) => {
+      const result = await importReports(user, params)
+      if ('error' in result) return errorResponse(result.error)
+      return jsonResponse({ data: result.data, success: true })
     },
   )
 

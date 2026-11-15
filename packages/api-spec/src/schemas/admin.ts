@@ -629,12 +629,50 @@ export type RelayResponse = z.infer<typeof relayResponseSchema>
 
 export const resendPostUpdatesResponseSchema = baseResponseSchema
   .extend({
-    posts: z
-      .number()
-      .int()
-      .optional()
-      .meta({ description: 'Public and unlisted posts whose Update is being re-sent; absent on error' }),
+    posts: z.number().int().optional().meta({
+      description: 'Public and unlisted posts whose Update is being queued for re-sending; absent on error',
+    }),
   })
   .meta({ id: 'ResendPostUpdatesResponse' })
 
 export type ResendPostUpdatesResponse = z.infer<typeof resendPostUpdatesResponseSchema>
+
+export const federationDeliveryFailureSchema = z
+  .object({
+    failures: z
+      .number()
+      .int()
+      .meta({ description: 'Failed delivery attempts since the server last accepted one' }),
+    first_failed_at: iso8601DateTimeSchema.meta({ description: 'The first failure of the current run' }),
+    inbox_host: z.string().meta({ description: 'Host of the inbox that could not be reached' }),
+    last_error: z.string().meta({
+      description: 'Status line of the latest failure (status code and reason, or the network error)',
+    }),
+    last_failed_at: iso8601DateTimeSchema.meta({ description: 'When the latest attempt failed' }),
+    last_inbox: z.string().meta({ description: 'The inbox URL of the latest failed attempt' }),
+    last_status: z
+      .number()
+      .int()
+      .nullable()
+      .meta({ description: 'HTTP status of the latest failure; null when no answer came' }),
+    last_succeeded_at: iso8601DateTimeSchema.nullable().meta({
+      description: 'When the server last accepted a delivery; null when never since recording began',
+    }),
+  })
+  .meta({
+    description: 'A remote server whose inbox could not be reached by the outbound delivery queue',
+    id: 'FederationDeliveryFailure',
+  })
+
+export type FederationDeliveryFailure = z.infer<typeof federationDeliveryFailureSchema>
+
+export const federationDeliveryFailuresResponseSchema = baseResponseSchema
+  .extend({
+    failures: z
+      .array(federationDeliveryFailureSchema)
+      .optional()
+      .meta({ description: 'Servers whose latest deliveries failed, most recent failure first' }),
+  })
+  .meta({ id: 'FederationDeliveryFailuresResponse' })
+
+export type FederationDeliveryFailuresResponse = z.infer<typeof federationDeliveryFailuresResponseSchema>

@@ -20,6 +20,18 @@ const centralDb = {
   getOuraWebhookEnabled: vi.fn().mockResolvedValue(false),
   getServerSetting: vi.fn().mockResolvedValue(null),
   getSignupMode: vi.fn().mockResolvedValue('closed'),
+  listFailingDeliveryHosts: vi.fn().mockResolvedValue([
+    {
+      failures: 2,
+      first_failed_at: new Date('2026-11-14T10:00:00Z'),
+      inbox_host: 'down.example',
+      last_error: 'Error: ECONNREFUSED',
+      last_failed_at: new Date('2026-11-14T11:00:00Z'),
+      last_inbox: 'https://down.example/inbox',
+      last_status: null,
+      last_succeeded_at: new Date('2026-11-13T09:00:00Z'),
+    },
+  ]),
   listInstanceTagFollows: vi.fn().mockResolvedValue([]),
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
@@ -748,6 +760,32 @@ describe('re-sending post Updates', () => {
     postUpdates.start.mockClear()
     expect((await supertest(buildApp(forbid)).post('/admin/federation/resend-post-updates')).status).toBe(403)
     expect(postUpdates.start).not.toHaveBeenCalled()
+  })
+})
+
+describe('federation delivery failures', () => {
+  test('GET /federation/delivery-failures lists the failing servers', async () => {
+    const res = await supertest(buildApp()).get('/admin/federation/delivery-failures')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      failures: [
+        {
+          failures: 2,
+          first_failed_at: '2026-11-14T10:00:00.000Z',
+          inbox_host: 'down.example',
+          last_error: 'Error: ECONNREFUSED',
+          last_failed_at: '2026-11-14T11:00:00.000Z',
+          last_inbox: 'https://down.example/inbox',
+          last_status: null,
+          last_succeeded_at: '2026-11-13T09:00:00.000Z',
+        },
+      ],
+      success: true,
+    })
+  })
+
+  test('non-admins are refused', async () => {
+    expect((await supertest(buildApp(forbid)).get('/admin/federation/delivery-failures')).status).toBe(403)
   })
 })
 

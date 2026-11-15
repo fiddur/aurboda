@@ -12,6 +12,7 @@ import type {
   NotificationAction,
   OnboardingStepId,
   ReportFlag,
+  ReportImportMapping,
   SyncStatus,
   TrainingLoadSettings,
 } from '@aurboda/api-spec'
@@ -462,6 +463,7 @@ export interface UserSettings {
   onboarding_dismissed_at?: string // ISO 8601; the dashboard "Get started" guide stays hidden while set
   onboarding_manual_done?: OnboardingStepId[] // Get-started steps marked done by hand
   rescue_time_key?: string // RescueTime API key (personal token)
+  report_import_mapping?: ReportImportMapping // Column mapping of the last lab report spreadsheet import
   run_category_rules_seeded?: boolean // Internal: the default run-category deduction rules were created once
   sex?: BiologicalSex // Biological sex for calorie calculation
   sleep_need_minutes?: number // Sleep need per night in minutes; sleep debt is judged against it (default 480)

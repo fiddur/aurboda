@@ -14,8 +14,9 @@ import type {
  * remote server dereferences that id are all built here and stay identical.
  *
  * `deliverFeedPost` fans the `Create` out via `ctx.sendActivity(..., 'followers',
- * …)`, which Fedify signs and dedupes by shared inbox. Delivery is synchronous
- * (no message queue configured), so it awaits the outbound POSTs.
+ * …)`, which Fedify signs and dedupes by shared inbox. With the delivery queue
+ * (`delivery-queue.ts`) that resolves once the activity is queued, and Fedify
+ * retries a failed inbox with backoff; without it, it awaits the outbound POSTs.
  *
  * Every activity Note also carries the QuantPub `quant:` extension (#896):
  * Fedify's typed vocab drops unknown properties, so `withQuantJsonLd` splices
