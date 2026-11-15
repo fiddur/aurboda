@@ -43,6 +43,7 @@ Aurboda's reach is the point, so here's what it ingests today:
 | [**Calendars (ICS)**](docs/calendars.md)             | Calendar events imported as tags (Google Calendar, Outlook, iCloud, Nextcloud, etc.)                                            | Pull (ICS fetch)                             |
 | **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                                          | CSV import                                   |
 | [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                                                   | One-shot bulk import (UI button)             |
+| [**Open Food Facts**](docs/openfoodfacts.md)         | Branded products by barcode (EAN/UPC): name, brand and nutrients per 100 g                                                      | On demand per barcode, cached 90 days        |
 | **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                                                        | Web UI, REST API, or MCP                     |
 
 <!-- END:data-sources -->

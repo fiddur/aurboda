@@ -215,3 +215,56 @@
 .btn-secondary:hover {
   background: #f3f4f6;
 }
+
+.fi-barcode {
+  margin-bottom: 1rem;
+}
+
+.fi-barcode label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.fi-barcode-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fi-barcode-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.fi-barcode-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fi-barcode-status {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fi-barcode label,
+  .fi-barcode-status {
+    color: #9ca3af;
+  }
+
+  .fi-barcode-row input {
+    background: #374151;
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+}

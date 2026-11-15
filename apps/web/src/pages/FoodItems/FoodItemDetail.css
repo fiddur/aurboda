@@ -653,3 +653,20 @@
     color: #fca5a5;
   }
 }
+
+.fi-attribution {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.fi-attribution a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  .fi-attribution {
+    color: #9ca3af;
+  }
+}

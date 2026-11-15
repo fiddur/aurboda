@@ -8,6 +8,7 @@
 import {
   addFoodItemBodySchema,
   addFoodItemPortionBodySchema,
+  findFoodByBarcodeBodySchema,
   foodItemsQuerySchema,
   setFoodItemIngredientsBodySchema,
   setFoodItemReferenceBodySchema,
@@ -47,10 +48,21 @@ import {
   duplicateFoodItem,
   prepareIngredientInputs,
 } from '../services/food-items.ts'
+import {
+  type BarcodeLookupResult,
+  barcodeLookupFailure,
+  lookupFoodByBarcode,
+} from '../services/imports/openfoodfacts.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
-export const registerFoodItemTools = (server: McpServer, user: string, centralDb: CentralDb) => {
+export const registerFoodItemTools = (
+  server: McpServer,
+  user: string,
+  centralDb: CentralDb,
+  lookupBarcode: (barcode: string) => Promise<BarcodeLookupResult> = (barcode) =>
+    lookupFoodByBarcode(barcode, { store: centralDb }),
+) => {
   const foodItems = createFoodItemsService(centralDb)
   const merge = createFoodItemsMergeService(centralDb)
 
@@ -125,6 +137,24 @@ export const registerFoodItemTools = (server: McpServer, user: string, centralDb
     { id: z.string().uuid().describe('ID of the food item to duplicate (per-user or central)') },
     async ({ id }) => {
       const detail = await duplicateFoodItem(user, centralDb, id)
+      if (!detail) return errorResponse('Food item not found')
+      return jsonResponse({ data: detail, success: true })
+    },
+  )
+
+  server.tool(
+    'find_food_by_barcode',
+    [
+      'Look up a branded product by its barcode (EAN-8, UPC-A, EAN-13 or GTIN-14; 8 to 14 digits, spaces and hyphens ignored) and return it as a food item, with the same detail get_food_item returns.',
+      'The product comes from Open Food Facts (ODbL; attribute "Data from Open Food Facts" when showing it) and is cached in the shared food library, so later lookups and name searches find it without asking Open Food Facts again; it is refreshed after 90 days.',
+      'Nutrients are per 100 g (or 100 ml, see `default_unit`); `effective_default_quantity` is the serving when Open Food Facts gives one. `nutrient_data_incomplete: true` means energy or a macro is missing upstream.',
+      'To log it, pass the returned `id` to add_meal as `food_item_id`.',
+    ].join(' '),
+    { ...findFoodByBarcodeBodySchema.shape },
+    async ({ barcode }) => {
+      const result = await lookupBarcode(barcode)
+      if (result.kind !== 'found') return errorResponse(barcodeLookupFailure(result.kind).error)
+      const detail = await foodItems.getDetail(user, result.item.id)
       if (!detail) return errorResponse('Food item not found')
       return jsonResponse({ data: detail, success: true })
     },

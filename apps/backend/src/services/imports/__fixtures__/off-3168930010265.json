@@ -1,0 +1,37 @@
+{
+  "code": "3168930010265",
+  "product": {
+    "brands": "Cruesli, Quaker",
+    "code": "3168930010265",
+    "nutriments": {
+      "added-sugars_100g": 14.13,
+      "carbohydrates_100g": 57,
+      "energy-kcal_100g": 462,
+      "energy-kj_100g": 1913,
+      "energy_100g": 1913,
+      "fat_100g": 19,
+      "fiber_100g": 10,
+      "iron_100g": 0.0021,
+      "phosphorus_100g": 0.219,
+      "proteins_100g": 8.5,
+      "salt_100g": 0,
+      "saturated-fat_100g": 2,
+      "sodium_100g": 0,
+      "sugars_100g": 12
+    },
+    "nutrition_data": "on",
+    "nutrition_data_per": "100g",
+    "nutrition_data_prepared_per": "100g",
+    "product_name": "cruesly m\u00e9lange de noix",
+    "product_quantity": 450,
+    "product_quantity_unit": "g",
+    "quantity": "450 g",
+    "serving_quantity": 45,
+    "serving_quantity_unit": "g",
+    "serving_size": "45 g"
+  },
+  "result": {
+    "id": "product_found"
+  },
+  "status": "success"
+}

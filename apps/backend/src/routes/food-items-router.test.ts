@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { SharedFoodItemEntity } from '../services/central-food-items.ts'
+import type { BarcodeLookupResult } from '../services/imports/openfoodfacts.ts'
 
 import { createFoodItemsRouter, resolveEffectiveDefaultQuantity } from './food-items-router.ts'
 
@@ -121,14 +122,20 @@ const fakeCentral = (): CentralDb =>
     upsertSharedFoodItem: vi.fn(),
   }) as unknown as CentralDb
 
-const buildApp = (centralDb: CentralDb) => {
+const buildApp = (
+  centralDb: CentralDb,
+  lookupBarcode?: (barcode: string) => Promise<BarcodeLookupResult>,
+) => {
   const app = express()
   app.use(express.json())
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
   }
-  app.use('/food-items', createFoodItemsRouter(auth, centralDb) as unknown as express.RequestHandler)
+  app.use(
+    '/food-items',
+    createFoodItemsRouter(auth, centralDb, lookupBarcode) as unknown as express.RequestHandler,
+  )
   return app
 }
 
@@ -722,5 +729,80 @@ describe('PUT /food-items/:id/ingredients — portions', () => {
         unit: 'brödkaka',
       }),
     ])
+  })
+})
+
+describe('POST /food-items/by-barcode', () => {
+  const OFF_ID = '44444444-4444-4444-8444-444444444444'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setUserFoodItem(async () => null)
+  })
+
+  test('returns the shared item as a food item detail', async () => {
+    const central = fakeCentral()
+    const item = sharedItem(OFF_ID, {
+      calories: 539,
+      default_log_quantity: 15,
+      default_quantity: 100,
+      default_unit: 'g',
+      last_fetched_at: new Date(),
+      name: 'Nutella (Ferrero)',
+      nutrient_data_incomplete: false,
+      source: 'openfoodfacts',
+      source_id: '3017624010701',
+    })
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(item)
+    const lookup = vi.fn(async (): Promise<BarcodeLookupResult> => ({ item, kind: 'found' }))
+    const res = await supertest(buildApp(central, lookup))
+      .post('/food-items/by-barcode')
+      .send({ barcode: '3017 6240 10701' })
+    expect(res.status).toBe(200)
+    expect(lookup).toHaveBeenCalledWith('3017 6240 10701')
+    expect(res.body.data).toMatchObject({
+      calories: 539,
+      effective_default_quantity: 15,
+      id: OFF_ID,
+      is_shared: true,
+      nutrient_data_incomplete: false,
+      source: 'openfoodfacts',
+      source_id: '3017624010701',
+    })
+    expect(res.body.data.last_fetched_at).toBeUndefined()
+  })
+
+  test('400 for anything but 8 to 14 digits, without a lookup', async () => {
+    const lookup = vi.fn()
+    for (const barcode of ['1234567', '123456789012345', '12345abc', '../../x']) {
+      const res = await supertest(buildApp(fakeCentral(), lookup))
+        .post('/food-items/by-barcode')
+        .send({ barcode })
+      expect(res.status).toBe(400)
+    }
+    expect(lookup).not.toHaveBeenCalled()
+  })
+
+  test('404 when Open Food Facts has no such product', async () => {
+    const res = await supertest(buildApp(fakeCentral(), async () => ({ kind: 'not_found' })))
+      .post('/food-items/by-barcode')
+      .send({ barcode: '12345678' })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'No product with this barcode at Open Food Facts', success: false })
+  })
+
+  test('502 when Open Food Facts cannot be reached and nothing is cached', async () => {
+    const res = await supertest(buildApp(fakeCentral(), async () => ({ kind: 'upstream_error' })))
+      .post('/food-items/by-barcode')
+      .send({ barcode: '12345678' })
+    expect(res.status).toBe(502)
+    expect(res.body.error).toMatch(/could not be reached/i)
+  })
+
+  test('503 when too many lookups are in flight', async () => {
+    const res = await supertest(buildApp(fakeCentral(), async () => ({ kind: 'busy' })))
+      .post('/food-items/by-barcode')
+      .send({ barcode: '12345678' })
+    expect(res.status).toBe(503)
   })
 })
