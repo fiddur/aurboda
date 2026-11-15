@@ -40,6 +40,11 @@ Each meal has:
 A meal can also carry [comments](./comments.md) -- threaded remarks anchored to
 the meal's time, surfaced as `comments` on the meal in the daily summary.
 
+A meal's sensitivity flags (its food items' flags plus its own) can be correlated on the Analyze page:
+the meals carrying a flag per day against, say, the next night's sleep score, and HRV, heart rate and
+stress around each such meal, compared with the meals without the flag on days marked as a complete meal
+log. See [Meal sensitivities](./correlations.md#meal-sensitivities).
+
 ### Micronutrient Format
 
 Micronutrients use structured `{ value, unit }` objects for explicit unit tracking:

@@ -26,11 +26,13 @@ import {
 } from '../../state/api'
 import { browserTz } from '../../state/api/client'
 import { toDisplayName } from '../../utils/displayName'
+import { BreakdownTable } from './BreakdownTable'
 import { ContextTable } from './ContextTable'
 import { comparisonsNote } from './effects'
 import { applyExploreState, exploreState, ExploreTab } from './Explore'
 import { ImpactBreakdown } from './ImpactBreakdown'
 import { ImpactSlicer } from './ImpactSlicer'
+import { comparisonAsGroup, mealsWithLabel } from './mealSource'
 import {
   describeMetrics,
   describeProductivityR,
@@ -40,7 +42,7 @@ import {
   toggleMetric,
 } from './metrics'
 import { describeImpactMeta, describeOccurrences } from './occurrences'
-import { withoutDimension } from './slicing'
+import { breakdownMetricOptions, withoutDimension } from './slicing'
 import {
   type AnalyzeState,
   type AnalyzeTab,
@@ -281,6 +283,8 @@ export function Correlations() {
   const handleSelectActivity = (name: string, type: ActivityImpactType) =>
     selectActivity(isActivitySelected(selectedActivity.value, name, type) ? null : { name, type })
   const filtered = impactFilters.value.length > 0
+  const isMealSource = activityImpact?.activity_type === 'meal_sensitivity'
+  const comparisonGroup = activityImpact ? comparisonAsGroup(activityImpact) : null
 
   return (
     <div class="correlations-page">
@@ -432,12 +436,17 @@ export function Correlations() {
                   <a href={`/activity-type/${encodeURIComponent(activityImpact.activity)}`}>
                     {activityTypeDisplayName(definitions, activityImpact.activity)}
                   </a>
+                ) : isMealSource ? (
+                  `meals with ${activityImpact.activity}`
                 ) : (
                   activityImpact.activity
                 )}{' '}
                 on {describeMetrics(metrics, 'short', extraLabels)}
                 <span class="impact-meta">
-                  {describeImpactMeta(activityImpact.occurrences, activityImpact.avg_duration_min)}
+                  {describeImpactMeta(
+                    activityImpact.occurrences,
+                    isMealSource ? undefined : activityImpact.avg_duration_min,
+                  )}
                   {filtered &&
                     activityImpact.total_occurrences !== undefined &&
                     ` · filtered from ${activityImpact.total_occurrences}`}
@@ -457,6 +466,25 @@ export function Correlations() {
                 onHoursChange={setHourLimits}
               />
               <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} extras={extras} />
+              {comparisonGroup && (
+                <div class="impact-breakdown">
+                  <div class="breakdown-heading">
+                    <h3>Compared with meals without {activityImpact.activity}</h3>
+                  </div>
+                  <BreakdownTable
+                    overall={activityImpact}
+                    groups={[comparisonGroup]}
+                    metrics={breakdownMetricOptions(metrics, extras)}
+                    overallLabel={mealsWithLabel(activityImpact.activity)}
+                    durations={false}
+                  />
+                  <p class="breakdown-note">
+                    Only days marked as a complete meal log count for the comparison: on another day, a meal
+                    without {activityImpact.activity} does not show it was left out. Hover a change for its n
+                    and p.
+                  </p>
+                </div>
+              )}
               <ImpactBreakdown
                 data={activityImpact}
                 metrics={metrics}
@@ -501,6 +529,24 @@ export function Correlations() {
                     onSelect: () => handleSelectActivity(l.location_name, 'location'),
                     selected: isActivitySelected(selectedActivity.value, l.location_name, 'location'),
                     stats: l,
+                  }))}
+                />
+              )}
+
+              {correlations.correlations.meals.length > 0 && (
+                <ContextTable
+                  title="Meals"
+                  nameHeader="Sensitivity"
+                  windowMinutes={correlations.window_minutes}
+                  metrics={metrics}
+                  extraColumns={extraColumns}
+                  rows={correlations.correlations.meals.map((m) => ({
+                    extra: describeOccurrences(m.occurrences, undefined),
+                    key: m.flag_id,
+                    name: mealsWithLabel(m.flag_name),
+                    onSelect: () => handleSelectActivity(m.flag_id, 'meal_sensitivity'),
+                    selected: isActivitySelected(selectedActivity.value, m.flag_id, 'meal_sensitivity'),
+                    stats: m,
                   }))}
                 />
               )}
@@ -570,6 +616,11 @@ export function Correlations() {
                 data field of the activity type, or whether sleep falls in the window before or after.{' '}
                 <strong>Filter sessions</strong> keeps only the groups you pick. Before/after windows are
                 still cut at every neighbouring session, including ones a filter leaves out.
+              </li>
+              <li>
+                <strong>Meals:</strong> each meal carrying a sensitivity flag is one occurrence at its time.
+                Selecting one also shows the meals without the flag, on days you marked the meal log complete,
+                as a comparison.
               </li>
               <li>
                 <strong>Correlation coefficient (r):</strong> for each productivity category, how the

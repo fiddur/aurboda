@@ -6,7 +6,12 @@ import type { MergedActivity } from '../../db/types.ts'
 
 import * as db from '../../db/index.ts'
 import * as settings from '../settings.ts'
-import { getActivityImpact, type ImpactSlicing } from './activity-impact.ts'
+import {
+  getActivityImpact,
+  type ImpactSlicing,
+  listedDimensions,
+  mealOccurrences,
+} from './activity-impact.ts'
 import { BIN_MINUTES, binSeries } from './impact.ts'
 import { benjaminiHochberg } from './stats.ts'
 
@@ -17,7 +22,10 @@ vi.mock('../../db', () => ({
   getActivityTypeDefinitions: vi.fn(),
   getBinnedTimeSeries: vi.fn(),
   getEffectiveActivitiesInRange: vi.fn(),
+  getMealFlagsInRange: vi.fn(),
+  getMealLogCompletedInRange: vi.fn(),
   getProductivity: vi.fn(),
+  listSensitivityFlags: vi.fn(),
 }))
 
 vi.mock('../locations', () => ({
@@ -631,5 +639,116 @@ describe('getActivityImpact slicing', () => {
 
     expect(result.breakdown?.groups).toHaveLength(12)
     expect(result.breakdown?.omitted_groups).toBe(2)
+  })
+})
+
+describe('meal_sensitivity impact', () => {
+  const since = new Date('2024-01-01T00:00:00Z')
+  const until = new Date('2024-02-01T00:00:00Z')
+  const GLUTEN = 'flag-gluten'
+  const at = (iso: string) => new Date(iso)
+  const meal = (iso: string, flag_ids: string[]) => ({ flag_ids, id: iso, time: at(iso) })
+  const meals = [
+    meal('2024-01-10T08:00:00Z', [GLUTEN]),
+    meal('2024-01-10T12:00:00Z', []),
+    meal('2024-01-11T12:00:00Z', []),
+    meal('2024-01-12T08:00:00Z', [GLUTEN]),
+    meal('2024-01-12T18:00:00Z', ['flag-dairy']),
+  ]
+  const impact = (slicing: ImpactSlicing = {}) =>
+    getActivityImpact(
+      'testuser',
+      GLUTEN,
+      'meal_sensitivity',
+      30,
+      31,
+      undefined,
+      until,
+      since,
+      'contains',
+      [],
+      slicing,
+    )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, _start, _end, binMinutes) =>
+      binSeries(await rawPoints(user, metric), binMinutes),
+    )
+    vi.mocked(db.getMealFlagsInRange).mockResolvedValue(meals)
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue(['2024-01-10', '2024-01-12'])
+    vi.mocked(db.listSensitivityFlags).mockResolvedValue([
+      { created_at: since, id: GLUTEN, name: 'gluten', sort_order: 0, updated_at: since },
+    ])
+    vi.mocked(db.expandActivityTypes).mockResolvedValue(['sleep', 'nap'])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
+    vi.mocked(settings.getUserTimezone).mockResolvedValue('UTC')
+  })
+
+  test('mealOccurrences: flagged meals, and unflagged meals only on completed days as the comparison', () => {
+    const { comparison, flagged } = mealOccurrences(meals, GLUTEN, ['2024-01-10', '2024-01-12'], 'UTC')
+    const t = (iso: string) => at(iso).getTime()
+    expect(flagged).toEqual([
+      { end: t('2024-01-10T08:00:00Z'), start: t('2024-01-10T08:00:00Z') },
+      { end: t('2024-01-12T08:00:00Z'), start: t('2024-01-12T08:00:00Z') },
+    ])
+    expect(comparison.map((o) => o.start)).toEqual([t('2024-01-10T12:00:00Z'), t('2024-01-12T18:00:00Z')])
+  })
+
+  test('the completed day is the meal time in the given timezone', () => {
+    const late = [meal('2024-01-11T23:30:00Z', [])]
+    expect(mealOccurrences(late, GLUTEN, ['2024-01-12'], 'Europe/Stockholm').comparison).toHaveLength(1)
+    expect(mealOccurrences(late, GLUTEN, ['2024-01-12'], 'UTC').comparison).toHaveLength(0)
+  })
+
+  test('each flagged meal is a point session; the comparison and the flag name come along', async () => {
+    rawPoints.mockResolvedValue([])
+    const result = await impact()
+
+    expect(result.activity).toBe('gluten')
+    expect(result.activity_type).toBe('meal_sensitivity')
+    expect(result.occurrences).toBe(2)
+    expect(result.avg_duration_min).toBe(5)
+    expect(result.comparison?.occurrences).toBe(2)
+    expect(result.comparison?.timeline).toHaveLength(result.timeline.length)
+    expect(db.getEffectiveActivitiesInRange).not.toHaveBeenCalled()
+  })
+
+  test("the comparison's effects join the p-value family", async () => {
+    const around = (iso: string, before: number, after: number): [Date, number][] =>
+      [-25, -20, -15, -10]
+        .map((m): [Date, number] => [new Date(at(iso).getTime() + m * 60_000), before])
+        .concat(
+          [10, 15, 20, 25].map((m): [Date, number] => [new Date(at(iso).getTime() + m * 60_000), after]),
+        )
+    vi.mocked(db.getMealFlagsInRange).mockResolvedValue(
+      [1, 2, 3, 4, 5, 6].flatMap((d) => [
+        meal(`2024-01-1${d}T08:00:00Z`, [GLUTEN]),
+        meal(`2024-01-1${d}T12:00:00Z`, []),
+      ]),
+    )
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([1, 2, 3, 4, 5, 6].map((d) => `2024-01-1${d}`))
+    rawPoints.mockImplementation(async (_u, metric) =>
+      metric === 'stress_level'
+        ? [1, 2, 3, 4, 5, 6].flatMap((d) => [
+            ...around(`2024-01-1${d}T08:00:00Z`, 30, 40 + d),
+            ...around(`2024-01-1${d}T12:00:00Z`, 30, 30 + d),
+          ])
+        : [],
+    )
+
+    const result = await impact()
+
+    expect(result.comparisons).toBe(2)
+    expect(result.stress_effect.p_value_adjusted).not.toBeNull()
+    expect(result.comparison?.stress_effect.p_value_adjusted).not.toBeNull()
+  })
+
+  test('lists only the time-of-day and sleep dimensions', async () => {
+    rawPoints.mockResolvedValue([])
+    const result = await impact({ includeDimensions: true })
+    expect(result.dimensions?.map((d) => d.dimension)).toEqual(['time_of_day', 'sleep'])
+    expect(listedDimensions('meal_sensitivity', undefined)).toEqual(['time_of_day', 'sleep'])
+    expect(listedDimensions('activity_type', undefined)).toEqual(['duration', 'time_of_day', 'sleep'])
   })
 })
