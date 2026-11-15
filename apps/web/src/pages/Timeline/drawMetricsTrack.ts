@@ -467,6 +467,29 @@ export const computeYScales = (
   return { yCal, yHr, yHrv, ySteps, yStress }
 }
 
+/** Replaces the HR (left) and HRV (right) axes in `container`; null scales leave it empty. */
+export const drawMetricsYAxes = (
+  container: SvgGroup,
+  yScales: MetricsYScales | null,
+  chartWidth: number,
+): void => {
+  container.selectAll('*').remove()
+  if (!yScales) return
+  container
+    .append('g')
+    .attr('class', 'metrics-y-axis')
+    .call(d3.axisLeft(yScales.yHr).ticks(4))
+    .selectAll('text')
+    .style('fill', HR_COLOR)
+  container
+    .append('g')
+    .attr('class', 'metrics-y-axis')
+    .attr('transform', `translate(${chartWidth},0)`)
+    .call(d3.axisRight(yScales.yHrv).ticks(4))
+    .selectAll('text')
+    .style('fill', HRV_COLOR)
+}
+
 /** Binary search for the bucket containing the given timestamp. */
 const findBucketAt = (bs: MetricBucketParsed[], timeMs: number): MetricBucketParsed | null => {
   let lo = 0

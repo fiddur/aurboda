@@ -89,6 +89,9 @@ importers:
       node-ical:
         specifier: ^0.25.1
         version: 0.25.1
+      nodemailer:
+        specifier: ^10.3.1
+        version: 10.3.1
       pg:
         specifier: ^8.13.1
         version: 8.17.2
@@ -3335,6 +3338,10 @@ packages:
 
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
+
+  nodemailer@10.3.1:
+    resolution: {integrity: sha512-uF0AFsJC07Y1vdW7p580DKAnh7rAO+4UPSSB3mDCPNDufoiaOebV6JmrzpxB14OjEEEiBsNdYoM2Y+fN8M7BBA==}
+    engines: {node: '>=20.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -7432,6 +7439,8 @@ snapshots:
       rrule-temporal: 1.4.5
 
   node-releases@2.0.27: {}
+
+  nodemailer@10.3.1: {}
 
   normalize-path@3.0.0: {}
 

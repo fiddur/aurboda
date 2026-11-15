@@ -13,7 +13,9 @@ import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations
 import type { HomeAssistantClient } from '../integrations/home-assistant/client.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { AccountEmailDeps } from '../services/account-email.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
+import type { AccountRecovery } from '../services/account-recovery.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
@@ -22,6 +24,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { Mailer } from '../services/email.ts'
 import type { DumpExporter, DumpLinkIssuer } from '../services/export-dump.ts'
 import type { ExportTokens } from '../services/export-token.ts'
 import type { ReactionActions } from '../services/feed-reactions.ts'
@@ -34,6 +37,7 @@ import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { TokenBucketLimiter } from '../services/rate-limit.ts'
 import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
@@ -51,6 +55,7 @@ import {
 } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
+import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
 import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypeCatalogRouter } from '../routes/activity-type-catalog-router.ts'
@@ -145,6 +150,12 @@ import { createTemplateLoader } from '../services/web-template.ts'
 interface RestRoutesDeps {
   httpd: Express
   accountDeleter: AccountDeleter
+  accountEmail: AccountEmailDeps
+  accountRecovery: AccountRecovery
+  /** The admin's "Send test mail". */
+  adminTestEmail: { mailer: Pick<Mailer, 'send'>; testLimiter: TokenBucketLimiter }
+  /** Sends the verification link to a just-signed-up account's email, in the background. */
+  startEmailVerification: (username: string) => void
   accountPlans: AccountPlans
   authMiddleware: AnyMiddleware
   adminMiddleware: AnyMiddleware
@@ -218,6 +229,10 @@ export const postChartDeps: PostChartDeps = {
 export const mountRestRouters = ({
   httpd,
   accountDeleter,
+  accountEmail,
+  accountRecovery,
+  adminTestEmail,
+  startEmailVerification,
   accountPlans,
   authMiddleware,
   adminMiddleware,
@@ -315,7 +330,8 @@ export const mountRestRouters = ({
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
-  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans, centralDb))
+  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans, accountEmail))
+  httpd.use('/account', createAccountRecoveryRouter(accountRecovery))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
@@ -449,11 +465,20 @@ export const mountRestRouters = ({
       publicTagActions,
       postUpdateResender,
       publicTagModeration,
+      adminTestEmail,
     ),
   )
   httpd.use(
     '/webauthn',
-    createWebAuthnRouter({ auth, authMiddleware, centralDb, invitationAuth, userDb, webAuthn }),
+    createWebAuthnRouter({
+      auth,
+      authMiddleware,
+      centralDb,
+      invitationAuth,
+      startEmailVerification,
+      userDb,
+      webAuthn,
+    }),
   )
   httpd.use(createWellKnownRouter(wellKnown))
 }

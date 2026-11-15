@@ -11,6 +11,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'get_my_plan',
     'get_my_email',
     'set_my_email',
+    'send_email_verification',
     'list_notifications',
     'mark_notification_read',
     'mark_all_notifications_read',

@@ -86,6 +86,8 @@ export type LoginAttempt =
  */
 export interface FailedLogins {
   begin: (req: Request, username: string) => LoginAttempt
+  /** Forgets the username's failures, after its password was reset. */
+  clear: (username: string) => void
 }
 
 export interface RateLimits {
@@ -134,6 +136,7 @@ export const createRateLimits = ({ now, clientIp, accountOf, uploadLimiter }: Ra
           },
         }
       },
+      clear: (username) => failuresByUsername.reset(usernameKey(username)),
     },
     publicReads: limitBy(createTokenBucketLimiter(RATE_LIMITS.public_reads, now), clientIp),
     signups: limitBy(createTokenBucketLimiter(RATE_LIMITS.signups, now), clientIp),
@@ -163,6 +166,9 @@ export const mountRateLimits = (httpd: Express, limits: RateLimits) => {
   httpd.post(
     [
       '/login',
+      '/account/email/verify',
+      '/account/recovery/request',
+      '/account/recovery/complete',
       '/authorize',
       '/token',
       '/register',

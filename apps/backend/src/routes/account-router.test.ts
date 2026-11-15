@@ -3,6 +3,7 @@ import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { VerificationSendResult } from '../services/account-recovery.ts'
 import type { UserAccount } from '../services/central-user-accounts.ts'
 
 import { createAccountRouter } from './account-router.ts'
@@ -79,25 +80,10 @@ describe('GET /account/plan', () => {
 })
 
 describe('/account/email', () => {
-  const buildEmailApp = (initial: string | null, hasRow = true) => {
-    let stored = initial
-    const accountEmailDb = {
-      getUserAccount: vi.fn(async (_username: string) => (hasRow ? account(stored) : null)),
-      setUserEmail: vi.fn(async (_username: string, email: string | null) => {
-        if (!hasRow) return null
-        stored = email
-        return account(stored)
-      }),
-    }
-    const app = express()
-    app.use(express.json())
-    app.use('/account', createAccountRouter(asAlice, vi.fn<AccountDeleter>(), undefined, accountEmailDb))
-    return { accountEmailDb, app }
-  }
-
-  const account = (email: string | null): UserAccount => ({
+  const account = (email: string | null, verified = false): UserAccount => ({
     created_at: null,
     email,
+    email_verified_at: verified ? new Date('2026-11-02T00:00:00Z') : null,
     inserted_at: new Date('2026-11-01T00:00:00Z'),
     paid_until: null,
     plan: null,
@@ -107,52 +93,120 @@ describe('/account/email', () => {
     username: 'alice',
   })
 
-  test("GET returns the caller's email, or null", async () => {
-    expect((await supertest(buildEmailApp('alice@example.com').app).get('/account/email')).body).toEqual({
-      email: 'alice@example.com',
-      success: true,
-    })
-    expect((await supertest(buildEmailApp(null).app).get('/account/email')).body).toEqual({
-      email: null,
-      success: true,
-    })
+  const buildEmailApp = (
+    initial: string | null,
+    {
+      hasRow = true,
+      verified = false,
+      emailEnabled = true,
+      sendResult = 'sent' as VerificationSendResult,
+    } = {},
+  ) => {
+    let stored = account(initial, verified)
+    const centralDb = {
+      getUserAccount: vi.fn(async (_username: string) => (hasRow ? stored : null)),
+      setUserEmail: vi.fn(async (_username: string, email: string | null) => {
+        if (!hasRow) return null
+        stored = account(email, email === stored.email && stored.email_verified_at !== null)
+        return stored
+      }),
+    }
+    const sendVerification = vi.fn(async (_username: string) => sendResult)
+    const app = express()
+    app.use(express.json())
+    app.use(
+      '/account',
+      createAccountRouter(asAlice, vi.fn<AccountDeleter>(), undefined, {
+        centralDb,
+        emailEnabled: async () => emailEnabled,
+        sendVerification,
+      }),
+    )
+    return { app, centralDb, sendVerification }
+  }
+
+  test("GET returns the caller's email, whether it is verified and whether email is on", async () => {
+    expect(
+      (await supertest(buildEmailApp('alice@example.com', { verified: true }).app).get('/account/email'))
+        .body,
+    ).toEqual({ email: 'alice@example.com', email_enabled: true, success: true, verified: true })
+    expect(
+      (await supertest(buildEmailApp(null, { emailEnabled: false }).app).get('/account/email')).body,
+    ).toEqual({ email: null, email_enabled: false, success: true, verified: false })
   })
 
-  test('PUT stores the trimmed address as typed', async () => {
-    const { accountEmailDb, app } = buildEmailApp(null)
+  test('PUT stores the trimmed address as typed and sends it a verification link', async () => {
+    const { centralDb, app, sendVerification } = buildEmailApp(null)
     const res = await supertest(app).put('/account/email').send({ email: '  Alice@Example.com ' })
 
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ email: 'Alice@Example.com', success: true })
-    expect(accountEmailDb.setUserEmail).toHaveBeenCalledWith('alice', 'Alice@Example.com')
+    expect(res.body).toEqual({
+      email: 'Alice@Example.com',
+      email_enabled: true,
+      success: true,
+      verified: false,
+    })
+    expect(centralDb.setUserEmail).toHaveBeenCalledWith('alice', 'Alice@Example.com')
+    expect(sendVerification).toHaveBeenCalledWith('alice')
   })
 
-  test.each([null, '', '   '])('PUT %j clears the address', async (email) => {
-    const { accountEmailDb, app } = buildEmailApp('alice@example.com')
+  test('PUT of the same verified address keeps it verified and sends nothing', async () => {
+    const { app, sendVerification } = buildEmailApp('alice@example.com', { verified: true })
+    const res = await supertest(app).put('/account/email').send({ email: 'alice@example.com' })
+
+    expect(res.body).toMatchObject({ email: 'alice@example.com', verified: true })
+    expect(sendVerification).not.toHaveBeenCalled()
+  })
+
+  test.each([null, '', '   '])('PUT %j clears the address and sends nothing', async (email) => {
+    const { centralDb, app, sendVerification } = buildEmailApp('alice@example.com', { verified: true })
     const res = await supertest(app).put('/account/email').send({ email })
 
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ email: null, success: true })
-    expect(accountEmailDb.setUserEmail).toHaveBeenCalledWith('alice', null)
+    expect(res.body).toEqual({ email: null, email_enabled: true, success: true, verified: false })
+    expect(centralDb.setUserEmail).toHaveBeenCalledWith('alice', null)
+    expect(sendVerification).not.toHaveBeenCalled()
   })
 
   test('PUT is a 409 for an account without a row yet', async () => {
-    const { app } = buildEmailApp(null, false)
+    const { app } = buildEmailApp(null, { hasRow: false })
     const res = await supertest(app).put('/account/email').send({ email: 'alice@example.com' })
 
     expect(res.status).toBe(409)
-    expect(res.body).toMatchObject({ email: null, success: false })
+    expect(res.body).toMatchObject({ success: false })
     expect(res.body.error).toContain("isn't fully set up yet")
   })
 
   test.each([{ email: 'not-an-email' }, { email: `${'a'.repeat(250)}@example.com` }, {}])(
     'PUT %j is a 400',
     async (body) => {
-      const { accountEmailDb, app } = buildEmailApp(null)
+      const { centralDb, app } = buildEmailApp(null)
       const res = await supertest(app).put('/account/email').send(body)
 
       expect(res.status).toBe(400)
-      expect(accountEmailDb.setUserEmail).not.toHaveBeenCalled()
+      expect(centralDb.setUserEmail).not.toHaveBeenCalled()
     },
   )
+
+  test.each([
+    ['sent', 200],
+    ['already_verified', 200],
+  ] as const)('POST /email/verification answers %s', async (result, status) => {
+    const { app } = buildEmailApp('alice@example.com', { sendResult: result })
+    const res = await supertest(app).post('/account/email/verification')
+    expect(res.status).toBe(status)
+    expect(res.body).toEqual({ status: result, success: true })
+  })
+
+  test.each([
+    ['no_email', 400],
+    ['not_configured', 409],
+    ['rate_limited', 429],
+    ['failed', 502],
+  ] as const)('POST /email/verification maps %s to %i', async (result, status) => {
+    const { app } = buildEmailApp('alice@example.com', { sendResult: result })
+    const res = await supertest(app).post('/account/email/verification')
+    expect(res.status).toBe(status)
+    expect(res.body.success).toBe(false)
+  })
 })

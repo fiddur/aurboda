@@ -17,7 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,7 +38,10 @@ import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.aurboda.AuthApi
 import net.aurboda.LoginResult
@@ -59,6 +64,7 @@ fun LoginScreen(
   val context = LocalContext.current
   val autofill = LocalAutofill.current
   val autofillTree = LocalAutofillTree.current
+  val uriHandler = LocalUriHandler.current
 
   var serverUrl by remember { mutableStateOf(initialServerUrl ?: "https://aurboda.net") }
   var username by remember { mutableStateOf("") }
@@ -66,6 +72,21 @@ fun LoginScreen(
   var isLoading by remember { mutableStateOf(false) }
   var isPasskeyLoading by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
+  var emailEnabled by remember { mutableStateOf(false) }
+
+  LaunchedEffect(serverUrl) {
+    emailEnabled = false
+    if (serverUrl.isBlank()) return@LaunchedEffect
+    delay(500)
+    emailEnabled =
+      try {
+        authApi.isEmailEnabled(serverUrl.trimEnd('/'))
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        false
+      }
+  }
 
   val usernameAutofillNode =
     remember {
@@ -246,6 +267,16 @@ fun LoginScreen(
         )
       } else {
         Text("Login")
+      }
+    }
+
+    if (emailEnabled) {
+      Spacer(modifier = Modifier.height(8.dp))
+      TextButton(
+        onClick = { uriHandler.openUri("${serverUrl.trimEnd('/')}/recover-request") },
+        enabled = !isLoading && !isPasskeyLoading,
+      ) {
+        Text("Forgot your password or lost your passkey?")
       }
     }
   }

@@ -76,6 +76,7 @@ For the self-hosting crowd, the appeal is ownership:
 - **Docker deployment** in minutes (see [Quick Start](#quick-start-docker)).
 - Open **REST API** and **MCP** -- nothing is locked in.
 - [Passkey / WebAuthn login](docs/passkeys.md) for web and Android.
+- [Email verification and account recovery](docs/account-recovery.md): reset a password or recover a lost passkey by an emailed link, once the admin sets up SMTP.
 - [Server administration](docs/admin.md): admins, signup mode, per-user usage counters and account deletion.
 
 ---

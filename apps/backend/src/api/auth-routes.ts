@@ -26,6 +26,7 @@ import { httpError } from '../http-error.ts'
 import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
 import { appVersion } from '../services/app-version.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
+import { isEmailConfigured } from '../services/email.ts'
 import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { readPublicTagPages } from '../services/public-tags.ts'
@@ -45,6 +46,8 @@ interface AuthRoutesDeps {
   userDb: Client
   unauthorized: Error
   userExists: (username: string) => Promise<boolean>
+  /** Sends the verification link to a just-signed-up account's email, in the background. */
+  startEmailVerification?: (username: string) => void
 }
 
 export const RESERVED_USERNAMES = [
@@ -83,6 +86,7 @@ export const registerAuthRoutes = ({
   userDb,
   unauthorized,
   userExists,
+  startEmailVerification,
 }: AuthRoutesDeps): void => {
   httpd.get<Record<string, never>, VersionResponse>('/version', (_req, res) => {
     res.json({
@@ -92,12 +96,13 @@ export const registerAuthRoutes = ({
   })
 
   httpd.get<Record<string, never>, ServerStatusResponse>('/status', async (_req, res) => {
-    const [signupMode, officialFeed, billing, publicTagPages, contacts] = await Promise.all([
+    const [signupMode, officialFeed, billing, publicTagPages, contacts, emailEnabled] = await Promise.all([
       centralDb.getSignupMode(),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
       readPublicTagPages(centralDb),
       readSupportContacts(centralDb),
+      isEmailConfigured(centralDb),
     ])
     const officialFeedLive =
       officialFeed.remote_authors.length > 0 ||
@@ -106,6 +111,7 @@ export const registerAuthRoutes = ({
       billing_enabled: billing.enabled,
       contact_fediverse: contacts.contact_fediverse || null,
       contact_reddit: contacts.contact_reddit || null,
+      email_enabled: emailEnabled,
       federation: true,
       official_feed: officialFeedLive,
       product: 'aurboda',
@@ -172,7 +178,7 @@ export const registerAuthRoutes = ({
         await recordNewAccount(centralDb, user).catch((e) =>
           console.error(`⚠️ Failed to record account row for ${user}:`, e),
         )
-        await saveSignupProfile(defaultSignupProfileDeps(centralDb), user, {
+        await saveSignupProfile(defaultSignupProfileDeps(centralDb, startEmailVerification), user, {
           display_name: req.body.display_name,
           email: req.body.email,
         })

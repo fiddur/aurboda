@@ -6,7 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
-import { registerAuthRoutes } from './api/auth-routes.ts'
+import { isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
@@ -48,6 +48,7 @@ import {
   listUnenrichedAurbodaEntries,
   listUserNames,
   loginToUserDb,
+  setUserPassword,
   markChallengeResultPublished,
   markEnrichTransientFailure,
   migrateAllUsers,
@@ -91,8 +92,10 @@ import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/act
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
+import { startVerification } from './services/account-email.ts'
 import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
 import { backfillAccounts, createAccountPlans, readBillingSettings } from './services/account-plan.ts'
+import { createAccountRecovery } from './services/account-recovery.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -153,6 +156,7 @@ import {
 import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createMailer } from './services/email.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
 import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
@@ -202,7 +206,7 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
-import { accountUploadLimiter } from './services/rate-limit.ts'
+import { accountUploadLimiter, createTokenBucketLimiter, RATE_LIMITS } from './services/rate-limit.ts'
 import {
   createRelayActions,
   createRelayInboxHooks,
@@ -623,6 +627,26 @@ const main = async () => {
     uploadLimiter: accountUploadLimiter,
   })
   mountRateLimits(httpd, rateLimits)
+
+  const mailer = createMailer({ centralDb })
+  const accountRecovery = createAccountRecovery({
+    audit: (user, message) => auditInfo(user, 'auth', message),
+    centralDb,
+    clearFailedLogins: rateLimits.failedLogins.clear,
+    createSessionToken: (user) => auth.createToken(user),
+    isValidUsername,
+    mailer,
+    recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
+    setPassword: (user, password) => setUserPassword(userDb, user, password),
+    verificationLimiter: createTokenBucketLimiter(RATE_LIMITS.verification_mails, Date.now),
+    webHost,
+  })
+  const accountEmail = {
+    centralDb,
+    emailEnabled: mailer.isConfigured,
+    sendVerification: accountRecovery.sendVerification,
+  }
+  const startEmailVerification = (user: string) => startVerification(accountEmail, user)
 
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
@@ -1103,6 +1127,7 @@ const main = async () => {
     '/mcp',
     createMcpRouter(auth, {
       accountDeleter,
+      accountEmail,
       accountGate,
       accountPlans,
       adminUsers,
@@ -1191,6 +1216,7 @@ const main = async () => {
     failedLogins: rateLimits.failedLogins,
     invitationAuth,
     userDb,
+    startEmailVerification,
     unauthorized,
     userExists: async (username) => (await listUserNames(userDb)).includes(username),
   })
@@ -1285,6 +1311,13 @@ const main = async () => {
 
   mountRestRouters({
     accountDeleter,
+    accountEmail,
+    accountRecovery,
+    adminTestEmail: {
+      mailer,
+      testLimiter: createTokenBucketLimiter(RATE_LIMITS.admin_test_mails, Date.now),
+    },
+    startEmailVerification,
     accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,

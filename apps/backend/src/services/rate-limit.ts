@@ -165,6 +165,7 @@ export const tooManyFailedLoginsMessage = (seconds: number) =>
   `Too many failed sign-in attempts. ${waitMessage(seconds)}`
 
 const MINUTE_MS = 60_000
+const HOUR_S = 3600
 
 /**
  * Generous on purpose: a person signing in, a family signing up, someone
@@ -173,7 +174,7 @@ const MINUTE_MS = 60_000
  * traffic other than uploads is not limited at all.
  */
 export const RATE_LIMITS = {
-  /** Per client IP: the login, passkey and OAuth endpoints. Claude's MCP token refreshes share a few IPs. */
+  /** Per client IP: the login, passkey, OAuth and account recovery endpoints. Claude's MCP token refreshes share a few IPs. */
   auth_requests: { capacity: 30, refill_per_second: 0.5 },
   /** Per client IP, failed password logins (`/login`, the OAuth sign-in form). */
   failed_logins_by_ip: {
@@ -188,6 +189,12 @@ export const RATE_LIMITS = {
     free_failures: 5,
     max_delay_ms: MINUTE_MS,
   },
+  /** Per admin: test mails from the admin settings. */
+  admin_test_mails: { capacity: 10, refill_per_second: 10 / HOUR_S },
+  /** Per account: password reset and recovery links; requests beyond it are dropped silently. */
+  recovery_mails: { capacity: 3, refill_per_second: 3 / HOUR_S },
+  /** Per account: email verification links, REST and MCP together. */
+  verification_mails: { capacity: 3, refill_per_second: 3 / HOUR_S },
   /** Per client IP: the unauthenticated public pages, images and payloads under `/public`, `/u` and `/oembed`. */
   public_reads: { capacity: 300, refill_per_second: 3 },
   /** Per client IP: new accounts, by password or passkey. */

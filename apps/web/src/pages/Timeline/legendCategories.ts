@@ -6,11 +6,13 @@ import { tagSourceColors } from './colors'
 
 /**
  * The Activity-side legend has a curated layer (sleep_rest / meditation /
- * exercise / other / calendar / meal) plus a `screentime` umbrella toggle and
- * one dynamic sub-toggle per top-level screentime category
+ * exercise / other / calendar / meal) plus, in the horizontal layout where
+ * screen time is also drawn as blocks in the Activity lane, a `screentime`
+ * umbrella toggle and one dynamic sub-toggle per top-level screentime category
  * (e.g. `Work`, `Media`, `Comms`). Dynamic keys use the
  * `screentime:<top-level-slug>` namespace so they coexist with the static
- * union below.
+ * union below. `screen_time_h` toggles the stacked screen time bars in the
+ * Metrics track of both layouts.
  */
 export type LegendCategory =
   // Top-level track toggles
@@ -26,15 +28,15 @@ export type LegendCategory =
   | 'other'
   | 'calendar'
   | 'meal'
-  | 'screentime' // umbrella: legacy `screentime` activities + all derived screentime types
+  | 'screentime' // horizontal only: the screen time blocks in the Activity lane
   // Metrics sub-toggles
   | 'hr'
   | 'hrv'
   | 'stress'
-  | 'steps' // horizontal only
-  | 'calories' // horizontal only
+  | 'steps'
+  | 'calories'
   | 'training_load' // horizontal only
-  | 'screen_time_h' // horizontal only — screentime stacked bar
+  | 'screen_time_h' // screentime stacked bars
   // Dynamic per-top-level screentime category (e.g. "screentime:work").
   | `screentime:${string}`
 
@@ -45,7 +47,8 @@ export const LEGACY_CATEGORY_MAP: Record<string, LegendCategory> = {
   sleep: 'sleep_rest',
 }
 
-export const BASE_COLUMNS: Column[] = ['Activity', 'Location', 'Screen Time']
+/** The vertical layout's item columns; screen time is drawn as bars in its Metrics track, not as a column. */
+export const ITEM_COLUMNS: Column[] = ['Activity', 'Location', 'Comments']
 
 const SCREENTIME_SUB_PREFIX = 'screentime:' as const
 
@@ -82,7 +85,7 @@ const STATIC_CATEGORY_MATCHERS: Record<
     item.entity_type === 'activity' &&
     item.color !== tagSourceColors.calendar &&
     !item.activity_type,
-  screen_time_h: () => false, // horizontal screentime bar controlled at draw level
+  screen_time_h: () => false, // screentime bars controlled at draw level
   training_load: () => false,
 }
 

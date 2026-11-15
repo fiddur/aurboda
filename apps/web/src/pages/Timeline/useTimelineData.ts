@@ -41,16 +41,14 @@ import {
   categorizeOtherActivities,
   categorizeScreentimeActivities,
 } from './categorize'
-import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
 import { buildCommentItems } from './commentItems'
-import { parseBucketedData } from './drawActivitySparklines'
 import { padFetchWindow } from './fetchRange'
 import { getExerciseTypeName } from './formatting'
 import {
-  BASE_COLUMNS,
   buildCategoryMatchers,
   buildScreentimeSubEntries,
+  ITEM_COLUMNS,
   type LegendCategory,
   type ScreentimeSubEntry,
 } from './legendCategories'
@@ -74,8 +72,7 @@ export interface TimelineData {
   activityItems: ChartItem[]
   columnData: { column: Column; items: { item: ChartItem; lane: number }[]; laneCount: number }[]
   columns: Column[]
-  sparklineBuckets: ReturnType<typeof parseBucketedData>
-  horizontalMetricBuckets: ReturnType<typeof parseBucketedResponse>
+  metricBuckets: ReturnType<typeof parseBucketedResponse>
   trainingLoadQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchTrainingLoad>>>>
   screentimeBucketedQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchScreentimeBucketed>>>>
   screentimeCategoriesQuery: ReturnType<typeof useQuery<ScreentimeCategory[]>>
@@ -140,7 +137,10 @@ export const useTimelineData = ({
   })
 
   const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
+    // Colours the screen time blocks and bars, and keeps screen time types out of the Activity column.
+    enabled:
+      (!hiddenCategories.has('activity') && !hiddenCategories.has('screentime')) ||
+      (!hiddenCategories.has('metrics') && !hiddenCategories.has('screen_time_h')),
     queryFn: fetchScreentimeCategories,
     queryKey: ['screentime-categories'],
     staleTime: 30 * 60 * 1000,
@@ -292,7 +292,7 @@ export const useTimelineData = ({
   //   1. Legacy `screentime` umbrella activities (pre-derived-types data).
   //   2. Per-category derived types (e.g. `programming`, `slack`) — present
   //      whenever the user has screentime categories with linked types.
-  // Both render in the Screen Time column. Legacy spans merge by
+  // Both render as blocks in the horizontal Activity lane. Legacy spans merge by
   // `category_path` (their activity_type is the same umbrella for every
   // category, so without that discriminator they'd collapse into one bar).
   // Derived types feed through `collapseToParentType` so the same hierarchy
@@ -350,15 +350,7 @@ export const useTimelineData = ({
     return itemIconsQuery.data ?? {}
   }, [itemIconsQuery.data])
 
-  const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
-  const showMusicColumn = musicItems.length > 0
-
-  const sparklineBuckets = useMemo(
-    () => parseBucketedData(bucketedMetricsQuery.data),
-    [bucketedMetricsQuery.data],
-  )
-
-  const horizontalMetricBuckets = useMemo(
+  const metricBuckets = useMemo(
     () => parseBucketedResponse(bucketedMetricsQuery.data),
     [bucketedMetricsQuery.data],
   )
@@ -399,12 +391,6 @@ export const useTimelineData = ({
     })
   }, [secondaryActivities, activityItems])
 
-  // Comments sit last so the 💬 column is the rightmost one in vertical mode.
-  const allColumns: Column[] = useMemo(
-    () => [...BASE_COLUMNS, ...(showMusicColumn ? (['Music'] as Column[]) : []), 'Comments'],
-    [showMusicColumn],
-  )
-
   const mealItems = useMemo(
     () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
     [mealsQuery.data, itemIcons],
@@ -441,7 +427,6 @@ export const useTimelineData = ({
         screentimeDerivedTypes,
         typeDefsMap,
       ),
-      ...musicItems,
       ...mealItems,
       ...commentItems,
     ],
@@ -455,7 +440,6 @@ export const useTimelineData = ({
       screentimeActivities,
       screentimeCategoriesQuery.data,
       screentimeDerivedTypes,
-      musicItems,
       mealItems,
       commentItems,
     ],
@@ -476,10 +460,7 @@ export const useTimelineData = ({
     return grouped
   }, [chartItems])
 
-  const columns = useMemo(
-    () => allColumns.filter((col) => itemsByColumn.has(col)),
-    [allColumns, itemsByColumn],
-  )
+  const columns = useMemo(() => ITEM_COLUMNS.filter((col) => itemsByColumn.has(col)), [itemsByColumn])
 
   const columnData = useMemo(
     () =>
@@ -510,14 +491,13 @@ export const useTimelineData = ({
     commentNotes,
     errorSources,
     hasLastFm,
-    horizontalMetricBuckets,
     isFetching,
     isInitialLoad,
+    metricBuckets,
     screentimeBucketedQuery,
     screentimeCategoriesQuery,
     screentimeSubEntries,
     scrobbles,
-    sparklineBuckets,
     trainingLoadQuery,
   }
 }

@@ -54,6 +54,8 @@ interface WebAuthnRouterDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   userDb: Client
+  /** Sends the verification link to a just-signed-up account's email, in the background. */
+  startEmailVerification?: (username: string) => void
 }
 
 export const createWebAuthnRouter = ({
@@ -63,6 +65,7 @@ export const createWebAuthnRouter = ({
   centralDb,
   invitationAuth,
   userDb,
+  startEmailVerification,
 }: WebAuthnRouterDeps): TypedRouter => {
   const router = typedRouter()
 
@@ -237,7 +240,10 @@ export const createWebAuthnRouter = ({
         return
       }
 
-      await saveSignupProfile(defaultSignupProfileDeps(centralDb), username, { display_name, email })
+      await saveSignupProfile(defaultSignupProfileDeps(centralDb, startEmailVerification), username, {
+        display_name,
+        email,
+      })
 
       // Step 4: first-user-becomes-admin (mirrors auth-routes.ts /signup).
       const adminCount = await centralDb.getAdminCount()

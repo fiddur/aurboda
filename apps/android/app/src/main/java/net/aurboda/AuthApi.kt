@@ -5,13 +5,16 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import net.aurboda.api.models.LoginBody
 import net.aurboda.api.models.LoginResponse
+import net.aurboda.api.models.ServerStatusResponse
 
 private const val TAG = "AuthApi"
 
@@ -36,6 +39,19 @@ class AuthApi(private val httpClient: HttpClient) {
         } catch (e: Exception) {
             Log.e(TAG, "Login failed: ${e.message}", e)
             LoginResult.Error(e.message ?: "Login failed")
+        }
+    }
+
+    /** Whether the server sends email, so a lost password or passkey can be recovered by an emailed link. */
+    suspend fun isEmailEnabled(serverUrl: String): Boolean {
+        val statusUrl = "${serverUrl.trimEnd('/')}/api/status"
+        return try {
+            httpClient.get(statusUrl).body<ServerStatusResponse>().emailEnabled == true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "Status check failed: ${e.message}")
+            false
         }
     }
 

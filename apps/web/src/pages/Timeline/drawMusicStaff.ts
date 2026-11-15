@@ -4,6 +4,8 @@ import { format } from 'date-fns'
 
 import type { Scrobble } from '../../state/api'
 
+import { MUSIC_COLOR } from './colors'
+
 const TRACK_DURATION_MS = 3.5 * 60 * 1000 // ~3.5 minutes per scrobble
 
 /** Total pixel height of the music staff track */
@@ -192,7 +194,7 @@ const drawSimplifiedMusicBars = (
       .attr('y', barY)
       .attr('width', sw)
       .attr('height', barHeight)
-      .attr('fill', '#ec4899')
+      .attr('fill', MUSIC_COLOR)
       .attr('opacity', 0.5)
       .attr('rx', 2)
       .attr('cursor', 'default')
@@ -342,6 +344,64 @@ export const drawMusicSessions = (
       }
 
       drawLedgerLines(g, staffY, noteX, position)
+    }
+  }
+}
+
+const STRIP_LABEL_MIN_HEIGHT = 14
+const STRIP_WORD_MIN_WIDTH = 64
+const STRIP_WORD_MIN_HEIGHT = 18
+
+/** The track count a vertical music strip shows, or null when the strip is too short to hold it. */
+export const musicStripLabel = (trackCount: number, width: number, height: number): string | null => {
+  if (height < STRIP_LABEL_MIN_HEIGHT) return null
+  if (width >= STRIP_WORD_MIN_WIDTH && height >= STRIP_WORD_MIN_HEIGHT) {
+    return `${trackCount} track${trackCount === 1 ? '' : 's'}`
+  }
+  return String(trackCount)
+}
+
+/** One strip per listening session down a narrow column, for the vertical layout. */
+export const drawVerticalMusicSessions = (
+  chartGroup: SvgParent,
+  sessions: MusicSession[],
+  yScale: d3.ScaleTime<number, number>,
+  x: number,
+  width: number,
+  showTooltip: (event: MouseEvent, session: MusicSession) => void,
+  hideTooltip: () => void,
+): void => {
+  for (const session of sessions) {
+    const y1 = yScale(session.start)
+    const height = Math.max(2, yScale(session.end) - y1)
+    chartGroup
+      .append('rect')
+      .attr('class', 'music-session-strip')
+      .attr('x', x)
+      .attr('y', y1)
+      .attr('width', width)
+      .attr('height', height)
+      .attr('rx', 3)
+      .attr('fill', MUSIC_COLOR)
+      .attr('opacity', 0.6)
+      .attr('cursor', 'default')
+      .on('mouseenter', (event: MouseEvent) => showTooltip(event, session))
+      .on('click', (event: MouseEvent) => showTooltip(event, session))
+      .on('mouseleave', hideTooltip)
+
+    const label = musicStripLabel(session.scrobbles.length, width, height)
+    if (label) {
+      chartGroup
+        .append('text')
+        .attr('x', x + width / 2)
+        .attr('y', y1 + Math.min(height / 2, 10))
+        .attr('dy', '0.35em')
+        .attr('text-anchor', 'middle')
+        .attr('fill', 'white')
+        .attr('font-size', '0.65rem')
+        .attr('font-weight', '600')
+        .attr('pointer-events', 'none')
+        .text(label)
     }
   }
 }

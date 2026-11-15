@@ -49,9 +49,17 @@ export const accountEmailResponseSchema = baseResponseSchema
     email: z.string().nullable().meta({
       description: 'Your email address; null when none is set. Only you and the server admins see it.',
     }),
+    email_enabled: z.boolean().meta({
+      description:
+        'Whether this server sends email. When false, nothing is sent and the address stays unverified.',
+    }),
+    verified: z.boolean().meta({
+      description:
+        'Whether the address was confirmed by its emailed link. Only a verified address gets account mail (password reset and recovery links); changing the address clears it.',
+    }),
   })
   .meta({
-    description: "The authenticated user's private email address",
+    description: "The authenticated user's private email address and whether it is verified",
     id: 'AccountEmailResponse',
   })
 
@@ -63,11 +71,27 @@ export const updateAccountEmailBodySchema = z
   })
   .meta({
     description:
-      'Set or clear your email address (null or an empty string clears it). It is private: only you and the server admins see it. Nothing is sent to it yet.',
+      'Set or clear your email address (null or an empty string clears it). It is private: only you and the server admins see it. A new address is unverified: when the server sends email, a verification link goes to it, and only a verified address is used for password reset and account recovery.',
     id: 'UpdateAccountEmailBody',
   })
 
 export type UpdateAccountEmailBody = z.infer<typeof updateAccountEmailBodySchema>
+
+export const emailVerificationStatusSchema = z.enum(['sent', 'already_verified']).meta({
+  description: '`sent`: a new verification link is on its way; `already_verified`: nothing was sent',
+  id: 'EmailVerificationStatus',
+})
+
+export type EmailVerificationStatus = z.infer<typeof emailVerificationStatusSchema>
+
+export const sendEmailVerificationResponseSchema = baseResponseSchema
+  .extend({ status: emailVerificationStatusSchema })
+  .meta({
+    description: 'The outcome of asking for a new verification link',
+    id: 'SendEmailVerificationResponse',
+  })
+
+export type SendEmailVerificationResponse = z.infer<typeof sendEmailVerificationResponseSchema>
 
 /** The optional profile fields a signup may carry. */
 export const signupProfileShape = {

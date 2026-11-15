@@ -47,11 +47,8 @@ export const mergeSmallItems = (
       // Build a Data page link showing only the relevant type for this time range
       const columnToDataType: Partial<Record<Column, string>> = {
         Activity: 'activity',
-        Exercise: 'activity',
         Location: 'location',
         Music: 'media',
-        'Screen Time': 'screentime',
-        'Sleep / Rest': 'activity',
       }
       const dataType = columnToDataType[first.column]
       const allDataTypes = ['activity', 'location', 'media', 'meal', 'report', 'screentime']
@@ -306,7 +303,7 @@ export const columnLaneWidth = (
 export const drawColumnItems = (
   chartGroup: d3.Selection<SVGGElement, unknown, null, undefined>,
   columnData: ColumnDataEntry[],
-  colWidth: number,
+  columnSlot: (column: Column) => { x: number; width: number } | undefined,
   colGap: number,
   colPadding: number,
   yScale: d3.ScaleTime<number, number>,
@@ -314,14 +311,15 @@ export const drawColumnItems = (
   hideTooltip: () => void,
   onItemClick?: (item: ChartItem) => void,
 ): void => {
-  for (let colIdx = 0; colIdx < columnData.length; colIdx++) {
-    const { items: packedItems, laneCount } = columnData[colIdx]!
+  for (const { column, items: packedItems, laneCount } of columnData) {
+    const slot = columnSlot(column)
+    if (!slot) continue
 
     const mergedItems = mergeSmallItems(packedItems, yScale)
     const hasMerged = mergedItems.some((m) => m.item.label.endsWith(' items'))
 
-    const colX = colIdx * colWidth + colGap
-    const usableWidth = colWidth - colGap * 2
+    const colX = slot.x + colGap
+    const usableWidth = slot.width - colGap * 2
 
     const stackedItems = stackIconPoints(mergedItems, usableWidth)
 

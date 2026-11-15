@@ -8,6 +8,7 @@ import {
   buildCategoryMatchers,
   buildScreentimeSubEntries,
   isScreentimeSubKey,
+  ITEM_COLUMNS,
   LEGACY_CATEGORY_MAP,
   screentimeSubKey,
 } from './legendCategories'
@@ -40,6 +41,12 @@ const matchers = (typeDefs: ActivityTypeDefinition[], screentimeDerivedTypes: Re
   const typeDefsMap = new Map(typeDefs.map((d) => [d.name, { parent_type: d.parent_type }]))
   return buildCategoryMatchers(typeDefsMap, subEntries)
 }
+
+describe('ITEM_COLUMNS', () => {
+  it('leaves screen time out of the vertical item columns', () => {
+    expect(ITEM_COLUMNS).toEqual(['Activity', 'Location', 'Comments'])
+  })
+})
 
 describe('LEGACY_CATEGORY_MAP', () => {
   it('maps sleep, nap, rest to sleep_rest (URL-hash backwards compat)', () => {

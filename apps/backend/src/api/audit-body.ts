@@ -1,7 +1,7 @@
 const FULL_DETAIL_MAX_CHARS = 4096
 const SUMMARY_STRING_MAX_CHARS = 200
 
-const SECRET_KEYS = new Set(['api_key', 'password'])
+const SECRET_KEYS = new Set(['api_key', 'new_password', 'password', 'smtp_password'])
 
 const summarizeValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return { count: value.length }

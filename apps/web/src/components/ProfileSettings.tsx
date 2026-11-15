@@ -2,7 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useState } from 'preact/hooks'
 
-import { fetchMyEmail, fetchUserSettings, updateMyEmail, updateUserSettings } from '../state/api'
+import {
+  fetchMyEmail,
+  fetchUserSettings,
+  sendEmailVerification,
+  updateMyEmail,
+  updateUserSettings,
+} from '../state/api'
+import { canResendVerification, type EmailState, emailStatus } from '../utils/accountRecovery'
 import { apiErrorText } from '../utils/profile'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
@@ -14,6 +21,58 @@ const saveError = (err: unknown): string =>
       ? err.message
       : 'Failed to save'
 
+/** "Verified", or "Not verified" with a button to send the link again. */
+function EmailVerificationLine({ state }: { state: EmailState | undefined }) {
+  const queryClient = useQueryClient()
+  const [resend, setResend] = useState<
+    { state: 'idle' | 'sending' | 'sent' } | { state: 'error'; error: string }
+  >({ state: 'idle' })
+
+  const onResend = async () => {
+    setResend({ state: 'sending' })
+    try {
+      const result = await sendEmailVerification()
+      if (result.status === 'already_verified') {
+        await queryClient.invalidateQueries({ queryKey: ['myEmail'] })
+        setResend({ state: 'idle' })
+      } else {
+        setResend({ state: 'sent' })
+      }
+    } catch (err) {
+      setResend({ error: saveError(err), state: 'error' })
+    }
+  }
+
+  const status = emailStatus(state)
+  if (status === 'verified') return <p class="email-status verified">Verified</p>
+  if (status !== 'unverified') return null
+  return (
+    <>
+      <p class="email-status unverified">
+        Not verified
+        {canResendVerification(state) && (
+          <>
+            {' · '}
+            {resend.state === 'sent' ? (
+              <span>A new link is on its way.</span>
+            ) : (
+              <button
+                type="button"
+                class="link-button"
+                disabled={resend.state === 'sending'}
+                onClick={() => void onResend()}
+              >
+                {resend.state === 'sending' ? 'Sending…' : 'Send the link again'}
+              </button>
+            )}
+          </>
+        )}
+      </p>
+      {resend.state === 'error' && <p class="error">{resend.error}</p>}
+    </>
+  )
+}
+
 /** Display name (a user setting, federated) and email (private, on the account). */
 export function ProfileSettings() {
   const queryClient = useQueryClient()
@@ -23,7 +82,6 @@ export function ProfileSettings() {
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [email, setEmail] = useState<string | null>(null)
   const [status, setStatus] = useState<SaveStatus>({ status: 'idle' })
-
   const storedName = settings?.display_name ?? ''
   const storedEmail = emailData?.email ?? ''
   const nameValue = displayName ?? storedName
@@ -90,9 +148,12 @@ export function ProfileSettings() {
           onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
           onBlur={onEmailBlur}
         />
+        {email === null && <EmailVerificationLine key={emailData?.email ?? ''} state={emailData} />}
         <p class="field-description">
-          Private: only you and the server&apos;s admins see it. Used for account recovery and plan reminders
-          once those exist.
+          Private: only you and the server&apos;s admins see it.{' '}
+          {emailData?.email_enabled
+            ? 'Once you confirm it with the emailed link, it lets you reset your password or recover a lost passkey.'
+            : 'This server does not send email yet; once it does, a confirmed address lets you reset your password or recover a lost passkey.'}
         </p>
       </div>
     </SettingsSection>

@@ -73,6 +73,9 @@ const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
 const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
+const Recover = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'Recover')
+const RecoverRequest = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'RecoverRequest')
+const VerifyEmail = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'VerifyEmail')
 const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
 const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealDetail')
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
@@ -143,6 +146,9 @@ function AppShell() {
             <Route path="/tags/:tag" component={PublicTag} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
+            <Route path="/recover-request" component={RecoverRequest} />
+            <Route path="/recover" component={Recover} />
+            <Route path="/verify-email" component={VerifyEmail} />
             <Route path="/privacy" component={Privacy} />
             <Route path="/terms" component={Terms} />
             <Route path="/goals" component={Goals} />

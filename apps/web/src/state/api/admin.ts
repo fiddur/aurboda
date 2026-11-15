@@ -2,6 +2,8 @@ import type {
   AddPublicTagBlockBody,
   AddRelayBody,
   AdminSettingsResponse,
+  AdminTestEmailBody,
+  AdminTestEmailResponse,
   AdminUserOverview,
   AdminUserPlan,
   AdminUserPlanResponse,
@@ -201,4 +203,12 @@ export const removePublicTagBlock = async (id: string): Promise<void> => {
     `${API_URL}/admin/public-tag-blocks/${encodeURIComponent(id)}`,
     authHeaders(),
   )
+}
+
+export const sendAdminTestEmail = async (body: AdminTestEmailBody): Promise<AdminTestEmailResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<AdminTestEmailResponse>(`${API_URL}/admin/email/test`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
 }
