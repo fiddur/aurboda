@@ -4,6 +4,9 @@ import {
   type AddReportBody,
   addReportBodySchema,
   type DeleteReportResponse,
+  type ImportReportsBody,
+  importReportsBodySchema,
+  type ImportReportsResponse,
   type ReportResponse,
   type ReportsQuery,
   reportsQuerySchema,
@@ -13,6 +16,7 @@ import {
   type UpdateReportResponse,
 } from '@aurboda/api-spec'
 
+import { importReports } from '../services/report-import.ts'
 import {
   addReport,
   deleteReportById,
@@ -36,6 +40,17 @@ export const createReportsRouter = (authMiddleware: RequestHandler): TypedRouter
       const user = req.user!
 
       const result = await queryReports(user, { end, report_type, start })
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ImportReportsResponse, ImportReportsBody>(
+    '/import',
+    authMiddleware,
+    validateBody(importReportsBodySchema),
+    async (req, res) => {
+      const result = await importReports(req.user!, req.body)
+      if ('error' in result) return res.status(400).json({ error: result.error, success: false })
       res.json({ data: result.data, success: true })
     },
   )
