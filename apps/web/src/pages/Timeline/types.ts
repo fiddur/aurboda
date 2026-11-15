@@ -1,11 +1,4 @@
-export type Column =
-  | 'Activity'
-  | 'Sleep / Rest'
-  | 'Exercise'
-  | 'Location'
-  | 'Screen Time'
-  | 'Music'
-  | 'Comments'
+export type Column = 'Activity' | 'Location' | 'Screen Time' | 'Music' | 'Comments'
 
 export type Orientation = 'horizontal' | 'vertical'
 
@@ -26,7 +19,7 @@ export interface ChartItem {
   entity_id?: string
   entity_type?: 'activity' | 'productivity' | 'metric' | 'meal'
   href?: string
-  /** Activity type for sparkline overlay targeting */
+  /** Activity type, for merging overlapping items and the legend sub-toggles */
   activity_type?: string
   /** Emoji or icon URL to render instead of the default point marker */
   icon?: string

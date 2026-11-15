@@ -311,6 +311,15 @@
   flex-shrink: 0;
 }
 
+.timeline-column-header {
+  box-sizing: border-box;
+  padding: 0 4px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timeline-tooltip {
   position: absolute;
   pointer-events: none;
