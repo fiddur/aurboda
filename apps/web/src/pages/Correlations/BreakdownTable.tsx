@@ -27,12 +27,16 @@ const describeRow = (occurrences: number, avgDurationMin: number | null | undefi
   return avg ? `${count} · ${avg}` : count
 }
 
-const toRows = (overall: ActivityImpactData, groups: readonly ImpactGroup[]): BreakdownRow[] => [
+const toRows = (
+  overall: ActivityImpactData,
+  groups: readonly ImpactGroup[],
+  overallLabel: string,
+): BreakdownRow[] => [
   {
     avgDurationMin: overall.avg_duration_min,
     className: 'overall',
     key: '',
-    label: 'All sessions',
+    label: overallLabel,
     occurrences: overall.occurrences,
     slice: overall,
   },
@@ -50,18 +54,27 @@ const toRows = (overall: ActivityImpactData, groups: readonly ImpactGroup[]): Br
   }),
 ]
 
-/** One row for every session and one per group, with During and Change for each shown metric. */
+/**
+ * One row for every session and one per group, with During and Change for each shown metric.
+ * Without durations (point events such as meals) the rows leave out the average length.
+ */
 export function BreakdownTable({
   overall,
   groups,
   metrics: shown,
+  overallLabel = 'All sessions',
+  durations = true,
 }: {
   overall: ActivityImpactData
   groups: readonly ImpactGroup[]
   metrics: readonly BreakdownMetricOption[]
+  overallLabel?: string
+  durations?: boolean
 }) {
   const titles = columnTitles(overall.window_minutes)
-  const rows = toRows(overall, groups)
+  const rows = toRows(overall, groups, overallLabel).map((row) =>
+    durations ? row : { ...row, avgDurationMin: null },
+  )
   const metrics = shown
     .map((m) => ({ ...m, ...metricAccessors(m.key) }))
     .filter((m) => rows.some((row) => m.during(row.slice) !== null || m.effect(row.slice).change !== null))

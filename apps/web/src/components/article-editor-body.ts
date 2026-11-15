@@ -4,7 +4,7 @@
  * `buildShareBody`).
  */
 import type {
-  ActivityImpactType,
+  ArticleImpactType,
   ArticleBlock,
   ArticleContent,
   ArticleDraftBlock,
@@ -60,7 +60,7 @@ export interface ImpactDraft {
   type: 'impact'
   /** The grouping key ('' = not chosen yet). */
   activity: string
-  activityType: ActivityImpactType
+  activityType: ArticleImpactType
   windowMinutes: number
   /** `datetime-local` value ('' = inherit the article default window). */
   start: string
@@ -83,7 +83,7 @@ export interface ImpactOption {
   /** Encodes both the type and the name, so one `<select>` value picks the pair. */
   value: string
   activity: string
-  activityType: ActivityImpactType
+  activityType: ArticleImpactType
 }
 
 export interface ImpactOptionGroup {
@@ -91,7 +91,7 @@ export interface ImpactOptionGroup {
   options: ImpactOption[]
 }
 
-const impactOption = (activityType: ActivityImpactType, activity: string): ImpactOption => ({
+const impactOption = (activityType: ArticleImpactType, activity: string): ImpactOption => ({
   activity,
   activityType,
   value: `${activityType}\u0000${activity}`,
@@ -100,10 +100,10 @@ const impactOption = (activityType: ActivityImpactType, activity: string): Impac
 /** A picked option's value back to its pair, or null for the empty pick. */
 export const parseImpactOptionValue = (
   value: string,
-): { activity: string; activityType: ActivityImpactType } | null => {
+): { activity: string; activityType: ArticleImpactType } | null => {
   const at = value.indexOf('\u0000')
   if (at < 0) return null
-  return { activity: value.slice(at + 1), activityType: value.slice(0, at) as ActivityImpactType }
+  return { activity: value.slice(at + 1), activityType: value.slice(0, at) as ArticleImpactType }
 }
 
 /**
@@ -120,7 +120,7 @@ export const impactPickerOptions = (
         productivity: Pick<HrvActivitiesData['correlations']['productivity'][number], 'category'>[]
       }
     | undefined,
-  selected: { activity: string; activityType: ActivityImpactType },
+  selected: { activity: string; activityType: ArticleImpactType },
 ): { groups: ImpactOptionGroup[]; extra: ImpactOption | null } => {
   const groups: ImpactOptionGroup[] = [
     {
@@ -179,7 +179,13 @@ export const emptyCorrelationDraft = (): CorrelationDraft => ({
 })
 
 const selectorIncomplete = (s: CorrelationSelector): boolean =>
-  s.kind === 'metric' ? !s.metric.trim() : s.kind === 'nutrition' ? false : !s.pattern.trim()
+  s.kind === 'metric'
+    ? !s.metric.trim()
+    : s.kind === 'nutrition'
+      ? false
+      : s.kind === 'sensitivity'
+        ? !s.flag.trim()
+        : !s.pattern.trim()
 
 export interface ArticleEditorState {
   title: string

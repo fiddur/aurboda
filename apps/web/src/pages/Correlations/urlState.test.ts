@@ -229,6 +229,7 @@ describe('selector encoding', () => {
       { kind: 'nutrition', nutrient: 'fiber' },
       { kind: 'productivity_category', pattern: 'Software Development' },
       { kind: 'productivity_app', pattern: 'vscode' },
+      { flag: '11111111-1111-4111-8111-111111111111', kind: 'sensitivity' },
     ] as const) {
       expect(decodeSelector(encodeSelector(selector))).toEqual(selector)
     }

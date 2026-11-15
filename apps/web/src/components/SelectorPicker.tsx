@@ -1,6 +1,6 @@
 /**
- * Pick a correlation **selector** — a data dimension (a metric, a nutrient, or a
- * regex over activities / productivity) that the correlation engine resolves to a
+ * Pick a correlation **selector** — a data dimension (a metric, a nutrient, a
+ * meal sensitivity flag, or a regex over activities / productivity) that the correlation engine resolves to a
  * daily series. A kind dropdown plus the inputs for that kind, autocompleted from
  * the discovered `selectors`. Shared by the Correlations explorer and the article
  * composer's correlation blocks.
@@ -16,6 +16,7 @@ const KIND_LABELS: Partial<Record<CorrelationSelector['kind'], string>> = {
   activity: 'activity / tag',
   productivity_app: 'productivity app',
   productivity_category: 'productivity category',
+  sensitivity: 'meal sensitivity',
 }
 
 /** Every selector kind offered when either side may be continuous (e.g. article blocks). */
@@ -26,6 +27,30 @@ export const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = [
   'productivity_category',
   'productivity_app',
 ]
+
+function SensitivityFlagSelect({
+  flag,
+  selectors,
+  onChange,
+}: {
+  flag: string
+  selectors: CorrelationSelectorsData | undefined
+  onChange: (s: CorrelationSelector) => void
+}) {
+  return (
+    <select
+      value={flag}
+      onChange={(e) => onChange({ flag: (e.target as HTMLSelectElement).value, kind: 'sensitivity' })}
+    >
+      {flag === '' && <option value="">pick a flag</option>}
+      <optgroup label="Meal sensitivities">
+        {selectors?.sensitivities.map((o) => (
+          <option value={o.value}>{o.label}</option>
+        ))}
+      </optgroup>
+    </select>
+  )
+}
 
 export function SelectorPicker({
   value,
@@ -49,6 +74,8 @@ export function SelectorPicker({
       case 'productivity_category':
       case 'productivity_app':
         return onChange({ kind, pattern: '' })
+      case 'sensitivity':
+        return onChange({ flag: selectors?.sensitivities[0]?.value ?? '', kind: 'sensitivity' })
       default:
         return onChange({ kind: 'activity', pattern: '' })
     }
@@ -92,6 +119,10 @@ export function SelectorPicker({
             <option value={n}>{n}</option>
           ))}
         </select>
+      )}
+
+      {value.kind === 'sensitivity' && (
+        <SensitivityFlagSelect flag={value.flag} selectors={selectors} onChange={onChange} />
       )}
 
       {(value.kind === 'tag' ||

@@ -9,7 +9,34 @@
  * and are re-exported here so existing web imports keep working. This module
  * keeps the web-only `fiveNumberSummary` used by the box-plot render.
  */
+import type { CorrelationSelector, CorrelationSelectorsData } from '@aurboda/api-spec'
+
+import { describeSelectorAxis } from '@aurboda/api-spec'
+
 export { describeSelectorAxis, linearRegression, type RegressionLine } from '@aurboda/api-spec'
+
+/** The axis label, with a sensitivity selector's flag id resolved to the flag's name from the discovered selectors. */
+export const selectorAxisLabel = (
+  selector: CorrelationSelector,
+  selectors: Pick<CorrelationSelectorsData, 'sensitivities'> | undefined,
+): string =>
+  describeSelectorAxis(
+    selector,
+    selector.kind === 'sensitivity'
+      ? selectors?.sensitivities.find((s) => s.value === selector.flag)?.label
+      : undefined,
+  )
+
+/** The aligned pairs complete on every side that tracks completeness, named for what complete means there. */
+export const describeCompleteness = (
+  nComplete: number | null,
+  trigger: CorrelationSelector,
+  outcome: CorrelationSelector,
+): string | null => {
+  if (nComplete === null) return null
+  const nutrition = trigger.kind === 'nutrition' || outcome.kind === 'nutrition'
+  return nutrition ? `${nComplete} with full nutrition` : `${nComplete} on days with a complete meal log`
+}
 
 export interface FiveNumberSummary {
   min: number

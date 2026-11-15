@@ -28,7 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
+import { articleImpactTypeSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -475,7 +475,7 @@ export const articleImpactBlockSchema = z
     activity: z.string().min(1).max(200).meta({
       description: 'The activity, location or category, exactly as the Analyze context table lists it',
     }),
-    activity_type: activityImpactTypeSchema,
+    activity_type: articleImpactTypeSchema,
     caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the chart' }),
     end: iso8601DateTimeSchema
       .optional()

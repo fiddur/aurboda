@@ -197,6 +197,42 @@ export const getNutritionCompleteDaysInRange = async (
   return result.rows.map((r) => r.date as string)
 }
 
+export interface MealFlags {
+  id: string
+  time: Date
+  flag_ids: string[]
+}
+
+/**
+ * Every meal in the inclusive [start, end] range, oldest first, with the ids of the sensitivity
+ * flags it carries: those of its food items, resolved live like a meal read does, and those named
+ * in the meal row's own `sensitivities`, which stores flag names.
+ */
+export const getMealFlagsInRange = async (user: string, start: Date, end: Date): Promise<MealFlags[]> => {
+  const result = await query(
+    user,
+    `SELECT m.id, m.time,
+            ARRAY(
+              SELECT f.id::text FROM sensitivity_flags f
+               WHERE f.name = ANY(COALESCE(m.sensitivities, '{}'))
+                  OR EXISTS (
+                       SELECT 1 FROM meal_food_items mfi
+                         JOIN food_item_sensitivities j ON j.food_item_id = mfi.food_item_id
+                        WHERE mfi.meal_id = m.id AND j.sensitivity_flag_id = f.id)
+               ORDER BY f.sort_order, f.name
+            ) AS flag_ids
+       FROM meals m
+      WHERE m.time >= $1 AND m.time <= $2
+      ORDER BY m.time`,
+    [start, end],
+  )
+  return result.rows.map((row) => ({
+    flag_ids: row.flag_ids as string[],
+    id: row.id as string,
+    time: row.time as Date,
+  }))
+}
+
 export interface UpdateMealInput {
   meal_type?: string
   name?: string | null
