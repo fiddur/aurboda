@@ -26,6 +26,7 @@ data class PendingMetricPayload(
     val metric: String,
     val value: Double,
     val time: String,
+    val unit: String? = null,
 )
 
 @Serializable
