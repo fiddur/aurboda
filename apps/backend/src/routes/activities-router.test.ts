@@ -45,9 +45,12 @@ vi.mock('../services/fit-parser.ts', () => ({ parseFitBuffer: vi.fn() }))
 
 vi.mock('../services/activity-features.ts', () => ({ firstActivityFeatures: vi.fn() }))
 
+vi.mock('../services/segments.ts', () => ({ activitySegmentEfforts: vi.fn() }))
+
 const db = await import('../db/index.ts')
 const queries = await import('../services/queries/index.ts')
 const activityFeatures = await import('../services/activity-features.ts')
+const segments = await import('../services/segments.ts')
 
 const ACTIVITY_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
 
@@ -143,6 +146,31 @@ describe('GET /activities/:id', () => {
 
     expect(res.body.data.features).toEqual(features)
     expect(activityFeatures.firstActivityFeatures).toHaveBeenCalledWith('tester', [ACTIVITY_ID])
+  })
+
+  test('includes the segment efforts of the activity', async () => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    const efforts = [
+      {
+        approximate: false,
+        avg_hr: 151,
+        elapsed_s: 182.4,
+        is_best: true,
+        pace_s_per_km: 228,
+        rank: 1,
+        segment_id: 'segment-1',
+        segment_name: 'Hammarbybacken · 0.8 km',
+        start_offset_s: 640,
+      },
+    ]
+    vi.mocked(segments.activitySegmentEfforts).mockResolvedValueOnce(efforts)
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.segment_efforts).toEqual(efforts)
+    expect(segments.activitySegmentEfforts).toHaveBeenCalledWith('tester', [ACTIVITY_ID])
   })
 
   test('returns an empty comments array when the activity has no notes', async () => {

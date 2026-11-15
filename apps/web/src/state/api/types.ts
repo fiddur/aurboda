@@ -2,6 +2,7 @@ import type {
   Activity as ApiActivity,
   ActivityFeatureCondition,
   ActivityRouteSummary,
+  ActivitySegmentEffort,
   DeductionRule as ApiDeductionRule,
   DetectedLocation as ApiDetectedLocation,
   Meal as ApiMeal,
@@ -106,6 +107,8 @@ export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
   merged_end_time?: Date
   /** The route the activity was matched to (activity detail only). */
   route?: ActivityRouteSummary
+  /** The activity's timed passes over segments (activity detail only). */
+  segment_efforts?: ActivitySegmentEffort[]
   /**
    * Provenance of activities that were folded into this one by
    * `collapseToParentType`. Set only on the synthetic survivor; never on

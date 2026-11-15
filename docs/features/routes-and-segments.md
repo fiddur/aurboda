@@ -6,13 +6,13 @@ before" (routes), timing stretches you run often (segments), classifying runs
 instances. Built in five phases; this page is the design for all of them and says
 which parts exist.
 
-| Phase | What                                                | Status          |
-| ----- | --------------------------------------------------- | --------------- |
-| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231) |
-| 2     | Routes: matching, efforts over time                 | shipped (#1232) |
-| 3     | Run features and rule-based categories              | shipped (#1233) |
-| 4     | Segments: manual, timed efforts, suggestions        | planned (#1234) |
-| 5     | Federated segment challenges                        | planned (#1235) |
+| Phase | What                                                | Status                                                                           |
+| ----- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231)                                                                  |
+| 2     | Routes: matching, efforts over time                 | shipped (#1232)                                                                  |
+| 3     | Run features and rule-based categories              | shipped (#1233)                                                                  |
+| 4     | Segments: manual, timed efforts, suggestions        | manual segments and timed efforts shipped, pages and suggestions planned (#1234) |
+| 5     | Federated segment challenges                        | planned (#1235)                                                                  |
 
 ## Phase 1: activity tracks
 
@@ -68,7 +68,7 @@ Stored raw records are enough to build tracks for history without new API calls:
 - **Strava** keeps the detailed activity (`strava_activity`) with `map.polyline`, a shape
   with no timestamps — streams were never stored. The backfill decodes it and spreads M
   evenly over the elapsed time, flagged `full_resolution = false`: good enough for route
-  matching and segment suggestion, not for timing.
+  matching and segment suggestion; segment efforts timed on it are flagged `approximate`.
 
 The backfill is incremental (activities with a usable raw record and no track) and runs
 per user in the `track-backfill` queue at startup, and on demand through
@@ -89,8 +89,8 @@ alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
 
 Writing a track enqueues a `track-analyse` job (one per activity, `stately` so a
 re-sync collapses into one run, after a ten-minute stabilisation delay like
-auto-share). Route matching (phase 2) runs there, then the activity's features (phase 3);
-segment matching is added there later. Strava ingest now also fires the
+auto-share). Route matching (phase 2) runs there, then the activity's features (phase 3), then
+segment timing (phase 4). Strava ingest now also fires the
 activity notifier, so a Strava activity gets deduction and auto-share evaluation like a
 Garmin one.
 
@@ -283,16 +283,101 @@ work blocks.
 
 ## Phase 4: segments
 
-Manual first: pick start/end on a track's map, or "from this route, km 2.0–4.5"; the
-segment is that sub-line (`ST_LineSubstring`), buffered 20–25 m, directional like a
-route.
+A segment is a stretch timed on every pass: a hill, a bridge, a sprint straight. It is cut by
+hand from a track or a route; suggested segments come later.
 
-Effort timing runs in pure TypeScript on the full-resolution points: for each point,
-the distance to the segment polyline and the projected position along it; the pass
-where the projection runs monotonically from 0 to the segment length while staying
-inside 25 m is the effort, with entry/exit times interpolated between the straddling
-samples. ±1–2 s at 1 Hz; polyline-only Strava history is matched but flagged
+### Creation
+
+`POST /segments` / `create_segment` takes one of two cuts:
+
+- **From an activity**: `activity_id`, `start_offset_s`, `end_offset_s`, seconds since the
+  activity's start (the `t` of `GET /activities/:id/track`). The line is the part of the
+  activity's preferred track (the one the track read returns) between those M values
+  (`ST_LocateBetween`), simplified at about 3 m.
+- **From a route**: `route_id`, `start_km`, `end_km`. The line is `ST_LineSubstring` of the
+  route between those distances, with the fractions taken in Web Mercator so they are
+  distances in metres, not degrees. An end up to 50 m past the route's length (a rounded
+  length) is clamped to the end.
+
+It is refused (400, with the reason) when shorter than 100 m, when an offset falls outside the
+track or the km range outside the route, for an activity without a track, and for a missing or
+deleted route. The segment takes the effective type of the activity or route it was cut from,
+and the name, unless one is given, of the nearest named location within 500 m of its start,
+else "Segment", then the length: "Hammarbybacken · 0.8 km". Every tracked activity of the type
+is timed on it before the response, which is the new segment with its efforts.
+
+### Matching
+
+**Same activity type only**, and the same effective type route matching reads (an override's
+retype wins). A track is a candidate for a segment when their bboxes meet (the track's
+expanded by 0.002°) and the segment is covered by the track:
+
+```
+ST_Length(ST_Intersection(S.geom, ST_Buffer(T.simplified, 25 m))) / S.length_m >= 0.9
+```
+
+measured on the geography, with the track clipped to near the segment before it is buffered.
+Coverage ignores direction; timing does not.
+
+Each track of an activity (one per source) is timed on its own. Writing is idempotent: the
+activity's (or the segment's) efforts are replaced in one transaction.
+
+**Where it runs**: the `track-analyse` job, after routes and features, against every segment
+for the written track (an activity that no longer covers a segment loses its efforts there);
+at creation against every track; `POST /segments/:id/match` / `match_segment` repeats that on
+demand; and a retype drops the activity's efforts and times its tracks again under the new
+type, next to the route re-match.
+
+### Timing
+
+Pure TypeScript on the track's full-resolution points (`services/segment-timing.ts`). Each
+point is projected onto the segment (a local equirectangular frame): its distance to the line
+and its position along it, negative before the start and past the length after the end. A
+pass enters where the position crosses 0 (the latest crossing, so waiting at the start does
+not count) and stays within 25 m, never stepping back more than 30 m (GPS jitter), until the
+position crosses the segment length; both crossings are interpolated between the samples that
+straddle them. A pass that turns off within 10 m of the end still counts, ending where it got
+furthest. A track that starts or ends inside the segment, leaves the buffer midway or runs it
+backwards gives no pass; every complete pass is an effort, so hill repeats give several.
+
+Each effort stores `start_offset_s`, `elapsed_s`, `avg_hr` (the mean heart-rate sample over the
+effort's window, read like a route run's) and `pace_s_per_km` (elapsed time over the segment
+length). A polyline-only Strava backfill is timed too, from its evenly spread M, and flagged
 `approximate`.
+
+### Efforts
+
+A segment's efforts are listed newest first. Passes of one session recorded by two sources
+(the Garmin and Strava rows, or two tracks of one row, overlapping in time) are listed once,
+the non-approximate one kept, else the earliest activity. `is_best` marks the fastest
+non-approximate effort (the fastest of all when every one is approximate), `rank` orders them
+by elapsed time (1 = fastest).
+
+### Tables
+
+`segments (id, name, activity_type, geom, buffer, length_m, created_from_activity_id,
+created_from_route_id, …)` and `segment_efforts (segment_id, activity_id, source,
+start_offset_s, elapsed_s, avg_hr, pace_s_per_km, approximate, matched_at)`; see
+[data storage](../data-storage.md). A segment is deleted outright and its efforts cascade.
+
+### Surfaces
+
+- REST: `GET /segments` (`activity_type` keeps that type and its descendant types; `sort` is
+  `last_effort` (default), `efforts`, `length` or `alphabetical`), `POST /segments`,
+  `GET /segments/:id` (the line, `near_named_location` and the efforts), `PATCH /segments/:id`
+  (rename), `DELETE /segments/:id`, `POST /segments/:id/match`; `GET /activities/:id`, `/full`
+  carry `segment_efforts: [{ segment_id, segment_name, start_offset_s, elapsed_s, avg_hr,
+pace_s_per_km, approximate, is_best, rank }]` in time order, absent when there are none.
+- MCP: `list_segments`, `get_segment`, `create_segment`, `update_segment`, `delete_segment`,
+  `match_segment`; `get_activity_detail` carries `segment_efforts`.
+- Web: the activity page lists the activity's efforts under its route: name, time, pace,
+  average heart rate, a "best" mark and "approximate" in muted text. The Android app embeds
+  the page. The `/segments` pages and creating a segment on the map are planned.
+- **Privacy**: the create and get responses carry `near_named_location: { start, end }`, the
+  named location within 500 m of each end, for the warning segment sharing (phase 5) will show.
+  Nothing about segments is shared yet.
+
+### Suggestions (planned)
 
 Suggestions are incremental and pairwise: for the new track A and each
 bbox-overlapping track B _not on the same route_, `ST_Intersection(A.simplified,

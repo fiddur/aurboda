@@ -79,6 +79,7 @@ import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
+import { registerSegmentTools } from './mcp/segment-tools.ts'
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
@@ -253,6 +254,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)
+  registerSegmentTools(server, user)
   registerSharedDashboardTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
   registerExerciseCatalogTools(server)
