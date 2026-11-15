@@ -28,6 +28,12 @@
   background: #fff;
 }
 
+.sessions-scatter-link {
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+}
+
 .sessions-hint {
   margin: 0.75rem 0 0;
   font-size: 0.85rem;

@@ -154,6 +154,21 @@
   font-weight: 500;
 }
 
+.chart-type-toggle.chart-scatter-y {
+  align-self: flex-start;
+}
+
+.chart-controls label.chart-scatter-collapse {
+  flex-direction: row;
+  flex: 0 1 auto;
+  align-self: flex-end;
+  padding-bottom: 0.6rem;
+}
+
+.chart-controls label.chart-scatter-collapse input {
+  padding: 0;
+}
+
 .breakdown-checkbox {
   display: flex;
   align-items: center;

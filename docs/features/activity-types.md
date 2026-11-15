@@ -433,6 +433,9 @@ so rows compare at a glance.
   cannot be grouped by.
 - **All sessions**: one sortable table.
 
+**Plot sessions** opens the same sessions in the Chart Explorer's
+[sessions scatter](trends.md#sessions-scatter), coloured by the chosen field over the chosen period.
+
 The period defaults to 90 days. Zone seconds and heart-rate histograms are computed in SQL,
 with one index range scan per session window. Box plots come from the histograms, and a group's
 box plot adds up its sessions' histograms, so the samples are read only once.
