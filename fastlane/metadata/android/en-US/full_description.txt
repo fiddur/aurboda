@@ -1,0 +1,29 @@
+Aurboda collects what your watch, ring, phone and apps already know about you, puts it on one timeline, and shows what actually makes a difference. Share workouts and challenges with friends along the way.
+
+This is the Android app for an Aurboda account, on aurboda.net or on a server you run yourself.
+
+On your phone
+* Syncs Health Connect in the background: sleep, steps, heart rate, HRV, workouts, weight and more.
+* Live heart rate and step data from Bluetooth sensors, with heart rate zones.
+* Home screen widgets for heart rate zone minutes and for a challenge you take part in.
+* Notifications from your Aurboda server.
+
+Your whole day on one timeline
+Sleep, workouts with heart rate, where you were, what you ate, what you listened to and how long you sat at the computer. Tap anything to see the details.
+
+Log what no tracker sees
+Your watch knows your pulse, but not that you took a painkiller or had coffee at four. Make your own list and log anything with one tap. Everything you log can be compared with your sleep, heart rate and training.
+
+Find out what actually helps
+Does the evening run improve your sleep? Is coffee after three costing you recovery? Aurboda compares the days with and without it, tells you how big the difference is, and whether it is more than chance.
+
+Train together
+* Post a run, ride or gym session with just the numbers you want to show.
+* Step, distance and time challenges with a live race chart.
+* Kudos and comments from friends.
+* Follow people on any Aurboda server, or from Mastodon.
+
+Your data, your rules
+* Nothing is shared unless you share it: every post, dashboard and challenge entry is opt-in, and you pick the fields.
+* Export everything in one file, or delete your account and every row with it.
+* Free software (AGPL). Run your own server with Docker if you prefer; it still talks to everyone else's.

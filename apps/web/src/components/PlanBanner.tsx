@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { isPlayStoreBuild } from '../embed'
 import { fetchMyPlan } from '../state/api'
 import { auth } from '../state/auth'
-import { planBanner } from '../utils/plan'
+import { planBanner, planBannerAction } from '../utils/plan'
 import './PlanBanner.css'
 
 const DISMISS_KEY = 'aurboda_plan_banner_dismissed'
@@ -30,6 +31,7 @@ export function PlanBanner() {
   const banner = isLoggedIn ? planBanner(plan) : null
   if (!banner || (banner.dismissable && dismissed)) return null
 
+  const action = planBannerAction(plan, banner.tone, isPlayStoreBuild())
   const dismiss = () => {
     setDismissed(true)
     try {
@@ -40,10 +42,9 @@ export function PlanBanner() {
   return (
     <div class={`plan-banner plan-banner-${banner.tone}`} role="status">
       <p class="plan-banner-text">{banner.text}</p>
-      {plan?.payment_url && (
-        <a href={plan.payment_url} target="_blank" rel="noopener noreferrer">
-          {banner.tone === 'info' ? 'Pay' : 'Renew'}
-          {plan.price_text ? ` (${plan.price_text})` : ''}
+      {action && (
+        <a href={action.href} target="_blank" rel="noopener noreferrer">
+          {action.label}
         </a>
       )}
       <a href="/settings#plan">Plan details</a>

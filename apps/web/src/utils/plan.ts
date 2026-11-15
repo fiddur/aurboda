@@ -38,6 +38,32 @@ export const planBanner = (plan: MyPlan | undefined, format = formatPlanDate): P
   return null
 }
 
+export interface PlanBannerAction {
+  href: string
+  label: string
+}
+
+/** The banner's Pay or Renew link; none without a payment URL, nor in the Google Play build. */
+export const planBannerAction = (
+  plan: MyPlan | undefined,
+  tone: PlanBanner['tone'],
+  playStore: boolean,
+): PlanBannerAction | null => {
+  if (playStore || !plan?.payment_url) return null
+  const price = plan.price_text ? ` (${plan.price_text})` : ''
+  return { href: plan.payment_url, label: `${tone === 'info' ? 'Pay' : 'Renew'}${price}` }
+}
+
+/** The price and Pay link Settings shows for a billed plan; neither in the Google Play build. */
+export const planPayment = (
+  plan: MyPlan,
+  playStore: boolean,
+): { payment_url: string | null; price_text: string | null } => {
+  const billed = plan.plan === 'trial' || plan.plan === 'paid'
+  if (!billed || playStore) return { payment_url: null, price_text: null }
+  return { payment_url: plan.payment_url, price_text: plan.price_text }
+}
+
 /** One line on the user's own plan, for Settings. */
 export const planSummary = (plan: MyPlan, format = formatPlanDate): string => {
   if (plan.plan === 'exempt' || plan.plan === null) return 'Your account is exempt from billing.'
@@ -60,11 +86,11 @@ export interface ServerBilling {
   price_text?: string | null
 }
 
-/** The signup page's note on what an account costs; null when billing is off. */
-export const signupBillingLine = (status: ServerBilling | undefined): string | null => {
+/** The signup page's note on what an account costs, without the price in the Google Play build; null when billing is off. */
+export const signupBillingLine = (status: ServerBilling | undefined, playStore = false): string | null => {
   if (!status?.billing_enabled) return null
   const days = status.trial_days ?? 0
   const free = days > 0 ? `Free for ${days} day${days === 1 ? '' : 's'}` : 'Paid from the start'
-  const price = status.price_text?.trim()
+  const price = playStore ? undefined : status.price_text?.trim()
   return days > 0 ? `${free}${price ? `, then ${price}` : ''}.` : `${free}${price ? `: ${price}` : ''}.`
 }
