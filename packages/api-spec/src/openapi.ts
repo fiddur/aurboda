@@ -48,7 +48,15 @@ import {
   MAX_FEED_IMAGE_BYTES,
   MAX_FEED_IMAGES_PER_ACCOUNT,
 } from './schemas/feed-images.ts'
-import { publicTagPostsQuerySchema, publicTagPostsResponseSchema } from './schemas/feed.ts'
+import {
+  addPublicTagBlockBodySchema,
+  publicTagBlockResponseSchema,
+  publicTagBlocksResponseSchema,
+  publicTagHiddenPostResponseSchema,
+  publicTagHiddenPostsResponseSchema,
+  publicTagPostsQuerySchema,
+  publicTagPostsResponseSchema,
+} from './schemas/feed.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -2205,6 +2213,124 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Remove a relay',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/public-tag-posts/{id}': {
+      delete: {
+        description:
+          'Hide one post from the public tag pages and the official feed: the post is removed and its object id is remembered, so a later Announce or edit does not bring it back. Admin-only.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'The post id, as the tag page lists it' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: publicTagHiddenPostResponseSchema } },
+            description: 'The post is hidden',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such post on the tag pages',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Hide a tag page post',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/public-tag-hidden': {
+      get: {
+        description: 'The posts hidden from the public tag pages, newest first, at most 200. Admin-only.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: publicTagHiddenPostsResponseSchema } },
+            description: 'Hidden posts',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List hidden tag page posts',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/public-tag-hidden/{id}': {
+      delete: {
+        description:
+          'Stop hiding a post. Nothing is fetched back: the post returns when it is announced or edited again. Admin-only.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Id of the hide' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'No longer hidden',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not hidden',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unhide a tag page post',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/public-tag-blocks': {
+      get: {
+        description: 'The authors and domains kept off the public tag pages, newest first. Admin-only.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: publicTagBlocksResponseSchema } },
+            description: 'Every block',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List tag page blocks',
+        tags: ['Auth'],
+      },
+      post: {
+        description:
+          "Keep an author (kind actor, by actor URI) or a domain and its subdomains (kind domain) off the public tag pages and the official feed. The posts it matches are removed at once and new ones are not stored. This server's own host cannot be blocked. Admin-only.",
+        requestBody: { content: { 'application/json': { schema: addPublicTagBlockBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: publicTagBlockResponseSchema } },
+            description: 'The block, and how many posts it removed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "Not an http(s) actor URI, not a domain, or this server's own host",
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Already blocked',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Block an author or domain from the tag pages',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/public-tag-blocks/{id}': {
+      delete: {
+        description:
+          'Remove a block. Nothing is fetched back: posts return as they are announced or edited again. Admin-only.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Block id' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Block removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Block not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Remove a tag page block',
         tags: ['Auth'],
       },
     },

@@ -34,6 +34,8 @@ import {
 import {
   createPublicTagsApi,
   CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
+  CREATE_PUBLIC_TAG_BLOCKS_TABLE,
+  CREATE_PUBLIC_TAG_HIDDEN_TABLE,
   CREATE_PUBLIC_TAG_POSTS_INDEXES,
   CREATE_PUBLIC_TAG_POSTS_TABLE,
   type PublicTagsApi,
@@ -502,6 +504,8 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
       await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
       for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
+      await client.query(CREATE_PUBLIC_TAG_HIDDEN_TABLE)
+      await client.query(CREATE_PUBLIC_TAG_BLOCKS_TABLE)
 
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))

@@ -31,6 +31,7 @@ import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
 import type { RelayActions } from '../services/relays.ts'
@@ -176,6 +177,7 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   relayActions: RelayActions
   publicTagActions: PublicTagActions
+  publicTagModeration: PublicTagModeration
   postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
@@ -243,6 +245,7 @@ export const mountRestRouters = ({
   followerActions,
   relayActions,
   publicTagActions,
+  publicTagModeration,
   postUpdateResender,
   previewArticle,
   reactionActions,
@@ -445,6 +448,7 @@ export const mountRestRouters = ({
       relayActions,
       publicTagActions,
       postUpdateResender,
+      publicTagModeration,
     ),
   )
   httpd.use(

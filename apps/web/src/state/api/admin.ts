@@ -1,4 +1,5 @@
 import type {
+  AddPublicTagBlockBody,
   AddRelayBody,
   AdminSettingsResponse,
   AdminUserOverview,
@@ -9,6 +10,11 @@ import type {
   AdminUsersResponse,
   BaseResponse,
   DeleteAccountBody,
+  PublicTagBlock,
+  PublicTagBlockResponse,
+  PublicTagBlocksResponse,
+  PublicTagHiddenPost,
+  PublicTagHiddenPostsResponse,
   Relay,
   RelayResponse,
   RelaysResponse,
@@ -133,4 +139,55 @@ export const removeRelay = async (id: string): Promise<void> => {
   await axios.delete<BaseResponse>(`${API_URL}/admin/relays/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+const authHeaders = () => ({ headers: { Authorization: `Bearer ${auth.value.token}` } })
+
+export const hidePublicTagPost = async (postId: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-posts/${encodeURIComponent(postId)}`,
+    authHeaders(),
+  )
+}
+
+export const fetchHiddenPublicTagPosts = async (): Promise<PublicTagHiddenPost[]> => {
+  const response = await axios.get<PublicTagHiddenPostsResponse>(
+    `${API_URL}/admin/public-tag-hidden`,
+    authHeaders(),
+  )
+  return response.data.hidden ?? []
+}
+
+export const unhidePublicTagPost = async (id: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-hidden/${encodeURIComponent(id)}`,
+    authHeaders(),
+  )
+}
+
+export const fetchPublicTagBlocks = async (): Promise<PublicTagBlock[]> => {
+  const response = await axios.get<PublicTagBlocksResponse>(
+    `${API_URL}/admin/public-tag-blocks`,
+    authHeaders(),
+  )
+  return response.data.blocks ?? []
+}
+
+export const addPublicTagBlock = async (
+  body: AddPublicTagBlockBody,
+): Promise<{ block: PublicTagBlock; removed_posts: number }> => {
+  const response = await axios.post<PublicTagBlockResponse>(
+    `${API_URL}/admin/public-tag-blocks`,
+    body,
+    authHeaders(),
+  )
+  if (!response.data.block) throw new Error(response.data.error ?? 'Could not add the block')
+  return { block: response.data.block, removed_posts: response.data.removed_posts ?? 0 }
+}
+
+export const removePublicTagBlock = async (id: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-blocks/${encodeURIComponent(id)}`,
+    authHeaders(),
+  )
 }

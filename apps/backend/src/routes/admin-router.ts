@@ -1,4 +1,6 @@
 import {
+  type AddPublicTagBlockBody,
+  addPublicTagBlockBodySchema,
   type AddRelayBody,
   addRelayBodySchema,
   type AdminSettingsResponse,
@@ -13,6 +15,10 @@ import {
   type DeleteAccountBody,
   deleteAccountBodySchema,
   type InvitationResponse,
+  type PublicTagBlockResponse,
+  type PublicTagBlocksResponse,
+  type PublicTagHiddenPostResponse,
+  type PublicTagHiddenPostsResponse,
   type RelayResponse,
   type RelaysResponse,
   type ResendPostUpdatesResponse,
@@ -29,6 +35,7 @@ import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { RelayActions } from '../services/relays.ts'
 
@@ -68,6 +75,7 @@ export const createAdminRouter = (
   relays?: RelayActions,
   publicTags?: Pick<PublicTagActions, 'apply'>,
   postUpdates?: PostUpdateResender,
+  publicTagModeration?: PublicTagModeration,
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -407,6 +415,81 @@ export const createAdminRouter = (
       async (req, res) => {
         if (!(await relays.remove(req.params.id))) {
           res.status(404).json({ error: 'Relay not found', success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+  }
+
+  if (publicTagModeration) {
+    router.delete<{ id: string }, PublicTagHiddenPostResponse>(
+      '/public-tag-posts/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        const hidden = await publicTagModeration.hide(req.params.id, req.user!)
+        if (hidden == null) {
+          res.status(404).json({ error: 'Post not found on the tag pages', success: false })
+          return
+        }
+        res.json({ hidden, success: true })
+      },
+    )
+
+    router.get<Record<string, never>, PublicTagHiddenPostsResponse>(
+      '/public-tag-hidden',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ hidden: await publicTagModeration.listHidden(), success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/public-tag-hidden/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await publicTagModeration.unhide(req.params.id))) {
+          res.status(404).json({ error: 'Not hidden', success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+
+    router.get<Record<string, never>, PublicTagBlocksResponse>(
+      '/public-tag-blocks',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ blocks: await publicTagModeration.listBlocks(), success: true })
+      },
+    )
+
+    router.post<Record<string, never>, PublicTagBlockResponse, AddPublicTagBlockBody>(
+      '/public-tag-blocks',
+      authMiddleware,
+      adminMiddleware,
+      validateBody(addPublicTagBlockBodySchema),
+      async (req, res) => {
+        const result = await publicTagModeration.addBlock(req.body, req.user!)
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error, success: false })
+          return
+        }
+        res.status(201).json({ block: result.block, removed_posts: result.removed_posts, success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/public-tag-blocks/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await publicTagModeration.removeBlock(req.params.id))) {
+          res.status(404).json({ error: 'Block not found', success: false })
           return
         }
         res.json({ success: true })

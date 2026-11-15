@@ -340,9 +340,8 @@ removed one; the follow is pending until the tag actor accepts, and only an acce
 `Announce`s are kept. A tag whose actor cannot be resolved still stays in the setting, with no
 follow, and is tried again on the next save that lists it; a pending follow is re-sent on every
 save, and changing the tag actor host moves every follow to the new host. The section shows a
-badge per tag (`public_tag_follows`): **accepted**, **pending**, or **unresolved**. There is no
-moderation of tag pages yet beyond removing the tag; a follow-up issue tracks hiding posts and
-blocking actors and domains. Posts are kept for
+badge per tag (`public_tag_follows`): **accepted**, **pending**, or **unresolved**. Posts can be
+hidden and authors or domains blocked, see [Tag page moderation](#tag-page-moderation). Posts are kept for
 `public_tag_retention_days` (1–365, default 30) by publication time; a nightly job (`23 3 * * *`)
 re-applies the follows, then drops older ones (but the official feed's remote posts) and the ones
 that carry no followed tag any more. The instance actor also follows the
@@ -352,3 +351,39 @@ posts are added as they are published from then on: posts published before a tag
 are not backfilled. `GET /status` lists the tags (`public_tag_pages`) so the front page, `/blog`
 and the logged-out web can link the pages. See
 [Public tag pages](features/feed.md#public-tag-pages).
+
+### Tag page moderation
+
+Anyone on the fediverse can put a post on a public tag page, so an admin can take posts off it,
+and off the [official feed](features/feed.md#official-feed)'s posts from other servers, which
+come from the same store:
+
+- **Hide a post**: on `/tags/<tag>` (or `/blog`) a logged-in admin sees **Hide post**,
+  **Block &lt;author&gt;** and **Block &lt;host&gt;** under each post from the tag pages, each asking
+  for confirmation and then removing the affected posts from the page. Hiding removes the post and
+  remembers its Note id (central `public_tag_hidden`), so a later `Announce` or edit of it is not
+  stored again. REST `DELETE /admin/public-tag-posts/:id` (the post's `id` as the listing gives
+  it), MCP `hide_public_tag_post`.
+- **Block an author or a domain**: REST `POST /admin/public-tag-blocks` `{ kind, value }`, MCP
+  `add_public_tag_block` (central `public_tag_blocks`). `kind: "actor"` takes the author's
+  `http(s)` actor URI and matches it exactly; `kind: "domain"` takes a host and matches it and
+  every subdomain (`example.org` also blocks `social.example.org`), compared lowercased and
+  without port. A domain is normalised first: trimmed, lowercased, a scheme, path, port, leading
+  `@`/`*.` (or a whole `@user@host` handle) reduced to the host. Every stored post the block
+  matches is removed at once and the answer says how many (`removed_posts`); new posts by a
+  blocked author are not stored. A domain block of this server's own host, or of a parent domain
+  of it, is refused (`400`), as is an actor block that is not an `http(s)` URL; the same block
+  twice is `409`.
+- **Both are checked on ingest**, for posts arriving through the tag actors and for this server's
+  own posts alike. A hidden or blocked local post is only kept off the tag pages: the author's own
+  feed, profile and federation are untouched.
+- **Undo**: `GET /admin/public-tag-hidden` (newest first, at most 200) and
+  `DELETE /admin/public-tag-hidden/:id` (MCP `list_hidden_public_tag_posts`,
+  `unhide_public_tag_post`); `GET /admin/public-tag-blocks` and
+  `DELETE /admin/public-tag-blocks/:id` (MCP `list_public_tag_blocks`, `remove_public_tag_block`).
+  Unhiding and unblocking only stop the rule; nothing is fetched back, and a post returns when it
+  is announced or edited again.
+
+Admin Settings → **Tag page moderation** lists the blocks (kind, value, when added, **Remove**)
+with a form to add one, and the hidden posts (link to the post, author, when hidden, **Unhide**).
+Every route and tool is admin-only.

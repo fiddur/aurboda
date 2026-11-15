@@ -7,6 +7,7 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { RelayActions } from '../services/relays.ts'
 
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
@@ -129,6 +130,35 @@ const relayActions: RelayActions = {
 
 const publicTagActions = { apply: vi.fn(async () => ({ followed: [], unresolved: [] })) }
 
+const POST_ID = '22222222-2222-4222-8222-222222222222'
+const hiddenPost = {
+  actor_uri: 'https://spam.example/users/x',
+  hidden_at: '2026-11-15T00:00:00.000Z',
+  hidden_by: 'root',
+  id: '33333333-3333-4333-8333-333333333333',
+  note_uri: 'https://spam.example/notes/1',
+}
+const block = {
+  created_at: '2026-11-15T00:00:00.000Z',
+  created_by: 'root',
+  id: '44444444-4444-4444-8444-444444444444',
+  kind: 'domain' as const,
+  value: 'spam.example',
+}
+
+const moderation: PublicTagModeration = {
+  addBlock: vi.fn(async (input) =>
+    input.value === 'web.example.test'
+      ? { error: 'own host', ok: false as const, status: 400 as const }
+      : { block, ok: true as const, removed_posts: 3 },
+  ),
+  hide: vi.fn(async (id: string) => (id === POST_ID ? hiddenPost : null)),
+  listBlocks: vi.fn(async () => [block]),
+  listHidden: vi.fn(async () => [hiddenPost]),
+  removeBlock: vi.fn(async (id: string) => id === block.id),
+  unhide: vi.fn(async (id: string) => id === hiddenPost.id),
+}
+
 const postUpdates = {
   start: vi.fn(
     async (): Promise<{ done: Promise<void>; posts: number } | null> => ({
@@ -158,6 +188,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       relayActions,
       publicTagActions,
       postUpdates,
+      moderation,
     ),
   )
   return app
@@ -630,6 +661,72 @@ describe('admin relays', () => {
     expect((await supertest(app).post('/admin/relays').send({ url: relayRecord.url })).status).toBe(403)
     expect((await supertest(app).delete(`/admin/relays/${relayRecord.id}`)).status).toBe(403)
     expect(relayActions.add).not.toHaveBeenCalled()
+  })
+})
+
+describe('public tag page moderation', () => {
+  test('DELETE /public-tag-posts/:id hides the post as the admin, 404 when unknown', async () => {
+    const res = await supertest(buildApp()).delete(`/admin/public-tag-posts/${POST_ID}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ hidden: hiddenPost, success: true })
+    expect(moderation.hide).toHaveBeenLastCalledWith(POST_ID, 'root')
+    expect((await supertest(buildApp()).delete('/admin/public-tag-posts/nope')).status).toBe(404)
+  })
+
+  test('GET /public-tag-hidden and /public-tag-blocks list them', async () => {
+    expect((await supertest(buildApp()).get('/admin/public-tag-hidden')).body).toEqual({
+      hidden: [hiddenPost],
+      success: true,
+    })
+    expect((await supertest(buildApp()).get('/admin/public-tag-blocks')).body).toEqual({
+      blocks: [block],
+      success: true,
+    })
+  })
+
+  test('POST /public-tag-blocks adds one and says how many posts it removed', async () => {
+    const res = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'domain', value: 'spam.example' })
+    expect(res.status).toBe(201)
+    expect(res.body).toEqual({ block, removed_posts: 3, success: true })
+    expect(moderation.addBlock).toHaveBeenLastCalledWith({ kind: 'domain', value: 'spam.example' }, 'root')
+  })
+
+  test('POST /public-tag-blocks passes a refusal through and validates the body', async () => {
+    const own = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'domain', value: 'web.example.test' })
+    expect(own.status).toBe(400)
+    expect(own.body).toEqual({ error: 'own host', success: false })
+    const invalid = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'server', value: 'x' })
+    expect(invalid.status).toBe(400)
+  })
+
+  test('DELETE unhides and unblocks, 404 when unknown', async () => {
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-hidden/${hiddenPost.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-hidden/${POST_ID}`)).status).toBe(404)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-blocks/${block.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-blocks/${POST_ID}`)).status).toBe(404)
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(moderation.hide).mockClear()
+    vi.mocked(moderation.addBlock).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).delete(`/admin/public-tag-posts/${POST_ID}`)).status).toBe(403)
+    expect((await supertest(app).get('/admin/public-tag-hidden')).status).toBe(403)
+    expect((await supertest(app).delete(`/admin/public-tag-hidden/${hiddenPost.id}`)).status).toBe(403)
+    expect((await supertest(app).get('/admin/public-tag-blocks')).status).toBe(403)
+    expect(
+      (await supertest(app).post('/admin/public-tag-blocks').send({ kind: 'domain', value: 'a.example' }))
+        .status,
+    ).toBe(403)
+    expect((await supertest(app).delete(`/admin/public-tag-blocks/${block.id}`)).status).toBe(403)
+    expect(moderation.hide).not.toHaveBeenCalled()
+    expect(moderation.addBlock).not.toHaveBeenCalled()
   })
 })
 
