@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { computeEmbedded, parseNativeAuth } from './embed'
+import { computeEmbedded, computePlayStoreBuild, parseNativeAuth } from './embed'
 
 describe('computeEmbedded', () => {
   test('true when the embed query flag is set', () => {
@@ -17,6 +17,25 @@ describe('computeEmbedded', () => {
     expect(computeEmbedded('', null)).toBe(false)
     expect(computeEmbedded('?embed=0', null)).toBe(false)
     expect(computeEmbedded('?embed=true', null)).toBe(false)
+  })
+})
+
+describe('computePlayStoreBuild', () => {
+  test('true when the Google Play app sets the store flag', () => {
+    expect(computePlayStoreBuild('?embed=1&store=play', null)).toBe(true)
+    expect(computePlayStoreBuild('?store=play', null)).toBe(true)
+  })
+
+  test('true when a previously-detected flag is stored', () => {
+    expect(computePlayStoreBuild('', 'play')).toBe(true)
+    expect(computePlayStoreBuild('?embed=1', 'play')).toBe(true)
+  })
+
+  test('false for the GitHub and F-Droid apps and for a normal browser', () => {
+    expect(computePlayStoreBuild('?embed=1', null)).toBe(false)
+    expect(computePlayStoreBuild('', null)).toBe(false)
+    expect(computePlayStoreBuild('?store=fdroid', null)).toBe(false)
+    expect(computePlayStoreBuild('?store=Play', null)).toBe(false)
   })
 })
 

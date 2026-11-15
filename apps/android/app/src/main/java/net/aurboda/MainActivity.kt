@@ -60,21 +60,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.aurboda.ui.screens.embeddedPageUrl
 import net.aurboda.ui.theme.AurbodaAppTheme
-import net.aurboda.update.DownloadState
-import net.aurboda.update.UpdateAvailableDialog
-import net.aurboda.update.UpdateCheckResult
-import net.aurboda.update.UpdateDownloadingDialog
-import net.aurboda.update.UpdateErrorDialog
-import net.aurboda.update.UpdateReadyToInstallDialog
-import net.aurboda.update.VersionInfo
-import net.aurboda.update.checkForUpdate
-import net.aurboda.update.downloadUpdate
-import net.aurboda.update.getExistingDownloadState
-import net.aurboda.update.installApk
+import net.aurboda.update.SelfUpdate
 import net.aurboda.widget.challengeWidgetUrls
 import net.aurboda.writableRecordTypes
-import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -244,9 +234,6 @@ fun AurbodaAppShell(
   }
 }
 
-/** Update channel baked in at build time: stable (main) or beta (develop), see build.gradle.kts. */
-private const val VERSION_JSON_URL = BuildConfig.VERSION_JSON_URL
-
 @Suppress("ASSIGNED_VALUE_IS_NEVER_READ") // Compose state vars trigger false "assigned but never read" warnings
 @Composable
 fun AurbodaApp(
@@ -283,97 +270,7 @@ fun AurbodaApp(
     }
   }
 
-  var updateAvailable by remember { mutableStateOf<VersionInfo?>(null) }
-  var showUpdateDialog by remember { mutableStateOf(false) }
-  var showDownloadingDialog by remember { mutableStateOf(false) }
-  var showInstallDialog by remember { mutableStateOf(false) }
-  var downloadedApkFile by remember { mutableStateOf<File?>(null) }
-  var updateError by remember { mutableStateOf<String?>(null) }
-
-  LaunchedEffect(Unit) {
-    val currentVersionCode = BuildConfig.VERSION_CODE_INT
-    Log.d("UpdateChecker", "Checking for updates. Current version code: $currentVersionCode")
-    when (val result = checkForUpdate(ktorHttpClient, VERSION_JSON_URL, currentVersionCode)) {
-      is UpdateCheckResult.UpdateAvailable -> {
-        Log.d("UpdateChecker", "Update available: ${result.versionInfo.versionName}")
-        updateAvailable = result.versionInfo
-
-        when (val downloadState = getExistingDownloadState(context, result.versionInfo.versionName)) {
-          is DownloadState.Downloaded -> {
-            Log.d("UpdateChecker", "APK already downloaded: ${downloadState.apkFile.name}")
-            downloadedApkFile = downloadState.apkFile
-            showInstallDialog = true
-          }
-          is DownloadState.InProgress -> {
-            Log.d("UpdateChecker", "Download already in progress")
-            showDownloadingDialog = true
-          }
-          is DownloadState.None -> {
-            showUpdateDialog = true
-          }
-        }
-      }
-      is UpdateCheckResult.NoUpdate -> {
-        Log.d("UpdateChecker", "No update available")
-      }
-      is UpdateCheckResult.Error -> {
-        Log.w("UpdateChecker", "Error checking for updates: ${result.message}")
-      }
-    }
-  }
-
-  if (showUpdateDialog && updateAvailable != null) {
-    UpdateAvailableDialog(
-      versionInfo = updateAvailable!!,
-      onUpdate = {
-        showUpdateDialog = false
-        showDownloadingDialog = true
-        downloadUpdate(
-          context = context,
-          downloadUrl = updateAvailable!!.downloadUrl,
-          versionName = updateAvailable!!.versionName,
-          onDownloadComplete = { apkFile ->
-            scope.launch {
-              showDownloadingDialog = false
-              downloadedApkFile = apkFile
-              showInstallDialog = true
-            }
-          },
-          onDownloadFailed = { error ->
-            scope.launch {
-              showDownloadingDialog = false
-              updateError = error
-            }
-          },
-        )
-      },
-      onDismiss = { showUpdateDialog = false },
-    )
-  }
-
-  if (showInstallDialog && updateAvailable != null && downloadedApkFile != null) {
-    UpdateReadyToInstallDialog(
-      versionInfo = updateAvailable!!,
-      onInstall = {
-        showInstallDialog = false
-        installApk(context, downloadedApkFile!!)
-      },
-      onDismiss = { showInstallDialog = false },
-    )
-  }
-
-  if (showDownloadingDialog) {
-    UpdateDownloadingDialog(
-      onDismiss = { showDownloadingDialog = false },
-    )
-  }
-
-  updateError?.let { error ->
-    UpdateErrorDialog(
-      errorMessage = error,
-      onDismiss = { updateError = null },
-    )
-  }
+  SelfUpdate(ktorHttpClient)
 
   when (appState.currentScreen) {
     AppScreen.Login -> {
@@ -400,7 +297,7 @@ fun AurbodaApp(
           homeContent = { modifier ->
             key(appState.tabReselections) {
               net.aurboda.ui.screens.EmbeddedWebScreen(
-                url = "${credentials.serverUrl.trimEnd('/')}/?embed=1",
+                url = embeddedPageUrl(credentials.serverUrl, "/"),
                 baseUrl = credentials.serverUrl,
                 username = credentials.username,
                 authToken = credentials.authToken,
@@ -429,7 +326,7 @@ fun AurbodaApp(
           feedContent = { modifier ->
             key(appState.tabReselections) {
               net.aurboda.ui.screens.EmbeddedWebScreen(
-                url = "${credentials.serverUrl.trimEnd('/')}/feed?embed=1",
+                url = embeddedPageUrl(credentials.serverUrl, "/feed"),
                 baseUrl = credentials.serverUrl,
                 username = credentials.username,
                 authToken = credentials.authToken,

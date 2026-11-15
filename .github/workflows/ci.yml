@@ -148,10 +148,10 @@ jobs:
           echo "aurbodaApiToken=${{ secrets.AURBODA_API_TOKEN }}" >> local.properties
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew testGithubDebugUnitTest
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleGithubDebug assemblePlayDebug assembleFdroidDebug
 
   ci-gate:
     name: CI Gate

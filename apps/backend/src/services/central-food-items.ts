@@ -27,10 +27,13 @@ export interface SharedFoodItemEntity {
    * `FoodItemDetail.effective_default_portion_id`.
    */
   default_portion_id?: string
+  default_log_quantity?: number
   icon?: string
+  nutrient_data_incomplete?: boolean
+  last_fetched_at?: Date
   created_at: Date
   updated_at: Date
-  [nutrient: string]: string | number | Date | undefined
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 export interface InsertSharedFoodItemInput {
@@ -39,8 +42,11 @@ export interface InsertSharedFoodItemInput {
   source_id?: string
   default_quantity?: number
   default_unit?: string
+  default_log_quantity?: number
   icon?: string
-  [nutrient: string]: string | number | undefined
+  nutrient_data_incomplete?: boolean
+  last_fetched_at?: Date
+  [nutrient: string]: string | number | boolean | Date | undefined
 }
 
 export const CREATE_SHARED_FOOD_ITEMS_TABLE = `
@@ -53,11 +59,20 @@ export const CREATE_SHARED_FOOD_ITEMS_TABLE = `
 ${nutrientColumnsDDL().replaceAll(/^ {6}/gm, '    ')},
     default_quantity DOUBLE PRECISION,
     default_unit    VARCHAR(100),
+    default_log_quantity DOUBLE PRECISION,
     icon            TEXT,
+    nutrient_data_incomplete BOOLEAN NOT NULL DEFAULT false,
+    last_fetched_at TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `
+
+export const ALTER_SHARED_FOOD_ITEMS_COLUMNS = [
+  'ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS default_log_quantity DOUBLE PRECISION',
+  'ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS nutrient_data_incomplete BOOLEAN NOT NULL DEFAULT false',
+  'ALTER TABLE shared_food_items ADD COLUMN IF NOT EXISTS last_fetched_at TIMESTAMPTZ',
+]
 
 export const CREATE_SHARED_FOOD_ITEMS_INDEXES = [
   'CREATE EXTENSION IF NOT EXISTS pg_trgm',
@@ -83,8 +98,11 @@ const COLUMNS = [
   'source_id',
   'default_quantity',
   'default_unit',
+  'default_log_quantity',
   ...NUTRIENT_FIELD_NAMES,
   'icon',
+  'nutrient_data_incomplete',
+  'last_fetched_at',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -98,7 +116,10 @@ const mapRow = (row: Record<string, unknown>): SharedFoodItemEntity => {
     source_id: row.source_id ?? undefined,
     default_quantity: row.default_quantity ?? undefined,
     default_unit: row.default_unit ?? undefined,
+    default_log_quantity: row.default_log_quantity ?? undefined,
     icon: row.icon ?? undefined,
+    nutrient_data_incomplete: row.nutrient_data_incomplete === true,
+    last_fetched_at: row.last_fetched_at ? new Date(row.last_fetched_at as string) : undefined,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
   }
@@ -202,7 +223,18 @@ export const createSharedFoodItemsApi = (getClient: () => Promise<Queryable>): S
 
   upsertSharedFoodItem: async (input) => {
     const nameLower = input.name.toLowerCase().trim()
-    const fields = ['name', 'name_lower', 'source', 'source_id', 'default_quantity', 'default_unit', 'icon']
+    const fields = [
+      'name',
+      'name_lower',
+      'source',
+      'source_id',
+      'default_quantity',
+      'default_unit',
+      'default_log_quantity',
+      'icon',
+      'nutrient_data_incomplete',
+      'last_fetched_at',
+    ]
     const values: unknown[] = [
       input.name,
       nameLower,
@@ -210,7 +242,10 @@ export const createSharedFoodItemsApi = (getClient: () => Promise<Queryable>): S
       input.source_id ?? null,
       input.default_quantity ?? null,
       input.default_unit ?? null,
+      input.default_log_quantity ?? null,
       input.icon ?? null,
+      input.nutrient_data_incomplete ?? false,
+      input.last_fetched_at ?? null,
     ]
     for (const field of NUTRIENT_FIELD_NAMES) {
       fields.push(field)

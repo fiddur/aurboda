@@ -84,6 +84,6 @@ The shared library is source-agnostic — `shared_food_items` rows carry a `sour
 
 Concrete candidates a Swedish/Nordic install might want next:
 
-- **[OpenFoodFacts](https://world.openfoodfacts.org/)** — community-edited global database of branded products with EAN/UPC barcodes, ingredients, NutriScore, allergens. ODbL-licensed (attribution required). The natural fit for barcode-scanning, since the canonical key is the barcode itself (use it as `source_id`). On-demand fetch by barcode is cheaper than bulk-importing 3M+ products.
+- **[Open Food Facts](https://world.openfoodfacts.org/)** — now fetched on demand by barcode rather than bulk-imported; see [Open Food Facts](./openfoodfacts.md).
 - **[USDA FoodData Central](https://fdc.nal.usda.gov/)** — US equivalent of LSV, public-domain, well-structured nutrient data.
 - Other national agencies (e.g. UK CoFID, Finnish Fineli) for installs in those countries.

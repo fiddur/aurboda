@@ -1,6 +1,7 @@
 import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
+import { isPlayStoreBuild } from '../../embed'
 import {
   auth,
   ensureStatusLoaded,
@@ -54,7 +55,7 @@ export function Signup() {
     return null
   }
 
-  const billingLine = signupBillingLine(serverBilling.value)
+  const billingLine = signupBillingLine(serverBilling.value, isPlayStoreBuild())
 
   const unavailable = signupUnavailableReason(signupMode.value, statusFailed.value, invitation)
   if (unavailable) {

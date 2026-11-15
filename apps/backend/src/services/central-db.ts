@@ -14,6 +14,7 @@ import {
   type DeletedUsernamesApi,
 } from './central-deleted-usernames.ts'
 import {
+  ALTER_SHARED_FOOD_ITEMS_COLUMNS,
   createSharedFoodItemsApi,
   CREATE_SHARED_FOOD_ITEMS_INDEXES,
   CREATE_SHARED_FOOD_ITEMS_TABLE,
@@ -488,6 +489,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(
         `UPDATE shared_food_items SET default_unit = 'g' WHERE default_unit IS NULL OR default_unit = ''`,
       )
+      for (const stmt of ALTER_SHARED_FOOD_ITEMS_COLUMNS) await client.query(stmt)
       for (const stmt of CREATE_SHARED_FOOD_ITEMS_INDEXES) await client.query(stmt)
       await client.query(CREATE_IMPORT_JOBS_TABLE)
       for (const stmt of CREATE_IMPORT_JOBS_INDEXES) await client.query(stmt)

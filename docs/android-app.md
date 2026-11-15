@@ -344,8 +344,13 @@ anything else opens the More hub.
 
 ## Update channels
 
-The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate` in
-`MainActivity.kt`). CI bakes the URL in per branch (`.github/workflows/android.yml`):
+Only the `github` build flavor (the APK on GitHub releases) updates itself; the Google Play and
+F-Droid builds are updated by their store and share a no-op `SelfUpdate`. See
+[Android distribution: GitHub, Google Play and F-Droid](android-stores.md) for the flavors.
+
+The `github` build checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate`,
+called from `SelfUpdate` in `src/github/java/net/aurboda/update/`). CI bakes the URL in per branch
+(`.github/workflows/android.yml`):
 
 | Built from | Release                             | `VERSION_JSON_URL`                      |
 | ---------- | ----------------------------------- | --------------------------------------- |

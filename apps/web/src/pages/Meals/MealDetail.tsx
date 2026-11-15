@@ -14,6 +14,7 @@ import {
   fetchFoodItemDetailApi,
   fetchMeal,
   fetchSensitivityFlags,
+  findFoodByBarcodeApi,
   type FoodItemEntity,
   updateMealApi,
 } from '../../state/api'
@@ -382,6 +383,7 @@ function FoodItemRow({
           onChange={(name) => update({ name })}
           onSelect={handleFoodPick}
           onCreate={(name) => addFoodItemApi({ name })}
+          onLookupBarcode={findFoodByBarcodeApi}
         />
         <QuantityInput item={item} onUpdate={update} />
         <UnitPicker

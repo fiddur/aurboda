@@ -100,17 +100,17 @@ jobs:
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_JSON_URL: ${{ steps.channel.outputs.version_json_url }}
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleGithubRelease
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: aurboda-release-apk
-          path: apps/android/app/build/outputs/apk/release/app-release.apk
+          path: apps/android/app/build/outputs/apk/github/release/app-github-release.apk
           retention-days: 30
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew testGithubDebugUnitTest
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -122,12 +122,12 @@ jobs:
 
       - name: Prepare APK for release
         if: github.event_name == 'push'
-        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/aurboda.apk
+        run: cp app/build/outputs/apk/github/release/app-github-release.apk app/build/outputs/apk/github/release/aurboda.apk
 
       - name: Generate version.json
         if: github.event_name == 'push'
         run: |
-          cat > app/build/outputs/apk/release/version.json << EOF
+          cat > app/build/outputs/apk/github/release/version.json << EOF
           {
             "versionCode": ${{ steps.version.outputs.code }},
             "versionName": "${{ steps.version.outputs.name }}",
@@ -159,8 +159,8 @@ jobs:
 
           Built from commit: ${{ github.sha }}
           Version code: ${{ steps.version.outputs.code }}" \
-            apps/android/app/build/outputs/apk/release/aurboda.apk \
-            apps/android/app/build/outputs/apk/release/version.json
+            apps/android/app/build/outputs/apk/github/release/aurboda.apk \
+            apps/android/app/build/outputs/apk/github/release/version.json
 
       - name: Publish stable release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -190,8 +190,8 @@ jobs:
             --latest \
             --title "Aurboda ${{ steps.version.outputs.name }}" \
             --notes-file "$notes" \
-            apps/android/app/build/outputs/apk/release/aurboda.apk \
-            apps/android/app/build/outputs/apk/release/version.json
+            apps/android/app/build/outputs/apk/github/release/aurboda.apk \
+            apps/android/app/build/outputs/apk/github/release/version.json
           # Before stable/beta channels existed, the develop build lived on a
           # release named `latest`. Remove it once a real stable release exists so
           # releases/latest resolves to this one. (Download links use the
