@@ -36,7 +36,6 @@ import {
   deleteChallengeBanner,
   getChallengeById,
   listChallengeMembers,
-  listChallengeParticipations,
   listChallenges,
   removeChallengeMember,
   upsertChallengeBanner,
@@ -50,6 +49,7 @@ import {
   leaveChallenge,
   previewChallenge,
 } from '../services/challenge-federation.ts'
+import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
@@ -179,15 +179,20 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const b = req.body
-      const result = await updateHostedChallenge(user, req.params.id, {
-        announce_winner: b.announce_winner,
-        end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
-        is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
-        name: b.name,
-        spec: b.spec ? toSpecFields(b.spec) : undefined,
-        start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
-        timezone: b.timezone,
-      })
+      const result = await updateHostedChallenge(
+        user,
+        req.params.id,
+        {
+          announce_winner: b.announce_winner,
+          end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
+          is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
+          name: b.name,
+          spec: b.spec ? toSpecFields(b.spec) : undefined,
+          start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
+          timezone: b.timezone,
+        },
+        { webHost },
+      )
       if (result.status === 'not_found') {
         return res.status(404).json({ error: 'Challenge not found', success: false })
       }
@@ -296,7 +301,7 @@ export const createChallengesRouter = (
     authMiddleware,
     async (req, res) => {
       const user = req.user!
-      const records = await listChallengeParticipations(user)
+      const records = await listParticipationsFresh(user, { webHost })
       res.json({ participations: records.map(serializeParticipation), success: true })
     },
   )

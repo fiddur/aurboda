@@ -1483,9 +1483,14 @@ ways, into one central `public_tag_posts` table, the first through the instance 
 Rows older than the retention (`public_tag_retention_days`, default 30, by publication time),
 except the [official feed](#official-feed)'s remote posts, and rows with no followed tag left (a
 public page's, or the official feed's while it lists remote authors) are pruned nightly, and the listing and the Atom feed apply the
-retention when read, so a shortened retention takes effect at once. There is no moderation of tag
-pages yet beyond removing the tag; a follow-up issue tracks hiding posts and blocking actors and
-domains. The listing is
+retention when read, so a shortened retention takes effect at once. The pages are moderated: an
+admin can hide a post (its Note id is remembered and it is not stored again) or block an author
+or a whole domain (with its subdomains); both are checked whenever a post is stored, from the
+fediverse or from this server, and the matching stored posts are removed at once. A hidden or
+blocked post of this server's own is only kept off the tag pages and the official feed's remote
+posts: the author's feed, profile and federation are untouched. Unhiding or unblocking fetches
+nothing back; a post returns when it is announced or edited again. See
+[Tag page moderation](../admin.md#tag-page-moderation). The listing is
 `GET /public/tags/:tag/posts?cursor=` (unauthenticated, `no-store`; 404 for a tag without a
 page): 20 entries newest-first by `(published_at, id)` with `next_cursor`, each in the home
 timeline's entry shape (no structured payload, reactions or replies), plus the `tag` and
@@ -1493,7 +1498,8 @@ timeline's entry shape (no structured payload, reactions or replies), plus the `
 its author, identified by the Note's id and linking to the original; a tag without a page falls
 through to the next handler). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
 returns the same page. The web page (public, like `/blog`) renders each post as a read-only card
-with its `#tag` line, linking the tags that have a page of their own; the logged-out front page
+with its `#tag` line, linking the tags that have a page of their own (for an admin, with the
+**Hide post** / **Block** buttons); the logged-out front page
 and `/blog` link every configured tag ("See what people share with #aurboda").
 
 ## API
@@ -1540,6 +1546,12 @@ Owner-facing (authenticated, scoped to the caller):
 Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
 `DELETE /admin/relays/:id` manage the [relays](../admin.md#federation) public posts are pushed to
 (MCP `list_relays`, `add_relay`, `remove_relay`).
+Admin-only, the [tag page moderation](../admin.md#tag-page-moderation):
+`DELETE /admin/public-tag-posts/:id` hides a tag page post, `GET /admin/public-tag-hidden` and
+`DELETE /admin/public-tag-hidden/:id` list and unhide, `GET`/`POST /admin/public-tag-blocks`
+(`{ kind: "actor" | "domain", value }`) and `DELETE /admin/public-tag-blocks/:id` manage the blocks
+(MCP `hide_public_tag_post`, `list_hidden_public_tag_posts`, `unhide_public_tag_post`,
+`list_public_tag_blocks`, `add_public_tag_block`, `remove_public_tag_block`).
 
 Public / federation (unauthenticated):
 

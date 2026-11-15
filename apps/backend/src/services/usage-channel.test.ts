@@ -41,6 +41,8 @@ describe('isMutatingMcpTool', () => {
     'resnapshot_meals_for_food_item',
     'publish_article_draft',
     'resend_post_updates',
+    'hide_public_tag_post',
+    'unhide_public_tag_post',
   ])('%s mutates', (name) => {
     expect(isMutatingMcpTool(name)).toBe(true)
   })

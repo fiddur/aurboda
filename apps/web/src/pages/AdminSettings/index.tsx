@@ -1,4 +1,4 @@
-import type { PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
+import type { PublicTagBlockKind, PublicTagFollow, RelayStyle } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -17,6 +17,7 @@ import {
   parseHandlesInput,
   parseUsernamesInput,
 } from '../../components/official-feed'
+import { blockKindLabel } from '../../components/public-tag-moderation'
 import {
   hasTagsPubRelay,
   relayStateLabel,
@@ -28,14 +29,19 @@ import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatu
 import { TagsInput } from '../../components/TagsInput'
 import '../../components/ShareActivityDialog.css'
 import {
+  addPublicTagBlock,
   addRelay,
   apiErrorMessage,
   fetchAdminSettings,
+  fetchHiddenPublicTagPosts,
+  fetchPublicTagBlocks,
   fetchRelays,
   generateInvitation,
   officialFeedPath,
   publicTagPath,
+  removePublicTagBlock,
   removeRelay,
+  unhidePublicTagPost,
   updateAdminSettings,
 } from '../../state/api'
 import { auth, contactFediverse, contactReddit, officialFeedEnabled, publicTagPages } from '../../state/auth'
@@ -1017,6 +1023,153 @@ function PublicTagPagesSection() {
   )
 }
 
+const formatModerationDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+
+function PublicTagModerationSection() {
+  const queryClient = useQueryClient()
+  const { data: blocks = [] } = useQuery({
+    queryFn: fetchPublicTagBlocks,
+    queryKey: ['adminPublicTagBlocks'],
+  })
+  const { data: hidden = [] } = useQuery({
+    queryFn: fetchHiddenPublicTagPosts,
+    queryKey: ['adminPublicTagHidden'],
+  })
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [kind, setKind] = useState<PublicTagBlockKind>('domain')
+  const [value, setValue] = useState('')
+  const [removed, setRemoved] = useState<number | null>(null)
+
+  const run = useCallback(
+    async (action: () => Promise<unknown>, after?: (result: unknown) => void) => {
+      setSaveStatus({ status: 'saving' })
+      setRemoved(null)
+      try {
+        const result = await action()
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['adminPublicTagBlocks'] }),
+          queryClient.invalidateQueries({ queryKey: ['adminPublicTagHidden'] }),
+          queryClient.invalidateQueries({ queryKey: ['publicTag'] }),
+          queryClient.invalidateQueries({ queryKey: ['officialFeed'] }),
+        ])
+        after?.(result)
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: apiErrorMessage(err, getErrorMessage(err)), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const add = () =>
+    run(
+      () => addPublicTagBlock({ kind, value: value.trim() }),
+      (result) => {
+        setValue('')
+        setRemoved((result as { removed_posts: number }).removed_posts)
+      },
+    )
+
+  return (
+    <section class="settings-section">
+      <div class="section-header-row">
+        <h2>Tag page moderation</h2>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      <p class="field-description">
+        Blocked authors and domains, and hidden posts, are kept off the public tag pages and the official
+        feed. A domain block covers its subdomains too. Removing a block or unhiding a post fetches nothing
+        back: posts return when they are announced or edited again. Admins can also hide and block from the
+        tag pages themselves.
+      </p>
+
+      <div class="form-field">
+        <label for="tag-block-value">Blocks</label>
+        {blocks.length === 0 ? (
+          <p class="field-description">Nobody is blocked.</p>
+        ) : (
+          <ul class="relay-list">
+            {blocks.map((block) => (
+              <li key={block.id} class="relay-row">
+                <span class="relay-style">{blockKindLabel(block.kind)}</span>
+                <span class="relay-url">{block.value}</span>
+                <span class="relay-style" title={`Added by ${block.created_by}`}>
+                  {formatModerationDate(block.created_at)}
+                </span>
+                <button
+                  type="button"
+                  class="clear-button"
+                  onClick={() => run(() => removePublicTagBlock(block.id))}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div class="api-key-input-row">
+          <select
+            aria-label="Block kind"
+            value={kind}
+            onChange={(e) => setKind((e.target as HTMLSelectElement).value as PublicTagBlockKind)}
+          >
+            <option value="domain">Domain</option>
+            <option value="actor">Author</option>
+          </select>
+          <input
+            id="tag-block-value"
+            type="text"
+            value={value}
+            onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+            placeholder={kind === 'domain' ? 'spam.example' : 'https://spam.example/users/someone'}
+            autocapitalize="off"
+            spellcheck={false}
+          />
+        </div>
+        <div class="relay-actions">
+          <button type="button" class="generate-button" disabled={value.trim() === ''} onClick={add}>
+            Block
+          </button>
+        </div>
+        {removed != null && (
+          <p class="field-description">
+            {removed === 1 ? '1 post was removed.' : `${removed} posts were removed.`}
+          </p>
+        )}
+      </div>
+
+      <div class="form-field">
+        <span class="form-label">Hidden posts</span>
+        {hidden.length === 0 ? (
+          <p class="field-description">No posts are hidden.</p>
+        ) : (
+          <ul class="relay-list">
+            {hidden.map((post) => (
+              <li key={post.id} class="relay-row">
+                <a class="relay-url" href={post.note_uri} target="_blank" rel="noopener noreferrer">
+                  {post.note_uri}
+                </a>
+                {post.actor_uri != null && <span class="relay-style">{post.actor_uri}</span>}
+                <span class="relay-style" title={`Hidden by ${post.hidden_by}`}>
+                  {formatModerationDate(post.hidden_at)}
+                </span>
+                <button
+                  type="button"
+                  class="clear-button"
+                  onClick={() => run(() => unhidePublicTagPost(post.id))}
+                >
+                  Unhide
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function FederationSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -1321,6 +1474,7 @@ export function AdminSettings() {
       <OfficialFeedSection />
 
       <PublicTagPagesSection />
+      <PublicTagModerationSection />
 
       <FederationSection />
 

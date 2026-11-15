@@ -47,6 +47,16 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   member), so a member joining between reading and writing the challenge cannot slip
   past it. Members on the host's own instance are scored from the current challenge, so
   they do not freeze it.
+- **A participation follows its host** (#1737). A joined challenge is kept as a copy in
+  the joiner's participation; the copy follows the host's challenge rather than staying as
+  joined. On the same instance it follows everything: a successful update pushes the new
+  name, spec, dates and timezone to every local member's participation (best effort per
+  member), and listing participations (`GET /challenges/participations/mine`, MCP
+  `list_joined_challenges`) repairs any local copy that still differs. For a challenge
+  hosted elsewhere only the **name** follows: when the host was not asked in the last six
+  hours (`host_checked_at`), listing asks it in the background (at most five per list), so
+  a rename shows on the next load; a different window or spec from the host is ignored,
+  since it is frozen once a remote member has joined.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.
@@ -521,7 +531,7 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `GET /challenges/participations/mine`, `GET /challenges/discover`,
 `GET /challenges/preview?challenge_url=<url>`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
-(`create/list/update/delete_challenge`, `join_challenge`, `discover_challenges`,
+(`create/list/update/delete_challenge`, `join_challenge`, `list_joined_challenges`, `discover_challenges`,
 `preview_challenge`). A preview reads the challenge the way a join would — in-process for
 this instance, else from the host's QuantPub document or Aurboda public resolver — and
 answers its name, host (`host_identity`, `host_handle`), window, timezone and spec without

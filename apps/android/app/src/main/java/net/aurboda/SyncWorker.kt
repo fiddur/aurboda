@@ -240,6 +240,7 @@ class SyncWorker(
             metric = data.payload.metric,
             value = data.payload.value,
             time = data.payload.time,
+            unit = data.payload.unit,
           )
           postMetric(httpClient, serverUrl, authToken, body)
         }

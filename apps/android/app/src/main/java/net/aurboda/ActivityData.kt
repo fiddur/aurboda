@@ -30,6 +30,25 @@ sealed interface ActivityDataInput {
 
 private fun invalidMessage(type: String): String = if (type == "number") "Not a number" else "Invalid value"
 
+private fun formatBound(bound: Double): String =
+    if (bound % 1.0 == 0.0 && abs(bound) < 1e15) bound.toLong().toString() else bound.toString()
+
+fun numberBoundsError(min: Double?, max: Double?, value: Double): String? {
+    if ((min == null || value >= min) && (max == null || value <= max)) return null
+    val lower = min?.let(::formatBound)
+    val upper = max?.let(::formatBound)
+    return when {
+        lower != null && upper != null -> "Must be between $lower and $upper"
+        lower != null -> "Must be at least $lower"
+        else -> "Must be at most $upper"
+    }
+}
+
+private fun boundsError(field: DataFieldDefinition, value: JsonPrimitive): String? {
+    if (field.type != "number") return null
+    return value.content.toDoubleOrNull()?.let { numberBoundsError(field.min, field.max, it) }
+}
+
 fun buildActivityData(fields: List<DataFieldDefinition>, values: Map<String, String>): ActivityDataInput {
     val filled = fields
         .filter { it.type != "list" }
@@ -37,8 +56,11 @@ fun buildActivityData(fields: List<DataFieldDefinition>, values: Map<String, Str
             values[field.name]?.trim()?.takeIf { it.isNotEmpty() }?.let { raw -> field to fieldValue(field.type, raw) }
         }
     val errors = filled
-        .filter { (_, value) -> value == null }
-        .associate { (field, _) -> field.name to invalidMessage(field.type) }
+        .mapNotNull { (field, value) ->
+            val error = if (value == null) invalidMessage(field.type) else boundsError(field, value)
+            error?.let { field.name to it }
+        }
+        .toMap()
     if (errors.isNotEmpty()) return ActivityDataInput.Invalid(errors)
     val data = filled.mapNotNull { (field, value) -> value?.let { field.name to it } }.toMap()
     return ActivityDataInput.Valid(if (data.isEmpty()) null else JsonObject(data))

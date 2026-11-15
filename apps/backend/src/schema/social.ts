@@ -168,6 +168,11 @@ export const socialTables: Record<string, string> = {
   challenge_participations_protocol_column: `
     ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS protocol VARCHAR(10);
   `,
+  // When a remote host was last asked for the challenge's current name, so a dead host is asked
+  // at most every few hours. Additive (idempotent).
+  challenge_participations_host_checked_column: `
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS host_checked_at TIMESTAMPTZ;
+  `,
 
   // Challenges the user LEFT (#1093). Leaving hard-deletes the participation
   // row, so the "don't suggest this again" fact needs its own record to survive

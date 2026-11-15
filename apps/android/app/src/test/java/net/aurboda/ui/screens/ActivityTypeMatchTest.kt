@@ -53,4 +53,35 @@ class ActivityTypeMatchTest {
         assertEquals(types, result.filtered)
         assertFalse(result.isNewType)
     }
+
+    private data class Entry(val name: String, val displayName: String, val aliases: List<String>)
+
+    private val catalog = listOf(
+        Entry("headache", "Headache", listOf("migraine")),
+        Entry("caffeine", "Caffeine", listOf("coffee")),
+        Entry("coffee_ground", "Coffee grounds", emptyList()),
+    )
+
+    private fun matchCatalog(query: String) =
+        matchCatalogTypes(catalog, query, { it.name }, { it.displayName }, { it.aliases }).map { it.name }
+
+    @Test
+    fun `catalogue types match name, display name and aliases`() {
+        assertEquals(listOf("headache"), matchCatalog("MIGR"))
+        assertEquals(listOf("headache"), matchCatalog("Head"))
+        assertEquals(catalog.map { it.name }, matchCatalog(""))
+    }
+
+    @Test
+    fun `an exact catalogue alias comes first`() {
+        assertEquals(listOf("caffeine", "coffee_ground"), matchCatalog("coffee"))
+        assertEquals(listOf("coffee_ground"), matchCatalog("coffee grounds"))
+    }
+
+    @Test
+    fun `no create row for a catalogue type's name`() {
+        assertFalse(offersNewType(match("Headache"), catalog.map { it.name }))
+        assertTrue(offersNewType(match("Rock climbing"), catalog.map { it.name }))
+        assertFalse(offersNewType(match("yoga"), catalog.map { it.name }))
+    }
 }

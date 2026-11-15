@@ -42,7 +42,8 @@ these:
 - **A lab report entry** (`POST /reports`, `PATCH /reports/:id`, `add_report`, `update_report`)
   whose `metric` is its name, display name or an alias.
 - **The Add data form** in the web app, where the metric picker lists the catalogue metrics not in
-  use yet under "More built-in metrics".
+  use yet under "More built-in metrics", and the Android app's Add tab, which lists them under
+  "Catalogue".
 
 The value is stored under the catalogue name: `ldl` is written as `ldl_cholesterol`. A write that is
 refused (see below) adds nothing, and the metric is added in the same transaction as the write, so a
@@ -75,8 +76,8 @@ rounded to 6 significant digits. Left out, the value is taken to be in the metri
 - HbA1c 6.5 % is stored as 47.5 mmol/mol (the IFCC/NGSP master equation: factor 10.929, offset −2.15).
 - A waist of 34 in is stored as 86.36 cm.
 
-The Add data form offers the accepted units of a catalogue metric to pick from; for a metric of
-yours in a unit the catalogue does not accept, it shows only that unit.
+The Add data form, and the Android app's Add tab, offer the accepted units of a catalogue metric to
+pick from; for a metric of yours in a unit the catalogue does not accept, they show only that unit.
 
 Units are compared after a few spelling rules: case and spaces do not matter, `µ` (micro sign),
 `μ` (Greek mu), `mcg` and a `u` before `g`, `mol`, `IU`, `kat` or `L` are the same (`ug/L`,

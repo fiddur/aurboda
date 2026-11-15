@@ -149,4 +149,34 @@ class ActivityDataTest {
     val payload = PendingActivityPayload(activity_type = "run", start_time = "2026-11-01T08:00:00Z", data = queued)
     assertEquals(queued, payload.toAddActivityBody(emptyList()).data)
   }
+
+  @Test
+  fun `a number outside both bounds is refused with the range`() {
+    val severity = listOf(DataFieldDefinition(name = "severity", type = "number", min = 0.0, max = 10.0))
+    val result = buildActivityData(severity, mapOf("severity" to "11"))
+    assertEquals(mapOf("severity" to "Must be between 0 and 10"), (result as ActivityDataInput.Invalid).fieldErrors)
+    assertTrue(buildActivityData(severity, mapOf("severity" to "-1")) is ActivityDataInput.Invalid)
+  }
+
+  @Test
+  fun `a number on a bound or inside the range is accepted`() {
+    val severity = listOf(DataFieldDefinition(name = "severity", type = "number", min = 0.0, max = 10.0))
+    listOf("0", "10", "4,5").forEach {
+      assertTrue(it, buildActivityData(severity, mapOf("severity" to it)) is ActivityDataInput.Valid)
+    }
+  }
+
+  @Test
+  fun `a one-sided bound gets one-sided wording`() {
+    assertEquals("Must be at least 0", numberBoundsError(0.0, null, -0.5))
+    assertEquals("Must be at most 2.5", numberBoundsError(null, 2.5, 3.0))
+    assertNull(numberBoundsError(null, null, 1e9))
+    assertNull(numberBoundsError(0.0, null, 0.0))
+  }
+
+  @Test
+  fun `bounds apply to number fields only`() {
+    val text = listOf(DataFieldDefinition(name = "note", type = "string", min = 0.0, max = 1.0))
+    assertTrue(buildActivityData(text, mapOf("note" to "5")) is ActivityDataInput.Valid)
+  }
 }

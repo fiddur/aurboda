@@ -189,6 +189,7 @@ import {
 } from './services/official-feed.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { createPublicTagModeration } from './services/public-tag-moderation.ts'
 import { createPublicTagPruneQueue } from './services/public-tag-prune-queue.ts'
 import {
   applyInstanceTagFollowsAtStartup,
@@ -671,6 +672,10 @@ const main = async () => {
     tagActorHost: () => readTagActorHost(centralDb),
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
+  const publicTagModeration = createPublicTagModeration({
+    ownHost: new URL(webHost).hostname,
+    store: centralDb,
+  })
   const publicTagActions = createPublicTagActions({
     federation: feedFederation,
     origin: webHost,
@@ -1101,6 +1106,7 @@ const main = async () => {
       centralDb,
       previewArticle,
       publicTagActions,
+      publicTagModeration,
       requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
       discoverChallenges,
@@ -1302,6 +1308,7 @@ const main = async () => {
     onProfileChanged,
     ouraWebhookManager,
     publicTagActions,
+    publicTagModeration,
     reactionActions,
     retroEnrichTimeline,
     syncProvider,

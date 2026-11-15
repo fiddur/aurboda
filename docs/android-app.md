@@ -22,8 +22,19 @@ The Add tab's Activity form starts with **Log a strength session**, which opens 
 [strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
 sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
 declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
-field that does not parse is marked on the field and nothing is sent. A queued entry whose values
-are strings (the older queue format) is converted with the cached activity types when it is sent.
+field that does not parse, or falls outside the field's `min` and `max` ("Must be between 0 and 10"),
+is marked on the field and nothing is sent. A queued entry whose values are strings (the older queue
+format) is converted with the cached activity types when it is sent.
+
+Like the web Add data form, the Add tab offers the built-in catalogues. The activity type picker lists
+the [activity type catalogue](features/activity-type-catalog.md)'s types not in use yet under
+**Built-in**, after your own (matched by name, display name or alias; variants are not listed), and a
+picked one shows its fields at once; saving the activity adds the type. The metric picker lists the
+[metric catalogue](features/metric-catalog.md)'s metrics not in use yet under **Catalogue**, and a
+catalogue metric gets a **Unit** choice next to the value, offering the same units as the web form,
+the unit the metric is stored in preselected. A unit is sent only when another one is picked, and a
+queued metric keeps it. Both catalogues are cached, so the pickers offer them offline after one
+successful load; after logging a type or metric not in use yet, the tab reloads the lists.
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the

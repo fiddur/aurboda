@@ -310,6 +310,7 @@ export {
   type ChallengeParticipationInput,
   type ChallengeParticipationProtocol,
   type ChallengeParticipationRecord,
+  type ChallengeParticipationSnapshotPatch,
   type ChallengePatch,
   type ChallengeRecord,
   type ChallengeSpecFields,
@@ -334,6 +335,7 @@ export {
   removeChallengeMember,
   updateChallenge,
   updateChallengeMemberCache,
+  updateChallengeParticipationSnapshot,
   upsertChallengeMember,
 } from './challenges.ts'
 

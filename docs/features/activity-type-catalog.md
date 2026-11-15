@@ -185,6 +185,9 @@ Two explicit steps bring it in line:
 - A name typed into the picker that is neither yours nor built-in is offered as **Create "..."**;
   the type is created (category Other) when the activity is saved.
 
+The Android app's Add tab offers the built-in types the same way, under **Built-in** (see
+[Android app](../android-app.md)).
+
 ## Outside vocabularies
 
 Each entry records under `same_as` the names the same thing has elsewhere: `apple_healthkit`

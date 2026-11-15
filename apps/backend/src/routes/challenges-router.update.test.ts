@@ -8,7 +8,10 @@ import type { ChallengePatch, ChallengeRecord } from '../db/index.ts'
 vi.mock('../db/index.ts', async (importOriginal) => ({
   ...(await importOriginal<typeof DbModule>()),
   getChallengeById: vi.fn(),
+  getParticipationByUrl: vi.fn(),
+  listChallengeMembers: vi.fn(),
   updateChallenge: vi.fn(),
+  updateChallengeParticipationSnapshot: vi.fn(),
 }))
 
 const db = await import('../db/index.ts')
@@ -77,6 +80,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   remoteMember = false
   vi.mocked(db.getChallengeById).mockResolvedValue(record())
+  vi.mocked(db.listChallengeMembers).mockResolvedValue([])
   vi.mocked(db.updateChallenge).mockImplementation(
     async (_user: string, _id: string, patch: ChallengePatch, options?: { unlessRemoteMember?: boolean }) =>
       options?.unlessRemoteMember && remoteMember
@@ -179,6 +183,29 @@ describe('PUT /challenges/:id without a remote member', () => {
       timezone: 'Europe/Stockholm',
     })
     expect(guarded()).toBe(true)
+  })
+
+  test("brings a local member's participation in line with the update", async () => {
+    vi.mocked(db.listChallengeMembers).mockResolvedValue([
+      { kind: 'local', local_user: 'bob' } as Awaited<ReturnType<typeof db.listChallengeMembers>>[number],
+    ])
+    vi.mocked(db.getParticipationByUrl).mockResolvedValue({
+      ...record(),
+      challenge_url: 'https://aurboda.net/u/tester/oct',
+      data_token: 'tok',
+      host_checked_at: null,
+      host_identity: 'https://aurboda.net/u/tester',
+      id: 'p1',
+      protocol: 'aurboda',
+      status: 'active',
+    })
+    const res = await put({ end_ts: '2026-11-15T00:00:00.000Z', name: 'Renamed' })
+    expect(res.status).toBe(200)
+    expect(db.getParticipationByUrl).toHaveBeenCalledWith('bob', 'https://aurboda.net/u/tester/oct')
+    expect(db.updateChallengeParticipationSnapshot).toHaveBeenCalledWith('bob', 'p1', {
+      end_ts: new Date('2026-11-15T00:00:00.000Z'),
+      name: 'Renamed',
+    })
   })
 
   test('404 when the challenge is not the user’s', async () => {

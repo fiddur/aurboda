@@ -211,6 +211,8 @@ data class DataFieldDefinition(
     val unit: String? = null,
     @SerialName("enum_values") val enumValues: List<String>? = null,
     @SerialName("show_in_summary") val showInSummary: Boolean? = null,
+    val min: Double? = null,
+    val max: Double? = null,
 )
 
 @Serializable
@@ -262,6 +264,60 @@ suspend fun fetchActivityTypes(
     }
 }
 
+/**
+ * The fields of `ActivityTypeCatalogEntry` the Add tab uses. Not the generated model: its variants' `data`
+ * values decode into an empty class, so any catalogue with a variant would fail to decode.
+ */
+@Serializable
+data class CatalogActivityType(
+    val name: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("display_category") val displayCategory: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val aliases: List<String> = emptyList(),
+    @SerialName("data_schema") val dataSchema: DataSchemaDefinition? = null,
+    @SerialName("parent_type") val parentType: String? = null,
+    @SerialName("in_use") val inUse: Boolean = false,
+)
+
+@Serializable
+data class ActivityTypeCatalogEntries(
+    val entries: List<CatalogActivityType> = emptyList(),
+)
+
+@Serializable
+data class ActivityTypeCatalogListResponse(
+    val success: Boolean,
+    val data: ActivityTypeCatalogEntries? = null,
+)
+
+suspend fun fetchActivityTypeCatalog(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<CatalogActivityType>> {
+    return try {
+        val url = "$serverUrl/activity-type-catalog"
+        Log.d("DataApi", "Fetching activity type catalogue from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<ActivityTypeCatalogListResponse>(response.bodyAsText())
+            DataResult.Success(parsed.data?.entries ?: emptyList())
+        } else {
+            Log.e("DataApi", "Activity type catalogue error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching activity type catalogue", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
 @Serializable
 data class CustomMetricDefinition(
     val name: String,
@@ -297,6 +353,62 @@ suspend fun fetchCustomMetrics(
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error fetching custom metrics", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+@Serializable
+data class CatalogMetricUnit(
+    val unit: String,
+    val aliases: List<String>? = null,
+)
+
+/** The fields of `MetricCatalogEntry` the Add tab uses; a new catalogue group must not fail the decode. */
+@Serializable
+data class CatalogMetric(
+    val name: String,
+    @SerialName("display_name") val displayName: String,
+    val unit: String,
+    val units: List<CatalogMetricUnit> = emptyList(),
+    val aliases: List<String> = emptyList(),
+    @SerialName("unit_aliases") val unitAliases: List<String>? = null,
+    @SerialName("in_use") val inUse: Boolean = false,
+    @SerialName("in_use_unit") val inUseUnit: String? = null,
+)
+
+@Serializable
+data class MetricCatalogEntries(
+    val entries: List<CatalogMetric> = emptyList(),
+)
+
+@Serializable
+data class MetricCatalogListResponse(
+    val success: Boolean,
+    val data: MetricCatalogEntries? = null,
+)
+
+suspend fun fetchMetricCatalog(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<CatalogMetric>> {
+    return try {
+        val url = "$serverUrl/metric-catalog"
+        Log.d("DataApi", "Fetching metric catalogue from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<MetricCatalogListResponse>(response.bodyAsText())
+            DataResult.Success(parsed.data?.entries ?: emptyList())
+        } else {
+            Log.e("DataApi", "Metric catalogue error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching metric catalogue", e)
         DataResult.Error(e.message ?: "Unknown error")
     }
 }

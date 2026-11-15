@@ -35,6 +35,7 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
 import type { RunNotificationAction } from './services/notification-actions.ts'
+import type { PublicTagModeration } from './services/public-tag-moderation.ts'
 import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { RelayActions } from './services/relays.ts'
@@ -48,6 +49,7 @@ import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
 import { registerAdminFederationTools } from './mcp/admin-federation-tools.ts'
+import { registerAdminPublicTagTools } from './mcp/admin-public-tag-tools.ts'
 import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
@@ -164,6 +166,7 @@ interface McpDeps {
   reactionActions?: ReactionActions
   relayActions?: RelayActions
   publicTagActions?: PublicTagActions
+  publicTagModeration?: PublicTagModeration
   /** Admin re-send of every public post's Update (`resend_post_updates`). */
   postUpdateResender?: PostUpdateResender
   retroEnrichTimeline?: RetroEnrichTrigger
@@ -231,6 +234,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerImportTools(server, user, deps.centralDb)
     if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
     if (deps.relayActions) registerAdminRelayTools(server, user, deps.centralDb, deps.relayActions)
+    if (deps.publicTagModeration) {
+      registerAdminPublicTagTools(server, user, deps.centralDb, deps.publicTagModeration)
+    }
     if (deps.postUpdateResender) {
       registerAdminFederationTools(server, user, deps.centralDb, deps.postUpdateResender)
     }

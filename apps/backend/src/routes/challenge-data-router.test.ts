@@ -37,6 +37,7 @@ const participation = (specFields: ChallengeSpecFields): ChallengeParticipationR
   created_at: new Date('2026-06-01T00:00:00Z'),
   data_token: 'tok',
   end_ts: new Date('2026-07-01T00:00:00Z'),
+  host_checked_at: null,
   host_identity: 'https://peer.example/u/alice',
   id: 'p1',
   name: 'Push-ups',
