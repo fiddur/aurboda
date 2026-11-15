@@ -85,6 +85,7 @@ const participation: ChallengeParticipationRecord = {
   created_at: START,
   data_token: 'dt',
   end_ts: END,
+  host_checked_at: null,
   host_identity: '@olle@other.example',
   id: 'p1',
   name: 'Olle’s steps',

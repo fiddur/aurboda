@@ -1,12 +1,28 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import type { ChallengePatch, ChallengeRecord } from '../db/index.ts'
+import type {
+  ChallengeParticipationRecord,
+  ChallengeParticipationSnapshotPatch,
+  ChallengePatch,
+  ChallengeRecord,
+} from '../db/index.ts'
 import type { McpServer } from './helpers.ts'
 
 const db = vi.hoisted(() => ({
   deleteChallengeBanner: vi.fn(async () => true),
   getChallengeById: vi.fn<(user: string, id: string) => Promise<ChallengeRecord | null>>(),
   getChallengeBySlug: vi.fn<(user: string, slug: string) => Promise<ChallengeRecord | null>>(),
+  getParticipationByUrl: vi.fn(async () => null),
+  listChallengeMembers: vi.fn(async () => []),
+  listChallengeParticipations: vi.fn<(user: string) => Promise<ChallengeParticipationRecord[]>>(),
+  updateChallengeParticipationSnapshot:
+    vi.fn<
+      (
+        user: string,
+        id: string,
+        patch: ChallengeParticipationSnapshotPatch,
+      ) => Promise<ChallengeParticipationRecord | null>
+    >(),
   updateChallenge:
     vi.fn<
       (
@@ -167,5 +183,45 @@ describe('preview_challenge', () => {
     expect(await call('preview_challenge', { challenge_url: 'https://aurboda.test/u/bob/abc' })).toContain(
       'Challenge not found',
     )
+  })
+})
+
+describe('list_joined_challenges', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('lists the participations, a challenge on this instance as the host has it now', async () => {
+    const joined: ChallengeParticipationRecord = {
+      challenge_url: 'https://aurboda.test/u/bob/abc',
+      created_at: new Date('2026-10-02T00:00:00Z'),
+      data_token: 'tok',
+      end_ts: new Date('2026-10-20T00:00:00Z'),
+      host_checked_at: null,
+      host_identity: 'https://aurboda.test/u/bob',
+      id: 'p1',
+      name: 'Old name',
+      protocol: 'aurboda',
+      spec: challenge.spec,
+      start_ts: challenge.start_ts,
+      status: 'active',
+      timezone: 'UTC',
+    }
+    db.listChallengeParticipations.mockResolvedValue([joined])
+    db.getChallengeBySlug.mockResolvedValue(challenge)
+    db.updateChallengeParticipationSnapshot.mockImplementation(async (_user, _id, patch) => ({
+      ...joined,
+      ...patch,
+      host_checked_at: null,
+    }))
+    const { call } = setup()
+    const body = JSON.parse(await call('list_joined_challenges'))
+    expect(db.updateChallengeParticipationSnapshot).toHaveBeenCalledWith('alice', 'p1', {
+      end_ts: challenge.end_ts,
+      name: 'Push-ups',
+    })
+    expect(body).toEqual([
+      expect.objectContaining({ end_ts: '2026-11-01T00:00:00.000Z', id: 'p1', name: 'Push-ups' }),
+    ])
   })
 })
