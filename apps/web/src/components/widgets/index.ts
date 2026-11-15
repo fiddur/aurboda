@@ -3,6 +3,7 @@ export { ActivityTypeCardView, ActivityTypeCardWidget } from './ActivityTypeCard
 export { BarChartView, BarChartWidget } from './BarChartWidget'
 export { CombinedChartView, CombinedChartWidget } from './CombinedChartWidget'
 export { CorrelationView, CorrelationWidget } from './CorrelationWidget'
+export { DayOverviewWidget } from './DayOverviewWidget'
 export { GoalProgressView, GoalProgressWidget } from './GoalProgressWidget'
 export { HrZonesView, HrZonesWidget } from './HrZonesWidget'
 export { LastSleepView, LastSleepWidget } from './LastSleepWidget'

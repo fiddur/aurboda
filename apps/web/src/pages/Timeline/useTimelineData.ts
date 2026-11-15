@@ -27,6 +27,7 @@ import { browserTz } from '../../state/api/client'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import {
+  ACTIVITY_LANE_CATEGORIES,
   buildActivityColumnItems,
   collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
@@ -55,8 +56,6 @@ import {
 } from './legendCategories'
 import { TIMELINE_METRICS, TIMELINE_SLEEP_METRICS } from './timelineMetrics'
 import { buildSleepDetails, type SleepMetricsByDate } from './tooltipBuilder'
-
-const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
 /**
  * The Timeline now fetches every activity-sourced track in a single
@@ -256,7 +255,7 @@ export const useTimelineData = ({
   // one "exercise" bar rather than a comb of sub-type slivers.
   const activities = useMemo(() => {
     const filtered = allActivities.filter((a) =>
-      ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
+      ACTIVITY_LANE_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
     return collapseToParentType(filtered, typeDefsMap, mergeGapMs, collapseDepth, { splitAbutting })
   }, [allActivities, categoryByType, collapseDepth, typeDefsMap, mergeGapMs, splitAbutting])
@@ -270,7 +269,7 @@ export const useTimelineData = ({
     () =>
       allActivities.filter(
         (a) =>
-          !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other') &&
+          !ACTIVITY_LANE_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other') &&
           a.activity_type !== 'screentime' &&
           !screentimeDerivedTypes.has(a.activity_type),
       ),

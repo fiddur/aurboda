@@ -848,3 +848,35 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
     ])
   })
 })
+
+describe('resolveDashboardData: day_overview', () => {
+  test('is skipped: no entry, no query and no error', async () => {
+    vi.mocked(getChartData).mockReset()
+    vi.mocked(getPeriodSummary).mockReset()
+    const config: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: { metrics: ['stress_level', 'body_battery'], window: 'rolling_24h' },
+              id: 'day',
+              type: 'day_overview',
+            },
+            { config: {}, id: 'debt', type: 'sleep_debt' },
+          ],
+        },
+      ],
+      version: 1,
+    }
+    vi.mocked(getCurrentSleepDebt).mockResolvedValue(null)
+
+    const data = await resolveDashboardData('alice', config)
+
+    expect(Object.keys(data)).toEqual(['debt'])
+    expect(getChartData).not.toHaveBeenCalled()
+    expect(getPeriodSummary).not.toHaveBeenCalled()
+  })
+})

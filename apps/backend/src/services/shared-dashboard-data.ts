@@ -642,11 +642,16 @@ const resolveGoalProgress = async (user: string): Promise<WidgetData> => {
   return { data: { goals }, type: 'goal_progress' }
 }
 
+/** A day overview is never served on a shared dashboard, so it has no resolved data. */
+type ResolvedWidget = Exclude<DashboardWidget, { type: 'day_overview' }>
+
+const isResolvedWidget = (widget: DashboardWidget): widget is ResolvedWidget => widget.type !== 'day_overview'
+
 /** Resolve one widget to its minimal data payload. */
 // eslint-disable-next-line complexity -- one arm per widget type
 const resolveWidget = async (
   user: string,
-  widget: DashboardWidget,
+  widget: ResolvedWidget,
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
@@ -688,7 +693,7 @@ const resolveWidget = async (
 
 /** Null-data fallback for a widget whose resolver threw. */
 // eslint-disable-next-line complexity -- one arm per widget type
-const nullData = (type: DashboardWidget['type']): WidgetData => {
+const nullData = (type: ResolvedWidget['type']): WidgetData => {
   switch (type) {
     case 'metric_card':
       return { data: null, type }
@@ -743,7 +748,7 @@ export const resolveDashboardData = async (
   config: DashboardConfig,
   options: ResolveOptions = {},
 ): Promise<WidgetDataMap> => {
-  const allWidgets = config.sections.flatMap((section) => section.widgets)
+  const allWidgets = config.sections.flatMap((section) => section.widgets).filter(isResolvedWidget)
   if (allWidgets.length > MAX_RESOLVED_WIDGETS) {
     console.warn(
       `Dashboard for ${user} has ${allWidgets.length} widgets; resolving only the first ${MAX_RESOLVED_WIDGETS}.`,

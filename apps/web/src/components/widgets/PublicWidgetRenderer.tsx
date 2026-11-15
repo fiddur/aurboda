@@ -115,6 +115,8 @@ export function PublicWidgetRenderer({
       )
     case 'places_card':
       return <PlacesCardView config={widget.config} data={data?.type === 'places_card' ? data.data : null} />
+    case 'day_overview':
+      return null
     default:
       return <div class="widget-unknown">Unknown widget type</div>
   }

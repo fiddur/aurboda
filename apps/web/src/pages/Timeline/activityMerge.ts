@@ -11,6 +11,14 @@ import type { ChartItem } from './types'
 import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 
+/** The display categories drawn in the Timeline's Activity lane. */
+export const ACTIVITY_LANE_CATEGORIES: ReadonlySet<string> = new Set([
+  'sleep_rest',
+  'exercise',
+  'meditation',
+  'wellness',
+])
+
 export const ACTIVITY_TYPE_MERGE_MAP: Record<string, string[]> = {
   breathwork: ['meditation'],
   holosync: ['meditation', 'nap'],
