@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { parseMeasureQuery } from '../pages/Chart/chartMeasures'
-import { buildChartUrl } from './chart-url'
+import { buildChartUrl, sessionScatterHref } from './chart-url'
 
 const params = (url: string) => new URLSearchParams(url.split('?')[1])
 
@@ -196,5 +196,22 @@ describe('buildChartUrl', () => {
       filter_value: 'Squat',
       measure: 'e1rm',
     })
+  })
+})
+
+describe('sessionScatterHref', () => {
+  test('opens the sessions scatter for the type, coloured by the field', () => {
+    expect(sessionScatterHref('yoga', 'session_name', 90)).toBe(
+      '/chart?source_type=activity_type&pattern=yoga&lookback_days=90&chart_type=scatter&group_by=session_name',
+    )
+  })
+
+  test('maps the all-time lookback and leaves out what is not given', () => {
+    expect(sessionScatterHref('yoga', undefined, 0)).toBe(
+      '/chart?source_type=activity_type&pattern=yoga&lookback_days=3650&chart_type=scatter',
+    )
+    expect(sessionScatterHref('yoga')).toBe(
+      '/chart?source_type=activity_type&pattern=yoga&chart_type=scatter',
+    )
   })
 })
