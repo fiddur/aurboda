@@ -1,0 +1,121 @@
+.day-overview .chart-widget-header {
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+.day-overview-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.day-overview-figures strong {
+  color: #374151;
+  font-weight: 600;
+}
+
+.day-overview-swatch {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  margin-right: 0.3rem;
+  vertical-align: -1px;
+}
+
+.day-overview-plot {
+  width: 100%;
+  min-height: 140px;
+}
+
+.day-overview-svg {
+  display: block;
+  overflow: visible;
+}
+
+.day-overview-sleep {
+  fill: #6366f1;
+  fill-opacity: 0.12;
+}
+
+.day-overview-grid {
+  stroke: #e5e7eb;
+  stroke-width: 1;
+}
+
+.day-overview-baseline {
+  stroke: #d1d5db;
+  stroke-width: 1;
+}
+
+.day-overview-area {
+  fill-opacity: 0.15;
+  stroke: none;
+}
+
+.day-overview-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.day-overview-tick {
+  font-size: 11px;
+  fill: #6b7280;
+}
+
+.day-overview-emoji {
+  font-size: 11px;
+}
+
+.day-overview-initial,
+.day-overview-more-text {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #ffffff;
+}
+
+.day-overview-more {
+  fill: #6b7280;
+}
+
+.day-overview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .day-overview-figures {
+    color: #9ca3af;
+  }
+
+  .day-overview-figures strong {
+    color: #e5e7eb;
+  }
+
+  .day-overview-sleep {
+    fill: #818cf8;
+    fill-opacity: 0.18;
+  }
+
+  .day-overview-grid {
+    stroke: #374151;
+  }
+
+  .day-overview-baseline {
+    stroke: #4b5563;
+  }
+
+  .day-overview-tick {
+    fill: #9ca3af;
+  }
+}

@@ -56,4 +56,26 @@ describe('sanitizeConfig', () => {
     expect(sanitizeConfig(config).period).toEqual({ granularity: 'month' })
     expect('period' in sanitizeConfig({ sections: [], version: 1 })).toBe(false)
   })
+
+  test('leaves out day overview widgets', () => {
+    const config: DashboardConfig = {
+      sections: [
+        {
+          id: 's1',
+          title: 'Today',
+          type: 'charts',
+          widgets: [
+            {
+              config: { metrics: ['stress_level', 'body_battery'], window: 'rolling_24h' },
+              id: 'day',
+              type: 'day_overview',
+            },
+            { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc', type: 'metric_card' },
+          ],
+        },
+      ],
+      version: 1,
+    }
+    expect(sanitizeConfig(config).sections[0].widgets.map((w) => w.id)).toEqual(['mc'])
+  })
 })

@@ -730,6 +730,7 @@ export function EditableDashboard({
           sectionId={showWidgetPicker}
           sectionType={config.sections.find((s) => s.id === showWidgetPicker)?.type ?? 'metrics'}
           periodMode={Boolean(config.period)}
+          sharedBoard={boardId !== 'home'}
           onAddWidget={(widget) => handleAddWidget(showWidgetPicker, widget)}
           onClose={() => setShowWidgetPicker(null)}
         />

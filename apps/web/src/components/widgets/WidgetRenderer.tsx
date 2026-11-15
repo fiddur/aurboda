@@ -5,6 +5,7 @@ import { ActivityTypeCardWidget } from './ActivityTypeCardWidget'
 import { BarChartWidget } from './BarChartWidget'
 import { CombinedChartWidget } from './CombinedChartWidget'
 import { CorrelationWidget } from './CorrelationWidget'
+import { DayOverviewWidget } from './DayOverviewWidget'
 import { GoalProgressWidget } from './GoalProgressWidget'
 import { HrZonesWidget } from './HrZonesWidget'
 import { LastSleepWidget } from './LastSleepWidget'
@@ -65,6 +66,8 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <TopListCardWidget config={widget.config} />
       case 'places_card':
         return <PlacesCardWidget config={widget.config} />
+      case 'day_overview':
+        return <DayOverviewWidget config={widget.config} />
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }

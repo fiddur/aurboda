@@ -211,6 +211,28 @@ next morning, a phone at rest included (see [Places summary](places.md#places-su
 optional `title` (default "Places"). The schema still accepts `home_location`, which the editor no
 longer offers. Data comes from `GET /locations/places-summary` (MCP: `get_places_summary`).
 
+### Day Overview
+
+One day at a glance on a single time axis, like a watch app's day chart: the first metric as thin
+bars per 5 minutes (stress coloured by its band: rest, low, medium, high; any other metric in the
+accent colour), the second as a line with a soft area on its own scale (Body Battery 0–100), sleep
+and naps shaded behind the plot, and the other activities of the Timeline's Activity lane as round
+icons along the axis at their start time (icons that would overlap collapse into one "+N" bubble;
+hover one for the names and times). The header shows the window's dates, the latest value of the
+line metric and the average of the bar metric. The whole card links to the [Timeline](./timeline.md)
+at that range. With nothing recorded in the window it says so ("No data for the last 24 hours").
+
+**Configuration:** `window`, one of `rolling_24h` (the 24 hours up to now, default), `yesterday` or
+`today` (local days); `metrics`, one or two metric names (default `stress_level`, `body_battery`):
+the first drawn as bars, the second as the line; optional `title` (default "Last 24 hours",
+"Yesterday" or "Today"). The card reads the bucketed metrics (`GET /metrics/bucketed`, 5-minute
+buckets) and the activities (`GET /activities`) of the window; it has no endpoint of its own.
+
+It is a card for your own dashboards only: a shared dashboard leaves it out (it shows a whole day hour
+by hour, more than a shared dashboard exposes), so the editor of a shared dashboard does not offer it
+and a published copy, a feed share or a public visitor never sees it. It does not follow a period
+dashboard's period either, so a period dashboard's editor does not offer it.
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
