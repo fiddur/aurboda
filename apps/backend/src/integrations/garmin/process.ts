@@ -36,6 +36,7 @@ import {
 import { buildTrack, type TrackPoint } from '../../services/tracks.ts'
 import { pushAll } from '../../utils.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
+import { type FitActivity, fitToDetail } from './fit.ts'
 import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
 
 export { garminSleepLevelsToStages } from './sleep-stages.ts'
@@ -959,48 +960,32 @@ export const extractTrackPoints = (data: GarminActivityDetailResponse): TrackPoi
   return points.length > 0 ? points : polylineTrackPoints(data)
 }
 
-const writeTrack = async (
-  user: string,
-  data: GarminActivityDetailResponse,
-  activityId: string,
-  activityStart: Date,
-  { deps = defaultDeps, onTrackWritten }: ProcessActivityDetailOptions,
-): Promise<void> => {
-  const track = buildTrack(extractTrackPoints(data), activityStart)
-  if (!track) return
-  await deps.upsertActivityTrack(user, {
-    activity_id: activityId,
-    ewkt: track.ewkt,
-    full_resolution: true,
-    source: 'garmin',
-  })
-  onTrackWritten?.(user, activityId)
+interface ExtractedDetail {
+  garminActivityId: number
+  points: TimeSeriesPoint[]
+  gpsPoints: Location[]
+  trackPoints: TrackPoint[]
+  raw: RawRecord | null
 }
 
-const processDetailMetrics = async (
+/**
+ * The writing half both detail sources share: the raw record, the time series, GPS with
+ * precedence over other sources across the activity span, and the track.
+ */
+const writeActivityDetail = async (
   user: string,
-  data: GarminActivityDetailResponse,
-  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions,
+  { garminActivityId, gpsPoints, points, raw, trackPoints }: ExtractedDetail,
+  {
+    activityId,
+    activitySpan,
+    activityStart,
+    deps = defaultDeps,
+    onTrackWritten,
+  }: ProcessActivityDetailOptions,
 ): Promise<number> => {
-  if (!data.activityDetailMetrics?.length) return 0
-
-  const indexMap = buildMetricIndexMap(data.metricDescriptors)
-  const tsIdx = indexMap.get('directTimestamp')
-  if (tsIdx === undefined) return 0
-
-  const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
-  if (!firstTs) return 0
-
-  const { gpsPoints, points } = extractMetricsAndGps(data)
-
-  await deps.insertRawRecord(
-    user,
-    makeRaw('garmin_activity_detail', `garmin-activity-detail-${data.activityId}`, new Date(firstTs), data),
-  )
-
+  if (raw) await deps.insertRawRecord(user, raw)
   if (points.length > 0) await deps.insertTimeSeries(user, points)
 
-  // Batch-insert GPS locations, superseding coarser passive tracking
   if (gpsPoints.length > 0) {
     const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
     const replaced = span
@@ -1015,14 +1000,51 @@ const processDetailMetrics = async (
         `🛰️ Garmin GPS took precedence over ${replaced} location point(s) from other sources`,
         {
           end: span.end.toISOString(),
-          garmin_activity_id: data.activityId,
+          garmin_activity_id: garminActivityId,
           start: span.start.toISOString(),
         },
       )
     }
   }
 
+  if (activityId && activityStart) {
+    const track = buildTrack(trackPoints, activityStart)
+    if (track) {
+      await deps.upsertActivityTrack(user, {
+        activity_id: activityId,
+        ewkt: track.ewkt,
+        full_resolution: true,
+        source: 'garmin',
+      })
+      onTrackWritten?.(user, activityId)
+    }
+  }
+
   return points.length
+}
+
+const NO_METRICS = { gpsPoints: [], points: [], raw: null }
+
+const extractJsonMetrics = (
+  data: GarminActivityDetailResponse,
+): Pick<ExtractedDetail, 'gpsPoints' | 'points' | 'raw'> => {
+  if (!data.activityDetailMetrics?.length) return NO_METRICS
+
+  const tsIdx = buildMetricIndexMap(data.metricDescriptors).get('directTimestamp')
+  if (tsIdx === undefined) return NO_METRICS
+
+  const firstTs = extractNumericValue(data.activityDetailMetrics[0]!.metrics[tsIdx])
+  if (!firstTs) return NO_METRICS
+
+  return {
+    ...extractMetricsAndGps(data),
+    raw: makeRaw(
+      'garmin_activity_detail',
+      `garmin-activity-detail-${data.activityId}`,
+      new Date(firstTs),
+      data,
+    ),
+  }
 }
 
 /** A detail with a polyline and no metrics still writes a track. */
@@ -1030,9 +1052,35 @@ export const processActivityDetail = async (
   user: string,
   data: GarminActivityDetailResponse,
   options: ProcessActivityDetailOptions = {},
+): Promise<number> =>
+  writeActivityDetail(
+    user,
+    { ...extractJsonMetrics(data), garminActivityId: data.activityId, trackPoints: extractTrackPoints(data) },
+    options,
+  )
+
+/**
+ * The activity's original FIT file in place of the JSON detail: the full recording. The raw
+ * record keeps only its summary, under its own type, so the JSON detail's stays apart.
+ */
+export const processActivityFit = async (
+  user: string,
+  { fit, garminActivityId }: { fit: FitActivity; garminActivityId: number },
+  options: ProcessActivityDetailOptions = {},
 ): Promise<number> => {
-  const pointCount = await processDetailMetrics(user, data, options)
-  const { activityId, activityStart } = options
-  if (activityId && activityStart) await writeTrack(user, data, activityId, activityStart, options)
-  return pointCount
+  const { gpsPoints, points, recordedAt, summary, trackPoints } = fitToDetail(
+    fit,
+    options.activityStart ?? new Date(),
+  )
+  return writeActivityDetail(
+    user,
+    {
+      garminActivityId,
+      gpsPoints,
+      points,
+      raw: makeRaw('garmin_activity_fit', `garmin-activity-fit-${garminActivityId}`, recordedAt, summary),
+      trackPoints,
+    },
+    options,
+  )
 }

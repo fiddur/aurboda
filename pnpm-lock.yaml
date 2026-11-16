@@ -38,6 +38,9 @@ importers:
       '@fiddur/garmin-connect':
         specifier: ^1.7.0
         version: 1.7.0(undici@7.19.2)
+      '@garmin/fitsdk':
+        specifier: 21.218.0
+        version: 21.218.0
       '@logtape/logtape':
         specifier: ^2.2.1
         version: 2.2.1
@@ -74,6 +77,9 @@ importers:
       express:
         specifier: ^5.1.0
         version: 5.2.1
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       fit-file-parser:
         specifier: ^2.3.3
         version: 2.3.3
@@ -593,6 +599,9 @@ packages:
 
   '@fiddur/garmin-connect@1.7.0':
     resolution: {integrity: sha512-oQiriBtEylNDGxptHmmSHnVIv1PcZKJzc6io6cj5zBvFsiMUSCn1IXUruWsvqp22CDYsZL8yaL6wkKd0WcNQ/Q==}
+
+  '@garmin/fitsdk@21.218.0':
+    resolution: {integrity: sha512-Jbhedp3AJ/xJBSuiPBlPpwH5QISXd+GYtfnAUZ3u68hUqkzHiRWUhla8xj4tW/05w6gKsErEt+7GQCFap+a2kQ==}
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -2831,6 +2840,9 @@ packages:
   fflate@0.7.4:
     resolution: {integrity: sha512-5u2V/CDW15QM1XbbgS+0DfPxVB+jUKhWEKuuFuHncbk3tEEqzmoXL+2KyOFuKGqOnmdIy0/davWF1CkuwtibCw==}
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   figures@3.2.0:
     resolution: {integrity: sha512-yaduQFRKLXYOGgEn6AZau90j3ggSOyiqXU0F9JZfeXYhNa+Jk4X+s45A2zg5jns87GAFa34BBm2kXw4XpNcbdg==}
     engines: {node: '>=8'}
@@ -4696,6 +4708,8 @@ snapshots:
     transitivePeerDependencies:
       - debug
       - undici
+
+  '@garmin/fitsdk@21.218.0': {}
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
@@ -6947,6 +6961,8 @@ snapshots:
       picomatch: 4.0.3
 
   fflate@0.7.4: {}
+
+  fflate@0.8.3: {}
 
   figures@3.2.0:
     dependencies:

@@ -191,8 +191,9 @@ export function GarminPersonalKey({
       <h2>Personal API key</h2>
       <p class="field-description">
         Garmin's official Personal API. It serves daily summary, heart rate, HRV, sleep, Body Battery, SpO2,
-        respiration, intensity minutes and activities; stress, training readiness, the sleep stage timeline
-        and per-activity detail still need the login above.
+        respiration, intensity minutes and activities, with each activity's per-second detail and GPS track
+        from its FIT file; stress, training readiness, the sleep stage timeline and strength exercise sets
+        still need the login above.
       </p>
       {status.connected && !replacing ? (
         <GarminPersonalKeyStatusView

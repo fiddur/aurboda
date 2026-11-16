@@ -2,9 +2,10 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
-import { auditError } from '../../services/audit-log.ts'
+import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { importActivityExerciseSets } from './exercise-sets.ts'
-import { processActivityDetail, processGarminData } from './process.ts'
+import { parseActivityFit } from './fit.ts'
+import { processActivityDetail, processActivityFit, processGarminData } from './process.ts'
 import { garminRoutedClient } from './source.ts'
 import {
   calculateRetryAfter,
@@ -41,9 +42,16 @@ vi.mock('./process', async (importOriginal) => {
   return {
     ...actual,
     processActivityDetail: vi.fn().mockResolvedValue(0),
+    processActivityFit: vi.fn().mockResolvedValue(7),
     processGarminData: vi.fn().mockResolvedValue(1),
   }
 })
+
+const FAKE_FIT = { fileIds: [], laps: [], records: [], sessions: [] }
+
+vi.mock('./fit', () => ({
+  parseActivityFit: vi.fn((bytes: Uint8Array) => (bytes.length > 0 ? FAKE_FIT : null)),
+}))
 
 vi.mock('./exercise-sets', () => ({ importActivityExerciseSets: vi.fn().mockResolvedValue(2) }))
 
@@ -60,6 +68,7 @@ const createMockGarmin = () => ({
     .fn()
     .mockResolvedValue({ activityDetailMetrics: [], activityId: 0, metricDescriptors: [] }),
   getActivityExerciseSets: vi.fn().mockResolvedValue({ exerciseSets: [] }),
+  getActivityFile: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
   getBodyBattery: vi.fn().mockResolvedValue([]),
   getDailySummary: vi.fn().mockResolvedValue({}),
   getHeartRate: vi.fn().mockResolvedValue({}),
@@ -512,6 +521,179 @@ describe('syncActivityDetails', () => {
     await syncActivityDetails(user, mockGarmin as never)
 
     expect(mockGarmin.getActivityDetail).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncActivityDetails from the FIT file', () => {
+  const user = 'testuser'
+  const start = new Date('2026-05-01T08:00:00Z')
+  const end = new Date('2026-05-01T09:00:00Z')
+
+  const activity = (data: Record<string, unknown> = {}) => ({
+    activity_type: 'running' as const,
+    data: { garmin_activity_id: 12345, ...data },
+    end_time: end,
+    id: 'act-1',
+    source: 'garmin' as const,
+    start_time: start,
+  })
+
+  const garminWith = ({ session }: { session: boolean }) => {
+    const garmin = createMockGarmin()
+    garmin.sourceFor.mockImplementation(async (_user: string, target: string) =>
+      target === 'activityDetail' ? 'personal_key' : session ? 'session' : null,
+    )
+    return garmin
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([activity()])
+  })
+
+  test('a key alone reads the FIT file and processes it, without the session calls', async () => {
+    const garmin = garminWith({ session: false })
+    const onDetailSynced = vi.fn()
+    const onTrackWritten = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, { onDetailSynced, onTrackWritten })
+
+    expect(garmin.getActivityFile).toHaveBeenCalledWith(user, 12345)
+    expect(parseActivityFit).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]))
+    expect(processActivityFit).toHaveBeenCalledWith(
+      user,
+      { fit: FAKE_FIT, garminActivityId: 12345 },
+      { activityId: 'act-1', activitySpan: { end, start }, activityStart: start, onTrackWritten },
+    )
+    expect(garmin.getActivityDetail).not.toHaveBeenCalled()
+    expect(db.getGarminActivitiesNeedingSets).not.toHaveBeenCalled()
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(auditInfo).toHaveBeenCalledWith(
+      user,
+      'sync',
+      '📊 Synced 7 detail metrics for Garmin activity 12345 from its FIT file',
+    )
+  })
+
+  test('with a key and a session the FIT file wins, and sets still come from the session', async () => {
+    const garmin = garminWith({ session: true })
+
+    await syncActivityDetails(user, garmin as never)
+
+    expect(processActivityFit).toHaveBeenCalled()
+    expect(garmin.getActivityDetail).not.toHaveBeenCalled()
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalled()
+  })
+
+  test('a missing file falls back to the JSON detail when there is a session', async () => {
+    const garmin = garminWith({ session: true })
+    garmin.getActivityFile.mockResolvedValue(null)
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, { onDetailSynced })
+
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+    expect(processActivityDetail).toHaveBeenCalled()
+    expect(processActivityFit).not.toHaveBeenCalled()
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+  })
+
+  test('an unreadable file is treated like a missing one', async () => {
+    const garmin = garminWith({ session: true })
+    garmin.getActivityFile.mockResolvedValue(new Uint8Array(0))
+
+    await syncActivityDetails(user, garmin as never)
+
+    expect(processActivityFit).not.toHaveBeenCalled()
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+  })
+
+  test('a missing file without a session marks the activity done once, with an audit line', async () => {
+    const garmin = garminWith({ session: false })
+    garmin.getActivityFile.mockResolvedValue(null)
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, { onDetailSynced })
+
+    expect(db.markActivityDetailSynced).toHaveBeenCalledTimes(1)
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(auditInfo).toHaveBeenCalledWith(user, 'sync', '📄 Garmin has no activity file for activity 12345')
+    expect(garmin.getActivityDetail).not.toHaveBeenCalled()
+    expect(onDetailSynced).not.toHaveBeenCalled()
+  })
+
+  test('a fresh activity without a file and without a session stays unmarked and logs nothing', async () => {
+    const garmin = garminWith({ session: false })
+    garmin.getActivityFile.mockResolvedValue(null)
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, {
+      now: new Date(start.getTime() + 23 * 3_600_000),
+      onDetailSynced,
+    })
+
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
+    expect(onDetailSynced).not.toHaveBeenCalled()
+  })
+
+  test('an activity over a day old without a file is marked done with an audit line', async () => {
+    const garmin = garminWith({ session: false })
+    garmin.getActivityFile.mockResolvedValue(null)
+
+    await syncActivityDetails(user, garmin as never, { now: new Date(start.getTime() + 25 * 3_600_000) })
+
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(auditInfo).toHaveBeenCalledWith(user, 'sync', '📄 Garmin has no activity file for activity 12345')
+  })
+
+  test('a fresh activity with a file is processed and marked as before', async () => {
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garminWith({ session: false }) as never, {
+      now: new Date(start.getTime() + 3_600_000),
+      onDetailSynced,
+    })
+
+    expect(processActivityFit).toHaveBeenCalled()
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+  })
+
+  test('a failed download leaves the activity for the next run', async () => {
+    const garmin = garminWith({ session: true })
+    garmin.getActivityFile.mockRejectedValue(new Error('Garmin Personal API 503 for /download-service'))
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, { onDetailSynced })
+
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalled()
+    expect(onDetailSynced).not.toHaveBeenCalled()
+    expect(garmin.getActivityDetail).not.toHaveBeenCalled()
+    expect(auditError).toHaveBeenCalledWith(
+      user,
+      'sync',
+      'Failed to sync FIT file for Garmin activity 12345',
+      {
+        error: 'Garmin Personal API 503 for /download-service',
+      },
+    )
+  })
+
+  test('an activity that already had its detail is not reported again', async () => {
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([activity({ detail_synced: true })])
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garminWith({ session: false }) as never, {
+      fullResync: true,
+      onDetailSynced,
+    })
+
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(onDetailSynced).not.toHaveBeenCalled()
   })
 })
 

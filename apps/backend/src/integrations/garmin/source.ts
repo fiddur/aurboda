@@ -11,8 +11,12 @@ export const GARMIN_PERSONAL_PROVIDER = 'garmin_personal'
 
 export type GarminSource = 'session' | 'personal_key'
 
-/** A data type, or the per-activity JSON detail `syncActivityDetails` fetches. */
-export type GarminSourceTarget = GarminDataType | 'activityDetail'
+/**
+ * A data type, the per-activity detail `syncActivityDetails` fetches (the FIT file through
+ * the key, the JSON detail through the session), or the per-activity data only the session
+ * serves (exercise sets, and the JSON detail when the FIT file is missing).
+ */
+export type GarminSourceTarget = GarminDataType | 'activityDetail' | 'activitySession'
 
 export interface GarminConnections {
   session: boolean
@@ -55,15 +59,23 @@ export const personalKeyDataTypes: ReadonlySet<GarminDataType> = new Set<GarminD
 
 /**
  * A usable key serves every type it covers, except sleep when a session also
- * exists: only the session's answer carries the stage timeline. Anything else
- * needs the session, and is skipped without one.
+ * exists: only the session's answer carries the stage timeline. The activity
+ * detail comes from the key whenever it is usable: its FIT file is the full
+ * recording, where the session's JSON is a chart downsampled to 10000 points.
+ * Anything else needs the session, and is skipped without one.
  */
 export const chooseGarminSource = (
   target: GarminSourceTarget,
   connections: GarminConnections,
   now: Date = new Date(),
 ): GarminSource | null => {
-  if (target !== 'activityDetail' && keyUsable(connections, now) && personalKeyDataTypes.has(target)) {
+  if (target === 'activityDetail' && keyUsable(connections, now)) return 'personal_key'
+  if (
+    target !== 'activityDetail' &&
+    target !== 'activitySession' &&
+    keyUsable(connections, now) &&
+    personalKeyDataTypes.has(target)
+  ) {
     return target === 'sleep' && connections.session ? 'session' : 'personal_key'
   }
   return connections.session ? 'session' : null
@@ -142,6 +154,7 @@ export const garminRoutedClient = ({
         : session.getActivities(user, start, limit),
     getActivityDetail: session.getActivityDetail,
     getActivityExerciseSets: session.getActivityExerciseSets,
+    getActivityFile: personal.getActivityFile,
     getBodyBattery: async (user: string, startDate: Date, endDate: Date) =>
       (await usesKey(user, 'bodyBattery'))
         ? personal.getBodyBattery(user, startDate, endDate)

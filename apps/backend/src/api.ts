@@ -72,6 +72,7 @@ import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/ga
 import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
 import {
+  chooseGarminSource,
   garminRoutedClient,
   getGarminConnections,
   hasGarminConnection,
@@ -983,7 +984,7 @@ const main = async () => {
       sourceEnrichQueue = await createSourceEnrichQueue(boss, {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
         garminDetailPending: async (user, garminActivityId) => {
-          if (!(await getGarminConnections(user)).session) return false
+          if (chooseGarminSource('activityDetail', await getGarminConnections(user)) === null) return false
           const row = await findActivityByExternalId(
             user,
             'garmin',

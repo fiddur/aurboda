@@ -430,6 +430,78 @@ describe('data adapters', () => {
   })
 })
 
+describe('getActivityFile', () => {
+  const cachedRow = {
+    access_token: fakeJwt(hoursFromNow(5)),
+    provider: 'garmin_personal',
+    refresh_token: KEY,
+  }
+  const zipBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4])
+  const binary = (bytes: Uint8Array<ArrayBuffer>, headers: Record<string, string> = {}): Response =>
+    new Response(bytes, { headers, status: 200 })
+
+  test('downloads the binary body with the JWT', async () => {
+    const { client, fetch } = setup({ responses: [binary(zipBytes)], stored: cachedRow })
+
+    expect(await client.getActivityFile('alice', 12345)).toEqual(zipBytes)
+    const [url, init] = fetch.mock.calls[0]!
+    expect(url).toBe(`${BASE}/download-service/files/activity/12345`)
+    expect(headerOf(init, 'Authorization')).toBe(`Bearer ${cachedRow.access_token}`)
+  })
+
+  test('a 404 is no file', async () => {
+    const { client } = setup({ responses: [reply(404)], stored: cachedRow })
+
+    expect(await client.getActivityFile('alice', 12345)).toBeNull()
+  })
+
+  test('a file over the cap is refused, by its content-length or by what arrives', async () => {
+    const declared = setup({
+      responses: [binary(zipBytes, { 'content-length': '9' })],
+      stored: cachedRow,
+    })
+    const undeclared = setup({ responses: [binary(zipBytes)], stored: cachedRow })
+    const fits = setup({ responses: [binary(zipBytes)], stored: cachedRow })
+
+    expect(
+      await garminPersonalClient({ ...declared.deps, maxFileBytes: 8 }).getActivityFile('alice', 1),
+    ).toEqual(null)
+    expect(
+      await garminPersonalClient({ ...undeclared.deps, maxFileBytes: 7 }).getActivityFile('alice', 1),
+    ).toBe(null)
+    expect(await garminPersonalClient({ ...fits.deps, maxFileBytes: 8 }).getActivityFile('alice', 1)).toEqual(
+      zipBytes,
+    )
+  })
+
+  test('a refused key throws like the other calls and marks the key', async () => {
+    const { client, deps } = setup({ responses: [reply(403)] })
+
+    await expect(client.getActivityFile('alice', 12345)).rejects.toBeInstanceOf(GarminKeyRefusedError)
+    expect(deps.markOAuthTokenRefused).toHaveBeenCalledWith('alice', 'garmin_personal', KEY)
+  })
+
+  test('a 401 on the download re-exchanges once and retries', async () => {
+    const fresh = fakeJwt(hoursFromNow(24), 'fresh')
+    const { client, fetch } = setup({
+      responses: [reply(401), reply(200, fresh), binary(zipBytes)],
+      stored: cachedRow,
+    })
+
+    expect(await client.getActivityFile('alice', 12345)).toEqual(zipBytes)
+    expect(headerOf(fetch.mock.calls[2]![1], 'Authorization')).toBe(`Bearer ${fresh}`)
+  })
+
+  test('a server error names the status and path, never a credential', async () => {
+    const { client } = setup({ responses: [reply(500)], stored: cachedRow })
+
+    const error = (await client.getActivityFile('alice', 12345).catch((e: unknown) => e)) as Error
+    expect(error.message).toBe('Garmin Personal API 500 for /download-service/files/activity/12345')
+    expect(error.message).not.toContain(KEY)
+    expect(error.message).not.toContain(cachedRow.access_token)
+  })
+})
+
 describe('adaptPersonalSleep', () => {
   const startMs = Date.parse('2026-11-11T22:30:00Z')
   const endMs = Date.parse('2026-11-12T06:15:00Z')

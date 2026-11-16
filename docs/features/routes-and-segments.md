@@ -64,7 +64,9 @@ equal timestamps and refuses a track with fewer than two distinct points.
 Stored raw records are enough to build tracks for history without new API calls:
 
 - **Garmin** keeps the full detail JSON in `raw_records` (`garmin_activity_detail`), so
-  the backfill is the same extractor over stored data: full resolution.
+  the backfill is the same extractor over stored data: full resolution. An activity synced
+  from its FIT file keeps only a summary (`garmin_activity_fit`) and is no candidate: its
+  track was written when the file was read.
 - **Strava** keeps the detailed activity (`strava_activity`) with `map.polyline`, a shape
   with no timestamps — streams were never stored. The backfill decodes it and spreads M
   evenly over the elapsed time, flagged `full_resolution = false`: good enough for route

@@ -48,7 +48,7 @@ const keyTypes: GarminDataType[] = [
   'intensityMinutes',
   'activities',
 ]
-const sessionOnly: GarminSourceTarget[] = ['stress', 'trainingReadiness', 'activityDetail']
+const sessionOnly: GarminSourceTarget[] = ['stress', 'trainingReadiness', 'activitySession']
 
 describe('chooseGarminSource', () => {
   test.each(keyTypes)('%s comes from the key when one is usable, with or without a session', (type) => {
@@ -59,6 +59,19 @@ describe('chooseGarminSource', () => {
   test('sleep comes from the session when both exist (stage timeline), else from the key', () => {
     expect(chooseGarminSource('sleep', connections({ key: true, session: true }))).toBe('session')
     expect(chooseGarminSource('sleep', connections({ key: true }))).toBe('personal_key')
+  })
+
+  test('the activity detail comes from the key whenever it is usable, else from the session', () => {
+    expect(chooseGarminSource('activityDetail', connections({ key: true }))).toBe('personal_key')
+    expect(chooseGarminSource('activityDetail', connections({ key: true, session: true }))).toBe(
+      'personal_key',
+    )
+    expect(
+      chooseGarminSource('activityDetail', connections({ key: true, refused: true, session: true }), NOW),
+    ).toBe('session')
+    expect(chooseGarminSource('activityDetail', connections({ key: true, refused: true }), NOW)).toBeNull()
+    expect(chooseGarminSource('activityDetail', connections({ session: true }))).toBe('session')
+    expect(chooseGarminSource('activityDetail', connections({}))).toBeNull()
   })
 
   test.each(sessionOnly)('%s needs the session and is skipped with a key alone', (target) => {
@@ -180,6 +193,7 @@ describe('garminRoutedClient', () => {
     getActivities: vi.fn(async () => [label]),
     getActivityDetail: vi.fn(async () => label),
     getActivityExerciseSets: vi.fn(async () => label),
+    getActivityFile: vi.fn(async () => label),
     getHrv: vi.fn(async () => label),
     getSleep: vi.fn(async () => label),
     getStress: vi.fn(async () => label),
@@ -201,6 +215,7 @@ describe('garminRoutedClient', () => {
     expect(await garmin.getStress('alice', day)).toBe('session')
     expect(await garmin.getActivityDetail('alice', 1)).toBe('session')
     expect(await garmin.getActivityExerciseSets('alice', 1)).toBe('session')
+    expect(await garmin.getActivityFile('alice', 1)).toBe('personal')
     expect(await garmin.sourceFor('alice', 'stress')).toBe('session')
   })
 
@@ -212,7 +227,8 @@ describe('garminRoutedClient', () => {
     })
 
     expect(await garmin.sourceFor('alice', 'trainingReadiness')).toBeNull()
-    expect(await garmin.sourceFor('alice', 'activityDetail')).toBeNull()
+    expect(await garmin.sourceFor('alice', 'activitySession')).toBeNull()
+    expect(await garmin.sourceFor('alice', 'activityDetail')).toBe('personal_key')
     expect(await garmin.sourceFor('alice', 'sleep')).toBe('personal_key')
   })
 })

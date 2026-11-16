@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { GarminActivityDetailResponse } from './client.ts'
+import type { FitActivity } from './fit.ts'
 import type { GarminProcessDeps } from './process.ts'
 
 import { activityTrackSources } from '../gps-precedence.ts'
@@ -9,6 +10,7 @@ import {
   extractTrackPoints,
   garminSleepLevelsToStages,
   processActivityDetail,
+  processActivityFit,
   processGarminData,
 } from './process.ts'
 
@@ -2080,6 +2082,112 @@ describe('processActivityDetail', () => {
 
   test('writes no track without an activity id', async () => {
     await processActivityDetail(user, gpsDetail, { deps: mockDeps })
+    expect(mockDeps.upsertActivityTrack).not.toHaveBeenCalled()
+  })
+})
+
+describe('processActivityFit', () => {
+  const user = 'testuser'
+  const semicircles = (degrees: number): number => Math.round((degrees * 2 ** 31) / 180)
+  const start = new Date(1700000000000)
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const fit: FitActivity = {
+    fileIds: [{ manufacturer: 'garmin', type: 'activity' }],
+    laps: [{ totalElapsedTime: 2 }],
+    records: [
+      {
+        enhancedAltitude: 10.5,
+        heartRate: 120,
+        positionLat: semicircles(57.65),
+        positionLong: semicircles(12.62),
+        timestamp: new Date(1700000001000),
+      },
+      {
+        enhancedAltitude: 11,
+        enhancedRespirationRate: 21.5,
+        heartRate: 121,
+        positionLat: semicircles(57.6501),
+        positionLong: semicircles(12.6201),
+        timestamp: new Date(1700000002000),
+      },
+    ],
+    sessions: [{ sport: 'cycling', totalElapsedTime: 2 }],
+  }
+
+  test('writes the time series, GPS with precedence over the span, the track and the callback', async () => {
+    const onTrackWritten = vi.fn()
+    const activitySpan = { end: new Date(1700000600000), start }
+    vi.mocked(mockDeps.softDeleteSupersededLocations).mockResolvedValueOnce(3)
+
+    const count = await processActivityFit(
+      user,
+      { fit, garminActivityId: 4242 },
+      { activityId: 'act-1', activitySpan, activityStart: start, deps: mockDeps, onTrackWritten },
+    )
+
+    expect(count).toBe(5)
+    expect(mockDeps.insertTimeSeries).toHaveBeenCalledWith(user, [
+      { metric: 'heart_rate', source: 'garmin', time: new Date(1700000001000), unit: 'bpm', value: 120 },
+      { metric: 'elevation', source: 'garmin', time: new Date(1700000001000), unit: 'm', value: 10.5 },
+      { metric: 'heart_rate', source: 'garmin', time: new Date(1700000002000), unit: 'bpm', value: 121 },
+      {
+        metric: 'respiratory_rate',
+        source: 'garmin',
+        time: new Date(1700000002000),
+        unit: 'brpm',
+        value: 21.5,
+      },
+      { metric: 'elevation', source: 'garmin', time: new Date(1700000002000), unit: 'm', value: 11 },
+    ])
+    expect(mockDeps.softDeleteSupersededLocations).toHaveBeenCalledWith(
+      user,
+      activityTrackSources,
+      activitySpan.start,
+      activitySpan.end,
+    )
+    const locations = vi.mocked(mockDeps.insertLocations).mock.calls[0]![1]
+    expect(locations).toHaveLength(2)
+    expect(locations[0]).toMatchObject({ source: 'garmin', time: new Date(1700000001000) })
+    expect(locations[0]!.lat).toBeCloseTo(57.65, 6)
+    expect(mockDeps.auditInfo).toHaveBeenCalledWith(
+      user,
+      'sync',
+      expect.stringContaining('3 location point(s)'),
+      expect.objectContaining({ garmin_activity_id: 4242 }),
+    )
+    expect(mockDeps.upsertActivityTrack).toHaveBeenCalledWith(user, {
+      activity_id: 'act-1',
+      ewkt: 'SRID=4326;LINESTRING ZM(12.62 57.65 10.5 1, 12.6201 57.6501 11 2)',
+      full_resolution: true,
+      source: 'garmin',
+    })
+    expect(onTrackWritten).toHaveBeenCalledWith(user, 'act-1')
+  })
+
+  test('the raw record holds only the summary, under its own type and id', async () => {
+    await processActivityFit(user, { fit, garminActivityId: 4242 }, { activityStart: start, deps: mockDeps })
+
+    expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
+      data: {
+        file_id: [{ manufacturer: 'garmin', type: 'activity' }],
+        laps: [{ totalElapsedTime: 2 }],
+        record_count: 2,
+        sessions: [{ sport: 'cycling', totalElapsedTime: 2 }],
+      },
+      external_id: 'garmin-activity-fit-4242',
+      record_type: 'garmin_activity_fit',
+      recorded_at: new Date(1700000001000),
+      source: 'garmin',
+    })
+  })
+
+  test('writes no track without an activity id', async () => {
+    await processActivityFit(user, { fit, garminActivityId: 4242 }, { activityStart: start, deps: mockDeps })
+
     expect(mockDeps.upsertActivityTrack).not.toHaveBeenCalled()
   })
 })
