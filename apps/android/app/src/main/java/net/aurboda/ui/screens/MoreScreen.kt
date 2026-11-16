@@ -65,6 +65,7 @@ val moreGroups: List<MoreGroup> = listOf(
             MoreItem("Goals", MoreDestination.Web("/goals")),
             MoreItem("Places", MoreDestination.Web("/places")),
             MoreItem("Routes", MoreDestination.Web("/routes")),
+            MoreItem("Segments", MoreDestination.Web("/segments")),
         ),
     ),
     MoreGroup(

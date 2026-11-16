@@ -24,6 +24,8 @@ const PERSONAL_API = 'https://personal.connectapi.garmin.com'
 const TOKEN_PATH = '/personalapitoken-service/personal-api/personal-api-key/token'
 const JWT_MIN_REMAINING_MS = 60 * 60 * 1000
 const SUMMARY_TTL_MS = 60_000
+/** An activity file over this is not read: a day-long recording is a few MB. */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024
 
 /** Garmin answered 401/403 to the key exchange: the key is revoked, expired or mistyped. */
 export class GarminKeyRefusedError extends Error {
@@ -66,6 +68,7 @@ export interface GarminPersonalClientDeps {
   ) => Promise<boolean>
   auditError: typeof auditError
   now: () => Date
+  maxFileBytes: number
 }
 
 const defaultDeps = (): GarminPersonalClientDeps => ({
@@ -74,6 +77,7 @@ const defaultDeps = (): GarminPersonalClientDeps => ({
   fetch: (...args) => fetch(...args),
   getOAuthToken,
   markOAuthTokenRefused,
+  maxFileBytes: MAX_FILE_BYTES,
   now: () => new Date(),
   updateOAuthAccessToken,
   upsertOAuthToken,
@@ -127,6 +131,37 @@ export const adaptPersonalSleep = (body: unknown): unknown => {
 const fmt = (d: Date): string => d.toISOString().slice(0, 10)
 
 const isRefusal = (status: number): boolean => status === 401 || status === 403
+
+/** The body, or null when it is over `max` bytes by its `content-length` or by what arrives. */
+const readCapped = async (res: Response, max: number): Promise<Uint8Array | null> => {
+  const declared = Number(res.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel()
+    return null
+  }
+  if (!res.body) return new Uint8Array(0)
+
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel()
+      return null
+    }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
 
 export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps> = {}) => {
   const deps: GarminPersonalClientDeps = { ...defaultDeps(), ...overrides }
@@ -196,29 +231,42 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
     return exp !== null && exp - deps.now().getTime() > JWT_MIN_REMAINING_MS ? stored.access_token : null
   }
 
+  const request = async (
+    user: string,
+    path: string,
+    accept: string,
+    query: Record<string, string> = {},
+  ): Promise<Response> => {
+    const stored = await storedKey(user)
+    const search = new URLSearchParams(query).toString()
+    const url = `${PERSONAL_API}${path}${search ? `?${search}` : ''}`
+    const call = (jwt: string) =>
+      send(url, { headers: { Accept: accept, Authorization: `Bearer ${jwt}` }, method: 'GET' }, path, [
+        jwt,
+        stored.refresh_token!,
+      ])
+
+    const res = await call(freshJwt(stored) ?? (await sharedRefresh(user, stored)))
+    return res.status === 401 ? call(await sharedRefresh(user, stored)) : res
+  }
+
   const get = async <T>(
     user: string,
     path: string,
     query: Record<string, string> = {},
   ): Promise<T | null> => {
-    const stored = await storedKey(user)
-    const search = new URLSearchParams(query).toString()
-    const url = `${PERSONAL_API}${path}${search ? `?${search}` : ''}`
-    const call = (jwt: string) =>
-      send(
-        url,
-        { headers: { Accept: 'application/json', Authorization: `Bearer ${jwt}` }, method: 'GET' },
-        path,
-        [jwt, stored.refresh_token!],
-      )
-
-    let res = await call(freshJwt(stored) ?? (await sharedRefresh(user, stored)))
-    if (res.status === 401) res = await call(await sharedRefresh(user, stored))
-
+    const res = await request(user, path, 'application/json', query)
     if (res.status === 204) return null
     if (!res.ok) throw new GarminPersonalApiError(res.status, path)
     const text = await res.text()
     return text.trim() ? (JSON.parse(text) as T) : null
+  }
+
+  const getBinary = async (user: string, path: string): Promise<Uint8Array | null> => {
+    const res = await request(user, path, 'application/zip, application/x-zip-compressed, */*')
+    if (res.status === 204 || res.status === 404) return null
+    if (!res.ok) throw new GarminPersonalApiError(res.status, path)
+    return readCapped(res, deps.maxFileBytes)
   }
 
   const forgetSummaries = (user: string) => {
@@ -265,6 +313,10 @@ export const garminPersonalClient = (overrides: Partial<GarminPersonalClientDeps
         limit: String(limit),
         start: String(start),
       })) ?? [],
+
+    /** The activity's original file as Garmin's ZIP; null when there is none or it is over the size cap. */
+    getActivityFile: (user: string, activityId: number): Promise<Uint8Array | null> =>
+      getBinary(user, `/download-service/files/activity/${activityId}`),
 
     getBodyBattery: async (user: string, startDate: Date, endDate: Date): Promise<GarminBodyBatteryData[]> =>
       (await get<GarminBodyBatteryData[]>(user, '/wellness-service/wellness/bodyBattery/reports/daily', {

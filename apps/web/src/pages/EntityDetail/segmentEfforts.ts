@@ -5,6 +5,7 @@ import { formatPace } from './format-utils'
 export interface SegmentEffortRow {
   key: string
   name: string
+  segment_id: string
   time: string
   pace?: string
   avg_hr?: string
@@ -28,6 +29,7 @@ export const segmentEffortRows = (efforts: ActivitySegmentEffort[] | undefined):
     best: effort.is_best,
     key: `${effort.segment_id}:${effort.start_offset_s}`,
     name: effort.segment_name,
+    segment_id: effort.segment_id,
     ...(formatPace(effort.pace_s_per_km) ? { pace: formatPace(effort.pace_s_per_km) } : {}),
     time: formatElapsed(effort.elapsed_s),
   }))

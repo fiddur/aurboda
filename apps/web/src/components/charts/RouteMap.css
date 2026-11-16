@@ -30,3 +30,8 @@
     border-color: #374151;
   }
 }
+
+/* The SVG stroke attribute cannot take a CSS variable; a class rule can. */
+.route-map-cut {
+  stroke: var(--color-accent);
+}

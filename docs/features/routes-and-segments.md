@@ -6,13 +6,13 @@ before" (routes), timing stretches you run often (segments), classifying runs
 instances. Built in five phases; this page is the design for all of them and says
 which parts exist.
 
-| Phase | What                                                | Status                                                                           |
-| ----- | --------------------------------------------------- | -------------------------------------------------------------------------------- |
-| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231)                                                                  |
-| 2     | Routes: matching, efforts over time                 | shipped (#1232)                                                                  |
-| 3     | Run features and rule-based categories              | shipped (#1233)                                                                  |
-| 4     | Segments: manual, timed efforts, suggestions        | manual segments and timed efforts shipped, pages and suggestions planned (#1234) |
-| 5     | Federated segment challenges                        | planned (#1235)                                                                  |
+| Phase | What                                                | Status                                                                                    |
+| ----- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231)                                                                           |
+| 2     | Routes: matching, efforts over time                 | shipped (#1232)                                                                           |
+| 3     | Run features and rule-based categories              | shipped (#1233)                                                                           |
+| 4     | Segments: manual, timed efforts, suggestions        | manual segments, timed efforts and the segment pages shipped, suggestions planned (#1234) |
+| 5     | Federated segment challenges                        | planned (#1235)                                                                           |
 
 ## Phase 1: activity tracks
 
@@ -64,7 +64,9 @@ equal timestamps and refuses a track with fewer than two distinct points.
 Stored raw records are enough to build tracks for history without new API calls:
 
 - **Garmin** keeps the full detail JSON in `raw_records` (`garmin_activity_detail`), so
-  the backfill is the same extractor over stored data: full resolution.
+  the backfill is the same extractor over stored data: full resolution. An activity synced
+  from its FIT file keeps only a summary (`garmin_activity_fit`) and is no candidate: its
+  track was written when the file was read.
 - **Strava** keeps the detailed activity (`strava_activity`) with `map.polyline`, a shape
   with no timestamps — streams were never stored. The backfill decodes it and spreads M
   evenly over the elapsed time, flagged `full_resolution = false`: good enough for route
@@ -370,9 +372,26 @@ start_offset_s, elapsed_s, avg_hr, pace_s_per_km, approximate, matched_at)`; see
 pace_s_per_km, approximate, is_best, rank }]` in time order, absent when there are none.
 - MCP: `list_segments`, `get_segment`, `create_segment`, `update_segment`, `delete_segment`,
   `match_segment`; `get_activity_detail` carries `segment_efforts`.
-- Web: the activity page lists the activity's efforts under its route: name, time, pace,
-  average heart rate, a "best" mark and "approximate" in muted text. The Android app embeds
-  the page. The `/segments` pages and creating a segment on the map are planned.
+- Web: the activity page lists the activity's efforts under its route: the segment's name
+  (a link to its page), time, pace, average heart rate, a "best" mark and "approximate" in
+  muted text. `/segments` lists the segments (type filter; sort by latest effort, most
+  efforts, length or name) with type, length, effort count, best time and the latest
+  effort's date. `/segments/:id` shows the line on a map, the type, length, effort count
+  and best time, a rename field, the elapsed time over the efforts (approximate ones left
+  out when there are timed ones), the efforts newest first (date linking to the activity,
+  time, pace, average heart rate, "★ best", "approximate"), the activity or route it was
+  cut from, "Time again" (`POST /segments/:id/match`) and Delete. `near_named_location`
+  is not shown until sharing exists.
+- Creating a segment in the web: on an activity with a stored track (not the raw-GPS
+  fallback the map uses without one), "Create segment" under the map opens two sliders,
+  Start and End, over the track's `t` (1 s steps, kept at least 1 s apart); the stretch is
+  drawn over the map in the accent colour, with its length and duration, an optional
+  name, Create and Cancel. On a route page the same panel takes "From km" and "To km"
+  (0.1 km steps). Create is disabled under 100 m (the server's rule, mirrored in
+  `apps/web/src/utils/segmentCut.ts`) and a refusal from the server is shown as it is
+  worded; a created segment opens its page. The Routes and Segments lists link to each
+  other, Segments is in the web navigation after Routes, and the Android app's More hub
+  embeds `/segments`.
 - **Privacy**: the create and get responses carry `near_named_location: { start, end }`, the
   named location within 500 m of each end, for the warning segment sharing (phase 5) will show.
   Nothing about segments is shared yet.

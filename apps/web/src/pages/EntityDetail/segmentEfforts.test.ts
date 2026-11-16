@@ -40,6 +40,7 @@ describe('segmentEffortRows', () => {
         key: '00000000-0000-4000-8000-000000000001:640',
         name: 'Hammarbybacken · 0.8 km',
         pace: '3:48 /km',
+        segment_id: '00000000-0000-4000-8000-000000000001',
         time: '3:02',
       },
       {
@@ -48,6 +49,7 @@ describe('segmentEffortRows', () => {
         key: '00000000-0000-4000-8000-000000000001:900',
         name: 'Hammarbybacken · 0.8 km',
         pace: '3:48 /km',
+        segment_id: '00000000-0000-4000-8000-000000000001',
         time: '3:02',
       },
     ])

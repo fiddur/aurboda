@@ -9,6 +9,7 @@ import { auth } from '../../state/auth'
 import { formatDistance } from '../EntityDetail/format-utils'
 import { ActivityTypeName } from './ActivityTypeName'
 import { routesQueryFromParams, searchFromRoutesQuery, typeDisplayName } from './format'
+import '../DataSources/style.css'
 import './style.css'
 
 const SORT_LABELS: Record<RouteSort, string> = {
@@ -68,6 +69,9 @@ export function Routes() {
         <p class="page-subtitle">
           Courses you have run more than once, recognised from GPS tracks. A route is the same course in the
           same direction and activity type.
+        </p>
+        <p class="segments-crosslink">
+          Looking for timed stretches? See <a href="/segments">Segments</a>.
         </p>
       </div>
 

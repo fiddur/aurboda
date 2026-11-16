@@ -60,7 +60,7 @@ const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
     type: 'activities',
     label: 'Activities (exercise with HR, VO2 max)',
     hc_note: 'Also available via Health Connect. Garmin adds VO2 max, activity type detail.',
-    key_note: 'Without per-second detail and GPS',
+    key_note: 'Per-second detail and GPS from the FIT file; strength sets need the Garmin login',
   },
   { type: 'spo2', label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
   { type: 'respiration', label: 'Respiration rate', href: '/metric/respiratory_rate' },
