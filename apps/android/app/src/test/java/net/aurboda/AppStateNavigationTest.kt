@@ -148,6 +148,30 @@ class AppStateNavigationTest {
     }
 
     @Test
+    fun `a deep link to a More page counts as a page link, also for the page already showing`() {
+        val state = appState(initialTab = MainTab.More, initialMoreDestination = MoreDestination.Web("/goals"))
+
+        state.open(DeepLink(MainTab.More, "/goals"))
+        assertEquals(1, state.morePageLinks)
+        assertEquals(MoreDestination.Web("/goals"), state.moreDestination)
+
+        state.open(DeepLink(MainTab.More, "/goals"))
+        assertEquals(2, state.morePageLinks)
+        assertEquals(MoreDestination.Web("/goals"), state.moreDestination)
+    }
+
+    @Test
+    fun `a deep link to a plain tab or the More hub is not a page link`() {
+        val state = appState(initialTab = MainTab.More)
+
+        state.open(DeepLink(MainTab.Feed))
+        state.open(DeepLink(MainTab.More))
+        state.openMoreDestination(MoreDestination.Web("/goals"))
+
+        assertEquals(0, state.morePageLinks)
+    }
+
+    @Test
     fun `deepLinkFrom decodes the launch extras`() {
         assertEquals(DeepLink(MainTab.More, "/goals"), deepLinkFrom(MainActivity.TAB_MORE, "/goals"))
         assertEquals(DeepLink(MainTab.Feed), deepLinkFrom(MainActivity.TAB_FEED, null))

@@ -55,7 +55,9 @@ a fresh WebView (with fresh history): `selectTab` bumps `AppState.tabReselection
 when the current tab is tapped again, and both embedded tabs are wrapped in
 `key(appState.tabReselections)`. The native Add and Sync tabs are not reset, so a
 half-filled form survives an accidental tap, and a notification or widget link to
-the tab already showing (`AppState.open`) switches tabs without reloading it.
+the tab already showing (`AppState.open`) switches tabs without reloading it. A
+link that names a More page is the exception: it always loads that page (see
+below).
 
 A tab can move from embedded to native later (e.g. if the feed becomes a heavily
 used, interaction-rich screen) without affecting the other tabs.
@@ -370,7 +372,11 @@ Widget taps and notification taps reach `MainActivity` as `EXTRA_OPEN_TAB` /
 `EXTRA_MORE_PATH` extras (`deepLinkFrom` in `AppState.kt`). On a cold start they
 pick the initial tab/page; because the activity is `singleTop`, a tap while the
 app is running arrives in `onNewIntent` and navigates the running app to the same
-place (`AppState.open`). `MoreDestination.Web` accepts either a site path or an
+place (`AppState.open`). A link with a More page always opens it in a fresh
+WebView, also when More already shows a page (even that same page):
+`AppState.open` bumps `AppState.morePageLinks`, and `MoreScreen` keys the
+embedded page on the path and that counter, because `EmbeddedWebScreen` loads its
+URL only when its WebView is built. `MoreDestination.Web` accepts either a site path or an
 absolute URL (`embeddedPageUrl`), so a joined challenge hosted elsewhere opens
 embedded too — its own in-page links open in the browser as any external link.
 Because the activity is exported, any app can send these extras, so `deepLinkFrom`
