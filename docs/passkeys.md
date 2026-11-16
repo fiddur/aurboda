@@ -146,6 +146,8 @@ A passkey is bound to the device or password manager that holds it.
 Losing access (broken phone, deleted credential) means losing that
 passkey.
 
+- **If you linked a sign-in provider** ([single sign-on](sso.md)), it
+  signs you in too; register a new passkey from Settings.
 - **If you signed up with a password**, password login is always
   available as a fallback. Sign in with the password, register a new
   passkey, optionally delete the old one.

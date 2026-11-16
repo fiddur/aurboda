@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
+import { apiErrorMessage } from '../state/api'
 import { deletePasskey, listPasskeys, registerPasskey, renamePasskey } from '../state/api/webauthn'
 import { SettingsSection } from './SettingsSection'
 
@@ -32,7 +33,11 @@ export function PasskeySettings({ recovered = false }: { recovered?: boolean }) 
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePasskey(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['passkeys'] }),
+    onError: (err) => setError(apiErrorMessage(err, 'The passkey could not be deleted')),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['passkeys'] })
+      void queryClient.invalidateQueries({ queryKey: ['oidcLinks'] })
+    },
   })
 
   const onRegister = async () => {
@@ -46,6 +51,7 @@ export function PasskeySettings({ recovered = false }: { recovered?: boolean }) 
     }
     setNickname('')
     queryClient.invalidateQueries({ queryKey: ['passkeys'] })
+    queryClient.invalidateQueries({ queryKey: ['oidcLinks'] })
   }
 
   const onRename = (id: string, current: string | null) => {
@@ -57,6 +63,7 @@ export function PasskeySettings({ recovered = false }: { recovered?: boolean }) 
 
   const onDelete = (id: string) => {
     if (window.confirm('Delete this passkey? You will not be able to use it to sign in anymore.')) {
+      setError(null)
       deleteMut.mutate(id)
     }
   }

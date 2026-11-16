@@ -32,7 +32,10 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
+import type { LoginMethodCounter } from '../services/login-methods.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
+import type { OidcProviderAdmin } from '../services/oidc-providers.ts'
+import type { OidcService } from '../services/oidc.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
@@ -60,6 +63,7 @@ import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypeCatalogRouter } from '../routes/activity-type-catalog-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
+import { createAdminOidcRouter } from '../routes/admin-oidc-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAgentsRouter } from '../routes/agents-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
@@ -94,6 +98,7 @@ import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
+import { createOidcRouter } from '../routes/oidc-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
@@ -182,6 +187,9 @@ interface RestRoutesDeps {
   ouraWebhookManager: OuraWebhookManager
   auth: Auth
   webAuthn: WebAuthnService
+  /** Sign-in through OpenID Connect providers and the admin's management of them. */
+  oidc: { service: OidcService; providers: OidcProviderAdmin }
+  loginMethods: LoginMethodCounter
   wellKnown: WellKnownConfig
   userDb: Client
   feedDeliver: FeedDeliver
@@ -273,6 +281,8 @@ export const mountRestRouters = ({
   ouraWebhookManager,
   auth,
   webAuthn,
+  oidc,
+  loginMethods,
   wellKnown,
   userDb,
 }: RestRoutesDeps): void => {
@@ -293,6 +303,8 @@ export const mountRestRouters = ({
   httpd.use('/sensitivity-flags', createSensitivityFlagsRouter(authMiddleware))
   httpd.use('/nutrient-recommendations', createNutrientRecommendationsRouter(authMiddleware))
   httpd.use('/admin/imports', createImportsRouter(authMiddleware, adminMiddleware, centralDb))
+  httpd.use('/admin/oidc-providers', createAdminOidcRouter(authMiddleware, adminMiddleware, oidc.providers))
+  httpd.use(createOidcRouter(authMiddleware, oidc.service))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
     createActivitiesRouter(
@@ -477,6 +489,7 @@ export const mountRestRouters = ({
       authMiddleware,
       centralDb,
       invitationAuth,
+      loginMethods,
       startEmailVerification,
       userDb,
       webAuthn,

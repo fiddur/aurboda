@@ -42,6 +42,7 @@ const buildApp = (
     auth?: Partial<Auth>
     centralDb?: Partial<CentralDb>
     authenticatedUser?: string | null
+    loginMethods?: number
   } = {},
 ) => {
   const app = express()
@@ -72,6 +73,7 @@ const buildApp = (
       invitationAuth: {
         validateInvitationToken: vi.fn(() => ({ valid: true })),
       } as unknown as InvitationAuth,
+      loginMethods: options.loginMethods === undefined ? undefined : async () => options.loginMethods!,
       userDb: {} as Client,
       webAuthn: webAuthn as WebAuthnService,
     }),
@@ -656,6 +658,27 @@ describe('DELETE /webauthn/credentials/:id', () => {
       deleteCredential: vi.fn(async () => true),
     }
     const app = buildApp(webAuthn, { authenticatedUser: 'alice' })
+    const res = await supertest(app).delete('/webauthn/credentials/cred-1')
+    expect(res.status).toBe(200)
+  })
+
+  test('409 when it is the last way to log in', async () => {
+    const webAuthn: Partial<WebAuthnService> = {
+      deleteCredential: vi.fn(async () => true),
+      listCredentials: vi.fn(async () => [{ credential_id: 'cred-1' }] as never),
+    }
+    const app = buildApp(webAuthn, { authenticatedUser: 'alice', loginMethods: 1 })
+    const res = await supertest(app).delete('/webauthn/credentials/cred-1')
+    expect(res.status).toBe(409)
+    expect(webAuthn.deleteCredential).not.toHaveBeenCalled()
+  })
+
+  test('deletes when another way to log in is left', async () => {
+    const webAuthn: Partial<WebAuthnService> = {
+      deleteCredential: vi.fn(async () => true),
+      listCredentials: vi.fn(async () => [{ credential_id: 'cred-1' }] as never),
+    }
+    const app = buildApp(webAuthn, { authenticatedUser: 'alice', loginMethods: 2 })
     const res = await supertest(app).delete('/webauthn/credentials/cred-1')
     expect(res.status).toBe(200)
   })

@@ -19,6 +19,7 @@ Key areas covered by MCP tools:
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
+- **Single sign-on** (admins) -- `list_oidc_providers`, `add_oidc_provider`, `update_oidc_provider`, `delete_oidc_provider` ([sso.md](sso.md))
 
 ### Tool discovery
 

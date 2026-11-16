@@ -25,6 +25,9 @@ export const deleteAdminRow = deleteWhereUsername('admins')
 export const deleteOAuthAuthorizationCodes = deleteWhereUsername('oauth_authorization_codes')
 export const deleteOAuthTokens = deleteWhereUsername('oauth_tokens')
 export const deleteWebAuthnUserHandleRow = deleteWhereUsername('webauthn_user_handles')
+export const deleteOidcLinkRows = deleteWhereUsername('oidc_links')
+export const deleteOidcFlowRows = deleteWhereUsername('oidc_flows')
+export const deleteOidcCodeRows = deleteWhereUsername('oidc_codes')
 export const deleteOuraUserMappingRows = deleteWhereUsername('oura_user_mappings')
 export const deleteStravaAthleteMappingRows = deleteWhereUsername('strava_athlete_mappings')
 export const deleteUserAccountRow = deleteWhereUsername('user_accounts')
@@ -44,6 +47,9 @@ export const CENTRAL_USER_DELETES: Record<string, CentralUserDelete> = {
   import_jobs: forgetImportJobStarter,
   oauth_authorization_codes: deleteOAuthAuthorizationCodes,
   oauth_tokens: deleteOAuthTokens,
+  oidc_codes: deleteOidcCodeRows,
+  oidc_flows: deleteOidcFlowRows,
+  oidc_links: deleteOidcLinkRows,
   oura_user_mappings: deleteOuraUserMappingRows,
   public_tag_posts: deleteLocalPublicTagPosts,
   strava_athlete_mappings: deleteStravaAthleteMappingRows,

@@ -37,7 +37,9 @@ and REST only, like `/login`.
    minutes**, and only while the address it went to is still the account's verified email. Asking
    again replaces the earlier link.
 4. On that page, either
-   - **Set a new password** (typed twice), which also clears the account's failed sign-in count, or
+   - **Set a new password** (typed twice), which also clears the account's failed sign-in count and
+     makes the password a way in again for an account created through a
+     [sign-in provider](sso.md), or
    - **Sign in and add a new passkey**, which changes nothing about the password and takes you to
      **Settings → Passkeys** to register a new one (and delete the lost ones).
 

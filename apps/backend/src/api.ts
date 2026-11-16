@@ -6,7 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
-import { isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
+import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
@@ -49,6 +49,7 @@ import {
   listUserNames,
   loginToUserDb,
   setUserPassword,
+  getWebAuthnCredentialsForUser,
   markChallengeResultPublished,
   markEnrichTransientFailure,
   migrateAllUsers,
@@ -97,6 +98,7 @@ import { startVerification } from './services/account-email.ts'
 import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
 import { backfillAccounts, createAccountPlans, readBillingSettings } from './services/account-plan.ts'
 import { createAccountRecovery } from './services/account-recovery.ts'
+import { createAccount, isUsernameTaken } from './services/account-signup.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -186,6 +188,7 @@ import {
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
+import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
 import { notificationStore, notifier } from './services/notifications.ts'
 import {
@@ -193,6 +196,9 @@ import {
   officialRemoteHandles,
   readOfficialFeedSetting,
 } from './services/official-feed.ts'
+import { allowHttpIssuer, createDiscoveryCache, createOidcClient } from './services/oidc-client.ts'
+import { createOidcProviderAdmin, oidcRedirectUri } from './services/oidc-providers.ts'
+import { createOidcService } from './services/oidc.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { createPublicTagModeration } from './services/public-tag-moderation.ts'
@@ -638,7 +644,10 @@ const main = async () => {
     isValidUsername,
     mailer,
     recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
-    setPassword: (user, password) => setUserPassword(userDb, user, password),
+    setPassword: async (user, password) => {
+      await setUserPassword(userDb, user, password)
+      await centralDb.setPasswordLogin(user, true)
+    },
     verificationLimiter: createTokenBucketLimiter(RATE_LIMITS.verification_mails, Date.now),
     webHost,
   })
@@ -648,6 +657,38 @@ const main = async () => {
     sendVerification: accountRecovery.sendVerification,
   }
   const startEmailVerification = (user: string) => startVerification(accountEmail, user)
+
+  const loginMethods = createLoginMethodCounter({
+    countOidcLinks: centralDb.countOidcLinks,
+    countPasskeys: async (user) => (await getWebAuthnCredentialsForUser(user)).length,
+    getPasswordLogin: centralDb.getPasswordLogin,
+  })
+  const oidcClient = createOidcClient({ allowHttp: allowHttpIssuer() })
+  const oidcRedirect = oidcRedirectUri(apiBaseUrl)
+  const signupDeps = accountSignupDeps({ auth, centralDb, invitationAuth, startEmailVerification, userDb })
+  const oidc = {
+    providers: createOidcProviderAdmin({
+      allowHttp: allowHttpIssuer(),
+      loginMethods,
+      redirectUri: oidcRedirect,
+      store: centralDb,
+      verifyIssuer: async (issuer, clientId, clientSecret) => {
+        await oidcClient.discover(issuer, clientId, clientSecret)
+      },
+    }),
+    service: createOidcService({
+      createAccount: (input) => createAccount(signupDeps, input),
+      createSessionToken: (user) => auth.createToken(user),
+      discover: createDiscoveryCache(oidcClient),
+      invitationAuth,
+      loginMethods,
+      redirectUri: oidcRedirect,
+      startEmailVerification,
+      store: centralDb,
+      usernameTaken: (user) => isUsernameTaken(signupDeps, user),
+      webHost,
+    }),
+  }
 
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
@@ -1137,6 +1178,7 @@ const main = async () => {
       runNotificationAction: notificationActionRunner,
       skipAutoshare: skipAutoshareActivity,
       relayActions,
+      oidcProviders: oidc.providers,
       postUpdateResender,
       centralDb,
       previewArticle,
@@ -1358,6 +1400,8 @@ const main = async () => {
     timelineHub,
     userDb,
     webAuthn,
+    oidc,
+    loginMethods,
     webHost,
     webIndexPath,
     wellKnown,

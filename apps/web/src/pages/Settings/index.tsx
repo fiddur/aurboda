@@ -7,6 +7,7 @@ import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../..
 import { AvatarSettings } from '../../components/AvatarSettings'
 import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
+import { LinkedProvidersSettings } from '../../components/LinkedProvidersSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { NotificationSettings } from '../../components/NotificationSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
@@ -364,6 +365,11 @@ export function Settings() {
       <MealPreferencesSettings />
 
       <PasskeySettings recovered={query.recovered === 'passkey'} />
+
+      <LinkedProvidersSettings
+        linked={query.oidc === 'linked'}
+        linkError={typeof query.oidc_error === 'string' ? query.oidc_error : undefined}
+      />
 
       <section class="settings-section">
         <p class="section-description">
