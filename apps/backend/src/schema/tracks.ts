@@ -97,4 +97,28 @@ export const tracksTables: Record<string, string> = {
   segment_efforts_indexes: `
     CREATE INDEX IF NOT EXISTS idx_segment_efforts_activity ON segment_efforts (activity_id)
   `,
+  // A stretch several activities pass, offered as a segment. A dismissed or promoted row is
+  // kept so the same stretch is never suggested again.
+  suggested_segments: `
+    CREATE TABLE IF NOT EXISTS suggested_segments (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      activity_type       VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
+      geom                GEOMETRY(LINESTRING, 4326) NOT NULL,
+      length_m            DOUBLE PRECISION NOT NULL,
+      activity_count      INTEGER NOT NULL,
+      source_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
+      status              VARCHAR(20) NOT NULL DEFAULT 'pending',
+      segment_id          UUID REFERENCES segments(id) ON DELETE SET NULL,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      decided_at          TIMESTAMPTZ
+    )
+  `,
+  suggested_segments_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_suggested_segments_geom ON suggested_segments USING GIST (geom)
+  `,
+  // When segment suggestion last looked at the activity's tracks; NULL means not yet.
+  // Cleared when a track is rewritten. Additive (idempotent).
+  activity_tracks_segments_suggested_at: `
+    ALTER TABLE activity_tracks ADD COLUMN IF NOT EXISTS segments_suggested_at TIMESTAMPTZ
+  `,
 }

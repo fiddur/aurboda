@@ -33,6 +33,7 @@ const makeDeps = () => ({
   matchRoute: vi.fn(async () => undefined),
   matchSegments: vi.fn(async () => undefined),
   notify: vi.fn(),
+  suggestSegments: vi.fn(async () => undefined),
 })
 
 describe('analyseTrack', () => {
@@ -40,7 +41,7 @@ describe('analyseTrack', () => {
     vi.clearAllMocks()
   })
 
-  test('matches the route, computes features, times segments, seeds the rules for the type and notifies the span', async () => {
+  test('matches the route, computes features, times segments, suggests segments, seeds the rules for the type and notifies the span', async () => {
     const order: string[] = []
     const deps = {
       computeFeatures: vi.fn(async () => {
@@ -59,11 +60,14 @@ describe('analyseTrack', () => {
       notify: vi.fn(() => {
         order.push('notify')
       }),
+      suggestSegments: vi.fn(async () => {
+        order.push('suggest')
+      }),
     }
 
     await analyseTrack('alice', 'a1', deps)
 
-    expect(order).toEqual(['route', 'features', 'segments', 'rules', 'notify'])
+    expect(order).toEqual(['route', 'features', 'segments', 'suggest', 'rules', 'notify'])
     expect(deps.ensureDefaultRules).toHaveBeenCalledWith('alice', 'running')
     expect(deps.notify).toHaveBeenCalledWith('alice', 'running', start, end)
   })
@@ -134,9 +138,10 @@ describe('analyseTrack', () => {
       ensureDefaultRules: vi.fn(async () => Promise.reject(new Error('seed'))),
       matchRoute: vi.fn(async () => Promise.reject(new Error('route'))),
       matchSegments: vi.fn(async () => Promise.reject(new Error('segment'))),
+      suggestSegments: vi.fn(async () => Promise.reject(new Error('suggest'))),
     }
 
-    await expect(analyseTrack('alice', 'a1', deps)).rejects.toThrow(/route.*segment.*seed/)
+    await expect(analyseTrack('alice', 'a1', deps)).rejects.toThrow(/route.*segment.*suggest.*seed/)
     expect(deps.notify).toHaveBeenCalled()
   })
 })

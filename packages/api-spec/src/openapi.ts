@@ -154,11 +154,14 @@ import {
 } from './schemas/routes.ts'
 import {
   createSegmentBodySchema,
+  promoteSuggestedSegmentBodySchema,
   segmentDetailResponseSchema,
   segmentMatchResponseSchema,
   segmentResponseSchema,
   segmentsQuerySchema,
   segmentsResponseSchema,
+  suggestedSegmentScanResponseSchema,
+  suggestedSegmentsResponseSchema,
   updateSegmentBodySchema,
 } from './schemas/segments.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
@@ -901,6 +904,90 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Create segment',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/suggested': {
+      get: {
+        description:
+          'Pending suggested segments: stretches at least three activities of one type pass in the same direction on different routes. Most activities first, then longest.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: suggestedSegmentsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List suggested segments',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/suggested/scan': {
+      post: {
+        description:
+          'Look through tracked activities not yet looked at for stretches passed often, for up to about 20 seconds. Run again while remaining > 0.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: suggestedSegmentScanResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Scan for suggested segments',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/suggested/{id}/promote': {
+      post: {
+        description:
+          'Add a pending suggestion as a segment, optionally trimmed to start_km–end_km and named; every tracked activity of its type is timed on it. Refused like creating a segment (under 100 m, ends under 50 m apart, outside the line).',
+        requestBody: {
+          content: { 'application/json': { schema: promoteSuggestedSegmentBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Suggested segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentDetailResponseSchema } },
+            description: 'The new segment with its efforts',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The segment cannot be cut as asked',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No pending suggestion with this ID',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add suggested segment',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/suggested/{id}/dismiss': {
+      post: {
+        description: 'Dismiss a pending suggestion. The stretch is not suggested again.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Suggested segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No pending suggestion with this ID',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Dismiss suggested segment',
         tags: ['Segments'],
       },
     },

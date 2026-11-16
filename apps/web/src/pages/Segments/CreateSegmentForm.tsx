@@ -1,4 +1,4 @@
-import type { CreateSegmentBody } from '@aurboda/api-spec'
+import type { CreateSegmentBody, SegmentDetail } from '@aurboda/api-spec'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
@@ -10,22 +10,35 @@ import { formatDistance } from '../EntityDetail/format-utils'
 import { formatElapsed } from '../Routes/format'
 import './style.css'
 
-interface CreateSegmentFormProps {
-  /** The cut to create, without its name. */
-  cut: Omit<CreateSegmentBody, 'name'>
+type CreateSegmentFormProps = {
   lengthM: number
   durationS?: number
   onCancel: () => void
-}
+} & (
+  | {
+      /** The cut to create, without its name. */
+      cut: Omit<CreateSegmentBody, 'name'>
+    }
+  | {
+      /** Creates the segment some other way (adding a suggestion). */
+      submit: (name: string | undefined) => Promise<SegmentDetail>
+    }
+)
 
-/** The shared foot of both create panels: length line, name, Create and Cancel. */
-export const CreateSegmentForm = ({ cut, lengthM, durationS, onCancel }: CreateSegmentFormProps) => {
+/** The shared foot of the create panels: length line, name, Create and Cancel. */
+export const CreateSegmentForm = (props: CreateSegmentFormProps) => {
+  const { lengthM, durationS, onCancel } = props
   const queryClient = useQueryClient()
   const { route: navigate } = useLocation()
   const [name, setName] = useState('')
 
   const createMutation = useMutation({
-    mutationFn: () => createSegment({ ...cut, ...(name.trim() ? { name: name.trim() } : {}) }),
+    mutationFn: () => {
+      const given = name.trim() || undefined
+      return 'submit' in props
+        ? props.submit(given)
+        : createSegment({ ...props.cut, ...(given ? { name: given } : {}) })
+    },
     onSuccess: (segment) => {
       queryClient.invalidateQueries({ queryKey: ['segments'] })
       queryClient.invalidateQueries({ queryKey: ['entity-detail', 'activity'] })

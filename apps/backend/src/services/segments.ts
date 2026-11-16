@@ -13,6 +13,7 @@ import type {
   ActivitySegmentEffortRow,
   SegmentEffortInput,
   SegmentEffortRow,
+  SegmentLine,
   SegmentLineResult,
   SegmentRecord,
   TimingTrack,
@@ -39,9 +40,12 @@ import {
 } from '../db/segments.ts'
 import { getMetricMeansForWindows } from '../db/time-series.ts'
 import { auditError } from './audit-log.ts'
+import { haversineDistance } from './locations.ts'
 import { findSegmentPasses } from './segment-timing.ts'
 
 export const MIN_SEGMENT_LENGTH_M = 100
+/** Twice the buffer: closer ends put a point near the end onto the first edge, so no pass is ever timed. */
+export const MIN_SEGMENT_END_GAP_M = 2 * SEGMENT_BUFFER_M
 const NAMING_RADIUS_M = 500
 /** Keeps the name inside segments.name's VARCHAR(255) whatever the place is called. */
 const MAX_PLACE_CHARS = 200
@@ -288,11 +292,7 @@ const LINE_ERRORS = {
   },
 } as const
 
-/**
- * Cuts the segment from an activity's track (seconds since its start) or a route (km),
- * refuses one under 100 m, names it after the nearest named place when none is given,
- * and times every tracked activity of its type on it before returning it.
- */
+/** Cuts the line from an activity's track (seconds since its start) or a route (km) and creates the segment from it. */
 export const createSegment = async (
   user: string,
   body: CreateSegmentBody,
@@ -320,23 +320,51 @@ export const createSegment = async (
     }
   }
   if (!result.ok) return { error: LINE_ERRORS[fromActivity ? 'activity' : 'route'][result.reason], ok: false }
-  const { line } = result
+  return createSegmentFromLine(
+    user,
+    result.line,
+    {
+      name: body.name,
+      ...(fromActivity
+        ? { created_from_activity_id: body.activity_id }
+        : { created_from_route_id: body.route_id }),
+    },
+    deps,
+  )
+}
+
+/**
+ * What creating a segment does once it has its line: refuses one under 100 m or with its ends
+ * closer than 50 m, names it after the nearest named place when no name is given, stores it and
+ * times every tracked activity of its type on it before returning it.
+ */
+export const createSegmentFromLine = async (
+  user: string,
+  line: SegmentLine,
+  origin: { name?: string; created_from_activity_id?: string; created_from_route_id?: string },
+  deps: SegmentDeps,
+): Promise<CreateSegmentResult> => {
   if (line.length_m < MIN_SEGMENT_LENGTH_M) {
     return {
       error: `A segment must be at least ${MIN_SEGMENT_LENGTH_M} m long (this one is ${Math.round(line.length_m)} m)`,
       ok: false,
     }
   }
-  const nearby = body.name
+  if (haversineDistance(line.start.lat, line.start.lon, line.end.lat, line.end.lon) < MIN_SEGMENT_END_GAP_M) {
+    return {
+      error: `A segment's start and end must be at least ${MIN_SEGMENT_END_GAP_M} m apart: a closed loop cannot be timed.`,
+      ok: false,
+    }
+  }
+  const nearby = origin.name
     ? null
     : await deps.findNearbyNamedLocation(user, line.start.lat, line.start.lon, NAMING_RADIUS_M)
   const id = await deps.insertSegment(user, {
     activity_type: line.activity_type,
-    name: body.name ?? segmentName(nearby, line.length_m),
+    name: origin.name ?? segmentName(nearby, line.length_m),
     wkt: line.wkt,
-    ...(fromActivity
-      ? { created_from_activity_id: body.activity_id }
-      : { created_from_route_id: body.route_id }),
+    ...(origin.created_from_activity_id ? { created_from_activity_id: origin.created_from_activity_id } : {}),
+    ...(origin.created_from_route_id ? { created_from_route_id: origin.created_from_route_id } : {}),
   })
   await matchSegment(user, id, deps)
   const segment = await getSegmentDetail(user, id, deps)

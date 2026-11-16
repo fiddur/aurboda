@@ -168,6 +168,7 @@ CREATE TABLE activity_tracks (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     route_matched_at TIMESTAMPTZ,                            -- route matching tried; NULL again on rewrite or retype
+    segments_suggested_at TIMESTAMPTZ,                       -- segment suggestion looked at it; NULL again on rewrite
     PRIMARY KEY (activity_id, source)
 );
 
@@ -281,6 +282,31 @@ One row per pass, so hill repeats give several. Deleting a segment deletes it ou
 efforts with it. Effort counts, best times and ranks are derived when read: passes of one
 session recorded by several sources (rows or tracks overlapping in time) count once, the
 non-approximate one kept.
+
+#### `suggested_segments` - Stretches Offered as Segments (PostGIS)
+
+A stretch at least three activities of one type pass in the same direction on different routes,
+offered to add as a segment or dismiss. See
+[Routes and segments](./features/routes-and-segments.md#suggested-segments).
+
+```sql
+CREATE TABLE suggested_segments (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_type       VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
+    geom                GEOMETRY(LINESTRING, 4326) NOT NULL,
+    length_m            DOUBLE PRECISION NOT NULL,
+    activity_count      INTEGER NOT NULL,                -- the activities passing it, the source one included
+    source_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending | dismissed | promoted
+    segment_id          UUID REFERENCES segments(id) ON DELETE SET NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    decided_at          TIMESTAMPTZ
+);
+CREATE INDEX idx_suggested_segments_geom ON suggested_segments USING GIST (geom);
+```
+
+Dismissed and promoted rows are kept, so the same stretch is never suggested again, also after
+the promoted segment is deleted.
 
 #### `places` - Named Locations/Geofences
 

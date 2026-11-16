@@ -1,17 +1,29 @@
 import type { SegmentSort } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 
-import { fetchActivityTypeDefinitions, fetchSegments } from '../../state/api'
+import {
+  fetchActivityTypeDefinitions,
+  fetchSegments,
+  fetchSuggestedSegments,
+  scanSuggestedSegments,
+} from '../../state/api'
 import { auth } from '../../state/auth'
 import { formatDistance } from '../EntityDetail/format-utils'
 import { ActivityTypeName } from '../Routes/ActivityTypeName'
 import { formatElapsed, typeDisplayName } from '../Routes/format'
 import '../DataSources/style.css'
 import '../Routes/style.css'
-import { formatEffortCount, searchFromSegmentsQuery, segmentsQueryFromParams } from './format'
+import {
+  formatEffortCount,
+  formatScanTotals,
+  searchFromSegmentsQuery,
+  segmentsQueryFromParams,
+  shouldScanAgain,
+} from './format'
+import { SUGGESTED_QUERY_KEY, SuggestedSegments } from './SuggestedSegments'
 import './style.css'
 
 const SORT_LABELS: Record<SegmentSort, string> = {
@@ -19,6 +31,44 @@ const SORT_LABELS: Record<SegmentSort, string> = {
   efforts: 'Most efforts',
   length: 'Longest',
   alphabetical: 'Name',
+}
+
+/** Scans until nothing is left (or a run gets through nothing), then says what it found. */
+function ScanButton() {
+  const queryClient = useQueryClient()
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const totals = { scanned: 0, suggested: 0 }
+      for (;;) {
+        const result = await scanSuggestedSegments()
+        totals.scanned += result.scanned
+        totals.suggested += result.suggested
+        if (!shouldScanAgain(result)) return totals
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: SUGGESTED_QUERY_KEY }),
+  })
+  return (
+    <div class="suggested-segments-scan">
+      <button
+        type="button"
+        class="segments-quiet-button"
+        disabled={scanMutation.isPending}
+        onClick={() => scanMutation.mutate()}
+      >
+        Look for stretches I pass often
+      </button>
+      {scanMutation.isPending && (
+        <span class="suggested-segments-scan-status">Looking through your activities…</span>
+      )}
+      {scanMutation.isSuccess && (
+        <span class="suggested-segments-scan-status">{formatScanTotals(scanMutation.data)}</span>
+      )}
+      {scanMutation.isError && (
+        <span class="suggested-segments-scan-status segment-create-error">Could not look through them.</span>
+      )}
+    </div>
+  )
 }
 
 export function Segments() {
@@ -36,6 +86,11 @@ export function Segments() {
     enabled,
     queryFn: () => fetchSegments(),
     queryKey: ['segments'],
+  })
+  const { data: suggestions = [] } = useQuery({
+    enabled,
+    queryFn: fetchSuggestedSegments,
+    queryKey: SUGGESTED_QUERY_KEY,
   })
   const { data: definitions = [] } = useQuery({
     enabled,
@@ -77,6 +132,8 @@ export function Segments() {
         </p>
       </div>
 
+      <SuggestedSegments suggestions={suggestions} />
+
       <div class="routes-controls">
         <label>
           Type
@@ -112,7 +169,7 @@ export function Segments() {
         <p class="routes-empty">
           {segmentsQuery.activity_type
             ? `No ${typeDisplayName(segmentsQuery.activity_type, definitions)} segments.`
-            : "No segments yet. A segment is a stretch that is timed on every pass. Create one from an activity's map or from a route."}
+            : "No segments yet. A segment is a stretch that is timed on every pass. Create one from an activity's map or from a route. Or let Aurboda look for stretches you pass often with the button below."}
         </p>
       )}
 
@@ -136,6 +193,8 @@ export function Segments() {
           ))}
         </div>
       )}
+
+      <ScanButton />
     </div>
   )
 }

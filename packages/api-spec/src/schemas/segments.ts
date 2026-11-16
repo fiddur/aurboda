@@ -232,3 +232,89 @@ export const segmentMatchResponseSchema = createDataResponseSchema(segmentMatchR
 })
 
 export type SegmentMatchResponse = z.infer<typeof segmentMatchResponseSchema>
+
+export const suggestedSegmentSchema = z
+  .object({
+    activity_count: z.number().int().meta({
+      description:
+        'Activities that pass the stretch in the same direction (not counting runs of one route twice)',
+    }),
+    activity_type: z.string().meta({ description: 'Activity type of the activities that pass it' }),
+    created_at: iso8601DateTimeSchema,
+    id: z.string().uuid().meta({ description: 'Suggested segment ID' }),
+    length_m: z.number().meta({ description: 'Length in metres' }),
+    near_name: z
+      .string()
+      .nullable()
+      .meta({ description: 'The named location within 500 m of its start, if any' }),
+    points: z.array(routePointSchema).meta({ description: 'The suggested line, from start to end' }),
+    source_activity_id: z.string().uuid().nullable().meta({
+      description: 'The activity whose track the line was cut from',
+    }),
+  })
+  .meta({
+    description:
+      'A stretch at least three activities of one type pass in the same direction, on different routes: offered as a segment to add or dismiss',
+    id: 'SuggestedSegment',
+  })
+
+export type SuggestedSegment = z.infer<typeof suggestedSegmentSchema>
+
+export const suggestedSegmentsResponseSchema = createDataArrayResponseSchema(suggestedSegmentSchema).meta({
+  id: 'SuggestedSegmentsResponse',
+})
+
+export type SuggestedSegmentsResponse = z.infer<typeof suggestedSegmentsResponseSchema>
+
+export const promoteSuggestedSegmentBodySchema = z
+  .object({
+    end_km: z
+      .number()
+      .nonnegative()
+      .optional()
+      .meta({ description: 'Trim: where the segment ends on the suggested line, km (with start_km)' }),
+    name: z.string().trim().min(1).max(255).optional().meta({
+      description: 'Segment name; defaults to a nearby named place and the length',
+    }),
+    start_km: z
+      .number()
+      .nonnegative()
+      .optional()
+      .meta({ description: 'Trim: where the segment starts on the suggested line, km (with end_km)' }),
+  })
+  .superRefine((body, ctx) => {
+    if ((body.start_km === undefined) !== (body.end_km === undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'start_km and end_km must be given together' })
+      return
+    }
+    if (body.start_km !== undefined && body.end_km !== undefined && body.end_km <= body.start_km) {
+      ctx.addIssue({ code: 'custom', message: 'end must be after start', path: ['end_km'] })
+    }
+  })
+  .meta({
+    description:
+      'Add a suggested segment as a segment: the whole line, or the part between start_km and end_km, named or auto-named',
+    id: 'PromoteSuggestedSegmentBody',
+  })
+
+export type PromoteSuggestedSegmentBody = z.infer<typeof promoteSuggestedSegmentBodySchema>
+
+export const suggestedSegmentScanResultSchema = z
+  .object({
+    remaining: z.number().int().meta({ description: 'Tracked activities still to look through' }),
+    scanned: z.number().int().meta({ description: 'Activities looked through in this run' }),
+    suggested: z.number().int().meta({ description: 'New suggestions found' }),
+  })
+  .meta({
+    description:
+      'Counts from one run looking for stretches passed often (limited in time; run again while remaining > 0)',
+    id: 'SuggestedSegmentScanResult',
+  })
+
+export type SuggestedSegmentScanResult = z.infer<typeof suggestedSegmentScanResultSchema>
+
+export const suggestedSegmentScanResponseSchema = createDataResponseSchema(
+  suggestedSegmentScanResultSchema,
+).meta({ id: 'SuggestedSegmentScanResponse' })
+
+export type SuggestedSegmentScanResponse = z.infer<typeof suggestedSegmentScanResponseSchema>

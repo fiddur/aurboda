@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest'
 
 import type { SegmentOps } from '../services/segments.ts'
+import type { SuggestedSegmentOps } from '../services/suggested-segments.ts'
 import type { McpServer } from './helpers.ts'
 
 import { registerSegmentTools } from './segment-tools.ts'
@@ -30,7 +31,10 @@ const detail = {
   points: [],
 }
 
-const setup = (overrides: Partial<SegmentOps> = {}) => {
+const setup = (
+  overrides: Partial<SegmentOps> = {},
+  suggestedOverrides: Partial<SuggestedSegmentOps> = {},
+) => {
   const ops: SegmentOps = {
     create: vi.fn(async () => ({ ok: true as const, segment: detail })),
     detail: vi.fn(async () => null),
@@ -40,14 +44,21 @@ const setup = (overrides: Partial<SegmentOps> = {}) => {
     rename: vi.fn(async () => ({ ...segment, name: 'The hill' })),
     ...overrides,
   }
+  const suggestedOps: SuggestedSegmentOps = {
+    dismiss: vi.fn(async () => true),
+    list: vi.fn(async () => []),
+    promote: vi.fn(async () => ({ ok: true as const, segment: detail })),
+    scan: vi.fn(async () => ({ remaining: 2, scanned: 10, suggested: 1 })),
+    ...suggestedOverrides,
+  }
   const tools = new Map<string, ToolHandler>()
   const server = {
     tool: (name: string, _desc: string, _shape: unknown, handler: ToolHandler) => tools.set(name, handler),
   } as unknown as McpServer
-  registerSegmentTools(server, 'alice', ops)
+  registerSegmentTools(server, 'alice', ops, suggestedOps)
   const call = async (name: string, params: Record<string, unknown> = {}) =>
     (await tools.get(name)!(params)).content[0]!.text
-  return { call, ops, tools }
+  return { call, ops, suggestedOps, tools }
 }
 
 describe('segment MCP tools', () => {
@@ -55,9 +66,13 @@ describe('segment MCP tools', () => {
     expect([...setup().tools.keys()].sort()).toEqual([
       'create_segment',
       'delete_segment',
+      'dismiss_suggested_segment',
       'get_segment',
       'list_segments',
+      'list_suggested_segments',
       'match_segment',
+      'promote_suggested_segment',
+      'scan_suggested_segments',
       'update_segment',
     ])
   })
@@ -116,5 +131,35 @@ describe('segment MCP tools', () => {
     expect(await call('delete_segment', { id: 's1' })).toBe('Segment not found')
     expect(await call('match_segment', { id: 's1' })).toBe('Segment not found')
     expect(await call('update_segment', { id: 's1', name: 'x' })).toBe('Segment not found')
+  })
+
+  test('the suggested segment tools pass through, validate the trim and report a missing suggestion', async () => {
+    const { call, suggestedOps } = setup()
+    expect(JSON.parse(await call('list_suggested_segments', { tz: 'UTC' })).data).toEqual([])
+    expect(JSON.parse(await call('scan_suggested_segments')).data).toEqual({
+      remaining: 2,
+      scanned: 10,
+      suggested: 1,
+    })
+
+    expect(await call('promote_suggested_segment', { id: 'g1', start_km: 0.2 })).toBe(
+      'start_km and end_km must be given together',
+    )
+    expect(suggestedOps.promote).not.toHaveBeenCalled()
+    expect(
+      JSON.parse(await call('promote_suggested_segment', { end_km: 1, id: 'g1', start_km: 0.2 })).data.id,
+    ).toBe('s1')
+    expect(suggestedOps.promote).toHaveBeenCalledWith('alice', 'g1', { end_km: 1, start_km: 0.2 })
+    expect(JSON.parse(await call('dismiss_suggested_segment', { id: 'g1' }))).toEqual({ success: true })
+
+    const missing = setup({}, { dismiss: vi.fn(async () => false), promote: vi.fn(async () => null) })
+    expect(await missing.call('promote_suggested_segment', { id: 'g1' })).toBe(
+      'No pending suggested segment with this ID',
+    )
+    expect(await missing.call('dismiss_suggested_segment', { id: 'g1' })).toBe(
+      'No pending suggested segment with this ID',
+    )
+    const refused = setup({}, { promote: vi.fn(async () => ({ error: 'too short', ok: false as const })) })
+    expect(await refused.call('promote_suggested_segment', { id: 'g1' })).toBe('too short')
   })
 })

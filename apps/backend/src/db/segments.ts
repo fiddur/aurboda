@@ -13,13 +13,13 @@ export const SEGMENT_BUFFER_M = 25
 export const SEGMENT_COVERAGE_THRESHOLD = 0.9
 
 /** Degrees added around a bbox when looking for candidates (~100–200 m). */
-const BBOX_EXPAND_DEG = 0.002
+export const BBOX_EXPAND_DEG = 0.002
 
 /** ~3 m: a line cut from a full-resolution track keeps its shape but loses its sample noise. */
 const CUT_SIMPLIFY_DEG = 0.00003
 
 /** How far past a route's end a requested end km may reach (a rounded length) before it is refused. */
-const ROUTE_END_TOLERANCE_M = 50
+export const ROUTE_END_TOLERANCE_M = 50
 
 export interface SegmentLine {
   activity_type: string
@@ -84,7 +84,7 @@ export interface TimingTrack {
   points: { lat: number; lon: number; t: number }[]
 }
 
-const lineResult = (row: QueryResultRow | undefined): SegmentLineResult => {
+export const lineResult = (row: QueryResultRow | undefined): SegmentLineResult => {
   if (!row) return { ok: false, reason: 'not_found' }
   if (row.wkt == null) return { ok: false, reason: 'out_of_range' }
   return {
@@ -99,7 +99,7 @@ const lineResult = (row: QueryResultRow | undefined): SegmentLineResult => {
   }
 }
 
-const LINE_COLUMNS = `
+export const LINE_COLUMNS = `
   activity_type, ST_AsText(line) AS wkt, ST_Length(line::geography) AS length_m,
   ST_Y(ST_StartPoint(line)) AS start_lat, ST_X(ST_StartPoint(line)) AS start_lon,
   ST_Y(ST_EndPoint(line)) AS end_lat, ST_X(ST_EndPoint(line)) AS end_lon`

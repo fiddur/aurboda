@@ -530,6 +530,10 @@ const mergeInTransaction = async (
     targetName,
     sourceName,
   ])
+  await query(tx, `UPDATE suggested_segments SET activity_type = $1 WHERE activity_type = $2`, [
+    targetName,
+    sourceName,
+  ])
 
   await query(tx, `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`, [
     sourceName,

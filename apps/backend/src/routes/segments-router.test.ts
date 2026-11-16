@@ -3,6 +3,7 @@ import supertest from 'supertest'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { SegmentOps } from '../services/segments.ts'
+import type { SuggestedSegmentOps } from '../services/suggested-segments.ts'
 
 import { createSegmentsRouter } from './segments-router.ts'
 
@@ -30,7 +31,23 @@ const detail = {
   points: [],
 }
 
-const buildApp = (overrides: Partial<SegmentOps> = {}) => {
+const SUGGESTION_ID = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
+
+const suggestion = {
+  activity_count: 4,
+  activity_type: 'running',
+  created_at: '2026-06-01T07:00:00.000Z',
+  id: SUGGESTION_ID,
+  length_m: 1200,
+  near_name: null,
+  points: [],
+  source_activity_id: ACTIVITY_ID,
+}
+
+const buildApp = (
+  overrides: Partial<SegmentOps> = {},
+  suggestedOverrides: Partial<SuggestedSegmentOps> = {},
+) => {
   const ops: SegmentOps = {
     create: vi.fn(async () => ({ ok: true as const, segment: detail })),
     detail: vi.fn(async () => detail),
@@ -40,14 +57,21 @@ const buildApp = (overrides: Partial<SegmentOps> = {}) => {
     rename: vi.fn(async (_u: string, _id: string, name: string) => ({ ...segment, name })),
     ...overrides,
   }
+  const suggestedOps: SuggestedSegmentOps = {
+    dismiss: vi.fn(async () => true),
+    list: vi.fn(async () => [suggestion]),
+    promote: vi.fn(async () => ({ ok: true as const, segment: detail })),
+    scan: vi.fn(async () => ({ remaining: 0, scanned: 3, suggested: 1 })),
+    ...suggestedOverrides,
+  }
   const app = express()
   app.use(express.json())
   const auth = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = 'tester'
     next()
   }
-  app.use('/segments', createSegmentsRouter(auth, ops) as unknown as express.RequestHandler)
-  return { app, ops }
+  app.use('/segments', createSegmentsRouter(auth, ops, suggestedOps) as unknown as express.RequestHandler)
+  return { app, ops, suggestedOps }
 }
 
 describe('segments router', () => {
@@ -149,5 +173,67 @@ describe('segments router', () => {
 
     const missing = buildApp({ match: vi.fn(async () => null) })
     expect((await supertest(missing.app).post(`/segments/${SEGMENT_ID}/match`)).status).toBe(404)
+  })
+
+  test('GET /suggested lists the pending suggestions (not taken for a segment id)', async () => {
+    const { app, ops, suggestedOps } = buildApp()
+    expect((await supertest(app).get('/segments/suggested')).body).toEqual({
+      data: [suggestion],
+      success: true,
+    })
+    expect(suggestedOps.list).toHaveBeenCalledWith('tester')
+    expect(ops.detail).not.toHaveBeenCalled()
+  })
+
+  test('POST /suggested/scan runs one scan', async () => {
+    const { app, suggestedOps } = buildApp()
+    const res = await supertest(app).post('/segments/suggested/scan')
+    expect(res.body).toEqual({ data: { remaining: 0, scanned: 3, suggested: 1 }, success: true })
+    expect(suggestedOps.scan).toHaveBeenCalledWith('tester')
+  })
+
+  test('POST /suggested/:id/promote adds it, validates the trim, 400 with the sentence, 404', async () => {
+    const { app, suggestedOps } = buildApp()
+    const body = { end_km: 0.9, name: 'Hill', start_km: 0.1 }
+    const res = await supertest(app).post(`/segments/suggested/${SUGGESTION_ID}/promote`).send(body)
+    expect(res.body).toEqual({ data: detail, success: true })
+    expect(suggestedOps.promote).toHaveBeenCalledWith('tester', SUGGESTION_ID, body)
+    expect((await supertest(app).post(`/segments/suggested/${SUGGESTION_ID}/promote`).send({})).status).toBe(
+      200,
+    )
+
+    for (const bad of [{ start_km: 0.1 }, { end_km: 0.1, start_km: 0.5 }]) {
+      expect(
+        (await supertest(app).post(`/segments/suggested/${SUGGESTION_ID}/promote`).send(bad)).status,
+      ).toBe(400)
+    }
+
+    const refused = buildApp(
+      {},
+      {
+        promote: vi.fn(async () => ({ error: 'A segment must be at least 100 m long', ok: false as const })),
+      },
+    )
+    const r = await supertest(refused.app).post(`/segments/suggested/${SUGGESTION_ID}/promote`).send({})
+    expect(r.status).toBe(400)
+    expect(r.body).toEqual({ error: 'A segment must be at least 100 m long', success: false })
+
+    const missing = buildApp({}, { promote: vi.fn(async () => null) })
+    expect(
+      (await supertest(missing.app).post(`/segments/suggested/${SUGGESTION_ID}/promote`).send({})).status,
+    ).toBe(404)
+    expect((await supertest(app).post('/segments/suggested/nope/promote').send({})).status).toBe(404)
+  })
+
+  test('POST /suggested/:id/dismiss dismisses, 404 when not pending', async () => {
+    const { app, suggestedOps } = buildApp()
+    expect((await supertest(app).post(`/segments/suggested/${SUGGESTION_ID}/dismiss`)).body).toEqual({
+      success: true,
+    })
+    expect(suggestedOps.dismiss).toHaveBeenCalledWith('tester', SUGGESTION_ID)
+    const missing = buildApp({}, { dismiss: vi.fn(async () => false) })
+    expect((await supertest(missing.app).post(`/segments/suggested/${SUGGESTION_ID}/dismiss`)).status).toBe(
+      404,
+    )
   })
 })
