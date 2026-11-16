@@ -1,4 +1,4 @@
-import type { OidcPreset } from '@aurboda/api-spec'
+import type { OidcClient, OidcPreset } from '@aurboda/api-spec'
 
 import type { Queryable } from '../db/pool.ts'
 
@@ -45,6 +45,8 @@ export const CREATE_OIDC_FLOWS_TABLE = `
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
 `
+
+export const ALTER_OIDC_FLOWS_COLUMNS = ['ALTER TABLE oidc_flows ADD COLUMN IF NOT EXISTS client TEXT']
 
 export const CREATE_OIDC_CODES_TABLE = `
   CREATE TABLE IF NOT EXISTS oidc_codes (
@@ -119,6 +121,8 @@ export interface OidcFlowRecord {
   invitation: string | null
   /** sha256 of the verifier `start` handed to the browser that began the flow. */
   verifier_hash: string
+  /** Null for the web; 'app' sends the callback to the app's custom scheme. */
+  client: OidcClient | null
   created_at: Date
 }
 
@@ -173,7 +177,7 @@ const LINK_COLUMNS =
   'l.id, l.provider_id, p.display_name AS provider_display_name, l.issuer, l.subject, l.username, l.email, l.created_at, l.last_login_at'
 
 const FLOW_COLUMNS =
-  'state_hash, provider_id, nonce, code_verifier, intent, username, invitation, verifier_hash, created_at'
+  'state_hash, provider_id, nonce, code_verifier, intent, username, invitation, verifier_hash, client, created_at'
 
 const CODE_COLUMNS =
   'code_hash, kind, username, provider_id, issuer, subject, email, email_verified, name, invitation, verifier_hash, created_at'
@@ -349,7 +353,7 @@ export const createOidcApi = (
   saveOidcFlow: async (flow) => {
     const client = await getClient()
     await client.query(
-      `INSERT INTO oidc_flows (${FLOW_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO oidc_flows (${FLOW_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         flow.state_hash,
         flow.provider_id,
@@ -359,6 +363,7 @@ export const createOidcApi = (
         flow.username,
         flow.invitation,
         flow.verifier_hash,
+        flow.client,
         flow.created_at,
       ],
     )

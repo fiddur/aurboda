@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import type { AccountSignupInput, AccountSignupResult } from '../services/account-signup.ts'
 
 import {
+  ALTER_OIDC_FLOWS_COLUMNS,
   createOidcApi,
   CREATE_OIDC_CODES_TABLE,
   CREATE_OIDC_FLOWS_TABLE,
@@ -199,6 +200,7 @@ describe('OIDC sign-in end to end, against a fake issuer', () => {
       CREATE_OIDC_PROVIDERS_TABLE,
       CREATE_OIDC_LINKS_TABLE,
       CREATE_OIDC_FLOWS_TABLE,
+      ...ALTER_OIDC_FLOWS_COLUMNS,
       CREATE_OIDC_CODES_TABLE,
       CREATE_USER_ACCOUNTS_TABLE,
       ...ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
@@ -361,6 +363,58 @@ describe('OIDC sign-in end to end, against a fake issuer', () => {
       const forged = await supertest(app).get('/auth/oidc/callback?code=x&state=forged')
       expect(forged.status).toBe(302)
       expect(forged.headers.location).toBe(`${WEB}/login?oidc_error=expired`)
+    },
+    CONTAINER_TIMEOUT,
+  )
+
+  test(
+    'the app: a linked identity comes back to the custom scheme with a code the verifier trades for a session',
+    async () => {
+      const app = buildApp()
+      fakeIssuer.setIdentity({ email: 'ada.lovelace@example.com', sub: 'user-1' })
+      const toSignup = await signIn(app, '/auth/oidc/fake/start')
+      await supertest(app)
+        .post('/auth/oidc/signup')
+        .send({ code: toSignup.code, username: 'ada', verifier: toSignup.verifier })
+        .expect(200)
+
+      const appSignIn = async () => {
+        const started = await supertest(app).post('/auth/oidc/fake/start').send({ client: 'app' })
+        expect(started.status).toBe(200)
+        const callback = await supertest(app).get(
+          `/auth/oidc/callback?${fakeIssuer.authorize(started.body.authorization_url)}`,
+        )
+        expect(callback.status).toBe(302)
+        const location = callback.headers.location as string
+        return { location, params: new URL(location).searchParams, verifier: started.body.verifier as string }
+      }
+
+      const signedIn = await appSignIn()
+      expect(signedIn.location).toMatch(/^net\.aurboda\.oidc:\/\/callback\?code=/)
+      const exchanged = await supertest(app)
+        .post('/auth/oidc/exchange')
+        .send({ code: signedIn.params.get('code'), verifier: signedIn.verifier })
+      expect(exchanged.body).toEqual({
+        is_admin: false,
+        success: true,
+        token: 'session-ada',
+        username: 'ada',
+      })
+
+      const intercepted = await appSignIn()
+      const withoutVerifier = await supertest(app)
+        .post('/auth/oidc/exchange')
+        .send({ code: intercepted.params.get('code'), verifier: OTHER_VERIFIER })
+      expect(withoutVerifier.status).toBe(400)
+
+      fakeIssuer.setIdentity({ email: 'new@example.com', sub: 'user-9' })
+      const unlinked = await appSignIn()
+      expect(unlinked.location).toBe('net.aurboda.oidc://callback?error=not_linked')
+      const codes = await getTestDbClient().query('SELECT COUNT(*)::integer AS count FROM oidc_codes')
+      expect(codes.rows[0].count).toBe(0)
+
+      fakeIssuer.setIdentity({ email: 'eve@example.org', sub: 'user-10' })
+      expect((await appSignIn()).location).toBe('net.aurboda.oidc://callback?error=domain_not_allowed')
     },
     CONTAINER_TIMEOUT,
   )

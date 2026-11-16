@@ -1,11 +1,12 @@
-import type {
-  OidcErrorCode,
-  OidcLink,
-  OidcPublicProvider,
-  OidcSignupBody,
-  OidcSignupInfoResponse,
+import {
+  OIDC_APP_CALLBACK_URL,
+  type OidcClient,
+  type OidcErrorCode,
+  type OidcLink,
+  type OidcPublicProvider,
+  type OidcSignupBody,
+  type OidcSignupInfoResponse,
 } from '@aurboda/api-spec'
-
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
 import type { AccountSignupInput, AccountSignupResult } from './account-signup.ts'
@@ -41,7 +42,9 @@ const verifierMatches = (verifier: string, verifierHash: string): boolean => {
 
 const newRandomToken = (): string => randomBytes(32).toString('base64url')
 
-export type OidcStartTarget = { intent: 'login'; invitation?: string } | { intent: 'link'; username: string }
+export type OidcStartTarget =
+  | { intent: 'login'; invitation?: string; client?: OidcClient }
+  | { intent: 'link'; username: string }
 
 export type OidcStartResult =
   | { ok: true; authorization_url: string; verifier: string }
@@ -104,7 +107,7 @@ export interface OidcServiceDeps {
 export interface OidcService {
   listPublicProviders: () => Promise<OidcPublicProvider[]>
   start: (providerId: string, target: OidcStartTarget) => Promise<OidcStartResult>
-  /** Where to send the browser after the provider's redirect: always a web page. */
+  /** Where to send the browser after the provider's redirect: a web page, or the app's scheme for an app flow. */
   callback: (params: URLSearchParams) => Promise<string>
   exchange: (code: string, verifier: string) => Promise<OidcExchangeResult>
   signupInfo: (code: string) => Promise<OidcSignupInfoResult>
@@ -156,6 +159,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
 
   const loginError = (code: OidcErrorCode) => `${web}/login?oidc_error=${code}`
   const settingsError = (code: OidcErrorCode) => `${web}/settings?oidc_error=${code}#sign-in-providers`
+  const appError = (code: OidcErrorCode) => `${OIDC_APP_CALLBACK_URL}?error=${code}`
 
   const isFresh = (createdAt: Date, ttlMs: number) => now().getTime() - createdAt.getTime() <= ttlMs
 
@@ -252,8 +256,12 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
         username: existing.username,
         verifier_hash: flow.verifier_hash,
       })
-      return `${web}/login/oidc#code=${encodeURIComponent(code)}`
+      return flow.client === 'app'
+        ? `${OIDC_APP_CALLBACK_URL}?code=${encodeURIComponent(code)}`
+        : `${web}/login/oidc#code=${encodeURIComponent(code)}`
     }
+    // The signup page needs the verifier in the browser's storage, and for an app flow the app holds it.
+    if (flow.client === 'app') return appError('not_linked')
     if (!provider.allow_signup) return loginError('not_linked')
     if (await signupGateRefusal({ centralDb: store, invitationAuth: deps.invitationAuth }, flow.invitation)) {
       return loginError('signup_closed')
@@ -272,7 +280,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
       if (!state) return loginError('expired')
       const flow = await store.takeOidcFlow(hashOidcSecret(state))
       if (!flow || !isFresh(flow.created_at, OIDC_FLOW_TTL_MS)) return loginError('expired')
-      const fail = flow.intent === 'link' ? settingsError : loginError
+      const fail = flow.client === 'app' ? appError : flow.intent === 'link' ? settingsError : loginError
       if (params.get('error')) return fail('failed')
 
       const provider = await enabledProvider(flow.provider_id)
@@ -429,6 +437,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
       const codeVerifier = randomToken()
       const verifier = randomToken()
       await store.saveOidcFlow({
+        client: target.intent === 'login' ? (target.client ?? null) : null,
         code_verifier: codeVerifier,
         created_at: now(),
         intent: target.intent,

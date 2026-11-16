@@ -265,6 +265,7 @@ describe('OIDC flow service', () => {
     })
     expect([...memory.flows.values()]).toEqual([
       {
+        client: null,
         code_verifier: 'random-3',
         created_at: T0,
         intent: 'login',
@@ -669,6 +670,91 @@ describe('OIDC flow service', () => {
       expect(await startAndCallback({ intent: 'link', username: 'ada' })).toBe(
         `${WEB}/settings?oidc_error=domain_not_allowed#sign-in-providers`,
       )
+    })
+  })
+
+  describe('the app', () => {
+    const APP = 'net.aurboda.oidc://callback'
+    const appStart = { client: 'app', intent: 'login' } as const
+    const linkAda = (memory: ReturnType<typeof setup>['memory']) =>
+      memory.store.insertOidcLink({
+        email: null,
+        issuer: 'https://accounts.google.com',
+        provider_id: 'google',
+        subject: 'sub-1',
+        username: 'ada',
+      })
+    const queryCode = (location: string) => new URL(location).searchParams.get('code')!
+
+    test('start keeps the client on the flow', async () => {
+      const { service, memory } = setup()
+      await service.start('google', appStart)
+      expect([...memory.flows.values()]).toMatchObject([{ client: 'app', intent: 'login' }])
+    })
+
+    test('a linked identity goes back to the app with a code that trades for a session with the verifier', async () => {
+      const { service, memory, startAndCallback, verifier } = setup()
+      await linkAda(memory)
+      const location = await startAndCallback(appStart)
+      expect(location).toMatch(new RegExp(`^${APP}\\?code=`))
+      const code = queryCode(location)
+      expect(await service.exchange(code, 'not-the-verifier')).toEqual({ ok: false })
+
+      const again = queryCode(await startAndCallback(appStart))
+      expect(await service.exchange(again, verifier())).toEqual({
+        is_admin: false,
+        ok: true,
+        token: 'session-ada',
+        username: 'ada',
+      })
+    })
+
+    test.each([
+      ['the provider refusing', 'failed', {}, { error: 'access_denied' }],
+      [
+        'an email outside the allowed domains',
+        'domain_not_allowed',
+        { allowed_email_domains: ['example.org'] },
+        {},
+      ],
+    ])('%s goes back to the app with ?error=%s', async (_name, error, providerOverrides, extra) => {
+      const { startAndCallback } = setup({ providers: [provider(providerOverrides)] })
+      expect(await startAndCallback(appStart, extra)).toBe(`${APP}?error=${error}`)
+    })
+
+    test('an ID token that does not validate goes back to the app as failed', async () => {
+      const { startAndCallback, exchange } = setup()
+      exchange.mockRejectedValueOnce(new Error('nonce mismatch'))
+      expect(await startAndCallback(appStart)).toBe(`${APP}?error=failed`)
+    })
+
+    test.each(['open', 'closed'] as const)(
+      'an unlinked identity is not_linked with no code, also when the provider allows signup (%s server)',
+      async (mode) => {
+        const { startAndCallback, memory } = setup({ providers: [provider({ allow_signup: true })] })
+        memory.setSignupMode(mode)
+        expect(await startAndCallback(appStart)).toBe(`${APP}?error=not_linked`)
+        expect(memory.codes.size).toBe(0)
+        expect(memory.store.saveOidcCode).not.toHaveBeenCalled()
+      },
+    )
+
+    test('an expired app flow has no client to read and goes to the web login page', async () => {
+      const { service, advance } = setup()
+      const started = await service.start('google', appStart)
+      const state = new URL((started as { authorization_url: string }).authorization_url).searchParams.get(
+        'state',
+      )!
+      advance(10 * 60 * 1000 + 1)
+      expect(await service.callback(new URLSearchParams({ code: 'c', state }))).toBe(
+        `${WEB}/login?oidc_error=expired`,
+      )
+    })
+
+    test('a web flow is untouched', async () => {
+      const { startAndCallback, memory } = setup()
+      await linkAda(memory)
+      expect(await startAndCallback()).toMatch(new RegExp(`^${WEB}/login/oidc#code=`))
     })
   })
 

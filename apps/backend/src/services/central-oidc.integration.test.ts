@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  ALTER_OIDC_FLOWS_COLUMNS,
   createOidcApi,
   CREATE_OIDC_CODES_TABLE,
   CREATE_OIDC_FLOWS_TABLE,
@@ -41,6 +42,7 @@ describe('central OIDC store', () => {
       CREATE_OIDC_PROVIDERS_TABLE,
       CREATE_OIDC_LINKS_TABLE,
       CREATE_OIDC_FLOWS_TABLE,
+      ...ALTER_OIDC_FLOWS_COLUMNS,
       CREATE_OIDC_CODES_TABLE,
       ...CREATE_OIDC_INDEXES,
       CREATE_USER_ACCOUNTS_TABLE,
@@ -147,6 +149,7 @@ describe('central OIDC store', () => {
     }
     const now = new Date()
     await a.saveOidcFlow({
+      client: null,
       code_verifier: 'v',
       created_at: now,
       intent: 'login',
@@ -169,6 +172,7 @@ describe('central OIDC store', () => {
     const old = new Date('2026-11-16T09:00:00Z')
     const fresh = new Date('2026-11-16T10:00:00Z')
     const flow = {
+      client: null,
       code_verifier: 'v',
       created_at: fresh,
       intent: 'link' as const,
@@ -181,6 +185,14 @@ describe('central OIDC store', () => {
     }
     await a.saveOidcFlow(flow)
     await a.saveOidcFlow({ ...flow, created_at: old, state_hash: 'h2' })
+    const appFlow = {
+      ...flow,
+      client: 'app' as const,
+      intent: 'login' as const,
+      state_hash: 'h3',
+      username: null,
+    }
+    await a.saveOidcFlow(appFlow)
     const code = {
       code_hash: 'c1',
       created_at: fresh,
@@ -203,6 +215,7 @@ describe('central OIDC store', () => {
     expect(await a.takeOidcCode('c1')).toBeNull()
     expect(await a.takeOidcFlow('h1')).toEqual(flow)
     expect(await a.takeOidcFlow('h1')).toBeNull()
+    expect(await a.takeOidcFlow('h3')).toEqual(appFlow)
 
     await a.pruneOidcFlows(new Date('2026-11-16T09:30:00Z'), new Date('2026-11-16T09:30:00Z'))
     expect(await a.takeOidcFlow('h2')).toBeNull()

@@ -183,8 +183,22 @@ export const oidcPublicProvidersResponseSchema = z
 
 export type OidcPublicProvidersResponse = z.infer<typeof oidcPublicProvidersResponseSchema>
 
+export const oidcClients = ['app'] as const
+
+export const oidcClientSchema = z.enum(oidcClients).meta({
+  description:
+    'Who started the sign-in when it is not the web: app is the Android app, which the callback sends back to net.aurboda.oidc://callback with ?code= or ?error=',
+  id: 'OidcClient',
+})
+
+export type OidcClient = z.infer<typeof oidcClientSchema>
+
+/** Where the callback sends a sign-in the app started. Android's intent filter claims this scheme and host. */
+export const OIDC_APP_CALLBACK_URL = 'net.aurboda.oidc://callback'
+
 export const oidcStartBodySchema = z
   .object({
+    client: oidcClientSchema.optional(),
     invitation: z
       .string()
       .optional()

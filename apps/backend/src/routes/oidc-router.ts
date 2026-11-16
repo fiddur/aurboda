@@ -79,6 +79,7 @@ export const createOidcRouter = (authMiddleware: AnyMiddleware, oidc: OidcServic
     validateBody(oidcStartBodySchema),
     async (req, res) => {
       const result = await oidc.start(req.params.provider, {
+        client: req.body.client,
         intent: 'login',
         invitation: req.body.invitation,
       })

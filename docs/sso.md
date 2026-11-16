@@ -18,8 +18,8 @@ An identity is the provider's issuer and subject (`iss`, `sub`), never the email
 matches an existing account does not sign in to it. Such a login answers "No account here is
 linked to that sign-in" and the user logs in another way and links the provider in Settings.
 
-The web is the only client for now: linking and signing in run through browser redirects. The
-Android app's native login screen does not offer providers yet (#1249).
+The web does all of it. The [Android app](#in-the-android-app) signs in to an account that is
+already linked; creating the account and linking are done on the web.
 
 ## Admin setup
 
@@ -125,6 +125,9 @@ web, never with a session:
 | Anything failed (login or signup) | `/login?oidc_error=<code>`                          |
 | Anything failed (link)            | `/settings?oidc_error=<code>#sign-in-providers`     |
 
+A sign-in the Android app started goes back to the app instead (see
+[In the Android app](#in-the-android-app)).
+
 The page trades the one-time code, with the verifier (below), for what it stands for:
 `POST /auth/oidc/exchange` for the session token (so the token never appears in a URL),
 `POST /auth/oidc/signup` with the username for a new account, and `POST /account/oidc/link/complete`
@@ -152,6 +155,43 @@ can complete it.
 The start, exchange, callback and link completion endpoints share the per-IP limit of `POST /login`,
 and the signup the limit of `POST /signup` (see [admin.md](admin.md#rate-limits)). Deleting an
 account removes its links.
+
+## In the Android app
+
+The app's login screen asks the server typed in for its providers and shows one button per
+provider under **Sign in with passkey**: "Continue with …", or Google's **Sign in with Google**
+with the "G" mark. A tap starts the sign-in with `{"client": "app"}`, keeps the verifier the start
+answered with in memory, and opens the provider's page in a browser tab (a Custom Tab, or the
+default browser; Google refuses OAuth inside an app's WebView). No Google sign-in SDK or Play
+services are involved, so it works the same in every build.
+
+The callback sends an app flow to `net.aurboda.oidc://callback` rather than to the web:
+
+| Outcome                                                       | Goes to                                        |
+| ------------------------------------------------------------- | ---------------------------------------------- |
+| A linked identity logs in                                     | `net.aurboda.oidc://callback?code=…` (60 s)    |
+| No account is linked, whether or not signup is allowed        | `net.aurboda.oidc://callback?error=not_linked` |
+| Anything else failed                                          | `net.aurboda.oidc://callback?error=<code>`     |
+| The flow expired or is unknown (nothing says it is the app's) | the web's `/login?oidc_error=expired`          |
+
+The app trades the code, with its verifier, at `POST /auth/oidc/exchange` and is signed in. The
+target is a fixed constant on the server, never taken from the request.
+
+A custom scheme rather than a verified App Link, because a self-hosted server can have any host and
+the app cannot declare them all. Any app can claim the same scheme and so may see the code, but a
+code is useless without the verifier, which only the app that called start has
+([How a sign-in is tied to your browser](#how-a-sign-in-is-tied-to-your-browser)). If Android
+stopped the app while the browser was open, the verifier is gone with it and the app says "The
+sign-in could not be completed. Try again."
+
+- **A first-time user creates the account on the web** (the signup page needs the verifier in the
+  browser's storage, and for an app sign-in the app holds it), then signs in in the app. An unlinked
+  identity gets: "No Aurboda account is linked to this sign-in. Sign in another way and link it
+  under Settings on the web, or create the account on the web."
+- **Linking is done from a browser.** The app's embedded Settings page lists the linked providers
+  and can unlink them, but has no **Link** buttons: the provider's page would open in the system
+  browser, which has neither the app's session nor the verifier to complete the link. It says
+  "To link a sign-in provider, open Aurboda in a browser and go to Settings."
 
 ## REST and MCP
 

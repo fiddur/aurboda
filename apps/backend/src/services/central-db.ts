@@ -45,6 +45,7 @@ import {
 } from './central-nutrient-recommendations.ts'
 import {
   createOidcApi,
+  ALTER_OIDC_FLOWS_COLUMNS,
   CREATE_OIDC_CODES_TABLE,
   CREATE_OIDC_FLOWS_TABLE,
   CREATE_OIDC_INDEXES,
@@ -548,6 +549,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_OIDC_PROVIDERS_TABLE)
       await client.query(CREATE_OIDC_LINKS_TABLE)
       await client.query(CREATE_OIDC_FLOWS_TABLE)
+      for (const stmt of ALTER_OIDC_FLOWS_COLUMNS) await client.query(stmt)
       await client.query(CREATE_OIDC_CODES_TABLE)
       for (const stmt of CREATE_OIDC_INDEXES) await client.query(stmt)
 

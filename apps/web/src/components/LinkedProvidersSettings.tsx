@@ -3,6 +3,7 @@ import type { OidcLink } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
+import { isEmbedded } from '../embed'
 import { apiErrorMessage, fetchOidcLinks, fetchOidcProviders, startOidcLink, unlinkOidc } from '../state/api'
 import { isLastLoginMethod, oidcErrorMessage, unlinkedProviders } from '../utils/oidc'
 import { OidcButtons } from './OidcButtons'
@@ -58,6 +59,8 @@ function LinkList({
 /**
  * The account's linked single sign-on identities: unlink one (never the last way to log in) and link
  * the enabled providers not linked yet. Absent when the server has no providers and nothing is linked.
+ * Embedded in the app there is no Link button: the provider's page opens in the system browser,
+ * which has neither the session nor the verifier to complete the link.
  */
 export function LinkedProvidersSettings({
   linked = false,
@@ -89,6 +92,7 @@ export function LinkedProvidersSettings({
   if (!isLoading && providers.length === 0 && links.length === 0) return null
 
   const lastMethod = isLastLoginMethod(data?.login_methods ?? 0)
+  const linkable = unlinkedProviders(providers, links)
 
   const onUnlink = (id: string, name: string) => {
     setError(null)
@@ -111,12 +115,15 @@ export function LinkedProvidersSettings({
 
       {error && <p class="error">{error}</p>}
 
-      <OidcButtons
-        className="oidc-buttons"
-        providers={unlinkedProviders(providers, links)}
-        start={startOidcLink}
-        verb="Link"
-      />
+      {isEmbedded() ? (
+        linkable.length > 0 && (
+          <p class="link-in-browser">
+            To link a sign-in provider, open Aurboda in a browser and go to Settings.
+          </p>
+        )
+      ) : (
+        <OidcButtons className="oidc-buttons" providers={linkable} start={startOidcLink} verb="Link" />
+      )}
     </SettingsSection>
   )
 }
