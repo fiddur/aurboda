@@ -369,6 +369,7 @@ fun AurbodaApp(
               },
               onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
               unreadNotifications = appState.unreadNotifications,
+              webPageLinks = appState.morePageLinks,
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },
               modifier = modifier,
