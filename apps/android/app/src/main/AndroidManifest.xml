@@ -23,6 +23,10 @@
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <!-- Camera for reading food barcodes in embedded web pages; asked for on first use -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <!--
         Background access lets WorkManager periodic sync read Health Connect
         data when Aurboda is not in the foreground. The user has to grant the

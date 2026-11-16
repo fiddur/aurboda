@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
+import { ScanBarcodeButton } from '../../components/BarcodeScanner'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
 import {
@@ -242,6 +243,15 @@ function BarcodeLookup({ onFound }: { onFound: (id: string) => void }) {
         <button type="submit" class="btn-primary fi-barcode-btn" disabled={!barcode || lookup.isPending}>
           {lookup.isPending ? 'Looking up…' : 'Look up'}
         </button>
+        <ScanBarcodeButton
+          variant="text"
+          class="btn-secondary fi-barcode-btn"
+          onCode={(code) => {
+            setText(code)
+            lookup.reset()
+            lookup.mutate(code)
+          }}
+        />
       </div>
       {lookup.isPending && (
         <p class="fi-barcode-status" role="status">

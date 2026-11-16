@@ -2,7 +2,7 @@
 
 Look up a branded product by its barcode and get it as a food item. Products come from [Open Food Facts](https://world.openfoodfacts.org/) (OFF), the open, crowd-sourced database of food products, and are fetched **once** into the central shared food library (`shared_food_items`, see [Livsmedelsverket → Where the data lives](./livsmedelsverket.md#where-the-data-lives)). Every user of the instance reuses the cached row afterwards, and it shows up in normal food search like any shared item.
 
-This first version takes a barcode typed or pasted by the user. Camera scanning is planned separately.
+The barcode is typed, pasted, or read with the camera (see [Scanning](#scanning)).
 
 ## What is fetched, and when
 
@@ -49,10 +49,19 @@ None. The OFF read API needs no key.
 
 ## User setup
 
-None. Type or paste a barcode:
+None. Type, paste or [scan](#scanning) a barcode:
 
 - on **Food Items** (`/food-items`), in _Look up a barcode_: the product's page opens;
 - in a meal's food search: when the search text is a barcode, the list offers _Look up barcode … at Open Food Facts_, and picking it selects the product like a search result.
+
+## Scanning
+
+Where the browser can use a camera, a **Scan** button sits next to _Look up_ on Food Items, and a barcode icon at the right end of a meal's food search. It opens the camera (the back one on a phone) with a framing guide; the first EAN-13, EAN-8, UPC-A or UPC-E code it reads fills the field and runs the same lookup as typing it. Close or Escape stops the camera.
+
+- **Readers.** The browser's own `BarcodeDetector` is used where it exists and reads EAN-13 (Chrome on Android, including the app's WebView, and Chrome on macOS). Elsewhere (for example Firefox, and Chrome on Linux and Windows) a JavaScript decoder, [ZXing](https://github.com/zxing-js/library) (`@zxing/library`), is used. It is part of the app's own bundle, loaded only when a scanner opens on such a browser; nothing is fetched from elsewhere at run time. The code is in `apps/web/src/utils/barcodeReader.ts` and `apps/web/src/components/BarcodeScanner.tsx`.
+- **Privacy.** Frames are decoded on the device. No frame, picture or barcode image is stored or sent anywhere: only the decoded digits go to the lookup.
+- **Needs HTTPS.** Browsers allow the camera only in a secure context (HTTPS, or `localhost`). Where there is none, or no camera API, no Scan button is shown and the barcode can be typed as before.
+- **Permission.** The browser asks for the camera the first time. When it is refused the scanner says so ("The camera is blocked for this site…"), and the barcode can still be typed. In the Android app the camera permission is asked for on first use too, and granted to the server's own pages only (see [android-app.md → Camera](android-app.md#camera-barcode-scanning)).
 
 ## Endpoints
 
