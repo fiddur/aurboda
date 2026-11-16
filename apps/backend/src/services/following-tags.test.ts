@@ -11,11 +11,12 @@ vi.mock('../db/index.ts', () => ({
   getFeedFollowingByActor: vi.fn(async () => null),
   getFeedFollowingByTag: vi.fn(async () => null),
   removeFeedFollowing: vi.fn(async () => true),
+  updateFeedFollowedTagNotify: vi.fn(async () => null),
   upsertFeedFollowing: vi.fn(),
 }))
 
 const db = vi.mocked(await import('../db/index.ts'))
-const { followTag, unfollowTag } = await import('./following.ts')
+const { followTag, setFollowedTagNotify, unfollowTag } = await import('./following.ts')
 
 const row = (over: Partial<FeedFollowingRecord>): FeedFollowingRecord => ({
   accepted: true,
@@ -125,5 +126,20 @@ describe('unfollowTag', () => {
     expect(sendActivity).toHaveBeenCalledTimes(1)
     expect(db.removeFeedFollowing).toHaveBeenCalledWith('bob', existing.id)
     expect(db.deleteTimelineEntriesByActor).toHaveBeenCalledWith('bob', existing.actor_uri)
+  })
+})
+
+describe('setFollowedTagNotify', () => {
+  test('updates the normalised tag and returns its row', async () => {
+    const muted = row({ notify_on_post: false })
+    const update = vi.fn(async () => muted)
+    expect(await setFollowedTagNotify('bob', '#Running', false, update)).toBe(muted)
+    expect(update).toHaveBeenCalledWith('bob', 'running', false)
+  })
+
+  test('null for an invalid tag, without touching the database', async () => {
+    const update = vi.fn(async () => row({}))
+    expect(await setFollowedTagNotify('bob', '#not valid', true, update)).toBeNull()
+    expect(update).not.toHaveBeenCalled()
   })
 })

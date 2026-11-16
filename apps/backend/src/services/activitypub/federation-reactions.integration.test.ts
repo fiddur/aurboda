@@ -12,7 +12,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  * fetched over the network.
  */
 import { insertActivity } from '../../db/activities/index.ts'
-import { markFeedFollowingAccepted, upsertFeedFollowing } from '../../db/feed-following.ts'
+import {
+  markFeedFollowingAccepted,
+  updateFeedFollowedTagNotify,
+  upsertFeedFollowing,
+} from '../../db/feed-following.ts'
 import { listFeedPostReactions } from '../../db/feed-reactions.ts'
 import { createFeedPost } from '../../db/feed.ts'
 import { listNotifications } from '../../db/notifications.ts'
@@ -331,18 +335,53 @@ describe('Inbound likes and boosts', () => {
       ])
     })
 
-    test('a boost card from a followed tag raises nothing', async () => {
+    const followTagActor = async (user: string, actorUri: string, tag: string) => {
+      await upsertFeedFollowing(user, { actor_uri: actorUri, inbox_uri: `${actorUri}/inbox`, tag })
+      await markFeedFollowingAccepted(user, actorUri)
+    }
+
+    test('a boost card from a followed tag raises one new-post naming the author and the tag', async () => {
       const user = getTestUser()
-      await upsertFeedFollowing(user, {
-        actor_uri: ALICE,
-        handle: '@alice@mastodon.example',
-        inbox_uri: `${ALICE}/inbox`,
-        tag: 'running',
-      })
-      await markFeedFollowingAccepted(user, ALICE)
+      await followTagActor(user, ALICE, 'running')
+      const announce = boostOfCarol(`${ALICE}/statuses/9/activity`)
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      await handleInboundAnnounce(inboxCtx(user), announce, ORIGIN)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+      expect(await notificationsOf(user)).toEqual([
+        { link: '/feed?tag=running', title: 'Carol posted in #running', type: 'feed_post' },
+      ])
+    })
+
+    test('a followed tag with its bell off raises nothing', async () => {
+      const user = getTestUser()
+      await followTagActor(user, ALICE, 'running')
+      await updateFeedFollowedTagNotify(user, 'running', false)
       await handleInboundAnnounce(inboxCtx(user), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
       expect(await listTimelineEntries(user, 10)).toHaveLength(1)
       expect(await notificationsOf(user)).toEqual([])
+    })
+
+    test('one post announced by two followed tags raises one new-post', async () => {
+      const user = getTestUser()
+      const trail = 'https://tags.example/user/trail'
+      const docs = { ...fediverse(), [trail]: actorDocument(trail, 'trail', '#trail') }
+      await followTagActor(user, ALICE, 'running')
+      await followTagActor(user, trail, 'trail')
+      await handleInboundAnnounce(inboxCtx(user, docs), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
+      await handleInboundAnnounce(
+        inboxCtx(user, docs),
+        new Announce({
+          actor: new URL(trail),
+          id: new URL(`${trail}/announces/1`),
+          object: new URL(CAROL_NOTE),
+          published: dateToTemporalInstant(new Date('2026-07-01T11:05:00Z')),
+        }),
+        ORIGIN,
+      )
+      expect(await listTimelineEntries(user, 10)).toHaveLength(2)
+      expect(await notificationsOf(user)).toEqual([
+        { link: '/feed?tag=running', title: 'Carol posted in #running', type: 'feed_post' },
+      ])
     })
   })
 

@@ -216,6 +216,20 @@ export const updateFeedFollowingNotify = async (
   return result.rows[0] ?? null
 }
 
+/** Set whether new posts arriving through a followed tag should notify; null when the tag is not followed. */
+export const updateFeedFollowedTagNotify = async (
+  user: string,
+  tag: string,
+  notifyOnPost: boolean,
+): Promise<FeedFollowingRecord | null> => {
+  const result = await query<FeedFollowingRecord>(
+    user,
+    `UPDATE feed_following SET notify_on_post = $1 WHERE tag = $2 RETURNING ${FEED_FOLLOWING_COLUMNS}`,
+    [notifyOnPost, tag],
+  )
+  return result.rows[0] ?? null
+}
+
 /** Mark a pending follow accepted (the followee's server answered with `Accept`). */
 export const markFeedFollowingAccepted = async (user: string, actorUri: string): Promise<boolean> => {
   const result = await query(user, `UPDATE feed_following SET accepted = true WHERE actor_uri = $1`, [

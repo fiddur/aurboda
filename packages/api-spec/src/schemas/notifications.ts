@@ -101,7 +101,8 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
   },
   feed_post: {
     admin_only: false,
-    description: 'A new post or boost from an account whose bell is on in your Following list',
+    description:
+      'A new post or boost from an account, or a new post in a tag, whose bell is on in your Following and Followed tags lists',
     group: 'feed',
     label: 'New posts',
   },

@@ -8,7 +8,7 @@ import type { FollowedTag } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { fetchFollowedTags, followTag, unfollowTag } from '../../state/api'
+import { fetchFollowedTags, followTag, unfollowTag, updateFollowedTagNotify } from '../../state/api'
 import { TIMELINE_PAGES_KEY } from './TimelineActions'
 
 const FOLLOWED_TAGS_KEY = ['followed-tags']
@@ -23,6 +23,10 @@ const FollowedTagRow = ({ row }: { row: FollowedTag }) => {
       queryClient.invalidateQueries({ queryKey: TIMELINE_PAGES_KEY })
     },
   })
+  const notify = useMutation({
+    mutationFn: () => updateFollowedTagNotify(row.tag, !row.notify_on_post),
+    onSuccess: invalidate,
+  })
 
   return (
     <li class="following-row">
@@ -35,6 +39,20 @@ const FollowedTagRow = ({ row }: { row: FollowedTag }) => {
           Pending
         </span>
       )}
+      <button
+        type="button"
+        class="following-notify"
+        aria-pressed={row.notify_on_post}
+        onClick={() => notify.mutate()}
+        disabled={notify.isPending}
+        title={
+          row.notify_on_post
+            ? 'Notifications on — tap to mute'
+            : 'Muted — tap to notify on new posts in this tag'
+        }
+      >
+        {row.notify_on_post ? '🔔' : '🔕'}
+      </button>
       <button
         type="button"
         class="btn-secondary following-unfollow"
