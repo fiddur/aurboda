@@ -166,6 +166,20 @@ describe('getSettingsResponse', () => {
     expect(result.onboarding_manual_done).toEqual(['ask_ai'])
   })
 
+  test('defaults the timeline daily metrics to resting heart rate and passes a stored pick through', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    expect((await getSettingsResponse('testuser')).timeline_daily_metrics).toEqual(['resting_heart_rate'])
+
+    vi.mocked(db.getUserSettings).mockResolvedValueOnce({
+      timeline_daily_metrics: ['steps', 'sleep_duration'],
+    })
+    expect((await getSettingsResponse('testuser')).timeline_daily_metrics).toEqual([
+      'steps',
+      'sleep_duration',
+    ])
+  })
+
   test('returns formatted response with custom zones', async () => {
     const customZones: HrZoneThresholds = { 1: 86, 2: 103, 3: 121, 4: 138, 5: 155 }
     vi.mocked(db.getUserSettings).mockResolvedValue({
@@ -409,6 +423,38 @@ describe('validateAndUpdateSettings', () => {
 
     await validateAndUpdateSettings('testuser', { maf_hr: null })
     expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['maf_hr'])
+  })
+
+  test('stores the timeline daily metrics and resets them to the default with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { timeline_daily_metrics: ['hrv_rmssd', 'weight'] })
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { timeline_daily_metrics: ['hrv_rmssd', 'weight'] },
+      [],
+    )
+
+    await validateAndUpdateSettings('testuser', { timeline_daily_metrics: [] })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', { timeline_daily_metrics: [] }, [])
+
+    await validateAndUpdateSettings('testuser', { timeline_daily_metrics: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['timeline_daily_metrics'])
+  })
+
+  test.each([
+    ['a metric outside the five', { timeline_daily_metrics: ['heart_rate'] }],
+    ['a repeated metric', { timeline_daily_metrics: ['steps', 'steps'] }],
+  ])('rejects timeline daily metrics with %s', async (_label, input) => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    vi.mocked(db.upsertUserSettings).mockClear()
+
+    const result = await validateAndUpdateSettings('testuser', input)
+
+    expect(result.success).toBe(false)
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   test('stores the get-started guide dismissal and manual steps, and clears them with null', async () => {

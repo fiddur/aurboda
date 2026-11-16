@@ -1,4 +1,6 @@
+import { type TimelineDailyMetric, timelineDailyMetrics, type UserSettingsResponse } from '@aurboda/api-spec'
 import { useSignalEffect } from '@preact/signals'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
@@ -6,9 +8,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LegendCategory } from './legendCategories'
 import type { ChartItem, Orientation } from './types'
 
+import { updateUserSettings } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
 import { CommentPanel, type CommentPanelState } from './CommentPanel'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
+import { drawDailyMetricTracks, layoutDailyTracks } from './drawDailyMetricTracks'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
 import { barAggregatedBuckets, drawMetricsLane } from './drawMetricsLane'
 import { computeYScales, drawMetricsYAxes } from './drawMetricsTrack'
@@ -24,6 +28,7 @@ import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerti
 import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { formatTimelineTick } from './formatting'
+import { isMultiDaySpan, type RangePreset } from './rangePreset'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
 import { TimelineLegend } from './TimelineLegend'
@@ -77,6 +82,10 @@ export const Timeline = () => {
     viewEnd,
     handleZoom,
     handleJumpDays,
+    handleStep,
+    handlePreset,
+    rangePreset,
+    navigationSeq,
     handleResetToToday,
     viewLabel,
     bucketSize,
@@ -117,10 +126,14 @@ export const Timeline = () => {
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
+  const dailyTracksShown =
+    orientation === 'horizontal' && isMultiDaySpan(effectiveViewStart, effectiveViewEnd)
+
   const data = useTimelineData({
     barBucketSize,
     bucketSize,
     collapseDepth,
+    dailyTracksShown,
     fetchEnd,
     fetchStart,
     fromDateKey: fromDate.value,
@@ -136,6 +149,8 @@ export const Timeline = () => {
     columnData,
     columns,
     commentNotes,
+    dailyMetrics,
+    dailySeries,
     metricBuckets,
     scrobbles,
     trainingLoadQuery,
@@ -163,6 +178,34 @@ export const Timeline = () => {
     const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategories, orientation)
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
   }, [hiddenCategories, orientation])
+
+  const queryClient = useQueryClient()
+  const dailyPickMutation = useMutation({
+    mutationFn: (picked: TimelineDailyMetric[]) => updateUserSettings({ timeline_daily_metrics: picked }),
+    onMutate: (picked) => {
+      queryClient.setQueryData<UserSettingsResponse>(['userSettings'], (prev) =>
+        prev ? { ...prev, timeline_daily_metrics: picked } : prev,
+      )
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['userSettings'] }),
+  })
+  const toggleDailyMetric = useCallback(
+    (metric: TimelineDailyMetric) => {
+      const next = timelineDailyMetrics.filter((m) =>
+        m === metric ? !dailyMetrics.includes(m) : dailyMetrics.includes(m),
+      )
+      dailyPickMutation.mutate(next)
+    },
+    [dailyMetrics, dailyPickMutation],
+  )
+
+  const handleRangePreset = useCallback(
+    (preset: RangePreset) => {
+      if (preset !== 'day') setOrientation('horizontal')
+      handlePreset(preset)
+    },
+    [handlePreset],
+  )
 
   const toggleCategory = useCallback((cat: LegendCategory) => {
     setHiddenCategories((prev) => {
@@ -194,12 +237,14 @@ export const Timeline = () => {
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
   const hYAxesGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  const hDailyLabelsGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
 
   const scaffoldOrientationRef = useRef<Orientation | null>(null)
   const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
   const scaffoldLayoutKeyRef = useRef<string>('')
   /** Tracks the fetch range the base scale was built for. */
   const scaffoldFetchKeyRef = useRef<string>('')
+  const scaffoldNavigationSeqRef = useRef<number>(navigationSeq)
 
   const todayKey = format(new Date(), 'yyyy-MM-dd')
   const baseScaleDomain = useMemo(
@@ -366,7 +411,8 @@ export const Timeline = () => {
       dims.w !== containerWidth ||
       dims.h !== containerHeight ||
       scaffoldLayoutKeyRef.current !== layoutKey ||
-      scaffoldFetchKeyRef.current !== fetchKey
+      scaffoldFetchKeyRef.current !== fetchKey ||
+      scaffoldNavigationSeqRef.current !== navigationSeq
 
     if (needsSetup) {
       const svg = d3.select(svgRef.current)
@@ -493,6 +539,7 @@ export const Timeline = () => {
         scaffoldGroupRef.current = outerG
         scaffoldChartGroupRef.current = chartGroup
         hYAxesGroupRef.current = outerG.append('g').attr('class', 'metrics-y-axes')
+        hDailyLabelsGroupRef.current = outerG.append('g').attr('class', 'daily-metric-labels')
 
         const hFetch = fetchWindowFromRange({ from: fromDate.value, to: toDate.value })
         const baseScale = d3.scaleTime().domain([hFetch.start, hFetch.end]).range([0, chartWidth])
@@ -503,6 +550,7 @@ export const Timeline = () => {
       scaffoldDimsRef.current = { w: containerWidth, h: containerHeight }
       scaffoldLayoutKeyRef.current = layoutKey
       scaffoldFetchKeyRef.current = fetchKey
+      scaffoldNavigationSeqRef.current = navigationSeq
     }
 
     const chartGroup = scaffoldChartGroupRef.current
@@ -724,7 +772,9 @@ export const Timeline = () => {
 
       const trainingLoadData = trainingLoadQuery.data ?? null
 
-      const metricsTrackBottom = trackMetrics + metricsTrackHeight
+      const dailyLayout = layoutDailyTracks(trackMetrics, metricsTrackHeight, dailySeries.length)
+      const metricsMainHeight = dailyLayout.mainHeight
+      const metricsTrackBottom = trackMetrics + metricsMainHeight
       const metricsYScales =
         metricBuckets.length > 0
           ? computeYScales(
@@ -976,11 +1026,25 @@ export const Timeline = () => {
             screentimeBuckets: screentimeBucketedQuery.data ?? [],
             screentimeCategories: screentimeCategoriesQuery.data ?? [],
             showTooltipHtml,
-            trackHeight: metricsTrackHeight,
+            trackHeight: metricsMainHeight,
             trackY: trackMetrics,
             trainingLoad: trainingLoadData,
             xScale: currentXScale,
             yScales: metricsYScales,
+          })
+        }
+
+        if (hDailyLabelsGroupRef.current) {
+          drawDailyMetricTracks({
+            chartGroup,
+            chartWidth,
+            hideTooltip,
+            labelGroup: hDailyLabelsGroupRef.current,
+            labelX: -margin.left + 4,
+            rows: showMetricsTrackH ? dailyLayout.rows : [],
+            series: showMetricsTrackH ? dailySeries : [],
+            showTooltipHtml,
+            xScale: currentXScale,
           })
         }
 
@@ -1033,6 +1097,8 @@ export const Timeline = () => {
     screentimeCategoriesQuery.data,
     barBucketSize,
     attachZoom,
+    dailySeries,
+    navigationSeq,
   ])
 
   return (
@@ -1043,6 +1109,9 @@ export const Timeline = () => {
         isFullscreen={isFullscreen}
         setIsFullscreen={setIsFullscreen}
         handleJumpDays={handleJumpDays}
+        handleStep={handleStep}
+        rangePreset={rangePreset}
+        onPreset={handleRangePreset}
         handleResetToToday={handleResetToToday}
         viewLabel={viewLabel}
         isFetching={isFetching}
@@ -1057,6 +1126,12 @@ export const Timeline = () => {
         setLegendCollapsed={setLegendCollapsed}
         legendRef={legendRef}
         screentimeSubEntries={screentimeSubEntries}
+        dailyPicker={{
+          options: timelineDailyMetrics,
+          picked: dailyMetrics,
+          shown: dailyTracksShown,
+          toggle: toggleDailyMetric,
+        }}
       />
 
       {errorSources.length > 0 && (

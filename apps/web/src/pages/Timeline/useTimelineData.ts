@@ -1,8 +1,10 @@
 import {
+  defaultTimelineDailyMetrics,
   isLocationVisitActivity,
   isMusicScrobbleActivity,
   type Note,
   type ScreentimeCategory,
+  type TimelineDailyMetric,
 } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -43,6 +45,12 @@ import {
 } from './categorize'
 import { activityColors, getExerciseColor } from './colors'
 import { buildCommentItems } from './commentItems'
+import {
+  dailyPointsFromBuckets,
+  dailySleepPoints,
+  type DailySeries,
+  isBucketedDailyMetric,
+} from './drawDailyMetricTracks'
 import { padFetchWindow } from './fetchRange'
 import { getExerciseTypeName } from './formatting'
 import {
@@ -82,6 +90,10 @@ export interface TimelineData {
   hasLastFm: boolean
   /** Dynamic screentime sub-toggles to render in the legend. */
   screentimeSubEntries: ScreentimeSubEntry[]
+  /** The user's picked daily metrics, in the order they are drawn. */
+  dailyMetrics: TimelineDailyMetric[]
+  /** One series per picked daily metric; empty while the daily tracks are off. */
+  dailySeries: DailySeries[]
 }
 
 export interface UseTimelineDataOptions {
@@ -98,6 +110,8 @@ export interface UseTimelineDataOptions {
   splitAbutting: boolean
   /** Hierarchy walk depth: 0=no walk, 1=one hop, Infinity=walk to root. */
   collapseDepth: number
+  /** Whether the daily metric tracks are drawn: a span over three days in the horizontal layout. */
+  dailyTracksShown: boolean
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -112,6 +126,7 @@ export const useTimelineData = ({
   mergeGapMs,
   splitAbutting,
   collapseDepth,
+  dailyTracksShown,
 }: UseTimelineDataOptions): TimelineData => {
   const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
   const { data: activityTypeDefs = [] } = useQuery({
@@ -159,6 +174,18 @@ export const useTimelineData = ({
     placeholderData: keepPreviousData,
     queryFn: () => fetchBucketedMetrics(paddedStart, paddedEnd, TIMELINE_METRICS, bucketSize),
     queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const dailyMetrics = settingsQuery.data?.timeline_daily_metrics ?? defaultTimelineDailyMetrics
+  const dailyTracksOn = dailyTracksShown && !hiddenCategories.has('metrics') && dailyMetrics.length > 0
+  const dailyBucketedMetrics = dailyMetrics.filter(isBucketedDailyMetric)
+  const dailyMetricsQuery = useQuery({
+    enabled: dailyTracksOn && dailyBucketedMetrics.length > 0,
+    placeholderData: keepPreviousData,
+    // Daily buckets are laid from `start`, so it must be a local midnight: the unpadded window.
+    queryFn: () => fetchBucketedMetrics(fetchStart, fetchEnd, dailyBucketedMetrics, '1d'),
+    queryKey: ['timeline-daily-metrics', fromDateKey, toDateKey, dailyBucketedMetrics.join(',')],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -355,6 +382,17 @@ export const useTimelineData = ({
     [bucketedMetricsQuery.data],
   )
 
+  const dailySeries = useMemo<DailySeries[]>(() => {
+    if (!dailyTracksOn) return []
+    const buckets = parseBucketedResponse(dailyMetricsQuery.data)
+    return dailyMetrics.map((metric) => ({
+      metric,
+      points: isBucketedDailyMetric(metric)
+        ? dailyPointsFromBuckets(buckets, metric)
+        : dailySleepPoints(activitiesQuery.data ?? []),
+    }))
+  }, [dailyTracksOn, dailyMetrics, dailyMetricsQuery.data, activitiesQuery.data])
+
   const uniquePlaceNames = useMemo(
     () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
     [places],
@@ -476,7 +514,11 @@ export const useTimelineData = ({
     [columns, itemsByColumn],
   )
 
-  const isFetching = activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
+  const isFetching =
+    activitiesQuery.isFetching ||
+    mealsQuery.isFetching ||
+    bucketedMetricsQuery.isFetching ||
+    dailyMetricsQuery.isFetching
 
   const isInitialLoad = activitiesQuery.isLoading
 
@@ -489,6 +531,8 @@ export const useTimelineData = ({
     columnData,
     columns,
     commentNotes,
+    dailyMetrics,
+    dailySeries,
     errorSources,
     hasLastFm,
     isFetching,

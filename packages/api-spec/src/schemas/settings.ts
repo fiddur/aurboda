@@ -187,6 +187,31 @@ export const onboardingStepIdSchema = z.enum(onboardingStepIds).meta({
 
 export type OnboardingStepId = z.infer<typeof onboardingStepIdSchema>
 
+export const timelineDailyMetrics = [
+  'resting_heart_rate',
+  'sleep_duration',
+  'hrv_rmssd',
+  'steps',
+  'weight',
+] as const
+
+export const timelineDailyMetricSchema = z.enum(timelineDailyMetrics).meta({
+  description:
+    'A daily metric the Timeline can draw as its own track at week and month spans; sleep_duration is the sleep that ends on each day, the rest are metric names',
+  id: 'TimelineDailyMetric',
+})
+
+export type TimelineDailyMetric = z.infer<typeof timelineDailyMetricSchema>
+
+export const defaultTimelineDailyMetrics: TimelineDailyMetric[] = ['resting_heart_rate']
+
+const timelineDailyMetricsSchema = z
+  .array(timelineDailyMetricSchema)
+  .max(timelineDailyMetrics.length)
+  .refine((names) => new Set(names).size === names.length, {
+    message: 'Timeline daily metrics must not repeat',
+  })
+
 export const updateSettingsInputSchema = z
   .object({
     birth_date: birthDateSchema.nullable().optional().meta({
@@ -267,6 +292,10 @@ export const updateSettingsInputSchema = z
     timeline_show_replies: z.boolean().nullable().optional().meta({
       description:
         "When true, followed actors' replies show as their own home-timeline cards whatever they answer; when false (default), replies to posts that aren't in your timeline are hidden — replies to your own posts, posts mentioning you, and replies within a thread you already see always appear (set to null to reset to the default).",
+    }),
+    timeline_daily_metrics: timelineDailyMetricsSchema.nullable().optional().meta({
+      description:
+        'Daily metrics the Timeline draws as tracks under its Metrics lane when it shows more than three days (set to null to reset to the default, resting_heart_rate)',
     }),
     training_load: trainingLoadSettingsSchema.nullable().optional().meta({
       description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
@@ -441,6 +470,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     timeline_show_replies: z.boolean().default(false).meta({
       description:
         "Whether followed actors' replies to posts that aren't in your timeline show as their own home-timeline cards (replies to you, mentions of you, and replies within a thread you already see always show)",
+    }),
+    timeline_daily_metrics: timelineDailyMetricsSchema.default([...defaultTimelineDailyMetrics]).meta({
+      description: 'Daily metrics the Timeline draws as tracks when it shows more than three days',
     }),
     training_load: trainingLoadSettingsSchema
       .nullable()

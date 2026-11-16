@@ -1,3 +1,4 @@
+import type { TimelineDailyMetric } from '@aurboda/api-spec'
 import type { FunctionComponent, RefObject } from 'preact'
 
 import type { LegendCategory, ScreentimeSubEntry } from './legendCategories'
@@ -13,9 +14,45 @@ import {
   TAG_COLOR,
   tagSourceColors,
 } from './colors'
+import { DAILY_METRIC_SPECS } from './drawDailyMetricTracks'
 import { CALORIES_COLOR, HR_COLOR, HRV_COLOR, STEPS_COLOR, STRESS_COLOR } from './drawMetricsTrack'
 import { SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR } from './drawTrainingLoadTrack'
+
+interface DailyPickerProps {
+  shown: boolean
+  options: readonly TimelineDailyMetric[]
+  picked: readonly TimelineDailyMetric[]
+  toggle: (metric: TimelineDailyMetric) => void
+}
+
+const DailyMetricPicker: FunctionComponent<DailyPickerProps & { metricsHidden: boolean }> = ({
+  options,
+  picked,
+  toggle,
+  metricsHidden,
+}) => {
+  const disabled = metricsHidden ? ' legend-sub-item--disabled' : ''
+  return (
+    <>
+      <span class="legend-separator" />
+      <div class="legend-group" role="group" aria-label="Daily metrics">
+        <span class={`legend-item legend-group-header${disabled}`}>Daily</span>
+        {options.map((metric) => (
+          <label key={metric} class={`legend-item legend-sub-item legend-daily-item${disabled}`}>
+            <input
+              type="checkbox"
+              checked={picked.includes(metric)}
+              onChange={() => toggle(metric)}
+              style={{ accentColor: DAILY_METRIC_SPECS[metric].color }}
+            />
+            {DAILY_METRIC_SPECS[metric].label}
+          </label>
+        ))}
+      </div>
+    </>
+  )
+}
 
 interface TimelineLegendProps {
   orientation: Orientation
@@ -27,6 +64,8 @@ interface TimelineLegendProps {
   legendRef: RefObject<HTMLDivElement>
   /** Dynamic per-top-level screentime category sub-toggles (#718). */
   screentimeSubEntries: ScreentimeSubEntry[]
+  /** The daily metric picker, shown while the daily tracks can be drawn. */
+  dailyPicker: DailyPickerProps
 }
 
 export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
@@ -38,6 +77,7 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
   setLegendCollapsed,
   legendRef,
   screentimeSubEntries,
+  dailyPicker,
 }) => {
   const hiddenCount = hiddenCategories.size
 
@@ -149,6 +189,10 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
               </button>
             ))}
           </div>
+
+          {dailyPicker.shown && (
+            <DailyMetricPicker {...dailyPicker} metricsHidden={hiddenCategories.has('metrics')} />
+          )}
 
           <span class="legend-separator" />
 
