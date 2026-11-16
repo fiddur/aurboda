@@ -2,7 +2,15 @@ import type { FunctionComponent } from 'preact'
 
 import { useQueryClient } from '@tanstack/react-query'
 
+import type { RangePreset } from './rangePreset'
 import type { Orientation } from './types'
+
+const PRESET_LABELS: Record<RangePreset, string> = { day: 'Day', month: 'Month', week: 'Week' }
+const PRESET_STEP_TITLES: Record<RangePreset, [string, string]> = {
+  day: ['Previous day', 'Next day'],
+  month: ['Previous month', 'Next month'],
+  week: ['Previous week', 'Next week'],
+}
 
 interface TimelineControlsProps {
   orientation: Orientation
@@ -10,6 +18,9 @@ interface TimelineControlsProps {
   isFullscreen: boolean
   setIsFullscreen: (fn: (v: boolean) => boolean) => void
   handleJumpDays: (days: number) => void
+  handleStep: (direction: 1 | -1) => void
+  rangePreset: RangePreset | null
+  onPreset: (preset: RangePreset) => void
   handleResetToToday: () => void
   viewLabel: string
   isFetching: boolean
@@ -21,11 +32,17 @@ export const TimelineControls: FunctionComponent<TimelineControlsProps> = ({
   isFullscreen,
   setIsFullscreen,
   handleJumpDays,
+  handleStep,
+  rangePreset,
+  onPreset,
   handleResetToToday,
   viewLabel,
   isFetching,
 }) => {
   const queryClient = useQueryClient()
+  const [backTitle, forwardTitle] = rangePreset
+    ? PRESET_STEP_TITLES[rangePreset]
+    : ['Back 1 day', 'Forward 1 day']
 
   return (
     <div class="timeline-controls">
@@ -33,18 +50,31 @@ export const TimelineControls: FunctionComponent<TimelineControlsProps> = ({
         <button class="nav-btn" onClick={() => handleJumpDays(-30)} title="Back 1 month">
           {'<<'}
         </button>
-        <button class="nav-btn" onClick={() => handleJumpDays(-1)} title="Back 1 day">
+        <button class="nav-btn" onClick={() => handleStep(-1)} title={backTitle}>
           {'<'}
         </button>
         <button class="nav-btn nav-today" onClick={handleResetToToday}>
           Today
         </button>
-        <button class="nav-btn" onClick={() => handleJumpDays(1)} title="Forward 1 day">
+        <button class="nav-btn" onClick={() => handleStep(1)} title={forwardTitle}>
           {'>'}
         </button>
         <button class="nav-btn" onClick={() => handleJumpDays(30)} title="Forward 1 month">
           {'>>'}
         </button>
+      </div>
+      <div class="timeline-range-presets" role="group" aria-label="Range">
+        {(['day', 'week', 'month'] as const).map((preset) => (
+          <button
+            key={preset}
+            class={`nav-btn timeline-range-preset${rangePreset === preset ? ' active' : ''}`}
+            aria-pressed={rangePreset === preset}
+            onClick={() => onPreset(preset)}
+            type="button"
+          >
+            {PRESET_LABELS[preset]}
+          </button>
+        ))}
       </div>
       <span class="timeline-date-label">{viewLabel}</span>
       <button

@@ -129,3 +129,40 @@
     color: #fca5a5;
   }
 }
+
+.food-autocomplete.has-scan input {
+  padding-right: 2.25rem;
+}
+
+.ac-scan {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.ac-scan:hover,
+.ac-scan:focus-visible {
+  color: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ac-scan {
+    color: #9ca3af;
+  }
+
+  .ac-scan:hover,
+  .ac-scan:focus-visible {
+    color: #60a5fa;
+  }
+}

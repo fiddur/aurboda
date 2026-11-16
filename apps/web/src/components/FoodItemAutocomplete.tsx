@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { type FoodItemEntity, searchFoodItemsApi } from '../state/api'
 import { barcodeFromText } from '../utils/barcode'
+import { canScanBarcodes } from '../utils/barcodeReader'
+import { ScanBarcodeButton } from './BarcodeScanner'
 import './FoodItemAutocomplete.css'
 
 interface FoodItemAutocompleteProps {
@@ -59,6 +61,7 @@ export function FoodItemAutocomplete({
   const trimmed = value.trim()
   const barcodeLookup = useBarcodeLookup(trimmed, onLookupBarcode)
   const { barcode } = barcodeLookup
+  const scannable = !!onLookupBarcode && canScanBarcodes()
   const canCreate = !!onCreate && trimmed.length >= 2 && !barcode
   const exactMatch = suggestions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())
   const showCreate = canCreate && !exactMatch
@@ -120,6 +123,13 @@ export function FoodItemAutocomplete({
     if (item) handleSelect(item)
   }
 
+  const handleScan = async (code: string) => {
+    onChange(code)
+    setOpen(true)
+    const item = await barcodeLookup.lookup(code)
+    if (item) handleSelect(item)
+  }
+
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!open || optionCount === 0) return
 
@@ -144,7 +154,7 @@ export function FoodItemAutocomplete({
   }
 
   return (
-    <div ref={ref} class={`food-autocomplete ${rest.class ?? ''}`}>
+    <div ref={ref} class={`food-autocomplete ${scannable ? 'has-scan' : ''} ${rest.class ?? ''}`}>
       <input
         ref={inputRef}
         type="text"
@@ -166,6 +176,9 @@ export function FoodItemAutocomplete({
           setHasFocus(false)
         }}
       />
+      {scannable && (
+        <ScanBarcodeButton variant="icon" class="ac-scan" onCode={(code) => void handleScan(code)} />
+      )}
       {open && optionCount > 0 && (
         <ul class="autocomplete-dropdown">
           {suggestions.map((item, i) => (
@@ -222,12 +235,12 @@ const useBarcodeLookup = (
     setError(null)
   }, [trimmed])
 
-  const lookup = async (): Promise<FoodItemEntity | null> => {
-    if (!onLookupBarcode || !barcode || lookingUp) return null
+  const lookup = async (code: string | null = barcode): Promise<FoodItemEntity | null> => {
+    if (!onLookupBarcode || !code || lookingUp) return null
     setLookingUp(true)
     setError(null)
     try {
-      return await onLookupBarcode(barcode)
+      return await onLookupBarcode(code)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The barcode lookup failed.')
       return null

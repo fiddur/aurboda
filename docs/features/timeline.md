@@ -82,6 +82,31 @@ Gray bar charts for steps and amber bar charts for active calories appear in the
 
 **Data sources:** Garmin, Health Connect.
 
+### Daily Metrics (horizontal mode, more than three days)
+
+When the view spans more than three days (Week, Month, or a zoom of that size) in the horizontal
+layout, the Metrics lane gets one thin row per picked daily metric under its own content, which
+shrinks to make room. Each row has one dot per local day, joined by a line, on the row's own
+min/max scale, with the metric's name at the left edge; the value is printed at each dot when a
+day is wider than about 40 px, and hovering a day shows the date and value.
+
+The pickable metrics, in this order:
+
+| Metric     | Daily value                                                                            |
+| ---------- | -------------------------------------------------------------------------------------- |
+| Resting HR | Mean of `resting_heart_rate`                                                           |
+| Sleep      | Time asleep in the `sleep` activities ending that day, overlapping nights counted once |
+| HRV        | Mean of `hrv_rmssd`                                                                    |
+| Steps      | Sum of `steps`                                                                         |
+| Weight     | Mean of `weight`                                                                       |
+
+Pick them under **Daily** in the legend, which shows while the daily rows can be drawn. The pick is
+saved per user in the `timeline_daily_metrics` setting (an array of `resting_heart_rate`,
+`sleep_duration`, `hrv_rmssd`, `steps`, `weight`; default `["resting_heart_rate"]`, `null` resets
+it), so it is also readable and writable with `GET`/`PATCH /user/settings` and the MCP
+`get_user_settings` / `update_user_settings` tools. Hiding the Metrics lane hides the rows too. The
+vertical layout has no daily rows.
+
 ### Training Load (horizontal mode)
 
 Shows your fitness and fatigue trajectory using the Banister model:
@@ -141,10 +166,17 @@ Press **Escape**, scroll, or click elsewhere to dismiss the menu.
 
 ### Time Navigation Buttons
 
-- **<** / **>** jump one day backward / forward.
+- **Day / Week / Month** show the local day, the Monday-to-Sunday week, or the calendar month that
+  contains the middle of the current view. Week and Month switch to the horizontal layout (you can
+  switch back by hand); Day keeps the layout. The highlighted button follows the view in the URL:
+  a range within a few minutes of a day, week or month lights that button, a free zoom lights none.
+- **<** / **>** step by the highlighted range: a day, a week or a month. A free zoom steps one day.
+  They do not step into the future.
 - **<<** / **>>** jump 30 days.
-- **Today** resets to the current day.
-- The date label shows the current visible range (e.g., "Mar 19, 2026" or "Mar 15 -- Mar 19, 2026").
+- **Today** keeps the highlighted Week or Month and moves it to the one that contains now;
+  otherwise it resets to the current day.
+- The date label shows the current visible range (e.g., "Mar 19, 2026", "Mar 15 -- Mar 19, 2026" or
+  "March 2026").
 
 ### Fullscreen
 
@@ -156,7 +188,7 @@ The refresh button reloads all data for the current view. Useful after adding ne
 
 ## Legend and Filters
 
-A legend bar below the controls lets you toggle individual data tracks on and off. There are five top-level toggles (Music, Activity, Metrics, Location, Comments) and sub-toggles within Activity and Metrics.
+A legend bar below the controls lets you toggle individual data tracks on and off. There are five top-level toggles (Music, Activity, Metrics, Location, Comments) and sub-toggles within Activity and Metrics. Over more than three days in the horizontal layout a **Daily** group of checkboxes picks the [daily metric rows](#daily-metrics-horizontal-mode-more-than-three-days); that pick is a saved setting, not part of the URL.
 
 ### Activity sub-toggles
 

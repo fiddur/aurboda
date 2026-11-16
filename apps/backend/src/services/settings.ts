@@ -208,6 +208,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   sync_intervals: true,
   tag_icons: true,
   tag_mappings: true,
+  timeline_daily_metrics: true,
   timeline_show_replies: true,
   training_load: true,
   tz: true,

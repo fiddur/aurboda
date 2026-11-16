@@ -9,12 +9,22 @@ import {
   splitsAbuttingForZoom,
 } from './collapseTier'
 import { fetchWindowFromRange, nextFetchRange } from './fetchRange'
+import {
+  isReachable,
+  presetRange,
+  type RangePreset,
+  rangePresetOf,
+  stepRange,
+  type ViewRange,
+} from './rangePreset'
 import { getDefaultViewEnd, getDefaultViewStart, parseViewHash } from './viewHash'
 
 const fromDate = signal(formatISO(subDays(new Date(), 1), { representation: 'date' }))
 const toDate = signal(formatISO(new Date(), { representation: 'date' }))
 const viewStart = signal<Date | null>(null)
 const viewEnd = signal<Date | null>(null)
+/** Bumped whenever the view is set by a button rather than by zooming, so the chart moves to it. */
+const navigationSeq = signal(0)
 
 // Initialise signals from hash on page load
 const _initialHash = parseViewHash()
@@ -31,6 +41,11 @@ if (_initialHash.from) {
 
 export { _initialHash }
 
+const currentView = (): ViewRange => ({
+  end: viewEnd.value ?? getDefaultViewEnd(),
+  start: viewStart.value ?? getDefaultViewStart(),
+})
+
 export interface TimelineNavigation {
   effectiveViewStart: Date
   effectiveViewEnd: Date
@@ -40,6 +55,10 @@ export interface TimelineNavigation {
   toDate: typeof toDate
   viewStart: typeof viewStart
   viewEnd: typeof viewEnd
+  navigationSeq: number
+  rangePreset: RangePreset | null
+  handlePreset: (preset: RangePreset) => void
+  handleStep: (direction: 1 | -1) => void
   handleZoom: (start: Date, end: Date) => void
   handleJumpDays: (days: number) => void
   handleResetToToday: () => void
@@ -134,30 +153,64 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
     }
   }, [])
 
-  const handleJumpDays = useCallback(
-    (days: number) => {
-      const currentStart = viewStart.value ?? getDefaultViewStart()
-      const currentEnd = viewEnd.value ?? getDefaultViewEnd()
-      const newStart = addDays(currentStart, days)
-      const newEnd = addDays(currentEnd, days)
-      const todayEnd = endOfDay(new Date())
-      if (newEnd > todayEnd) return
-      handleZoom(newStart, newEnd)
+  const setViewRange = useCallback(
+    (range: ViewRange) => {
+      handleZoom(range.start, range.end)
+      navigationSeq.value += 1
     },
     [handleZoom],
   )
 
+  const handleJumpDays = useCallback(
+    (days: number) => {
+      const { start, end } = currentView()
+      const newEnd = addDays(end, days)
+      if (newEnd > endOfDay(new Date())) return
+      setViewRange({ end: newEnd, start: addDays(start, days) })
+    },
+    [setViewRange],
+  )
+
+  const handleStep = useCallback(
+    (direction: 1 | -1) => {
+      const view = currentView()
+      const next = stepRange(view, direction)
+      const now = new Date()
+      const allowed = rangePresetOf(view.start, view.end) ? isReachable(next, now) : next.end <= endOfDay(now)
+      if (allowed) setViewRange(next)
+    },
+    [setViewRange],
+  )
+
+  const handlePreset = useCallback(
+    (preset: RangePreset) => {
+      const { start, end } = currentView()
+      setViewRange(presetRange(preset, new Date((start.getTime() + end.getTime()) / 2)))
+    },
+    [setViewRange],
+  )
+
   const handleResetToToday = useCallback(() => {
+    const view = currentView()
+    const preset = rangePresetOf(view.start, view.end)
+    if (preset === 'week' || preset === 'month') {
+      setViewRange(presetRange(preset, new Date()))
+      return
+    }
     viewStart.value = null
     viewEnd.value = null
     fromDate.value = formatISO(subDays(new Date(), 1), { representation: 'date' })
     toDate.value = formatISO(new Date(), { representation: 'date' })
-  }, [])
+    navigationSeq.value += 1
+  }, [setViewRange])
 
+  const rangePreset = rangePresetOf(effectiveViewStart, effectiveViewEnd)
   const viewLabel =
-    format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d')
-      ? format(effectiveViewStart, 'MMM d, yyyy')
-      : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
+    rangePreset === 'month'
+      ? format(effectiveViewStart, 'MMMM yyyy')
+      : format(effectiveViewStart, 'MMM d') === format(effectiveViewEnd, 'MMM d')
+        ? format(effectiveViewStart, 'MMM d, yyyy')
+        : `${format(effectiveViewStart, 'MMM d')} – ${format(effectiveViewEnd, 'MMM d, yyyy')}`
 
   return {
     barBucketSize,
@@ -169,9 +222,13 @@ export const useTimelineNavigation = (options: TimelineNavigationOptions = {}): 
     fetchStart,
     fromDate,
     handleJumpDays,
+    handlePreset,
     handleResetToToday,
+    handleStep,
     handleZoom,
     mergeGapMs,
+    navigationSeq: navigationSeq.value,
+    rangePreset,
     splitAbutting,
     toDate,
     viewEnd,

@@ -145,6 +145,24 @@ native dialogs (back or an outside tap counts as Cancel) and backs file inputs,
 including `multiple`, with the system picker. Embedded pages can therefore keep
 using the browser's own dialogs and file inputs.
 
+### Camera (barcode scanning)
+
+The food pages can read a product barcode with the camera (see
+[openfoodfacts.md → Scanning](openfoodfacts.md#scanning)), which in the WebView
+needs both the app's `CAMERA` permission and a `WebChromeClient` that answers the
+page's `getUserMedia` request. The manifest declares `android.permission.CAMERA`
+with `android.hardware.camera` marked `required="false"`, so the app still installs
+on devices without a camera. The permission is not asked for at install or start:
+the first time a page opens the scanner, the system dialog asks for it, and a
+refusal shows the page's "camera is blocked" message.
+
+`EmbeddedWebChrome.kt` (`rememberWebCameraPermission`) grants only
+`RESOURCE_VIDEO_CAPTURE` (never the microphone or anything else a page asks for),
+and only to a request whose origin has the scheme, host and port of the signed-in
+server (`isSameOrigin`). A page that is not on that origin (a challenge on another
+instance) gets a chrome client that denies every such request. A request still
+pending when the screen leaves is denied.
+
 ### Page height and `vh` units
 
 The WebView can resolve CSS viewport units (`100vh`, `40vh`) and the `%` height

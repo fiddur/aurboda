@@ -121,6 +121,8 @@ None of this needs code in this repository:
 - The Play Console declarations: Health Connect permissions (with the privacy policy and the
   permission rationale), the `connectedDevice` foreground service, the location permission used for BLE
   scanning, and the data safety form.
+- The camera, in the data safety form and the privacy policy: it is used on the device to read
+  food barcodes, and no image is stored or sent (only the decoded digits go to the barcode lookup).
 - The Play upload key and Play App Signing. Play re-signs the app with its own key, so its
   SHA-256 fingerprint has to be added to `ANDROID_APP_FINGERPRINTS` (see [docker.md](docker.md))
   for passkeys to work in the Play build.
