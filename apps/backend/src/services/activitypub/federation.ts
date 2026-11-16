@@ -86,6 +86,7 @@ import {
   reactionNotification,
   timelineEntryNotification,
 } from '../social-notifications.ts'
+import { DEFAULT_TAG_ACTOR_HOST } from '../tag-actor-host.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import {
@@ -348,6 +349,7 @@ const recordOwnPostReaction = async (
   ctx: InboxContext<void>,
   activity: Announce | Like,
   kind: FeedReactionKind,
+  tagActorHost: () => Promise<string>,
 ): Promise<void> => {
   const me = ctx.recipient
   if (me == null || !isValidUsername(me) || activity.actorId == null) return
@@ -367,10 +369,14 @@ const recordOwnPostReaction = async (
       post_id: postId,
     })
     if (inserted) {
-      await notifier.raiseBestEffort(
+      const notification = reactionNotification(
+        kind,
+        { ...presentation, actor_uri: activity.actorId.href },
         me,
-        reactionNotification(kind, { ...presentation, actor_uri: activity.actorId.href }, me, post),
+        post,
+        await tagActorHost(),
       )
+      if (notification != null) await notifier.raiseBestEffort(me, notification)
     }
   } catch (error) {
     if (isMissingDatabase(error)) return
@@ -565,8 +571,11 @@ export const handleInboundAccept = async (
  * `Announce`/`Undo` entry points below) so the inbox behaviour is testable
  * without forging an HTTP signature: the listener is a one-line delegation.
  */
-export const handleInboundLike = (ctx: InboxContext<void>, like: Like): Promise<void> =>
-  recordOwnPostReaction(ctx, like, 'like')
+export const handleInboundLike = (
+  ctx: InboxContext<void>,
+  like: Like,
+  tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
+): Promise<void> => recordOwnPostReaction(ctx, like, 'like', tagActorHost)
 
 /**
  * Inbound `Delete` on a user's own inbox. `del.objectId` is the removed object's id (a Tombstone or
@@ -687,11 +696,12 @@ export const handleInboundAnnounce = async (
   origin: string,
   onNewEntry?: (user: string) => void,
   enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+  tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
 ): Promise<void> => {
   const me = ctx.recipient
   if (me == null || !isValidUsername(me)) return
   if (ownTargetPostId(ctx, announce.objectId, me) != null) {
-    return await recordOwnPostReaction(ctx, announce, 'announce')
+    return await recordOwnPostReaction(ctx, announce, 'announce', tagActorHost)
   }
   await ingestBoostedNote(ctx, announce, origin, onNewEntry, enrich)
 }
@@ -1097,6 +1107,8 @@ export const createFeedFederation = (
   instance?: InstanceActorDeps,
   /** Outbound delivery through a persistent queue with retries; without it `sendActivity` delivers synchronously. */
   delivery?: QueuedDelivery,
+  /** Boosts of our posts by accounts on this host are hashtag feeds listing them, not people: no notification. */
+  tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
 ): Federation<void> => {
   const federation = createFederation<void>({
     ...delivery?.options,
@@ -1224,7 +1236,7 @@ export const createFeedFederation = (
       createAnnounceListener({
         isReadOnly,
         onUserAnnounce: (ctx, announce) =>
-          handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich),
+          handleInboundAnnounce(ctx, announce, origin, onNewTimelineEntry, enrich, tagActorHost),
         publicTagPosts: instance?.publicTagPosts,
       }),
     )

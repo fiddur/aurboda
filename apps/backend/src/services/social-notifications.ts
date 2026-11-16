@@ -2,6 +2,8 @@ import { type FeedReactionKind, UUID_RE } from '@aurboda/api-spec'
 
 import type { RaiseNotificationInput } from './notifications.ts'
 
+import { isOnTagActorHost } from './tag-actor-host.ts'
+
 export interface ActorLabel {
   actor_uri: string
   display_name: string | null
@@ -108,12 +110,15 @@ export const followAcceptedNotification = (
   }
 }
 
+/** Null for a boost by an account on the tag actor host: a tag feed listing the post is not somebody boosting it. */
 export const reactionNotification = (
   kind: FeedReactionKind,
   actor: ActorLabel,
   me: string,
   post: { id: string; message: string | null },
-): RaiseNotificationInput => {
+  tagActorHost: string,
+): RaiseNotificationInput | null => {
+  if (kind === 'announce' && isOnTagActorHost(actor.actor_uri, tagActorHost)) return null
   const type = kind === 'like' ? 'feed_like' : 'feed_boost'
   return {
     body: post.message == null ? undefined : optional(textSnippet(post.message)),

@@ -404,7 +404,9 @@ row is marked with the tag, so followed tags are listed apart from followed peop
 name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
 A tag follow never raises a post notification: neither the server's `feed_post` nor the Android
 notifier, which reads only the people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
-shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
+shows a `#running` chip in place of the "🔄 X boosted" line. The tag accounts also boost each of
+the user's own public posts back to them; those are not counted as boosts (see
+[Likes and boosts](#likes-and-boosts)). The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
 push to tags.pub arrive this way; every Aurboda server pushes its own public posts there
 through the tags.pub relay it subscribes to by default (see [Relays](../admin.md#federation)).
@@ -827,6 +829,14 @@ the sender's actor id** (see the rule below), so an unresolvable actor leaves a 
 anonymous reaction rather than an unverified byline. An `Undo` retracts it, scoped to the
 undoing actor; when the `Undo`'s inner object doesn't resolve, the remote activity's own id is
 matched instead.
+
+A boost by an account on the **tag actor host** (`tag_actor_host`, default `tags.pub`, compared
+by host and port) is stored like any other, but it is the hashtag feed listing the post, not a
+person boosting it: it is left out of `boost_count` and of the reactions list
+(`GET /feed/:postId/reactions`, MCP `list_feed_post_reactions`) and raises no `feed_boost`
+notification. Its likes are kept. A like or boost somebody makes from a tag feed names the post
+itself, so it arrives and shows as theirs. The filter is applied when reading, so boosts stored
+before it are hidden too.
 
 **Quotes.** A quote of one of our own posts that we approved (FEP-044f, see the
 `feed_quote_authorization` table under [Storage](#storage)) is listed with the post's likes and

@@ -56,6 +56,7 @@ import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { activityKindTag, autoPostTags, computePostTags } from './post-tags.ts'
 import { resolveActivityWindow } from './queries/index.ts'
 import { getSettings, getUserTimezone } from './settings.ts'
+import { DEFAULT_TAG_ACTOR_HOST } from './tag-actor-host.ts'
 import { withReplyCounts } from './timeline-replies.ts'
 
 export interface SerializeFeedPostOpts {
@@ -361,7 +362,11 @@ export type FeedPostsFetcher = (
 ) => Promise<FeedPostPageRow[]>
 
 /** Batched like/boost tallies for a page of posts — the second DB dependency of `getFeedPage`. */
-export type FeedReactionCountsFetcher = (user: string, postIds: string[]) => Promise<FeedPostReactionCount[]>
+export type FeedReactionCountsFetcher = (
+  user: string,
+  postIds: string[],
+  hideBoostsFromHost: string,
+) => Promise<FeedPostReactionCount[]>
 
 /** Batched reply tallies for a page of posts, keyed by each post's object URI. */
 export type FeedReplyCountsFetcher = (user: string, objectUris: string[]) => Promise<TimelineReplyCount[]>
@@ -372,6 +377,8 @@ export interface FeedPageOpts extends SerializeFeedPostOpts {
    * URI (one grouped query per page); absent, the page carries no reply counts.
    */
   origin?: string
+  /** Boosts by accounts on this host are left out of `boost_count`; absent, the default tag actor host. */
+  tagActorHost?: string
 }
 
 /**
@@ -383,11 +390,13 @@ const withReactionCounts = async (
   user: string,
   posts: FeedPost[],
   fetchCounts: FeedReactionCountsFetcher,
+  tagActorHost: string,
 ): Promise<FeedPost[]> => {
   if (posts.length === 0) return posts
   const rows = await fetchCounts(
     user,
     posts.map((post) => post.id),
+    tagActorHost,
   ).catch(() => [])
   const tally = new Map<string, number>()
   for (const row of rows) tally.set(`${row.kind}:${row.post_id}`, row.count)
@@ -425,7 +434,12 @@ export const getFeedPage = async (
   const posts = await Promise.all(
     page.map((record) => serializeFeedPost(user, record, { ...opts, webHost: opts.webHost ?? opts.origin })),
   )
-  const counted = await withReactionCounts(user, posts, fetchReactionCounts)
+  const counted = await withReactionCounts(
+    user,
+    posts,
+    fetchReactionCounts,
+    opts.tagActorHost ?? DEFAULT_TAG_ACTOR_HOST,
+  )
   return {
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     posts:

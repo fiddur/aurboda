@@ -586,7 +586,8 @@ export const feedPostSchema = z
     // Attached by the feed LISTING only (one batched count query per page);
     // single-post responses (share / update) leave both absent.
     boost_count: z.number().int().optional().meta({
-      description: 'How many remote actors boosted (`Announce`d) this post; absent on single-post responses',
+      description:
+        'How many remote actors boosted (`Announce`d) this post, not counting hashtag accounts on the tag actor host; absent on single-post responses',
     }),
     challenge: challengeShareSchema
       .optional()
@@ -1703,7 +1704,12 @@ export type FeedPostReaction = z.infer<typeof feedPostReactionSchema>
 
 /** Who liked, boosted or quoted one of the owner's posts, newest first. */
 export const feedPostReactionsResponseSchema = baseResponseSchema
-  .extend({ reactions: z.array(feedPostReactionSchema) })
+  .extend({
+    reactions: z.array(feedPostReactionSchema).meta({
+      description:
+        'Who liked, boosted or quoted the post, newest first; boosts by hashtag accounts on the tag actor host are left out',
+    }),
+  })
   .meta({ id: 'FeedPostReactionsResponse' })
 
 export type FeedPostReactionsResponse = z.infer<typeof feedPostReactionsResponseSchema>

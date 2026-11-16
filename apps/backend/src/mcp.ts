@@ -173,6 +173,8 @@ interface McpDeps {
   /** The article preview (`preview_article`), shared with the REST route. */
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
+  /** The tag actor host (`tag_actor_host` server setting); its accounts' boosts are hashtag feeds, not people. */
+  tagActorHost?: () => Promise<string>
   relayActions?: RelayActions
   /** The admin's single sign-on providers (`list_oidc_providers` and the rest). */
   oidcProviders?: OidcProviderAdmin
@@ -273,6 +275,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     publicTagActions: deps.publicTagActions,
     reactionActions: deps.reactionActions,
     retroEnrichTimeline: deps.retroEnrichTimeline,
+    tagActorHost: deps.tagActorHost,
     webHost: deps.webHost,
   })
   registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })

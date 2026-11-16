@@ -402,22 +402,29 @@ export const serializeFeedPostQuote = (record: FeedPostQuoteRecord): FeedPostRea
 })
 
 export interface PostReactionSources {
-  listReactions: (user: string, postId: string, limit: number) => Promise<FeedPostReactionRecord[]>
+  listReactions: (
+    user: string,
+    postId: string,
+    limit: number,
+    hideBoostsFromHost: string,
+  ) => Promise<FeedPostReactionRecord[]>
   listQuotes: (user: string, postId: string, limit: number) => Promise<FeedPostQuoteRecord[]>
 }
 
 /**
  * Who liked, boosted or quoted one of the owner's posts, newest first, capped at
  * `MAX_POST_REACTIONS` across all kinds. Shared by the REST route and the MCP
- * tool so both list the same reactions.
+ * tool so both list the same reactions. A boost by an account on `tagActorHost`
+ * is a hashtag feed listing the post, not a person, and is left out.
  */
 export const listPostReactions = async (
   user: string,
   postId: string,
+  tagActorHost: string,
   sources: PostReactionSources = { listQuotes: listFeedPostQuotes, listReactions: listFeedPostReactions },
 ): Promise<FeedPostReaction[]> => {
   const [reactions, quotes] = await Promise.all([
-    sources.listReactions(user, postId, MAX_POST_REACTIONS),
+    sources.listReactions(user, postId, MAX_POST_REACTIONS, tagActorHost),
     sources.listQuotes(user, postId, MAX_POST_REACTIONS),
   ])
   return [...reactions.map(serializeFeedPostReaction), ...quotes.map(serializeFeedPostQuote)]

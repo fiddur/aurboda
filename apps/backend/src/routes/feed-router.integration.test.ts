@@ -1008,6 +1008,27 @@ describe('Feed post reactions (integration)', () => {
     expect(byId[counted.id]).toEqual({ boost: 0, like: 2, quote: 1 })
     expect(byId[uncounted.id]).toEqual({ boost: 0, like: 0, quote: 0 })
   })
+  test('a hashtag account’s boost is left out of GET /feed/:postId/reactions and boost_count', async () => {
+    const user = getTestUser()
+    const created = await post()
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://tags.pub/user/running',
+      kind: 'announce',
+      post_id: created.id,
+    })
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://remote.example/users/bob',
+      kind: 'announce',
+      post_id: created.id,
+    })
+
+    const reactions = await app.request.get(`/feed/${created.id}/reactions`)
+    expect(reactions.body.reactions.map((r: { actor_uri: string }) => r.actor_uri)).toEqual([
+      'https://remote.example/users/bob',
+    ])
+    const listing = await app.request.get('/feed')
+    expect(listing.body.posts.map((p: { boost_count: number }) => p.boost_count)).toEqual([1])
+  })
 })
 
 describe('Own-post comments (GET /feed/:postId/replies + reply_count)', () => {

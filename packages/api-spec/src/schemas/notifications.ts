@@ -95,7 +95,7 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
   },
   feed_boost: {
     admin_only: false,
-    description: 'Someone boosted one of your posts',
+    description: 'Someone boosted one of your posts (a hashtag feed listing it does not count)',
     group: 'feed',
     label: 'Boosts',
   },

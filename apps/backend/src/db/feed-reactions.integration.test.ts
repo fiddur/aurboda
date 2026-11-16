@@ -306,6 +306,63 @@ describe('Feed reaction stores integration', () => {
       expect(await countFeedPostReactions(user, [])).toEqual([])
     })
 
+    describe('hiding boosts by accounts on the tag actor host', () => {
+      const TAG_RUNNING = 'https://tags.pub/user/running'
+
+      const reacted = async (user: string) => {
+        const created = await post(user)
+        await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'like', post_id: created.id })
+        await upsertFeedPostReaction(user, { actor_uri: TAG_RUNNING, kind: 'like', post_id: created.id })
+        await upsertFeedPostReaction(user, { actor_uri: TAG_RUNNING, kind: 'announce', post_id: created.id })
+        await upsertFeedPostReaction(user, { actor_uri: BOB, kind: 'announce', post_id: created.id })
+        await upsertFeedQuoteAuthorization(user, {
+          actor_uri: ALICE,
+          post_id: created.id,
+          quote_uri: `${ALICE}/statuses/1`,
+          request_uri: null,
+        })
+        return created
+      }
+      const kindsAndActors = (rows: { kind: string; actor_uri: string }[]) =>
+        rows.map((r) => `${r.kind} ${r.actor_uri}`).sort()
+
+      test('the list drops only the tag account’s boost, whatever the host’s case', async () => {
+        const user = getTestUser()
+        const created = await reacted(user)
+        const expected = [`announce ${BOB}`, `like ${ALICE}`, `like ${TAG_RUNNING}`]
+        expect(kindsAndActors(await listFeedPostReactions(user, created.id, 100, 'tags.pub'))).toEqual(
+          expected,
+        )
+        expect(kindsAndActors(await listFeedPostReactions(user, created.id, 100, 'TAGS.PUB'))).toEqual(
+          expected,
+        )
+        expect(await listFeedPostReactions(user, created.id, 100)).toHaveLength(4)
+      })
+
+      test('the count leaves the tag account’s boost out and keeps its like and the quote', async () => {
+        const user = getTestUser()
+        const created = await reacted(user)
+        for (const host of ['tags.pub', 'TAGS.PUB']) {
+          const counts = await countFeedPostReactions(user, [created.id], host)
+          expect(counts).toContainEqual({ count: 1, kind: 'announce', post_id: created.id })
+          expect(counts).toContainEqual({ count: 2, kind: 'like', post_id: created.id })
+          expect(counts).toContainEqual({ count: 1, kind: 'quote', post_id: created.id })
+        }
+        expect(await countFeedPostReactions(user, [created.id])).toContainEqual({
+          count: 2,
+          kind: 'announce',
+          post_id: created.id,
+        })
+      })
+
+      test('a post whose only reaction is a tag boost has no announce tally', async () => {
+        const user = getTestUser()
+        const created = await post(user)
+        await upsertFeedPostReaction(user, { actor_uri: TAG_RUNNING, kind: 'announce', post_id: created.id })
+        expect(await countFeedPostReactions(user, [created.id], 'tags.pub')).toEqual([])
+      })
+    })
+
     test('refreshes a reactor’s presentation across every post, from Update{Person} (#1057)', async () => {
       const user = getTestUser()
       const first = await post(user)

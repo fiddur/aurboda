@@ -170,7 +170,7 @@ describe('serializeFeedPostQuote', () => {
 
 describe('listPostReactions', () => {
   test('merges likes, boosts and quotes newest first', async () => {
-    const result = await listPostReactions('freja', 'post-1', {
+    const result = await listPostReactions('freja', 'post-1', 'tags.pub', {
       listQuotes: async () => [quote({ created_at: new Date('2026-07-03T12:00:00Z') })],
       listReactions: async () => [
         inbound({ created_at: new Date('2026-07-04T00:00:00Z'), kind: 'announce' }),
@@ -187,7 +187,7 @@ describe('listPostReactions', () => {
   test('asks each source for the cap and keeps only the newest across both', async () => {
     const limits: number[] = []
     const at = (i: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, i))
-    const result = await listPostReactions('freja', 'post-1', {
+    const result = await listPostReactions('freja', 'post-1', 'tags.pub', {
       listQuotes: async (_user, _post, limit) => {
         limits.push(limit)
         return Array.from({ length: limit }, (_, i) => quote({ created_at: at(2 * i) }))
@@ -200,5 +200,17 @@ describe('listPostReactions', () => {
     expect(limits).toEqual([MAX_POST_REACTIONS, MAX_POST_REACTIONS])
     expect(result).toHaveLength(MAX_POST_REACTIONS)
     expect(result[0].created_at).toBe(at(2 * MAX_POST_REACTIONS - 1).toISOString())
+  })
+
+  test('hands the tag actor host to the reaction source', async () => {
+    const hosts: string[] = []
+    await listPostReactions('freja', 'post-1', 'tags.example', {
+      listQuotes: async () => [],
+      listReactions: async (_user, _post, _limit, host) => {
+        hosts.push(host)
+        return []
+      },
+    })
+    expect(hosts).toEqual(['tags.example'])
   })
 })
