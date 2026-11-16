@@ -1140,7 +1140,8 @@ export const followingActorSchema = z
     handle: z.string().nullable().meta({ description: "The followee's `@user@host` handle, if resolvable" }),
     id: z.string().uuid().meta({ description: 'Local id of the follow (used to unfollow)' }),
     notify_on_post: z.boolean().meta({
-      description: "Whether to notify on this actor's new posts (used by the app for push notifications)",
+      description:
+        'Whether new posts from this actor (for a followed tag: arriving through it) raise a notification',
     }),
   })
   .meta({ id: 'FollowingActor' })
@@ -1150,7 +1151,7 @@ export type FollowingActor = z.infer<typeof followingActorSchema>
 export const updateFollowingBodySchema = z
   .object({
     notify_on_post: z.boolean().meta({
-      description: "Whether to notify on this actor's new posts",
+      description: 'Whether new posts from this actor or followed tag raise a notification',
     }),
   })
   .meta({ id: 'UpdateFollowingBody' })

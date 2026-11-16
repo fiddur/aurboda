@@ -6,10 +6,12 @@ import {
   type FollowTagBody,
   followTagBodySchema,
   type FollowTagResponse,
+  type UpdateFollowingBody,
+  updateFollowingBodySchema,
 } from '@aurboda/api-spec'
 
 import { listFeedFollowedTags } from '../db/index.ts'
-import { type FollowActions, serializeFollowedTag } from '../services/following.ts'
+import { type FollowActions, serializeFollowedTag, setFollowedTagNotify } from '../services/following.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
 
@@ -20,6 +22,7 @@ import { validateBody } from '../validation.ts'
 export const createFeedFollowedTagsRouter = (
   authMiddleware: RequestHandler,
   actions: FollowActions,
+  setNotify: typeof setFollowedTagNotify = setFollowedTagNotify,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -41,6 +44,20 @@ export const createFeedFollowedTagsRouter = (
         return res.status(result.status).json({ error: result.error, success: false })
       }
       res.json({ followed_tag: serializeFollowedTag(result.record) ?? undefined, success: true })
+    },
+  )
+
+  router.patch<{ tag: string }, FollowTagResponse, UpdateFollowingBody>(
+    '/:tag',
+    authMiddleware,
+    validateBody(updateFollowingBodySchema),
+    async (req, res) => {
+      const record = await setNotify(req.user!, req.params.tag, req.body.notify_on_post)
+      const followedTag = record == null ? null : serializeFollowedTag(record)
+      if (followedTag == null) {
+        return res.status(404).json({ error: 'Not following that tag', success: false })
+      }
+      res.json({ followed_tag: followedTag, success: true })
     },
   )
 

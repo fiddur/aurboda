@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { McpServer } from './helpers.ts'
 
+import { getFeedFollowingByTag, upsertFeedFollowing } from '../db/feed-following.ts'
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
@@ -33,6 +34,7 @@ const setup = (user: string) => {
     deliver,
     listFeed: tool('list_feed'),
     listFeedPostReactions: tool('list_feed_post_reactions'),
+    setFollowedTagNotify: tool('set_followed_tag_notify'),
   }
 }
 
@@ -137,5 +139,37 @@ describe('list_feed_post_reactions', () => {
     expect(reactions.map((r: { actor_uri: string }) => r.actor_uri)).toEqual([ALICE])
     const page = JSON.parse((await listFeed({ limit: 10 })).content[0].text)
     expect(page.posts.map((p: { boost_count: number }) => p.boost_count)).toEqual([1])
+  })
+})
+
+describe('set_followed_tag_notify', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('turns a followed tag’s bell off by the tag, and an unfollowed tag is an error', async () => {
+    const user = getTestUser()
+    await upsertFeedFollowing(user, {
+      actor_uri: 'https://tags.pub/user/running',
+      inbox_uri: 'https://tags.pub/user/running/inbox',
+      tag: 'running',
+    })
+    const { setFollowedTagNotify } = setup(user)
+
+    const result = await setFollowedTagNotify({ notify_on_post: false, tag: '#Running' })
+
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ notify_on_post: false, tag: 'running' })
+    expect((await getFeedFollowingByTag(user, 'running'))?.notify_on_post).toBe(false)
+    expect((await setFollowedTagNotify({ notify_on_post: true, tag: 'cycling' })).content[0].text).toBe(
+      'Not following that tag',
+    )
   })
 })

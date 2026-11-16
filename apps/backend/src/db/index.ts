@@ -391,6 +391,7 @@ export {
   markFeedFollowingAccepted,
   removeFeedFollowing,
   removeFeedFollowingByActor,
+  updateFeedFollowedTagNotify,
   updateFeedFollowingNotify,
   updateFeedFollowingPresentation,
   upsertFeedFollowing,

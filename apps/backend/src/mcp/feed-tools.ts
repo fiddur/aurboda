@@ -85,7 +85,7 @@ import {
   serializeFeedPost,
 } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
-import { serializeFollowedTag, serializeFollowing } from '../services/following.ts'
+import { serializeFollowedTag, serializeFollowing, setFollowedTagNotify } from '../services/following.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -657,7 +657,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_followed_tags',
-    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`). Tag follows never raise post notifications.',
+    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`) and has a `notify_on_post` bell (on by default) for new posts arriving through it, which `set_followed_tag_notify` changes.',
     {},
     async () => {
       const records = await listFeedFollowedTags(user)
@@ -667,7 +667,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'follow_tag',
-    "Follow a hashtag, e.g. `#running`: follows the tag actor `<tag>@<tag actor host>` (default `running@tags.pub`), which boosts every public post it sees carrying that hashtag into your home timeline. Pending until the tag actor accepts. Filter the timeline to it with `list_timeline`'s `tag`.",
+    "Follow a hashtag, e.g. `#running`: follows the tag actor `<tag>@<tag actor host>` (default `running@tags.pub`), which boosts every public post it sees carrying that hashtag into your home timeline. Pending until the tag actor accepts; new posts arriving through it notify you until you turn that off with `set_followed_tag_notify`. Filter the timeline to it with `list_timeline`'s `tag`.",
     { ...followTagBodySchema.shape },
     async ({ tag }) => {
       if (!followActions) return errorResponse('Following is not available')
@@ -686,6 +686,21 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const removed = await followActions.unfollowTag(user, tag)
       if (!removed) return errorResponse('Not following that tag')
       return jsonResponse({ tag, unfollowed: true })
+    },
+  )
+
+  server.tool(
+    'set_followed_tag_notify',
+    'Enable or disable notifications for new posts arriving through a followed hashtag (by the tag, with or without `#`). On by default; turn it off for a busy tag you still want in your timeline.',
+    {
+      tag: followTagBodySchema.shape.tag.describe('The followed hashtag, with or without `#`'),
+      ...updateFollowingBodySchema.shape,
+    },
+    async ({ notify_on_post, tag }) => {
+      const record = await setFollowedTagNotify(user, tag, notify_on_post)
+      const followedTag = record == null ? null : serializeFollowedTag(record)
+      if (followedTag == null) return errorResponse('Not following that tag')
+      return jsonResponse(followedTag)
     },
   )
 
