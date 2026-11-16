@@ -2,7 +2,7 @@ import { subDays } from 'date-fns'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
-import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { importActivityExerciseSets } from './exercise-sets.ts'
 import { parseActivityFit } from './fit.ts'
 import { processActivityDetail, processActivityFit, processGarminData } from './process.ts'
@@ -663,8 +663,8 @@ describe('syncActivityDetails from the FIT file', () => {
     expect(onDetailSynced).toHaveBeenCalledWith(user, 'act-1')
   })
 
-  test('a failed download leaves the activity for the next run', async () => {
-    const garmin = garminWith({ session: true })
+  test('a failed download without a session leaves the activity for the next run', async () => {
+    const garmin = garminWith({ session: false })
     garmin.getActivityFile.mockRejectedValue(new Error('Garmin Personal API 503 for /download-service'))
     const onDetailSynced = vi.fn()
 
@@ -681,6 +681,37 @@ describe('syncActivityDetails from the FIT file', () => {
         error: 'Garmin Personal API 503 for /download-service',
       },
     )
+  })
+
+  test('a failed download falls back to the JSON detail when there is a session', async () => {
+    const garmin = garminWith({ session: true })
+    garmin.getActivityFile.mockRejectedValue(new Error('Garmin Personal API 403 for /download-service'))
+    const onDetailSynced = vi.fn()
+
+    await syncActivityDetails(user, garmin as never, { onDetailSynced })
+
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+    expect(processActivityDetail).toHaveBeenCalled()
+    expect(processActivityFit).not.toHaveBeenCalled()
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(onDetailSynced).toHaveBeenCalledWith(user, 'act-1')
+    expect(auditError).not.toHaveBeenCalled()
+    expect(auditWarn).toHaveBeenCalledWith(
+      user,
+      'sync',
+      "FIT file for Garmin activity 12345 failed, using the login's detail",
+      { error: 'Garmin Personal API 403 for /download-service' },
+    )
+  })
+
+  test('a file that cannot be processed falls back to the JSON detail when there is a session', async () => {
+    const garmin = garminWith({ session: true })
+    vi.mocked(processActivityFit).mockRejectedValueOnce(new Error('bad record'))
+
+    await syncActivityDetails(user, garmin as never)
+
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'act-1')
   })
 
   test('an activity that already had its detail is not reported again', async () => {

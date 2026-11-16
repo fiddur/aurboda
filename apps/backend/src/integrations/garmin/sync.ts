@@ -10,7 +10,7 @@ import {
   markActivityDetailSynced,
   upsertSyncState,
 } from '../../db/index.ts'
-import { auditError, auditInfo } from '../../services/audit-log.ts'
+import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { importActivityExerciseSets } from './exercise-sets.ts'
 import { parseActivityFit } from './fit.ts'
 import {
@@ -261,11 +261,28 @@ const fetchDetail = async (
   hasSession: boolean,
 ): Promise<{ count: number; fromFile: boolean } | null> => {
   if (source === 'personal_key') {
-    const count = await syncFitDetail(context)
+    const count = await fitDetailOrNull(context, hasSession)
     if (count !== null) return { count, fromFile: true }
     if (!hasSession) return null
   }
   return { count: await syncJsonDetail(context), fromFile: false }
+}
+
+/** With a session to fall back on, a refused or failed download counts as no file; without one it throws, so the activity is retried. */
+const fitDetailOrNull = async (context: DetailContext, hasSession: boolean): Promise<number | null> => {
+  if (!hasSession) return syncFitDetail(context)
+  try {
+    return await syncFitDetail(context)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    auditWarn(
+      context.user,
+      'sync',
+      `FIT file for Garmin activity ${context.garminActivityId} failed, using the login's detail`,
+      { error: message },
+    )
+    return null
+  }
 }
 
 /** Garmin can list an activity before it serves its file, so a fresh one without a file is asked for again. */
@@ -307,8 +324,9 @@ const syncOneDetail = async (
 /**
  * Fetch granular per-second metrics (HR, respiration, GPS, the track, …) for activities that
  * haven't been processed yet: from the activity's FIT file through a usable Personal API key,
- * else from the session's JSON detail. An activity Garmin has no usable file for falls back to
- * the JSON detail when there is a session; without one it is asked for again while the activity
+ * else from the session's JSON detail. An activity Garmin has no usable file for, or whose
+ * download fails, falls back to the JSON detail when there is a session; without one a failure is
+ * retried on the next run and a missing file is asked for again while the activity
  * is under a day old, and then marked done, so a manual activity is not asked for every run.
  * When fullResync is true, re-fetches detail for all activities (e.g. to pick up
  * newly added data extraction like GPS locations); `onDetailSynced` still fires
