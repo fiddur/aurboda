@@ -152,8 +152,9 @@ fun LoginScreen(
   var emailEnabled by remember { mutableStateOf(false) }
   var oidcProviders by remember { mutableStateOf<List<OidcPublicProvider>>(emptyList()) }
   var oidcLoadingId by remember { mutableStateOf<String?>(null) }
-  var isOidcExchanging by remember { mutableStateOf(false) }
-  val isBusy = isLoading || isPasskeyLoading || oidcLoadingId != null || isOidcExchanging
+  // Not a delegated var: it is read only above the effect that sets it, which the compiler reports as never read.
+  val oidcExchanging = remember { mutableStateOf(false) }
+  val isBusy = isLoading || isPasskeyLoading || oidcLoadingId != null || oidcExchanging.value
   val saveCredentials by rememberUpdatedState(onSaveCredentials)
   val loginSucceeded by rememberUpdatedState(onLoginSuccess)
 
@@ -195,7 +196,7 @@ fun LoginScreen(
           if (pending == null) {
             errorMessage = OIDC_NOT_STARTED_MESSAGE
           } else {
-            isOidcExchanging = true
+            oidcExchanging.value = true
             errorMessage = null
             when (val result = authApi.oidcExchange(pending.serverUrl, callback.code, pending.verifier)) {
               is OidcExchangeResult.Success -> {
@@ -206,7 +207,7 @@ fun LoginScreen(
                 errorMessage = result.message
               }
             }
-            isOidcExchanging = false
+            oidcExchanging.value = false
           }
         }
       }
