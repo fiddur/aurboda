@@ -17,6 +17,7 @@ import {
 } from './common.ts'
 import { commentSchema } from './notes.ts'
 import { activityRouteSummarySchema } from './routes.ts'
+import { activitySegmentEffortSchema } from './segments.ts'
 
 /**
  * Health Connect exercise types mapping.
@@ -235,6 +236,10 @@ export const activityDetailSchema = activitySchema
       .meta({ description: 'Merged start time across all overlapping sources' }),
     route: activityRouteSummarySchema.optional().meta({
       description: 'The route the activity was matched to, when it has one',
+    }),
+    segment_efforts: z.array(activitySegmentEffortSchema).optional().meta({
+      description:
+        "The activity's timed passes over segments, in order along the activity; absent when it has none",
     }),
     source_records: z
       .array(sourceRecordSchema)

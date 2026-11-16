@@ -104,6 +104,7 @@ import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createRoutesRouter } from '../routes/routes-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
+import { createSegmentsRouter } from '../routes/segments-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
@@ -443,6 +444,7 @@ export const mountRestRouters = ({
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/tracks', createTracksRouter(authMiddleware))
   httpd.use('/routes', createRoutesRouter(authMiddleware))
+  httpd.use('/segments', createSegmentsRouter(authMiddleware))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))

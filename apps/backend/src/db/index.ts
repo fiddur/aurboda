@@ -787,6 +787,30 @@ export {
 } from './routes.ts'
 
 export {
+  deleteSegment,
+  findSegmentCandidatesForActivity,
+  findTrackCandidatesForSegment,
+  getSegmentById,
+  getSegmentLine,
+  getTimingTrack,
+  insertSegment,
+  listActivitySegmentEfforts,
+  listSegmentEfforts,
+  listSegments,
+  replaceSegmentEfforts,
+  segmentLineFromActivity,
+  segmentLineFromRoute,
+  updateSegment,
+  type ActivitySegmentEffortRow,
+  type SegmentEffortInput,
+  type SegmentEffortRow,
+  type SegmentLine,
+  type SegmentLineResult,
+  type SegmentRecord,
+  type TimingTrack,
+} from './segments.ts'
+
+export {
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,

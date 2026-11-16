@@ -242,6 +242,46 @@ time) count once. Deleting a route sets `deleted_at` and keeps its `activity_rou
 its runs are never matched into a route again; merging moves the `activity_routes` rows and
 deletes the source route.
 
+#### `segments` and `segment_efforts` - Timed Stretches (PostGIS)
+
+A segment is a directional stretch cut by hand from an activity's track or a route, and every
+pass over it is timed. See [Routes and segments](./features/routes-and-segments.md#phase-4-segments).
+
+```sql
+CREATE TABLE segments (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name                      VARCHAR(255) NOT NULL,
+    activity_type             VARCHAR(100) NOT NULL REFERENCES activity_type_definitions(name) ON UPDATE CASCADE,
+    geom                      GEOMETRY(LINESTRING, 4326) NOT NULL,   -- start to end; direction matters
+    buffer                    GEOMETRY(GEOMETRY, 4326) NOT NULL,     -- ST_Buffer(geom::geography, 25)::geometry
+    length_m                  DOUBLE PRECISION NOT NULL,
+    created_from_activity_id  UUID REFERENCES activities(id) ON DELETE SET NULL,
+    created_from_route_id     UUID REFERENCES routes(id) ON DELETE SET NULL,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_segments_geom ON segments USING GIST (geom);
+
+CREATE TABLE segment_efforts (
+    segment_id      UUID NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
+    activity_id     UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    source          VARCHAR(50) NOT NULL,            -- the timed track's source
+    start_offset_s  DOUBLE PRECISION NOT NULL,       -- seconds since the activity's start
+    elapsed_s       DOUBLE PRECISION NOT NULL,
+    avg_hr          DOUBLE PRECISION,
+    pace_s_per_km   DOUBLE PRECISION,
+    approximate     BOOLEAN NOT NULL DEFAULT false,  -- timed on a shape-only track
+    matched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (segment_id, activity_id, source, start_offset_s)
+);
+CREATE INDEX idx_segment_efforts_activity ON segment_efforts (activity_id);
+```
+
+One row per pass, so hill repeats give several. Deleting a segment deletes it outright and its
+efforts with it. Effort counts, best times and ranks are derived when read: passes of one
+session recorded by several sources (rows or tracks overlapping in time) count once, the
+non-approximate one kept.
+
 #### `places` - Named Locations/Geofences
 
 ```sql

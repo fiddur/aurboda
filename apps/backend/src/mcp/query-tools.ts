@@ -64,6 +64,7 @@ import {
   queryTags,
   resolveActivityWindow,
 } from '../services/queries/index.ts'
+import { activitySegmentEfforts } from '../services/segments.ts'
 import { getSleepDebt } from '../services/sleep-debt.ts'
 import { serializeActivityTrack } from '../services/tracks.ts'
 import {
@@ -355,7 +356,8 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
       if (!activity) return errorResponse('Activity not found')
 
       const window = await resolveActivityWindow(user, activity, isMerged)
-      const [summary, fullDetail, features] = await Promise.all([
+      const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
+      const [summary, fullDetail, features, segmentEfforts] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -365,7 +367,8 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             metrics: parseMetricsParam(metrics),
           },
         ),
-        firstActivityFeatures(user, [id, ...(activity.override_target_ids ?? [])]),
+        firstActivityFeatures(user, trackOwnerIds),
+        activitySegmentEfforts(user, trackOwnerIds),
       ])
 
       return tzJsonResponse(
@@ -378,6 +381,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             end_time: activity.end_time?.toISOString(),
             features,
             id: activity.id,
+            segment_efforts: segmentEfforts,
             source: activity.source,
             start_time: activity.start_time.toISOString(),
             title: activity.title,

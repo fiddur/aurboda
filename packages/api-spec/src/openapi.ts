@@ -152,6 +152,15 @@ import {
   routesResponseSchema,
   updateRouteBodySchema,
 } from './schemas/routes.ts'
+import {
+  createSegmentBodySchema,
+  segmentDetailResponseSchema,
+  segmentMatchResponseSchema,
+  segmentResponseSchema,
+  segmentsQuerySchema,
+  segmentsResponseSchema,
+  updateSegmentBodySchema,
+} from './schemas/segments.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import {
@@ -857,6 +866,135 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Merge routes',
         tags: ['Routes'],
+      },
+    },
+    '/segments': {
+      get: {
+        description:
+          'List segments with their effort count, best time and latest effort. Optionally only one activity type (and its descendant types); ordered by latest effort (default), effort count, length or name.',
+        requestParams: { query: segmentsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List segments',
+        tags: ['Segments'],
+      },
+      post: {
+        description:
+          'Create a segment from part of an activity track (seconds since its start) or of a route (km), then time every tracked activity of its type on it. Refused when shorter than 100 m, outside the track or route, for an activity without a track or a deleted route.',
+        requestBody: {
+          content: { 'application/json': { schema: createSegmentBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentDetailResponseSchema } },
+            description: 'The new segment with its efforts',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The segment cannot be cut as asked',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create segment',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/{id}': {
+      delete: {
+        description: 'Delete a segment and its efforts.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Segment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete segment',
+        tags: ['Segments'],
+      },
+      get: {
+        description:
+          'A segment with its line, the named locations near its ends, and its efforts, newest first, the best one marked.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentDetailResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Segment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get segment',
+        tags: ['Segments'],
+      },
+      patch: {
+        description: 'Rename a segment.',
+        requestBody: {
+          content: { 'application/json': { schema: updateSegmentBodySchema } },
+        },
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Segment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update segment',
+        tags: ['Segments'],
+      },
+    },
+    '/segments/{id}/match': {
+      post: {
+        description:
+          'Time every tracked activity of the segment type on it again, replacing its efforts. New tracks are timed automatically.',
+        requestParams: {
+          path: z.object({
+            id: z.string().uuid().meta({ description: 'Segment ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: segmentMatchResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Segment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Match segment',
+        tags: ['Segments'],
       },
     },
     '/tracks/backfill': {

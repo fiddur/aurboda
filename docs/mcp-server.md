@@ -110,6 +110,21 @@ see [run features and categories](features/routes-and-segments.md#phase-3-run-fe
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
 
+### Segment tools
+
+A segment is a directional stretch timed on every pass, cut from an activity's track or a
+route. See [Routes and segments](features/routes-and-segments.md#phase-4-segments).
+`get_activity_detail` carries the activity's `segment_efforts`.
+
+| Tool             | What it does                                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_segments`  | Every segment with its type, length, effort count, best time and latest effort; filter by `activity_type` (with subtypes), order by `sort`            |
+| `get_segment`    | One segment with its line, the named locations near its ends and its efforts, newest first, the best one marked                                       |
+| `create_segment` | Cut a segment from an activity (`activity_id`, `start_offset_s`, `end_offset_s`) or a route (`route_id`, `start_km`, `end_km`) and time history on it |
+| `update_segment` | Rename a segment                                                                                                                                      |
+| `delete_segment` | Delete a segment and its efforts                                                                                                                      |
+| `match_segment`  | Time every tracked activity of the segment's type on it again; returns the counts                                                                     |
+
 ### Exercise catalogue tools
 
 See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on sets stay free text.

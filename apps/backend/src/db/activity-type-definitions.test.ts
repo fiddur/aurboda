@@ -447,9 +447,11 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       // 9. Retype routes of the source
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 10. Delete source
+      // 10. Retype segments of the source
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 11. Delete source
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
-      // 11. Get updated target
+      // 12. Get updated target
       .mockResolvedValueOnce({
         command: 'SELECT',
         fields: [],
