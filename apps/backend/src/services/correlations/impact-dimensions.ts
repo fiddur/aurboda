@@ -1,7 +1,8 @@
 /**
  * Dimensions an activity's sessions can be broken down and filtered by: their length, their local
- * start time, sleep in the window around them, and a data field of the activity type. Sessions and
- * their windows are formed first, over every occurrence; a dimension then only selects among them.
+ * start time, sleep in the window around them, their activity type, their local start year, and a
+ * data field of the activity type. Sessions and their windows are formed first, over every
+ * occurrence; a dimension then only selects among them.
  */
 import {
   type ActivityTypeDefinition,
@@ -18,6 +19,7 @@ const MINUTE_MS = 60_000
 
 export interface Occurrence extends Interval {
   data?: Record<string, unknown>
+  type?: string
 }
 
 export interface DimensionGroup {
@@ -43,6 +45,7 @@ export interface ClassifyContext {
   durationLimits: number[]
   timeLimits: number[]
   fieldLabels: Map<string, string>
+  typeLabels: Map<string, string>
 }
 
 type Bucket<T> = DimensionGroup & { contains: (value: T) => boolean }
@@ -195,6 +198,31 @@ const classifyField = (dimension: string, path: string, ctx: ClassifyContext): C
   }
 }
 
+const classifyType = (ctx: ClassifyContext): Classification => {
+  const keys = ctx.members.map((members) => [
+    ...new Set(members.flatMap((member) => (member.type === undefined ? [] : [member.type]))),
+  ])
+  const groups = [...new Set(keys.flat())].map((type) => ({
+    key: type,
+    label: ctx.typeLabels.get(type) ?? humanizeName(type),
+  }))
+  return {
+    dimension: 'type',
+    groups: orderFieldGroups(groups, countKeys(keys, allIndices(keys.length))),
+    keys,
+    label: 'Type',
+  }
+}
+
+const classifyYear = (ctx: ClassifyContext): Classification => {
+  const format = new Intl.DateTimeFormat('en-US', { timeZone: ctx.tz, year: 'numeric' })
+  const keys = ctx.sessions.map((s) => [
+    format.formatToParts(new Date(s.start)).find((p) => p.type === 'year')?.value ?? '',
+  ])
+  const groups = [...new Set(keys.flat())].toSorted().map((year) => ({ key: year, label: year }))
+  return { dimension: 'year', groups, keys, label: 'Year' }
+}
+
 export const classify = (dimension: string, ctx: ClassifyContext): Classification => {
   if (dimension === 'duration') {
     return classifyBuckets(
@@ -216,6 +244,8 @@ export const classify = (dimension: string, ctx: ClassifyContext): Classificatio
     const keys = ctx.sessions.map((s) => [sleepKey(s, ctx.windowMinutes, ctx.sleeps)])
     return { dimension, groups: occurringGroups(SLEEP_GROUPS, keys), keys, label: 'Sleep in the window' }
   }
+  if (dimension === 'type') return classifyType(ctx)
+  if (dimension === 'year') return classifyYear(ctx)
   const path = impactFieldPath(dimension)
   if (path === null) throw new Error(`Not an impact dimension: ${dimension}`)
   return classifyField(dimension, path, ctx)
@@ -255,7 +285,8 @@ export const breakdownGroups = (
   max: number,
 ): { groups: GroupSelection[]; omitted: number } => {
   const counts = groupCounts(c, selected)
-  const ordered = impactFieldPath(c.dimension) === null ? c.groups : orderFieldGroups(c.groups, counts)
+  const byCount = c.dimension === 'type' || impactFieldPath(c.dimension) !== null
+  const ordered = byCount ? orderFieldGroups(c.groups, counts) : c.groups
   const nonEmpty = ordered.filter((g) => (counts.get(g.key) ?? 0) > 0)
   const kept = capGroups(nonEmpty, max)
   return {

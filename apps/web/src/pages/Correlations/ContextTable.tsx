@@ -17,6 +17,7 @@ export interface ContextTableRow {
   key: string
   name: string
   extra?: string
+  title?: string
   stats: HrvStatsWithDelta
   selected: boolean
   onSelect: () => void
@@ -136,7 +137,7 @@ export function ContextTable({
           <tbody>
             {rows.map((row) => (
               <tr key={row.key} class={row.selected ? 'selected' : ''} onClick={row.onSelect}>
-                <td class="name-cell">
+                <td class="name-cell" title={row.title}>
                   <span class="name">{row.name}</span>
                   {row.extra && <span class="extra">{row.extra}</span>}
                 </td>

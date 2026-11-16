@@ -2,6 +2,7 @@ import type { ImpactDimensionOption, ImpactFilter } from '@aurboda/api-spec'
 
 import { useEffect, useState } from 'preact/hooks'
 
+import { impactPeriodLabel } from './occurrences'
 import {
   describeFilterCount,
   formatLimits,
@@ -9,6 +10,7 @@ import {
   parseLimitsInput,
   toggleFilterKey,
 } from './slicing'
+import { IMPACT_PERIOD_DAY_OPTIONS } from './urlState'
 
 const MAX_COLLAPSED_CHIPS = 8
 
@@ -150,7 +152,37 @@ function ChipRow({
   )
 }
 
-/** Break down by and Filter sessions for the selected row, drawn from the dimensions the server lists. */
+interface PeriodProps {
+  /** null follows the table's period. */
+  impactDays: number | null
+  tableDays: number
+  onImpactDaysChange: (days: number | null) => void
+}
+
+function ImpactPeriodSelect({ impactDays, tableDays, onImpactDaysChange }: PeriodProps) {
+  return (
+    <label class="slicer-breakdown">
+      Period{' '}
+      <select
+        class="period-select"
+        value={impactDays ?? ''}
+        onChange={(e) => {
+          const value = (e.target as HTMLSelectElement).value
+          onImpactDaysChange(value === '' ? null : parseInt(value, 10))
+        }}
+      >
+        <option value="">Same as the table ({tableDays} days)</option>
+        {IMPACT_PERIOD_DAY_OPTIONS.map((days) => (
+          <option key={days} value={days}>
+            {impactPeriodLabel(days)}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/** Period, Break down by and Filter sessions for the selected row, drawn from the dimensions the server lists. */
 export function ImpactSlicer({
   dimensions,
   breakdown,
@@ -159,22 +191,31 @@ export function ImpactSlicer({
   totalOccurrences,
   onBreakdownChange,
   onFiltersChange,
+  impactDays,
+  tableDays,
+  onImpactDaysChange,
   ...limits
-}: LimitsProps & {
-  dimensions: readonly ImpactDimensionOption[] | undefined
-  breakdown: string
-  filters: readonly ImpactFilter[]
-  occurrences: number
-  totalOccurrences: number
-  onBreakdownChange: (dimension: string) => void
-  onFiltersChange: (filters: ImpactFilter[]) => void
-}) {
+}: LimitsProps &
+  PeriodProps & {
+    dimensions: readonly ImpactDimensionOption[] | undefined
+    breakdown: string
+    filters: readonly ImpactFilter[]
+    occurrences: number
+    totalOccurrences: number
+    onBreakdownChange: (dimension: string) => void
+    onFiltersChange: (filters: ImpactFilter[]) => void
+  }) {
   const [open, setOpen] = useState(filters.length > 0)
   const listed = dimensions ?? []
   const unlisted = breakdown !== '' && !listed.some((d) => d.dimension === breakdown)
   return (
     <div class="impact-slicer">
       <div class="slicer-row">
+        <ImpactPeriodSelect
+          impactDays={impactDays}
+          tableDays={tableDays}
+          onImpactDaysChange={onImpactDaysChange}
+        />
         <label class="slicer-breakdown">
           Break down by{' '}
           <select
