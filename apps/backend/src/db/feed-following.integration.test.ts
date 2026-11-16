@@ -13,6 +13,7 @@ import {
   markFeedFollowingAccepted,
   removeFeedFollowing,
   removeFeedFollowingByActor,
+  updateFeedFollowedTagNotify,
   updateFeedFollowingNotify,
   updateFeedFollowingPresentation,
   upsertFeedFollowing,
@@ -232,6 +233,21 @@ describe('Feed following integration', () => {
       const handFollowed = { actor_uri: 'https://tags.pub/user/hiking', inbox_uri: 'https://tags.pub/inbox' }
       expect((await upsertFeedFollowing(user, handFollowed)).tag).toBeNull()
       expect((await upsertFeedFollowing(user, { ...handFollowed, tag: 'hiking' })).tag).toBe('hiking')
+    })
+
+    test('the bell of a followed tag is set by the tag, leaving people alone', async () => {
+      const user = getTestUser()
+      const person = await upsertFeedFollowing(user, alice)
+      expect((await upsertFeedFollowing(user, running)).notify_on_post).toBe(true)
+
+      const muted = await updateFeedFollowedTagNotify(user, 'running', false)
+      expect(muted).toMatchObject({ actor_uri: running.actor_uri, notify_on_post: false, tag: 'running' })
+      expect((await getFeedFollowingByTag(user, 'running'))?.notify_on_post).toBe(false)
+      expect((await updateFeedFollowedTagNotify(user, 'running', true))?.notify_on_post).toBe(true)
+
+      expect(await updateFeedFollowedTagNotify(user, 'swimming', false)).toBeNull()
+      await updateFeedFollowedTagNotify(user, 'running', false)
+      expect((await getFeedFollowing(user, person.id))?.notify_on_post).toBe(true)
     })
 
     test('one row per tag; untagged rows are not constrained', async () => {

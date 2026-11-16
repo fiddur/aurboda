@@ -217,6 +217,8 @@ interface RestRoutesDeps {
   dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
   /** The article preview, shared with MCP's `preview_article`. */
   previewArticle: ArticlePreviewer
+  /** The tag actor host (`tag_actor_host` server setting): its accounts' boosts are hashtag feeds, not people. */
+  tagActorHost: () => Promise<string>
 }
 
 /** Where a post's chart data comes from, for its feed images and its link-preview card alike. */
@@ -273,6 +275,7 @@ export const mountRestRouters = ({
   postUpdateResender,
   previewArticle,
   reactionActions,
+  tagActorHost,
   onProfileChanged,
   onHrSettingsChanged,
   onNamedLocationsChanged,
@@ -371,6 +374,7 @@ export const mountRestRouters = ({
       webHost,
       reactionActions,
       previewArticle,
+      tagActorHost,
     ),
   )
   httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))

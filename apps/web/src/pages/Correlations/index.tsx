@@ -41,7 +41,13 @@ import {
   toggleExtra,
   toggleMetric,
 } from './metrics'
-import { describeImpactMeta, describeOccurrences } from './occurrences'
+import {
+  describeImpactMeta,
+  describeOccurrences,
+  describeSubtypeCount,
+  subtypesTitle,
+  withImpactPeriod,
+} from './occurrences'
 import { breakdownMetricOptions, withoutDimension } from './slicing'
 import {
   type AnalyzeState,
@@ -49,13 +55,15 @@ import {
   PERIOD_DAY_OPTIONS,
   readAnalyzeState,
   type SelectedItem,
-  urlShowsAnalyzeState,
   writeAnalyzeState,
 } from './urlState'
+import { createUrlWatch } from './urlWatch'
 import { isLongWindow } from './window'
 import './style.css'
 
 const periodDays = signal(30)
+
+const impactDays = signal<number | null>(null)
 
 const windowMinutes = signal(DEFAULT_IMPACT_WINDOW_MINUTES)
 
@@ -81,6 +89,7 @@ const applyAnalyzeState = (state: AnalyzeState) => {
   batch(() => {
     activeTab.value = state.tab
     periodDays.value = state.days
+    impactDays.value = state.impactDays
     windowMinutes.value = state.window
     shownMetrics.value = state.metrics
     shownExtras.value = state.extras
@@ -102,6 +111,7 @@ const currentAnalyzeState = (): AnalyzeState => ({
   extras: shownExtras.value,
   filters: impactFilters.value,
   hours: hourLimits.value,
+  impactDays: impactDays.value,
   item: selectedActivity.value,
   lengths: durationLimits.value,
   metrics: shownMetrics.value,
@@ -171,28 +181,34 @@ export function Correlations() {
   // component, so re-read the URL then; our own replaceState writes do not change the router's url.
   const { url } = useLocation()
   const lastUrl = useRef(url)
+  const [urlWatch] = useState(() => createUrlWatch(window.location.href))
+  const rereadUrl = () => {
+    applyAnalyzeState(readAnalyzeState())
+    urlWatch.saw(window.location.href)
+  }
   useEffect(() => {
     if (url === lastUrl.current) return
     lastUrl.current = url
-    applyAnalyzeState(readAnalyzeState())
+    rereadUrl()
   }, [url])
 
   // A link to the URL the router already holds (the sidebar's plain /correlations while on it) keeps
-  // the router's url, so after any click a URL out of step with the page is re-read too.
+  // the router's url, so after any click a URL the page neither wrote nor read is re-read too.
   useEffect(() => {
     const path = window.location.pathname
     const onClick = () =>
       setTimeout(() => {
         const { href, pathname } = window.location
-        if (pathname === path && !urlShowsAnalyzeState(href, currentAnalyzeState())) {
-          applyAnalyzeState(readAnalyzeState())
-        }
+        if (pathname === path && urlWatch.changedElsewhere(href)) rereadUrl()
       })
     addEventListener('click', onClick)
     return () => removeEventListener('click', onClick)
   }, [])
 
-  useSignalEffect(() => writeAnalyzeState(currentAnalyzeState()))
+  useSignalEffect(() => {
+    writeAnalyzeState(currentAnalyzeState())
+    urlWatch.saw(window.location.href)
+  })
 
   const baselineQuery = useQuery({
     queryFn: () => fetchBaseline(),
@@ -218,6 +234,8 @@ export function Correlations() {
     staleTime: 5 * 60 * 1000,
   })
 
+  const impactPeriodDays = impactDays.value ?? periodDays.value
+
   const activityImpactQuery = useQuery({
     enabled: selectedActivity.value !== null,
     queryFn: () =>
@@ -225,7 +243,7 @@ export function Correlations() {
         ? fetchActivityImpact(
             selectedActivity.value.name,
             selectedActivity.value.type,
-            periodDays.value,
+            impactPeriodDays,
             windowMinutes.value,
             'exact',
             shownExtras.value,
@@ -249,7 +267,7 @@ export function Correlations() {
       'activityImpact',
       selectedActivity.value?.name,
       selectedActivity.value?.type,
-      periodDays.value,
+      impactPeriodDays,
       windowMinutes.value,
       shownExtras.value,
       breakdownDimension.value,
@@ -443,9 +461,12 @@ export function Correlations() {
                 )}{' '}
                 on {describeMetrics(metrics, 'short', extraLabels)}
                 <span class="impact-meta">
-                  {describeImpactMeta(
-                    activityImpact.occurrences,
-                    isMealSource ? undefined : activityImpact.avg_duration_min,
+                  {withImpactPeriod(
+                    describeImpactMeta(
+                      activityImpact.occurrences,
+                      isMealSource ? undefined : activityImpact.avg_duration_min,
+                    ),
+                    impactDays.value,
                   )}
                   {filtered &&
                     activityImpact.total_occurrences !== undefined &&
@@ -464,6 +485,9 @@ export function Correlations() {
                 onFiltersChange={(filters) => (impactFilters.value = filters)}
                 onLengthsChange={setDurationLimits}
                 onHoursChange={setHourLimits}
+                impactDays={impactDays.value}
+                tableDays={periodDays.value}
+                onImpactDaysChange={(days) => (impactDays.value = days)}
               />
               <ImpactFigure data={activityImpact} baseline={baseline} metrics={metrics} extras={extras} />
               {comparisonGroup && (
@@ -504,14 +528,22 @@ export function Correlations() {
                   windowMinutes={correlations.window_minutes}
                   metrics={metrics}
                   extraColumns={extraColumns}
-                  rows={correlations.correlations.activities.map((a) => ({
-                    extra: describeOccurrences(a.occurrences, a.avg_duration_min),
-                    key: a.activity_type,
-                    name: activityTypeDisplayName(definitions, a.activity_type),
-                    onSelect: () => handleSelectActivity(a.activity_type, 'activity_type'),
-                    selected: isActivitySelected(selectedActivity.value, a.activity_type, 'activity_type'),
-                    stats: a,
-                  }))}
+                  rows={correlations.correlations.activities.map((a) => {
+                    const subtypes = a.includes_subtypes ?? []
+                    return {
+                      extra:
+                        describeOccurrences(a.occurrences, a.avg_duration_min) +
+                        describeSubtypeCount(subtypes.length),
+                      key: a.activity_type,
+                      name: activityTypeDisplayName(definitions, a.activity_type),
+                      onSelect: () => handleSelectActivity(a.activity_type, 'activity_type'),
+                      selected: isActivitySelected(selectedActivity.value, a.activity_type, 'activity_type'),
+                      stats: a,
+                      title: subtypesTitle(
+                        subtypes.map((name) => activityTypeDisplayName(definitions, name)),
+                      ),
+                    }
+                  })}
                 />
               )}
 
@@ -605,6 +637,7 @@ export function Correlations() {
                 Back-to-back or duplicate entries count as one occurrence, and values are resampled to
                 5-minute averages so densely recorded stretches do not dominate.
               </li>
+              <li>An activity type's row also counts its subtypes; hover it to see which.</li>
               <li>
                 Other metrics appear as checkboxes when you record them around the clock (at least every 15
                 minutes for half of the day on most days), so there is data before and after a session.
@@ -613,7 +646,8 @@ export function Correlations() {
               </li>
               <li>
                 <strong>Break down by</strong> splits the selected row's sessions by length, time of day, a
-                data field of the activity type, or whether sleep falls in the window before or after.{' '}
+                data field of the activity type, subtype, year, or whether sleep falls in the window before or
+                after. <strong>Period</strong> can look further back for the selected row than the table does.{' '}
                 <strong>Filter sessions</strong> keeps only the groups you pick. Before/after windows are
                 still cut at every neighbouring session, including ones a filter leaves out.
               </li>

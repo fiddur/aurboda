@@ -85,7 +85,7 @@ import {
   serializeFeedPost,
 } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
-import { serializeFollowedTag, serializeFollowing } from '../services/following.ts'
+import { serializeFollowedTag, serializeFollowing, setFollowedTagNotify } from '../services/following.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -95,6 +95,7 @@ import {
   retagPost,
 } from '../services/post-tags.ts'
 import { getSettings } from '../services/settings.ts'
+import { DEFAULT_TAG_ACTOR_HOST } from '../services/tag-actor-host.ts'
 import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
 import { withTimeout } from '../services/with-timeout.ts'
@@ -121,6 +122,8 @@ export interface FeedToolsOptions {
   publicTagActions?: Pick<PublicTagActions, 'page'>
   /** The article preview (`preview_article`), with the chart data it draws from; absent, the tool reports unavailable. */
   previewArticle?: ArticlePreviewer
+  /** The tag actor host: boosts by its accounts are hashtag feeds, left out of `list_feed` counts and `list_feed_post_reactions`. */
+  tagActorHost?: () => Promise<string>
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -133,6 +136,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     publicTagActions,
     reactionActions,
     retroEnrichTimeline,
+    tagActorHost = async () => DEFAULT_TAG_ACTOR_HOST,
     webHost,
   } = options
 
@@ -148,7 +152,13 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     { ...feedPostsQuerySchema.shape },
     async ({ cursor, limit }) => {
       const settings = await getSettings(user).catch(() => null)
-      return jsonResponse(await getFeedPage(user, limit, cursor, { origin: webHost, settings }))
+      return jsonResponse(
+        await getFeedPage(user, limit, cursor, {
+          origin: webHost,
+          settings,
+          tagActorHost: await tagActorHost(),
+        }),
+      )
     },
   )
 
@@ -613,11 +623,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_feed_post_reactions',
-    'List who favourited, boosted or quoted one of YOUR feed posts (by feed post id), newest first. Likes and boosts are the `Like`/`Announce` remote servers push; a quote (kind `quote`, with the quoting post in `url`) is one whose FEP-044f quote request we approved. A reaction with no resolvable actor still counts.',
+    'List who favourited, boosted or quoted one of YOUR feed posts (by feed post id), newest first. Likes and boosts are the `Like`/`Announce` remote servers push; a quote (kind `quote`, with the quoting post in `url`) is one whose FEP-044f quote request we approved. A reaction with no resolvable actor still counts. Boosts by hashtag accounts on the tag actor host (a tag feed listing the post) are left out.',
     { id: z.string().uuid().describe('Feed post ID') },
     async ({ id }) => {
       if ((await getFeedPostById(user, id)) == null) return errorResponse('Feed post not found')
-      return jsonResponse(await listPostReactions(user, id))
+      return jsonResponse(await listPostReactions(user, id, await tagActorHost()))
     },
   )
 
@@ -647,7 +657,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'list_followed_tags',
-    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`). Tag follows never raise post notifications.',
+    'List the hashtags you follow (accepted and pending). Each is the follow of its tag actor (e.g. `running@tags.pub`) and has a `notify_on_post` bell (on by default) for new posts arriving through it, which `set_followed_tag_notify` changes.',
     {},
     async () => {
       const records = await listFeedFollowedTags(user)
@@ -657,7 +667,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'follow_tag',
-    "Follow a hashtag, e.g. `#running`: follows the tag actor `<tag>@<tag actor host>` (default `running@tags.pub`), which boosts every public post it sees carrying that hashtag into your home timeline. Pending until the tag actor accepts. Filter the timeline to it with `list_timeline`'s `tag`.",
+    "Follow a hashtag, e.g. `#running`: follows the tag actor `<tag>@<tag actor host>` (default `running@tags.pub`), which boosts every public post it sees carrying that hashtag into your home timeline. Pending until the tag actor accepts; new posts arriving through it notify you until you turn that off with `set_followed_tag_notify`. Filter the timeline to it with `list_timeline`'s `tag`.",
     { ...followTagBodySchema.shape },
     async ({ tag }) => {
       if (!followActions) return errorResponse('Following is not available')
@@ -676,6 +686,21 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const removed = await followActions.unfollowTag(user, tag)
       if (!removed) return errorResponse('Not following that tag')
       return jsonResponse({ tag, unfollowed: true })
+    },
+  )
+
+  server.tool(
+    'set_followed_tag_notify',
+    'Enable or disable notifications for new posts arriving through a followed hashtag (by the tag, with or without `#`). On by default; turn it off for a busy tag you still want in your timeline.',
+    {
+      tag: followTagBodySchema.shape.tag.describe('The followed hashtag, with or without `#`'),
+      ...updateFollowingBodySchema.shape,
+    },
+    async ({ notify_on_post, tag }) => {
+      const record = await setFollowedTagNotify(user, tag, notify_on_post)
+      const followedTag = record == null ? null : serializeFollowedTag(record)
+      if (followedTag == null) return errorResponse('Not following that tag')
+      return jsonResponse(followedTag)
     },
   )
 

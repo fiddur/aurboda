@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
  */
 import { deleteActivity, getActivityById, insertActivity } from '../db/activities/index.ts'
 import { query } from '../db/connection.ts'
+import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost, type FeedPostInput, updateFeedPost } from '../db/feed.ts'
 import { insertLocations } from '../db/locations.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
@@ -349,6 +350,35 @@ describe('feed service', () => {
       const post = await createFeedPost(user, postInput(null))
       const page = await getFeedPage(user, 10, 'garbage-cursor')
       expect(page.posts.map((p) => p.id)).toEqual([post.id])
+    })
+
+    test('a hashtag account’s boost is not counted in boost_count', async () => {
+      const user = getTestUser()
+      const onlyTag = await createFeedPost(user, postInput(null))
+      const both = await createFeedPost(user, postInput(null))
+      const tagBoost = (postId: string) =>
+        upsertFeedPostReaction(user, {
+          actor_uri: 'https://tags.pub/user/running',
+          kind: 'announce',
+          post_id: postId,
+        })
+      await tagBoost(onlyTag.id)
+      await tagBoost(both.id)
+      await upsertFeedPostReaction(user, {
+        actor_uri: 'https://mastodon.example/users/alice',
+        kind: 'announce',
+        post_id: both.id,
+      })
+
+      const boosts = (posts: { id: string; boost_count?: number }[]) =>
+        Object.fromEntries(posts.map((p) => [p.id, p.boost_count]))
+      expect(boosts((await getFeedPage(user, 10, undefined)).posts)).toEqual({
+        [both.id]: 1,
+        [onlyTag.id]: 0,
+      })
+      expect(
+        boosts((await getFeedPage(user, 10, undefined, { tagActorHost: 'tags.example' })).posts),
+      ).toEqual({ [both.id]: 2, [onlyTag.id]: 1 })
     })
   })
 

@@ -9,3 +9,12 @@ export const tagActorHostOrDefault = (stored: string | null | undefined): string
 
 export const readTagActorHost = async (centralDb: Pick<CentralDb, 'getServerSetting'>): Promise<string> =>
   tagActorHostOrDefault(await centralDb.getServerSetting('tag_actor_host'))
+
+/** Whether `actorUri` is an account on the tag actor host: there every account is a hashtag feed, not a person. */
+export const isOnTagActorHost = (actorUri: string, host: string): boolean => {
+  try {
+    return new URL(actorUri).host.toLowerCase() === host.trim().toLowerCase()
+  } catch {
+    return false
+  }
+}

@@ -2,6 +2,8 @@ import { type FeedReactionKind, UUID_RE } from '@aurboda/api-spec'
 
 import type { RaiseNotificationInput } from './notifications.ts'
 
+import { isOnTagActorHost } from './tag-actor-host.ts'
+
 export interface ActorLabel {
   actor_uri: string
   display_name: string | null
@@ -108,12 +110,15 @@ export const followAcceptedNotification = (
   }
 }
 
+/** Null for a boost by an account on the tag actor host: a tag feed listing the post is not somebody boosting it. */
 export const reactionNotification = (
   kind: FeedReactionKind,
   actor: ActorLabel,
   me: string,
   post: { id: string; message: string | null },
-): RaiseNotificationInput => {
+  tagActorHost: string,
+): RaiseNotificationInput | null => {
+  if (kind === 'announce' && isOnTagActorHost(actor.actor_uri, tagActorHost)) return null
   const type = kind === 'like' ? 'feed_like' : 'feed_boost'
   return {
     body: post.message == null ? undefined : optional(textSnippet(post.message)),
@@ -202,17 +207,26 @@ const postTitle = (entry: TimelineEntry): string => {
   return `${booster} boosted ${author}`
 }
 
+/** Keyed on the announced note, so a post reaching the reader through several tags or a followee notifies once. */
+const tagPostNotification = (entry: TimelineEntry, boostOf: string, tag: string): RaiseNotificationInput => ({
+  body: optional(htmlSnippet(entry.content)),
+  data: { actor_uri: entry.actor_uri, object_uri: entry.object_uri, tag },
+  dedupe_key: `feed_post:${boostOf}`,
+  link: `/feed?tag=${encodeURIComponent(tag)}`,
+  title: `${actorLabel(authorOf(entry))} posted in #${tag}`,
+  type: 'feed_post',
+})
+
 const wantsPostNotification = ({ entry, source, visible }: TimelineEntryEvent): boolean =>
   visible &&
   source != null &&
-  source.tag == null &&
   source.notify_on_post &&
   (entry.boost_of_uri != null || entry.in_reply_to_uri == null)
 
 /**
  * For a newly stored entry on the live inbox path: a reply to the reader's own post, a mention
- * of them (a reply that also mentions them is one reply), or else a post from a followee whose
- * bell is on, top-level or a boost card, that the reader's timeline shows.
+ * of them (a reply that also mentions them is one reply), or else a post from a followee or a
+ * followed tag whose bell is on, top-level or a boost card, that the reader's timeline shows.
  */
 export const timelineEntryNotification = (event: TimelineEntryEvent): RaiseNotificationInput | null => {
   const { entry } = event
@@ -221,6 +235,8 @@ export const timelineEntryNotification = (event: TimelineEntryEvent): RaiseNotif
     if (involvement != null) return involvement
   }
   if (!wantsPostNotification(event)) return null
+  const tag = event.source?.tag
+  if (tag != null && entry.boost_of_uri != null) return tagPostNotification(entry, entry.boost_of_uri, tag)
   return {
     body: optional(htmlSnippet(entry.content)),
     data: { actor_uri: entry.actor_uri, object_uri: entry.object_uri },

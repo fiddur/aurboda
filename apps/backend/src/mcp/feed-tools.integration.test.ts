@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import type { FeedDeliver } from '../routes/feed-router.ts'
 import type { McpServer } from './helpers.ts'
 
+import { getFeedFollowingByTag, upsertFeedFollowing } from '../db/feed-following.ts'
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
@@ -31,7 +32,9 @@ const setup = (user: string) => {
   return {
     deleteFeedPost: tool('delete_feed_post'),
     deliver,
+    listFeed: tool('list_feed'),
     listFeedPostReactions: tool('list_feed_post_reactions'),
+    setFollowedTagNotify: tool('set_followed_tag_notify'),
   }
 }
 
@@ -112,5 +115,61 @@ describe('list_feed_post_reactions', () => {
       ['quote', `${ALICE}/statuses/1`],
       ['like', undefined],
     ])
+  })
+
+  test('list_feed_post_reactions and list_feed leave a hashtag account’s boost out', async () => {
+    const user = getTestUser()
+    const post = await createFeedPost(user, {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://tags.pub/user/running',
+      kind: 'announce',
+      post_id: post.id,
+    })
+    await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'announce', post_id: post.id })
+    const { listFeed, listFeedPostReactions } = setup(user)
+
+    const reactions = JSON.parse((await listFeedPostReactions({ id: post.id })).content[0].text)
+    expect(reactions.map((r: { actor_uri: string }) => r.actor_uri)).toEqual([ALICE])
+    const page = JSON.parse((await listFeed({ limit: 10 })).content[0].text)
+    expect(page.posts.map((p: { boost_count: number }) => p.boost_count)).toEqual([1])
+  })
+})
+
+describe('set_followed_tag_notify', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('turns a followed tag’s bell off by the tag, and an unfollowed tag is an error', async () => {
+    const user = getTestUser()
+    await upsertFeedFollowing(user, {
+      actor_uri: 'https://tags.pub/user/running',
+      inbox_uri: 'https://tags.pub/user/running/inbox',
+      tag: 'running',
+    })
+    const { setFollowedTagNotify } = setup(user)
+
+    const result = await setFollowedTagNotify({ notify_on_post: false, tag: '#Running' })
+
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ notify_on_post: false, tag: 'running' })
+    expect((await getFeedFollowingByTag(user, 'running'))?.notify_on_post).toBe(false)
+    expect((await setFollowedTagNotify({ notify_on_post: true, tag: 'cycling' })).content[0].text).toBe(
+      'Not following that tag',
+    )
   })
 })

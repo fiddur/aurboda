@@ -400,17 +400,27 @@ follow of `<tag>@<host>`: the same pending → accepted lifecycle, the same `Und
 unfollow, and its posts arrive as boost cards through the normal inbox. The `feed_following`
 row is marked with the tag, so followed tags are listed apart from followed people
 (`GET /feed/following` and `list_following` return people only) through
-`GET/POST /feed/followed-tags` and `DELETE /feed/followed-tags/:tag` (a tag is addressed by its
-name, unique per user), and over MCP `list_followed_tags`, `follow_tag` and `unfollow_tag`.
-A tag follow never raises a post notification: neither the server's `feed_post` nor the Android
-notifier, which reads only the people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
-shows a `#running` chip in place of the "🔄 X boosted" line. The host is a server setting,
+`GET/POST /feed/followed-tags`, `PATCH /feed/followed-tags/:tag` and
+`DELETE /feed/followed-tags/:tag` (a tag is addressed by its name, unique per user), and over MCP
+`list_followed_tags`, `follow_tag`, `set_followed_tag_notify` and `unfollow_tag`.
+Each followed tag has the same **`notify_on_post`** bell as a followed person (default on), set
+with `PATCH /feed/followed-tags/:tag` (`{ notify_on_post }`), the MCP `set_followed_tag_notify` or
+the bell in the Followed tags block. With it on, a new post arriving through the tag raises a
+`feed_post` notification ("Carol posted in #running", naming the post's author, linking to the
+timeline filtered to the tag), once per post however many followed tags it carries (the key is the
+announced post's id, so a followee delivering the same post directly does not raise a second one).
+A post already in the timeline from a followee gets no boost card from the tag, and so nothing
+through it. The Android fallback notifier for servers without `/notifications` still reads only the
+people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
+shows a `#running` chip in place of the "🔄 X boosted" line. The tag accounts also boost each of
+the user's own public posts back to them; those are not counted as boosts (see
+[Likes and boosts](#likes-and-boosts)). The host is a server setting,
 `tag_actor_host` (Admin → **Federation**, default `tags.pub`). Only posts from servers that
 push to tags.pub arrive this way; every Aurboda server pushes its own public posts there
 through the tags.pub relay it subscribes to by default (see [Relays](../admin.md#federation)).
 
 **Web.** Feed → **People & sharing** has a **Followed tags** block (follow `#tag`, the Pending
-badge and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
+badge, the 🔔/🔕 notification bell and Unfollow), and the **Following** timeline shows a chip row (`All` plus one
 `#tag` per followed tag) that filters the timeline with `?tag=`.
 
 ## ActivityPub federation
@@ -645,7 +655,8 @@ reactions on the owner's own posts. Presentation only — the cached inbox URIs 
 Each follow carries a **`notify_on_post`** flag (default `true`), toggled per-actor with the
 bell in the web Following panel (or the `set_following_notify` MCP tool / `PATCH
 /feed/following/:id`). It controls whether that actor's new home-timeline posts raise a
-notification; muting is preserved across a re-follow. The server raises these into the central
+notification; muting is preserved across a re-follow. Followed tags carry the same flag, set by the
+tag (see [Hashtags](#hashtags)). The server raises these into the central
 🛎 bell itself (the `feed_post` type, see [Notifications](notifications.md)), alongside
 `feed_reply`, `feed_mention`, `feed_like`, `feed_boost` and the follow types, by the same rule as
 the Android notifier below. Until #1632 the Android app still polls the timeline and raises its
@@ -827,6 +838,14 @@ the sender's actor id** (see the rule below), so an unresolvable actor leaves a 
 anonymous reaction rather than an unverified byline. An `Undo` retracts it, scoped to the
 undoing actor; when the `Undo`'s inner object doesn't resolve, the remote activity's own id is
 matched instead.
+
+A boost by an account on the **tag actor host** (`tag_actor_host`, default `tags.pub`, compared
+by host and port) is stored like any other, but it is the hashtag feed listing the post, not a
+person boosting it: it is left out of `boost_count` and of the reactions list
+(`GET /feed/:postId/reactions`, MCP `list_feed_post_reactions`) and raises no `feed_boost`
+notification. Its likes are kept. A like or boost somebody makes from a tag feed names the post
+itself, so it arrives and shows as theirs. The filter is applied when reading, so boosts stored
+before it are hidden too.
 
 **Quotes.** A quote of one of our own posts that we approved (FEP-044f, see the
 `feed_quote_authorization` table under [Storage](#storage)) is listed with the post's likes and
@@ -1552,6 +1571,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `DELETE /feed/following/:id`                      | Unfollow (sends `Undo{Follow}`)                                                                                                                                                                              |
 | `GET /feed/followed-tags`                         | List the [hashtags I follow](#hashtags) (accepted + pending), by tag                                                                                                                                         |
 | `POST /feed/followed-tags`                        | Follow a hashtag (`{ tag }`): follows its tag actor `<tag>@<tag_actor_host>`                                                                                                                                 |
+| `PATCH /feed/followed-tags/:tag`                  | Set a followed hashtag's notification bell (`{ notify_on_post }`)                                                                                                                                            |
 | `DELETE /feed/followed-tags/:tag`                 | Unfollow a hashtag (sends `Undo{Follow}` to its tag actor)                                                                                                                                                   |
 | `GET /feed/followers`                             | List my followers; `?status=pending\|accepted\|all` (default `all`)                                                                                                                                          |
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
@@ -1628,7 +1648,7 @@ email is never part of the actor or any public response.
 The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, `preview_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
-`follow_tag`, `unfollow_tag`, `list_followers`,
+`follow_tag`, `set_followed_tag_notify`, `unfollow_tag`, `list_followers`,
 `approve_follower`, `reject_follower`, `list_timeline`, `like_timeline_post`,
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
 `get_timeline_replies`, `reply_to_timeline_post`, `get_feed_post_replies`, and

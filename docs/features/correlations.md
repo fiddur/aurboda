@@ -33,7 +33,7 @@ The first tab of the Analyze page shows three tables over a configurable analysi
 
 Each table covers a different category of data:
 
-**Activities** -- Exercise, meditation, naps. Shows how many times each occurred and the average duration.
+**Activities** -- Exercise, meditation, naps. Shows how many times each occurred and the average duration. A type with subtypes also counts them ("running" includes "trail running"), says "incl. N subtypes" after its count, and names them when you hover it.
 
 **Locations** -- Named places you've visited. Shows visit count.
 
@@ -63,7 +63,7 @@ Click any row to see a **before/during/after timeline** chart. This shows how yo
 
 The chart plots HRV (green line, left axis) and heart rate (red line, right axis) with your 30-day HRV baseline shown as a dashed reference line. This lets you see, for example, whether meditation raises your HRV during the session and whether the effect persists afterward.
 
-The impact analysis uses the page's period (the same period selector as the tables).
+The impact analysis uses the page's period by default. Its own **Period** select (6 months, 1 year, 2 years, 5 years or 10 years) looks further back for the selected row only, while the tables keep theirs; the heading then says so ("· last 1 year"). The choice stays when you select another row.
 
 The chart's heading names the activity type by its display name and links to its page.
 
@@ -76,6 +76,8 @@ Above the chart, two controls slice the selected row's sessions. They apply to t
 - **Length**: the session's length in minutes, in buckets cut at editable limits (default `15, 30, 60`: under 15 min, 15–30, 30–60, 60 min or more).
 - **Time of day**: the session's local start time, in buckets cut at editable whole hours (default `0, 6, 12, 18`); the last bucket wraps round to the first, so `6, 22` gives 06–22 and 22–06.
 - **Sleep in the window**: whether a sleep or nap overlaps the window before or after the session (no sleep, sleep before, sleep after, both).
+- **Type**: the activity type of each session, which splits a parent type's sessions by subtype. Offered when the sessions have more than one type.
+- **Year**: the local calendar year the session starts in. Offered when the sessions span more than one year, as with a long Period.
 - **A data field** of the activity type, for its categorical fields, such as a yoga session's name. A session with several values counts under each.
 
 With a breakdown on, a chart draws one metric (pick it with **Chart**; stress by default) with a thick line for all sessions and one line per group, and a table lists During and Change for every shown metric, one row for all sessions and one per group. Only groups with at least 3 sessions are drawn, at most 8; the rest are in the table, greyed out. With several groups one can look clear by chance; the line under the table says how many comparisons it holds (see [How many comparisons](#how-many-comparisons)). Read small groups as hints.
@@ -98,9 +100,10 @@ The page keeps its tab and every selection in the URL, so a view can be bookmark
 | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `tab`                             | `context` (default) or `explore`                                                                     |
 | `days`, `window`                  | Context period (14, 30, 60, 90; default 30) and before/after window in minutes (default 30)          |
+| `impact_days`                     | The selected row's own period: 180, 365, 730, 1825 or 3650 days; absent follows `days`               |
 | `metrics`                         | Shown metrics: `hrv`, `hr`, `stress` and up to 4 other metric names, e.g. `hr,stress,body_battery`   |
 | `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `meal_sensitivity` with flag id)   |
-| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep` or `field:<path>`, e.g. `field:session_name`       |
+| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep`, `type`, `year` or `field:<path>`                  |
 | `lengths`, `hours`                | Length limits in minutes (default `15,30,60`) and time-of-day limits in hours (default `0,6,12,18`)  |
 | `filter`                          | Session filters, e.g. `duration:15-30,30-60;sleep:none`; each key URL-encoded                        |
 | `breakdown_metric`                | The metric the breakdown chart draws (`hrv`, `hr`, `stress` or a metric name); default stress        |

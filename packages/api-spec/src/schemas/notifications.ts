@@ -95,13 +95,14 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
   },
   feed_boost: {
     admin_only: false,
-    description: 'Someone boosted one of your posts',
+    description: 'Someone boosted one of your posts (a hashtag feed listing it does not count)',
     group: 'feed',
     label: 'Boosts',
   },
   feed_post: {
     admin_only: false,
-    description: 'A new post or boost from an account whose bell is on in your Following list',
+    description:
+      'A new post or boost from an account, or a new post in a tag, whose bell is on in your Following and Followed tags lists',
     group: 'feed',
     label: 'New posts',
   },

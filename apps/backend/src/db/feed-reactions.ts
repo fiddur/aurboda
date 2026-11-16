@@ -236,14 +236,17 @@ export const listFeedPostReactions = async (
   user: string,
   postId: string,
   limit: number,
+  /** Leave out boosts by actors on this host (the tag actor host, whose accounts are hashtag feeds). */
+  hideBoostsFromHost?: string,
 ): Promise<FeedPostReactionRecord[]> => {
   const result = await query<FeedPostReactionRecord>(
     user,
     `SELECT ${FEED_POST_REACTION_COLUMNS} FROM feed_post_reaction
      WHERE post_id = $1
+       AND ($3::text IS NULL OR NOT (kind = 'announce' AND lower(split_part(actor_uri, '/', 3)) = lower($3)))
      ORDER BY created_at DESC, actor_uri DESC
      LIMIT $2`,
-    [postId, limit],
+    [postId, limit, hideBoostsFromHost?.trim() ?? null],
   )
   return result.rows
 }
@@ -263,18 +266,21 @@ export interface FeedPostReactionCount {
 export const countFeedPostReactions = async (
   user: string,
   postIds: string[],
+  /** Leave boosts by actors on this host (the tag actor host) out of the tally; quotes are never filtered. */
+  hideBoostsFromHost?: string,
 ): Promise<FeedPostReactionCount[]> => {
   if (postIds.length === 0) return []
   const result = await query<FeedPostReactionCount>(
     user,
     `SELECT post_id, kind, count(*)::int AS count FROM feed_post_reaction
      WHERE post_id = ANY($1::uuid[])
+       AND ($2::text IS NULL OR NOT (kind = 'announce' AND lower(split_part(actor_uri, '/', 3)) = lower($2)))
      GROUP BY post_id, kind
      UNION ALL
      SELECT post_id, 'quote', count(*)::int FROM feed_quote_authorization
      WHERE post_id = ANY($1::uuid[])
      GROUP BY post_id`,
-    [postIds],
+    [postIds, hideBoostsFromHost?.trim() ?? null],
   )
   return result.rows
 }

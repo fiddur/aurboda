@@ -39,6 +39,7 @@ vi.mock('../settings', () => ({
 describe('getActivityImpact', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([])
     vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, _start, _end, binMinutes) =>
       binSeries(await rawPoints(user, metric), binMinutes),
     )
@@ -630,6 +631,134 @@ describe('getActivityImpact slicing', () => {
     expect(settings.getUserTimezone).toHaveBeenCalledWith('testuser')
   })
 
+  describe('a parent type counts its subtypes', () => {
+    const run = (type: string, start: Date, minutes = 30): MergedActivity => ({
+      activity_type: type,
+      end_time: mins(start, minutes),
+      source: 'manual' as const,
+      start_time: start,
+    })
+    const exact = (activity: string, slicing: ImpactSlicing = {}) =>
+      getActivityImpact(
+        'testuser',
+        activity,
+        'activity_type',
+        30,
+        31,
+        undefined,
+        until,
+        since,
+        'exact',
+        [],
+        slicing,
+      )
+
+    beforeEach(() => {
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([
+        { display_name: 'Running', name: 'running' } as ActivityTypeDefinition,
+        {
+          display_name: 'Trail running',
+          name: 'trail_running',
+          parent_type: 'running',
+        } as ActivityTypeDefinition,
+      ])
+    })
+
+    test("match 'exact' on the parent includes subtype occurrences, a subtype request not the parent's", async () => {
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        run('running', day(10)),
+        run('trail_running', day(11)),
+        run('trail_running', day(12)),
+      ])
+
+      expect((await exact('running')).occurrences).toBe(3)
+      expect((await exact('trail_running')).occurrences).toBe(2)
+      expect(db.getActivityTypeDefinitions).toHaveBeenCalledTimes(2)
+    })
+
+    test('a type breakdown splits the parent by subtype, with display names', async () => {
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        run('running', day(10)),
+        run('trail_running', day(11)),
+        run('trail_running', day(12)),
+      ])
+
+      const result = await exact('running', { breakdown: 'type', includeDimensions: true })
+
+      expect(result.breakdown?.groups.map((g) => [g.key, g.label, g.occurrences])).toEqual([
+        ['trail_running', 'Trail running', 2],
+        ['running', 'Running', 1],
+      ])
+      expect(result.dimensions?.map((d) => d.dimension)).toEqual(['duration', 'time_of_day', 'sleep', 'type'])
+    })
+
+    test('a one-type split is not listed but a type filter or breakdown still works', async () => {
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        run('trail_running', day(11)),
+        run('trail_running', day(12)),
+      ])
+
+      const listed = await exact('running', { includeDimensions: true })
+      expect(listed.dimensions?.map((d) => d.dimension)).toEqual(['duration', 'time_of_day', 'sleep'])
+
+      const filtered = await exact('running', {
+        breakdown: 'type',
+        filters: [{ dimension: 'type', keys: ['trail_running'] }],
+      })
+      expect(filtered.occurrences).toBe(2)
+      expect(filtered.breakdown?.groups.map((g) => g.key)).toEqual(['trail_running'])
+    })
+
+    test('analysing sleep, a subtype of sleep is the analysed activity, not sleep around it', async () => {
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([
+        { display_name: 'Sleep', name: 'sleep' } as ActivityTypeDefinition,
+        { display_name: 'Nap', name: 'nap', parent_type: 'sleep' } as ActivityTypeDefinition,
+      ])
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        run('sleep', day(10), 60),
+        run('nap', mins(day(10), 75), 20),
+      ])
+
+      const result = await exact('sleep', { breakdown: 'sleep' })
+
+      expect(result.total_occurrences).toBe(2)
+      expect(result.breakdown?.groups.map((g) => [g.key, g.occurrences])).toEqual([['none', 2]])
+    })
+  })
+
+  test('a year breakdown uses the local year and lists only when there are two', async () => {
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+      yoga(new Date('2023-12-31T23:30:00Z'), 20),
+      yoga(day(15), 20),
+    ])
+    const wide = (slicing: ImpactSlicing) =>
+      getActivityImpact(
+        'testuser',
+        'yoga',
+        'activity_type',
+        30,
+        3650,
+        undefined,
+        until,
+        new Date('2023-12-01T00:00:00Z'),
+        'contains',
+        [],
+        slicing,
+      )
+
+    const utc = await wide({ breakdown: 'year', includeDimensions: true })
+    expect(utc.breakdown?.groups.map((g) => [g.key, g.occurrences])).toEqual([
+      ['2023', 1],
+      ['2024', 1],
+    ])
+    expect(utc.dimensions?.map((d) => d.dimension)).toContain('year')
+    expect(settings.getUserTimezone).toHaveBeenCalledWith('testuser')
+
+    const stockholm = await wide({ breakdown: 'year', includeDimensions: true, tz: 'Europe/Stockholm' })
+    expect(stockholm.breakdown?.groups.map((g) => [g.key, g.occurrences])).toEqual([['2024', 2]])
+    expect(stockholm.dimensions?.map((d) => d.dimension)).not.toContain('year')
+  })
+
   test('a breakdown past the cap reports the groups it left out', async () => {
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue(
       Array.from({ length: 14 }, (_, i) => yoga(day(i + 2), 20, { session_name: `Flow ${i}` })),
@@ -639,6 +768,17 @@ describe('getActivityImpact slicing', () => {
 
     expect(result.breakdown?.groups).toHaveLength(12)
     expect(result.breakdown?.omitted_groups).toBe(2)
+  })
+})
+
+describe('listedDimensions', () => {
+  test('type only for activities and tags, year for every kind', () => {
+    const all = ['duration', 'time_of_day', 'sleep', 'type', 'year']
+    expect(listedDimensions('activity_type', undefined)).toEqual(all)
+    expect(listedDimensions('tag', undefined)).toEqual(all)
+    for (const kind of ['location', 'productivity_category', 'productivity_app'] as const) {
+      expect(listedDimensions(kind, undefined)).toEqual(['duration', 'time_of_day', 'sleep', 'year'])
+    }
   })
 })
 
@@ -744,11 +884,10 @@ describe('meal_sensitivity impact', () => {
     expect(result.comparison?.stress_effect.p_value_adjusted).not.toBeNull()
   })
 
-  test('lists only the time-of-day and sleep dimensions', async () => {
+  test('lists only the time-of-day, sleep and year dimensions, year only with two years or more', async () => {
     rawPoints.mockResolvedValue([])
     const result = await impact({ includeDimensions: true })
     expect(result.dimensions?.map((d) => d.dimension)).toEqual(['time_of_day', 'sleep'])
-    expect(listedDimensions('meal_sensitivity', undefined)).toEqual(['time_of_day', 'sleep'])
-    expect(listedDimensions('activity_type', undefined)).toEqual(['duration', 'time_of_day', 'sleep'])
+    expect(listedDimensions('meal_sensitivity', undefined)).toEqual(['time_of_day', 'sleep', 'year'])
   })
 })

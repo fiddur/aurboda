@@ -332,6 +332,17 @@ export const unfollowTag = async (tag: string): Promise<void> => {
   await axios.delete(`${API_URL}/feed/followed-tags/${encodeURIComponent(tag)}`, { headers: authHeaders() })
 }
 
+/** Toggle whether new posts arriving through a followed tag notify. */
+export const updateFollowedTagNotify = async (tag: string, notify_on_post: boolean): Promise<FollowedTag> => {
+  const response = await axios.patch<FollowTagResponse>(
+    `${API_URL}/feed/followed-tags/${encodeURIComponent(tag)}`,
+    { notify_on_post },
+    { headers: authHeaders() },
+  )
+  if (!response.data.followed_tag) throw new Error('Update failed: no tag returned')
+  return response.data.followed_tag
+}
+
 export const fetchFollowers = async (status: FollowersQuery['status'] = 'all'): Promise<FollowerActor[]> => {
   const response = await axios.get<FollowersResponse>(`${API_URL}/feed/followers`, {
     headers: authHeaders(),

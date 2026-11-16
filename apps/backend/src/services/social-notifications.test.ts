@@ -104,7 +104,9 @@ describe('followAcceptedNotification', () => {
 
 describe('reactionNotification', () => {
   test('a like links to the post and quotes its message', () => {
-    expect(reactionNotification('like', ALICE, 'me', { id: POST_ID, message: 'Long run  today' })).toEqual({
+    expect(
+      reactionNotification('like', ALICE, 'me', { id: POST_ID, message: 'Long run  today' }, 'tags.pub'),
+    ).toEqual({
       body: 'Long run today',
       data: { actor_uri: ALICE.actor_uri, post_id: POST_ID },
       dedupe_key: `feed_like:${POST_ID}:${ALICE.actor_uri}`,
@@ -115,13 +117,45 @@ describe('reactionNotification', () => {
   })
 
   test('a boost of a post without a message has no body', () => {
-    const notification = reactionNotification('announce', BOB, 'me', { id: POST_ID, message: null })
+    const notification = reactionNotification(
+      'announce',
+      BOB,
+      'me',
+      { id: POST_ID, message: null },
+      'tags.pub',
+    )
     expect(notification).toMatchObject({
       dedupe_key: `feed_boost:${POST_ID}:${BOB.actor_uri}`,
       title: '@bob@m.example boosted your post',
       type: 'feed_boost',
     })
-    expect(notification.body).toBeUndefined()
+    expect(notification?.body).toBeUndefined()
+  })
+
+  const TAG_ACCOUNT = {
+    actor_uri: 'https://tags.pub/user/aurboda',
+    display_name: null,
+    handle: '@aurboda@tags.pub',
+  }
+
+  test('a boost by an account on the tag actor host raises nothing', () => {
+    expect(
+      reactionNotification('announce', TAG_ACCOUNT, 'me', { id: POST_ID, message: 'x' }, 'tags.pub'),
+    ).toBeNull()
+  })
+
+  test('a like by an account on the tag actor host still notifies', () => {
+    expect(
+      reactionNotification('like', TAG_ACCOUNT, 'me', { id: POST_ID, message: 'x' }, 'tags.pub'),
+    ).toMatchObject({
+      type: 'feed_like',
+    })
+  })
+
+  test('a boost by an account on the tag actor host notifies when another host is configured', () => {
+    expect(
+      reactionNotification('announce', TAG_ACCOUNT, 'me', { id: POST_ID, message: 'x' }, 'tags.example'),
+    ).toMatchObject({ type: 'feed_boost' })
   })
 })
 
@@ -158,9 +192,9 @@ describe('timelineEntryNotification', () => {
     })
   })
 
-  test('no post notification with the bell off, for a tag follow, a stranger, or a hidden entry', () => {
+  test('no post notification with the bell off, for a person or a tag, a stranger, or a hidden entry', () => {
     expect(timelineEntryNotification(event({ source: { notify_on_post: false, tag: null } }))).toBeNull()
-    expect(timelineEntryNotification(event({ source: { notify_on_post: true, tag: 'running' } }))).toBeNull()
+    expect(timelineEntryNotification(event({ source: { notify_on_post: false, tag: 'running' } }))).toBeNull()
     expect(timelineEntryNotification(event({ source: null }))).toBeNull()
     expect(timelineEntryNotification(event({ visible: false }))).toBeNull()
   })
@@ -217,6 +251,32 @@ describe('timelineEntryNotification', () => {
     ).toMatchObject({
       dedupe_key: `feed_post:${announce}`,
       title: '@bob@m.example boosted Alice',
+      type: 'feed_post',
+    })
+  })
+
+  test('a boost card from a followed tag whose bell is on names the author and the tag, keyed on the note', () => {
+    const announce = 'https://tags.pub/user/running/announces/1'
+    expect(
+      timelineEntryNotification(
+        event({
+          entry: {
+            boost_of_uri: NOTE,
+            boosted_by_actor_uri: 'https://tags.pub/user/running',
+            boosted_by_display_name: '#running',
+            boosted_by_handle: '@running@tags.pub',
+            display_name: 'Carol',
+            object_uri: announce,
+          },
+          source: { notify_on_post: true, tag: 'running' },
+        }),
+      ),
+    ).toEqual({
+      body: 'Hello',
+      data: { actor_uri: ALICE.actor_uri, object_uri: announce, tag: 'running' },
+      dedupe_key: `feed_post:${NOTE}`,
+      link: '/feed?tag=running',
+      title: 'Carol posted in #running',
       type: 'feed_post',
     })
   })

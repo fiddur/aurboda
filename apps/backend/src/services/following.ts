@@ -30,6 +30,7 @@ import {
   getFeedFollowingByActor,
   getFeedFollowingByTag,
   removeFeedFollowing,
+  updateFeedFollowedTagNotify,
   upsertFeedFollowing,
 } from '../db/index.ts'
 import { isUniqueViolation } from '../db/pg-errors.ts'
@@ -271,4 +272,15 @@ export const unfollowTag = async (deps: FollowDeps, user: string, rawTag: string
   if (tag == null) return false
   const existing = await getFeedFollowingByTag(user, tag)
   return existing == null ? false : unfollowActor(deps, user, existing.id)
+}
+
+/** Turn a followed tag's bell on or off, by the tag (with or without `#`); null when it is not followed. */
+export const setFollowedTagNotify = async (
+  user: string,
+  rawTag: string,
+  notifyOnPost: boolean,
+  update: typeof updateFeedFollowedTagNotify = updateFeedFollowedTagNotify,
+): Promise<FeedFollowingRecord | null> => {
+  const tag = normalizeTag(rawTag)
+  return tag == null ? null : update(user, tag, notifyOnPost)
 }

@@ -35,7 +35,14 @@ const deps: FollowDeps = {
   tagActorHost: async () => 'tags.pub',
 }
 
-const app = (overrides: Partial<FollowActions> = {}) => {
+const app = (
+  overrides: Partial<FollowActions> = {},
+  setNotify: (
+    user: string,
+    tag: string,
+    notifyOnPost: boolean,
+  ) => Promise<FeedFollowingRecord | null> = async () => null,
+) => {
   const actions: FollowActions = {
     follow: async () => ({ error: 'unused', ok: false, status: 500 }),
     followTag: (user, tag) => followTag(deps, user, tag),
@@ -45,7 +52,7 @@ const app = (overrides: Partial<FollowActions> = {}) => {
   }
   const server = express()
   server.use(express.json())
-  server.use('/feed/followed-tags', createFeedFollowedTagsRouter(auth, actions))
+  server.use('/feed/followed-tags', createFeedFollowedTagsRouter(auth, actions, setNotify))
   return server
 }
 
@@ -111,5 +118,55 @@ describe('DELETE /feed/followed-tags/:tag', () => {
     ).delete('/feed/followed-tags/running')
     expect(res.status).toBe(200)
     expect(calls).toEqual(['running'])
+  })
+})
+
+describe('PATCH /feed/followed-tags/:tag', () => {
+  test('sets the bell and returns the followed tag', async () => {
+    const calls: unknown[][] = []
+    const res = await supertest(
+      app({}, async (user, tag, notifyOnPost) => {
+        calls.push([user, tag, notifyOnPost])
+        return { ...record, notify_on_post: false }
+      }),
+    )
+      .patch('/feed/followed-tags/running')
+      .send({ notify_on_post: false })
+    expect(res.status).toBe(200)
+    expect(calls).toEqual([['tester', 'running', false]])
+    expect(res.body).toEqual({
+      followed_tag: {
+        accepted: false,
+        actor_uri: 'https://tags.pub/user/running',
+        avatar_url: null,
+        created_at: '2026-11-01T10:00:00.000Z',
+        display_name: '#running',
+        handle: '@running@tags.pub',
+        id: record.id,
+        notify_on_post: false,
+        tag: 'running',
+      },
+      success: true,
+    })
+  })
+
+  test('404 when the tag is not followed', async () => {
+    const res = await supertest(app()).patch('/feed/followed-tags/running').send({ notify_on_post: true })
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Not following that tag', success: false })
+  })
+
+  test('400 without notify_on_post', async () => {
+    const calls: string[] = []
+    const res = await supertest(
+      app({}, async (_user, tag) => {
+        calls.push(tag)
+        return record
+      }),
+    )
+      .patch('/feed/followed-tags/running')
+      .send({})
+    expect(res.status).toBe(400)
+    expect(calls).toEqual([])
   })
 })
