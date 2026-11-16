@@ -54,6 +54,7 @@ export const handleInstanceActorAnnounce = async (
   await deps.upsertPublicTagPost({
     ...author,
     actor_uri: attributionId.href,
+    announce_actors: { [valid.announceUri]: valid.actorId.href },
     announce_uris: [valid.announceUri],
     content: sanitizeRemoteHtml(note.content?.toString() ?? ''),
     images: await extractNoteImages(note),
@@ -79,7 +80,7 @@ export const handleInstanceActorUndo = async (
   if (inner instanceof Announce && inner.actorId?.href !== undo.actorId.href) return
   const announceUri = inner?.id?.href ?? undo.objectId?.href
   if (announceUri == null || new URL(announceUri).host !== undo.actorId.host) return
-  await deps.removePublicTagAnnounce(announceUri)
+  await deps.removePublicTagAnnounce(announceUri, undo.actorId.href)
 }
 
 /**

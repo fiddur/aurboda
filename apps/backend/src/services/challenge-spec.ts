@@ -3,6 +3,7 @@ import type {
   ChallengeAggregation,
   ChallengeDataResponse,
   ChallengeEffectiveBucketSize,
+  ChallengeParticipation,
   ChallengeSpec,
   ChartDataBucket,
 } from '@aurboda/api-spec'
@@ -14,7 +15,7 @@ import { isKnownTimezone } from '@aurboda/api-spec'
  * member's series + score. Reuses the same `getChartData` engine the dashboards
  * use, so a challenge is a bucketed series scored by its sum, count or best bucket.
  */
-import type { ChallengeSpecFields } from '../db/index.ts'
+import type { ChallengeParticipationRecord, ChallengeSpecFields } from '../db/index.ts'
 
 import { expandActivityTypes, getSourceFilter, query } from '../db/index.ts'
 import { normalizeItemValue } from './activity-measures.ts'
@@ -57,6 +58,19 @@ export const specToApi = (spec: ChallengeSpecFields): ChallengeSpec => ({
   ...(spec.measure !== null ? { measure: spec.measure } : {}),
   ...(spec.filter_field !== null ? { filter_field: spec.filter_field } : {}),
   ...(spec.filter_value !== null ? { filter_value: spec.filter_value } : {}),
+})
+
+export const serializeParticipation = (p: ChallengeParticipationRecord): ChallengeParticipation => ({
+  challenge_url: p.challenge_url,
+  created_at: p.created_at.toISOString(),
+  end_ts: p.end_ts.toISOString(),
+  host_identity: p.host_identity,
+  id: p.id,
+  name: p.name,
+  spec: specToApi(p.spec),
+  start_ts: p.start_ts.toISOString(),
+  status: p.status,
+  timezone: p.timezone,
 })
 
 /** Convert an api-spec spec (omitted optionals) to the stored shape (nullable optionals). */

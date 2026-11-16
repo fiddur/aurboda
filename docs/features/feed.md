@@ -1480,8 +1480,11 @@ ways, into one central `public_tag_posts` table, the first through the instance 
   attributed id. The content is sanitised like a timeline post's, the images captured the same
   way, the tags are the Note's own, and the link is the Note's `url` only when it is `http(s)`
   (else its id). One row per Note, keyed on its id: a second tag actor's `Announce` of the same
-  post adds its Announce id to the row. A tag actor's `Undo{Announce}` removes its Announce id,
-  and the row goes once no Announce keeps it. An author's `Delete` of a post removes its row
+  post adds its Announce id to the row, with the actor that sent it (`announce_actors`). A tag
+  actor's `Undo{Announce}` removes its Announce id, and only when the row stored that id from the
+  same actor, so another tag actor on the same host cannot withdraw it (a row stored before the
+  actor was kept takes any followed actor on the Announce's host, as before); the row goes once
+  no Announce keeps it. An author's `Delete` of a post removes its row
   (scoped to the sender, like the timeline's), and an actor's `Delete` of itself removes all of
   theirs; but a remote author's own `Delete` rarely reaches this server (it goes to their
   followers), so a deleted remote post usually leaves the page on the tag actor's

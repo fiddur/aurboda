@@ -41,6 +41,10 @@ export const CREATE_PUBLIC_TAG_POSTS_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_public_tag_posts_published ON public_tag_posts (published_at DESC, id DESC)',
 ]
 
+/** Which tag actor sent each Announce id, so only that actor's Undo withdraws it; `{}` on older rows. */
+export const ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS =
+  "ALTER TABLE public_tag_posts ADD COLUMN IF NOT EXISTS announce_actors JSONB NOT NULL DEFAULT '{}'::jsonb"
+
 export const CREATE_PUBLIC_TAG_HIDDEN_TABLE = `
   CREATE TABLE IF NOT EXISTS public_tag_hidden (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -107,6 +111,8 @@ export interface PublicTagPostInput {
   tags: string[]
   /** The tag actors' `Announce` ids that brought the post in; empty for a local post. */
   announce_uris: string[]
+  /** The actor of each of `announce_uris`, keyed by the Announce id. */
+  announce_actors?: Record<string, string>
   /** The local author of one of this server's own posts, else null. */
   local_user: string | null
   published_at: Date
@@ -134,8 +140,12 @@ export interface PublicTagsApi {
   deleteInstanceTagFollow: (tag: string) => Promise<boolean>
   /** Keyed on the Note's id: a re-announce or edit replaces it in place, gathering every Announce id. */
   upsertPublicTagPost: (input: PublicTagPostInput) => Promise<PublicTagPostRecord>
-  /** Drops the Announce, and the post once nothing keeps it (no Announce left and not local). */
-  removePublicTagAnnounce: (announceUri: string) => Promise<void>
+  /**
+   * `actorUri` withdrawing its Announce: drops it, and the post once nothing keeps it (no Announce
+   * left and not local). An Announce stored with another actor is left; one stored without its
+   * actor (before that was kept) is dropped as before.
+   */
+  removePublicTagAnnounce: (announceUri: string, actorUri: string) => Promise<void>
   /** The author's own Delete: scoped to the sender like the timeline's. */
   deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<boolean>
   deleteLocalPublicTagPost: (noteUri: string, localUser: string) => Promise<boolean>
@@ -380,14 +390,15 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     return result.rowCount ?? 0
   },
 
-  removePublicTagAnnounce: async (announceUri) => {
+  removePublicTagAnnounce: async (announceUri, actorUri) => {
     const client = await getClient()
     const result = await client.query<{ id: string }>(
       `UPDATE public_tag_posts
-       SET announce_uris = array_remove(announce_uris, $1), updated_at = NOW()
-       WHERE $1 = ANY(announce_uris)
+       SET announce_uris = array_remove(announce_uris, $1), announce_actors = announce_actors - $1,
+         updated_at = NOW()
+       WHERE $1 = ANY(announce_uris) AND COALESCE(announce_actors ->> $1 = $2, true)
        RETURNING id`,
-      [announceUri],
+      [announceUri, actorUri],
     )
     if (result.rows.length === 0) return
     await client.query(
@@ -428,8 +439,8 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     const client = await getClient()
     const result = await client.query<PublicTagPostRecord>(
       `INSERT INTO public_tag_posts (note_uri, actor_uri, handle, display_name, avatar_url, content, url,
-         images, tags, announce_uris, local_user, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::text[], $10::text[], $11, $12)
+         images, tags, announce_uris, local_user, published_at, announce_actors)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::text[], $10::text[], $11, $12, $13::jsonb)
        ON CONFLICT (note_uri) DO UPDATE SET
          actor_uri = EXCLUDED.actor_uri,
          handle = EXCLUDED.handle,
@@ -442,6 +453,7 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
          announce_uris = ARRAY(
            SELECT DISTINCT unnest(public_tag_posts.announce_uris || EXCLUDED.announce_uris)
          ),
+         announce_actors = public_tag_posts.announce_actors || EXCLUDED.announce_actors,
          local_user = COALESCE(EXCLUDED.local_user, public_tag_posts.local_user),
          published_at = EXCLUDED.published_at,
          updated_at = NOW()
@@ -459,6 +471,7 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
         input.announce_uris,
         input.local_user,
         input.published_at,
+        JSON.stringify(input.announce_actors ?? {}),
       ],
     )
     return result.rows[0]

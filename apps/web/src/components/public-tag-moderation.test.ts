@@ -1,15 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
-import { actorHost, blockKindLabel, moderationOptions, removedByModeration } from './public-tag-moderation'
+import { blockKindLabel, moderationOptions, removedByModeration } from './public-tag-moderation'
 
 const bob = { actor_uri: 'https://Social.Peer.example/users/bob', handle: '@bob@social.peer.example' }
-
-describe('actorHost', () => {
-  test('is the lowercased host without port, null for a non-URL', () => {
-    expect(actorHost('https://Social.Peer.example:8443/users/bob')).toBe('social.peer.example')
-    expect(actorHost('nope')).toBeNull()
-  })
-})
 
 describe('moderationOptions', () => {
   test('hide, block the author by handle and block the domain by host', () => {

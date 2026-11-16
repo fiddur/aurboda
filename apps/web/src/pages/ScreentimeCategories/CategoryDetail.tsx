@@ -29,6 +29,7 @@ import {
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
 import { isEmoji, suggestEmoji } from '../../utils/emojiLookup'
+import '../../components/page-layout.css'
 import './style.css'
 
 const formatDuration = (totalSec: number): string => {

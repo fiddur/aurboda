@@ -5,6 +5,7 @@ import {
   cutBounds,
   cutLengthM,
   cutTooShortReason,
+  densifyLine,
   indexRangeForKm,
   indexRangeForOffsets,
   moveCutEdge,
@@ -123,5 +124,22 @@ describe('cutBounds', () => {
     expect(cutBounds(null)).toBeNull()
     expect(cutBounds([5])).toBeNull()
     expect(cutBounds([0, 1.5])).toBeNull()
+  })
+})
+
+describe('densifyLine', () => {
+  it('puts a point at least every step along each edge, keeping the corners', () => {
+    const line = [
+      { lat: 59.3, lon: 18.07 },
+      { lat: 59.3, lon: 18.07 + 100 / 56_800 },
+    ]
+    const dense = densifyLine(line, 10)
+    expect(dense[0]).toEqual(line[0])
+    expect(dense.at(-1)).toEqual(line[1])
+    const distances = cumulativeDistancesM(dense)
+    expect(distances.slice(1).every((d, i) => d - distances[i] <= 10.01)).toBe(true)
+    const range = indexRangeForKm(distances, 0.02, 0.06)
+    expect(cutLengthM(distances, range)).toBeGreaterThan(39)
+    expect(cutLengthM(distances, range)).toBeLessThan(61)
   })
 })

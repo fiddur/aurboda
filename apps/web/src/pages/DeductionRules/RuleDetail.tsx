@@ -33,6 +33,7 @@ import {
   toOutputCategory,
   toOutputTitleField,
 } from './ruleForm'
+import '../../components/page-layout.css'
 import './style.css'
 
 function TextField({

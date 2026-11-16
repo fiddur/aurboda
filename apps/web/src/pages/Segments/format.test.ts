@@ -5,9 +5,14 @@ import { describe, expect, it } from 'vitest'
 import {
   formatEffortCount,
   formatMatchResult,
+  formatPassedOn,
+  formatScanTotals,
+  lengthKm,
+  promoteTrim,
   searchFromSegmentsQuery,
   segmentEffortSeries,
   segmentsQueryFromParams,
+  shouldScanAgain,
 } from './format'
 
 describe('segmentsQueryFromParams', () => {
@@ -80,5 +85,36 @@ describe('formatMatchResult', () => {
     expect(formatMatchResult({ activities: 3, efforts: 5 })).toBe('Timed 5 efforts on 3 activities')
     expect(formatMatchResult({ activities: 1, efforts: 1 })).toBe('Timed 1 effort on 1 activity')
     expect(formatEffortCount(0)).toBe('0 efforts')
+  })
+})
+
+describe('suggested segments', () => {
+  it('says how many activities pass it', () => {
+    expect(formatPassedOn(5)).toBe('passed on 5 activities')
+    expect(formatPassedOn(1)).toBe('passed on 1 activity')
+  })
+
+  it('sends the km only when they differ from the whole line', () => {
+    expect(lengthKm(1234)).toBe(1.3)
+    expect(promoteTrim(1234, 0, 1.3)).toEqual({})
+    expect(promoteTrim(1200, 0, 1.2)).toEqual({})
+    expect(promoteTrim(1234, 0.2, 1.3)).toEqual({ end_km: 1.3, start_km: 0.2 })
+    expect(promoteTrim(1234, 0, 1.2)).toEqual({ end_km: 1.2, start_km: 0 })
+  })
+
+  it('scans again while something is left and the last run got through some', () => {
+    expect(shouldScanAgain({ remaining: 4, scanned: 10, suggested: 0 })).toBe(true)
+    expect(shouldScanAgain({ remaining: 0, scanned: 10, suggested: 0 })).toBe(false)
+    expect(shouldScanAgain({ remaining: 4, scanned: 0, suggested: 0 })).toBe(false)
+  })
+
+  it('sums up the scan in one sentence', () => {
+    expect(formatScanTotals({ scanned: 0, suggested: 0 })).toBe('Nothing new to look through.')
+    expect(formatScanTotals({ scanned: 12, suggested: 1 })).toBe(
+      'Looked through 12 activities and found 1 new suggestion.',
+    )
+    expect(formatScanTotals({ scanned: 1, suggested: 3 })).toBe(
+      'Looked through 1 activity and found 3 new suggestions.',
+    )
   })
 })

@@ -92,6 +92,7 @@ describe('handleInstanceActorAnnounce', () => {
     expect(upserts).toEqual([
       {
         actor_uri: AUTHOR,
+        announce_actors: { [ANNOUNCE_ID]: TAG_ACTOR },
         announce_uris: [ANNOUNCE_ID],
         avatar_url: null,
         content: '<p>Hello #Aurboda</p>',
@@ -249,8 +250,23 @@ describe('handleInstanceActorUndo', () => {
       }),
       ingest,
     )
-    expect(ingest.removePublicTagAnnounce).toHaveBeenNthCalledWith(1, ANNOUNCE_ID)
-    expect(ingest.removePublicTagAnnounce).toHaveBeenNthCalledWith(2, 'https://tags.example/announce/2')
+    expect(ingest.removePublicTagAnnounce).toHaveBeenNthCalledWith(1, ANNOUNCE_ID, TAG_ACTOR)
+    expect(ingest.removePublicTagAnnounce).toHaveBeenNthCalledWith(
+      2,
+      'https://tags.example/announce/2',
+      TAG_ACTOR,
+    )
+  })
+
+  test('an Undo by id tells the store which actor asks, so another actor on the host cannot withdraw it', async () => {
+    const other = 'https://tags.example/user/running'
+    const { ingest } = deps({ [other]: 'running', [TAG_ACTOR]: 'aurboda' })
+    await handleInstanceActorUndo(
+      ctxFor({}),
+      new Undo({ actor: new URL(other), object: new URL(ANNOUNCE_ID) }),
+      ingest,
+    )
+    expect(ingest.removePublicTagAnnounce).toHaveBeenCalledWith(ANNOUNCE_ID, other)
   })
 
   test("a stranger's Undo, another actor's Announce, or another activity type removes nothing", async () => {

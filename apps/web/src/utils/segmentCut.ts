@@ -70,6 +70,23 @@ export const indexRangeForKm = (distancesM: number[], startKm: number, endKm: nu
   return from < to ? { from, to } : null
 }
 
+/**
+ * The line with a point at least every `stepM` metres. A simplified line (a straight street is
+ * two points) otherwise has no points inside a km range, and `indexRangeForKm` would mark it whole.
+ */
+export const densifyLine = <P extends { lat: number; lon: number }>(points: P[], stepM = 10): P[] =>
+  points.flatMap((point, i) => {
+    if (i === 0) return [point]
+    const prev = points[i - 1]
+    const steps = Math.max(1, Math.ceil(haversineM(prev, point) / stepM))
+    return Array.from({ length: steps }, (_, k) => {
+      const f = (k + 1) / steps
+      return k === steps - 1
+        ? point
+        : { ...point, lat: prev.lat + (point.lat - prev.lat) * f, lon: prev.lon + (point.lon - prev.lon) * f }
+    })
+  })
+
 /** The length of a stretch along the line, in metres; 0 without a stretch. */
 export const cutLengthM = (distancesM: number[], range: IndexRange | null): number =>
   range ? distancesM[range.to] - distancesM[range.from] : 0

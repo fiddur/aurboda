@@ -1,5 +1,7 @@
 import type { PublicTagBlockKind, PublicTagPost } from '@aurboda/api-spec'
 
+import { actorHost, hostMatches } from '@aurboda/api-spec'
+
 export type ModerationAction =
   | { kind: 'hide' }
   | { kind: 'actor'; value: string }
@@ -11,17 +13,6 @@ export interface ModerationOption {
   confirmMessage: string
   confirmLabel: string
 }
-
-export const actorHost = (actorUri: string): string | null => {
-  try {
-    const host = new URL(actorUri).hostname.toLowerCase()
-    return host === '' ? null : host
-  } catch {
-    return null
-  }
-}
-
-const hostMatches = (host: string, domain: string): boolean => host === domain || host.endsWith(`.${domain}`)
 
 /** The admin's choices for one tag page post: hide it, block its author, block its domain. */
 export const moderationOptions = (

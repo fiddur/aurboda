@@ -395,6 +395,8 @@ private data class MetricEntry(
     val keywords: List<String> = emptyList(),
 )
 
+private const val METRIC_CATALOGUE_GROUP = "More built-in metrics"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MetricPicker(
@@ -418,7 +420,7 @@ private fun MetricPicker(
             metricCatalog,
             builtinMetrics.map { it.first }.toSet(),
             customMetrics.map { it.name }.toSet(),
-        ).map { MetricEntry(it.name, it.displayName, "Catalogue", it.aliases) }
+        ).map { MetricEntry(it.name, it.displayName, METRIC_CATALOGUE_GROUP, it.aliases) }
         builtin + custom + catalogue
     }
 
@@ -441,7 +443,7 @@ private fun MetricPicker(
 
     val builtinFiltered = filtered.filter { it.group == "Built-in" }
     val customFiltered = filtered.filter { it.group == "Custom" }
-    val catalogueFiltered = filtered.filter { it.group == "Catalogue" }
+    val catalogueFiltered = filtered.filter { it.group == METRIC_CATALOGUE_GROUP }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -526,7 +528,7 @@ private fun MetricPicker(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            "Catalogue",
+                            METRIC_CATALOGUE_GROUP,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.outline,
                         )

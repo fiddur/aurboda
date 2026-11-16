@@ -7,7 +7,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import type { ChallengeParticipationRecord, ChallengeRecord } from '../db/index.ts'
+import type { ChallengeRecord } from '../db/index.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
@@ -22,7 +22,7 @@ import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge, previewChallenge } from '../services/challenge-federation.ts'
 import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
+import { serializeParticipation, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -43,19 +43,6 @@ const serialize = (record: ChallengeRecord, webHost: string | undefined, user: s
   start_ts: record.start_ts.toISOString(),
   timezone: record.timezone,
   visibility: isPublicToVisibility(record.is_public),
-})
-
-const serializeParticipation = (p: ChallengeParticipationRecord) => ({
-  challenge_url: p.challenge_url,
-  created_at: p.created_at.toISOString(),
-  end_ts: p.end_ts.toISOString(),
-  host_identity: p.host_identity,
-  id: p.id,
-  name: p.name,
-  spec: specToApi(p.spec),
-  start_ts: p.start_ts.toISOString(),
-  status: p.status,
-  timezone: p.timezone,
 })
 
 export const registerChallengeTools = (

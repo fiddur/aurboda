@@ -1,5 +1,6 @@
 import {
   createSegmentBodySchema,
+  promoteSuggestedSegmentBodySchema,
   segmentsQuerySchema,
   tzSchema,
   updateSegmentBodySchema,
@@ -7,14 +8,18 @@ import {
 import { z } from 'zod'
 
 import { defaultSegmentOps, type SegmentOps } from '../services/segments.ts'
+import { defaultSuggestedSegmentOps, type SuggestedSegmentOps } from '../services/suggested-segments.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 const segmentId = z.string().uuid().describe('Segment ID')
+const suggestionId = z.string().uuid().describe('Suggested segment ID')
+const SUGGESTION_NOT_FOUND = 'No pending suggested segment with this ID'
 
 export const registerSegmentTools = (
   server: McpServer,
   user: string,
   ops: SegmentOps = defaultSegmentOps,
+  suggestedOps: SuggestedSegmentOps = defaultSuggestedSegmentOps,
 ) => {
   server.tool(
     'list_segments',
@@ -68,5 +73,42 @@ export const registerSegmentTools = (
       const result = await ops.match(user, id)
       return result ? jsonResponse({ data: result, success: true }) : errorResponse('Segment not found')
     },
+  )
+
+  server.tool(
+    'list_suggested_segments',
+    'Suggested segments: stretches at least three activities of one type pass in the same direction (within 20 m, at least 400 m long), counted only across different routes so a shared hill shows up rather than every route. Each has its line, length, activity count and the named location near its start. Add one with promote_suggested_segment or dismiss it; scan_suggested_segments looks through activities not yet looked at.',
+    { tz: tzSchema },
+    async ({ tz }) => tzJsonResponse({ data: await suggestedOps.list(user), success: true }, tz),
+  )
+
+  server.tool(
+    'promote_suggested_segment',
+    'Add a suggested segment as a segment: the whole line, or trimmed to start_km–end_km along it, optionally named (else named after a nearby place and the length). Every tracked activity of its type is timed on it; the suggestion is not offered again.',
+    { id: suggestionId, ...promoteSuggestedSegmentBodySchema.shape },
+    async ({ id, ...body }) => {
+      const parsed = promoteSuggestedSegmentBodySchema.safeParse(body)
+      if (!parsed.success) return errorResponse(parsed.error.issues.map((i) => i.message).join('; '))
+      const result = await suggestedOps.promote(user, id, parsed.data)
+      if (!result) return errorResponse(SUGGESTION_NOT_FOUND)
+      return result.ok ? jsonResponse({ data: result.segment, success: true }) : errorResponse(result.error)
+    },
+  )
+
+  server.tool(
+    'dismiss_suggested_segment',
+    'Dismiss a suggested segment; the stretch is not suggested again.',
+    { id: suggestionId },
+    async ({ id }) =>
+      (await suggestedOps.dismiss(user, id))
+        ? jsonResponse({ success: true })
+        : errorResponse(SUGGESTION_NOT_FOUND),
+  )
+
+  server.tool(
+    'scan_suggested_segments',
+    'Look through tracked activities not yet looked at for stretches passed often (new tracks are looked at automatically). Runs for up to about 20 seconds; call again while remaining > 0. Returns scanned, suggested (new suggestions) and remaining.',
+    {},
+    async () => jsonResponse({ data: await suggestedOps.scan(user), success: true }),
   )
 }

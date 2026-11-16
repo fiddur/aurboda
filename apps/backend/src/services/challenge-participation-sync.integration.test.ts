@@ -53,6 +53,11 @@ describe('a participation follows its host on this instance', () => {
     return { challenge, participation, user }
   }
 
+  test('a join with a non-canonical link stores the canonical url', async () => {
+    const { challenge, participation, user } = await hostAndJoin()
+    expect(participation.challenge_url).toBe(buildShareUrl(WEB_HOST, user, challenge.slug))
+  })
+
   test('a rename and a moved end reach the participant on update', async () => {
     const { challenge, participation, user } = await hostAndJoin()
     const result = await updateHostedChallenge(

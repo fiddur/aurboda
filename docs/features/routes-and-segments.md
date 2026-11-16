@@ -6,13 +6,13 @@ before" (routes), timing stretches you run often (segments), classifying runs
 instances. Built in five phases; this page is the design for all of them and says
 which parts exist.
 
-| Phase | What                                                | Status                                                                                    |
-| ----- | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231)                                                                           |
-| 2     | Routes: matching, efforts over time                 | shipped (#1232)                                                                           |
-| 3     | Run features and rule-based categories              | shipped (#1233)                                                                           |
-| 4     | Segments: manual, timed efforts, suggestions        | manual segments, timed efforts and the segment pages shipped, suggestions planned (#1234) |
-| 5     | Federated segment challenges                        | planned (#1235)                                                                           |
+| Phase | What                                                | Status          |
+| ----- | --------------------------------------------------- | --------------- |
+| 1     | `activity_tracks`: full-resolution tracks, backfill | shipped (#1231) |
+| 2     | Routes: matching, efforts over time                 | shipped (#1232) |
+| 3     | Run features and rule-based categories              | shipped (#1233) |
+| 4     | Segments: manual, timed efforts, suggestions        | shipped (#1234) |
+| 5     | Federated segment challenges                        | planned (#1235) |
 
 ## Phase 1: activity tracks
 
@@ -92,7 +92,7 @@ alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
 Writing a track enqueues a `track-analyse` job (one per activity, `stately` so a
 re-sync collapses into one run, after a ten-minute stabilisation delay like
 auto-share). Route matching (phase 2) runs there, then the activity's features (phase 3), then
-segment timing (phase 4). Strava ingest now also fires the
+segment timing and segment suggestion (phase 4). Strava ingest now also fires the
 activity notifier, so a Strava activity gets deduction and auto-share evaluation like a
 Garmin one.
 
@@ -286,7 +286,7 @@ work blocks.
 ## Phase 4: segments
 
 A segment is a stretch timed on every pass: a hill, a bridge, a sprint straight. It is cut by
-hand from a track or a route; suggested segments come later.
+hand from a track or a route, or added from a suggestion.
 
 ### Creation
 
@@ -301,7 +301,9 @@ hand from a track or a route; suggested segments come later.
   distances in metres, not degrees. An end up to 50 m past the route's length (a rounded
   length) is clamped to the end.
 
-It is refused (400, with the reason) when shorter than 100 m, when an offset falls outside the
+It is refused (400, with the reason) when shorter than 100 m, when its start and end are less
+than 50 m apart (twice the buffer: a point near the end of a near-closed loop projects onto its
+first edge, so no pass would ever be timed), when an offset falls outside the
 track or the km range outside the route, for an activity without a track, and for a missing or
 deleted route. The segment takes the effective type of the activity or route it was cut from,
 and the name, unless one is given, of the nearest named location within 500 m of its start,
@@ -311,7 +313,8 @@ is timed on it before the response, which is the new segment with its efforts.
 ### Matching
 
 **Same activity type only**, and the same effective type route matching reads (an override's
-retype wins). A track is a candidate for a segment when their bboxes meet (the track's
+retype wins). The match is exact: a `running` segment does not time a `trail_running`
+activity, although the segment list's type filter includes descendant types. A track is a candidate for a segment when their bboxes meet (the track's
 expanded by 0.002°) and the segment is covered by the track:
 
 ```
@@ -396,15 +399,68 @@ pace_s_per_km, approximate, is_best, rank }]` in time order, absent when there a
   named location within 500 m of each end, for the warning segment sharing (phase 5) will show.
   Nothing about segments is shared yet.
 
-### Suggestions (planned)
+### Suggested segments
 
-Suggestions are incremental and pairwise: for the new track A and each
-bbox-overlapping track B _not on the same route_, `ST_Intersection(A.simplified,
-ST_Buffer(B.simplified, 20 m))` gives the stretches of A within 20 m of B; stretches
-≥ 400 m are clustered by mutual coverage ≥ 80 %, and a cluster of ≥ 3 activities
-becomes a suggested segment to confirm, trim, name or dismiss — the detected-locations
-pattern. Excluding same-route pairs is what surfaces the hill shared by different
-routes instead of re-proposing every route.
+"The parts I run often with different start and end." When at least three different activities
+of one type pass the same stretch in the same direction without being on the same route, Aurboda
+suggests that stretch as a segment, to add (optionally trimmed and named) or dismiss. Leaving out
+pairs on the same route is the point: it surfaces the hill shared by different routes instead of
+proposing every route again.
+
+**Finding stretches** (`services/segment-suggest.ts`, pure TypeScript on the simplified tracks).
+For a track A, the candidates are one preferred track of each other non-deleted activity of the
+same effective type whose bbox meets A's, that does not overlap A in time (the other source's row
+of the same run) and is not on A's route; newest first, at most 150. Rows of one session
+(overlapping in time) count once. A is densified to a point at least every 15 m; a point is
+_near_ B when an edge of B lies within 20 m of it **and** points the same way (a positive dot
+product with A's local heading), so a reversed B never matches and an out-and-back B only on its
+leg in A's direction. Non-near gaps of up to 40 m are bridged (GPS noise) and runs under 400 m
+dropped. B's edges are indexed in a 50 m grid, so the cost is linear in A's points.
+
+The runs, all in metres along A, are clustered longest first: a candidate's supporters are the
+activities whose run covers at least 80 % of it, at least two are needed (three activities with
+A), and it is trimmed to its longest part covered by 80 % of its supporters. A stretch overlapping
+an accepted one by 80 % (of the longer) is the same stretch. At most three are kept per track,
+those passed by the most activities first. A stretch whose ends are less than 50 m apart is
+dropped, as it could not be timed.
+
+**Storing**: a stretch similar to a stored one (same type, each line at least 80 % inside the
+other's 25 m buffer, same direction) is not stored again: a similar segment, or a dismissed or
+promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also after the segment
+made from it is deleted); a similar pending one takes the larger activity count. Merging an
+activity type moves its suggestions with it.
+
+**Where it runs**: the `track-analyse` job, after segment timing (a fourth step); the
+`track-backfill` job, one time-limited run (20 s) over tracked activities not looked at yet,
+newest first, after its route matching; and on demand. A look marks the activity's tracks
+(`activity_tracks.segments_suggested_at`), cleared when a track is rewritten.
+
+**Adding**: the line (trimmed to `start_km`–`end_km` along it, cut like a route) goes through
+exactly what creating a segment does (the 100 m and 50 m rules, the name from the nearest place,
+timing every tracked activity of the type); the segment records the suggestion's source
+activity as `created_from_activity_id`, and the suggestion becomes `promoted`.
+
+**Scale**: pairwise, against at most 150 candidates per track. Someone with tens of thousands of
+tracks in one area would want a cell index (H3) of the tracks instead; that is the next step if
+it is ever needed.
+
+**Surfaces**:
+
+- REST: `GET /segments/suggested` (pending, most activities first, then longest, with the line
+  and `near_name`, the named location within 500 m of the start),
+  `POST /segments/suggested/scan` (`{ scanned, suggested, remaining }`; run again while
+  `remaining > 0`), `POST /segments/suggested/:id/promote` (`name?`, `start_km?` and `end_km?`
+  together; the new segment, 400 with the reason, 404 when not pending) and
+  `POST /segments/suggested/:id/dismiss`.
+- MCP: `list_suggested_segments`, `promote_suggested_segment`, `dismiss_suggested_segment`,
+  `scan_suggested_segments`.
+- Web: `/segments` shows a "Suggested" section above the list when there are pending
+  suggestions, one card each with a small map, "1.2 km · Running · passed on 5 activities ·
+  near <place>", "Add as segment" (a panel with a name, "From km" and "To km", the chosen part
+  highlighted on the map, Create and Cancel; it opens the new segment's page) and "Dismiss".
+  Under the list, "Look for stretches I pass often" runs the scan until nothing is left and says
+  how many activities it looked through and how many suggestions it found. The Android app
+  embeds the page.
 
 ## Phase 5: federated segment challenges
 

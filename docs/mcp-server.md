@@ -116,14 +116,18 @@ A segment is a directional stretch timed on every pass, cut from an activity's t
 route. See [Routes and segments](features/routes-and-segments.md#phase-4-segments).
 `get_activity_detail` carries the activity's `segment_efforts`.
 
-| Tool             | What it does                                                                                                                                          |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_segments`  | Every segment with its type, length, effort count, best time and latest effort; filter by `activity_type` (with subtypes), order by `sort`            |
-| `get_segment`    | One segment with its line, the named locations near its ends and its efforts, newest first, the best one marked                                       |
-| `create_segment` | Cut a segment from an activity (`activity_id`, `start_offset_s`, `end_offset_s`) or a route (`route_id`, `start_km`, `end_km`) and time history on it |
-| `update_segment` | Rename a segment                                                                                                                                      |
-| `delete_segment` | Delete a segment and its efforts                                                                                                                      |
-| `match_segment`  | Time every tracked activity of the segment's type on it again; returns the counts                                                                     |
+| Tool                        | What it does                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_segments`             | Every segment with its type, length, effort count, best time and latest effort; filter by `activity_type` (with subtypes), order by `sort`                       |
+| `get_segment`               | One segment with its line, the named locations near its ends and its efforts, newest first, the best one marked                                                  |
+| `create_segment`            | Cut a segment from an activity (`activity_id`, `start_offset_s`, `end_offset_s`) or a route (`route_id`, `start_km`, `end_km`) and time history on it            |
+| `update_segment`            | Rename a segment                                                                                                                                                 |
+| `delete_segment`            | Delete a segment and its efforts                                                                                                                                 |
+| `match_segment`             | Time every tracked activity of the segment's type on it again; returns the counts                                                                                |
+| `list_suggested_segments`   | Pending suggestions: stretches at least three activities of one type pass the same way on different routes, with line, length, activity count and a nearby place |
+| `promote_suggested_segment` | Add a suggestion as a segment, optionally trimmed (`start_km`, `end_km`) and named, and time history on it                                                       |
+| `dismiss_suggested_segment` | Dismiss a suggestion; the stretch is not suggested again                                                                                                         |
+| `scan_suggested_segments`   | Look through tracked activities not yet looked at (about 20 s per call); returns `scanned`, `suggested`, `remaining`                                             |
 
 ### Exercise catalogue tools
 

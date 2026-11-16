@@ -401,7 +401,7 @@ describe('Hierarchical activity types', () => {
       expect(deleted?.deleted_at).toBeDefined()
     })
 
-    test('moves routes and segments of the source type too, so their FK does not block the delete', async () => {
+    test('moves routes, segments and suggested segments of the source type too, so their FK does not block the delete', async () => {
       const user = getTestUser()
       await seed(user, 'yin')
       const line = `ST_GeomFromText('LINESTRING(18.07 59.3, 18.08 59.3)', 4326)`
@@ -419,6 +419,12 @@ describe('Hierarchical activity types', () => {
          VALUES ('Hill', 'yinyoga', ${line}, ST_Buffer(${line}::geography, 25)::geometry, 500)
          RETURNING id`,
       )
+      const suggested = await query(
+        user,
+        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count)
+         VALUES ('yinyoga', ${line}, 500, 3)
+         RETURNING id`,
+      )
 
       const result = await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
 
@@ -430,6 +436,12 @@ describe('Hierarchical activity types', () => {
         segment.rows[0].id,
       ])
       expect(moved.rows[0]?.activity_type).toBe('yoga')
+      const movedSuggestion = await query(
+        user,
+        `SELECT activity_type FROM suggested_segments WHERE id = $1`,
+        [suggested.rows[0].id],
+      )
+      expect(movedSuggestion.rows[0]?.activity_type).toBe('yoga')
     })
 
     test('a deleted source row that duplicates a target row is dropped rather than colliding', async () => {

@@ -110,6 +110,19 @@ describe('createSegment', () => {
     }
   })
 
+  test('refuses a near-closed loop: start and end under 50 m apart cannot be timed', async () => {
+    const loop = { ...line, end: { lat: LAT0 + 40 / M_PER_DEG_LAT, lon: LON0 }, length_m: 900 }
+    const deps = makeDeps({ segmentLineFromActivity: vi.fn(async () => ({ line: loop, ok: true as const })) })
+
+    expect(
+      await createSegment('alice', { activity_id: 'a1', end_offset_s: 300, start_offset_s: 0 }, deps),
+    ).toEqual({
+      error: "A segment's start and end must be at least 50 m apart: a closed loop cannot be timed.",
+      ok: false,
+    })
+    expect(deps.insertSegment).not.toHaveBeenCalled()
+  })
+
   test('from a route km range, with the given name', async () => {
     const deps = makeDeps()
     const result = await createSegment(

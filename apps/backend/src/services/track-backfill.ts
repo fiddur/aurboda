@@ -13,6 +13,7 @@ import {
 import { extractTrackPoints } from '../integrations/garmin/process.ts'
 import { auditError } from './audit-log.ts'
 import { defaultRouteMatchDeps, matchUnroutedTracks } from './routes.ts'
+import { defaultSuggestedSegmentDeps, scanSuggestedSegments } from './suggested-segments.ts'
 import { defaultFeatureBackfillDeps, type FeatureBackfillDeps } from './track-analyse.ts'
 import { buildTrack, decodePolyline, polylineToTrackPoints, type TrackPoint } from './tracks.ts'
 
@@ -30,16 +31,19 @@ export const defaultTrackBackfillDeps: TrackBackfillDeps = {
 
 /**
  * The queued backfill also matches routes for the tracks it wrote (and any left unmatched),
- * then computes features for tracked activities that have none.
+ * runs one time-limited segment suggestion scan, then computes features for tracked
+ * activities that have none.
  */
 export interface TrackBackfillJobDeps extends TrackBackfillDeps, FeatureBackfillDeps {
   matchRoutes: (user: string) => Promise<{ matched: number; created: number }>
+  scanSuggestedSegments: (user: string) => Promise<{ scanned: number; suggested: number; remaining: number }>
 }
 
 export const defaultTrackBackfillJobDeps: Omit<TrackBackfillJobDeps, 'notify'> = {
   ...defaultTrackBackfillDeps,
   ...defaultFeatureBackfillDeps,
   matchRoutes: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
+  scanSuggestedSegments: (user) => scanSuggestedSegments(user, defaultSuggestedSegmentDeps),
 }
 
 export interface TrackBackfillResult {

@@ -46,6 +46,7 @@ import {
 import {
   createPublicTagsApi,
   CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
+  ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS,
   CREATE_PUBLIC_TAG_BLOCKS_TABLE,
   CREATE_PUBLIC_TAG_HIDDEN_TABLE,
   CREATE_PUBLIC_TAG_POSTS_INDEXES,
@@ -527,6 +528,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_FEDERATION_DELIVERY_FAILURES_TABLE)
       await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
       await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
+      await client.query(ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS)
       for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
       await client.query(CREATE_PUBLIC_TAG_HIDDEN_TABLE)
       await client.query(CREATE_PUBLIC_TAG_BLOCKS_TABLE)
