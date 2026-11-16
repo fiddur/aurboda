@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -111,7 +112,10 @@ val moreGroups: List<MoreGroup> = listOf(
  * BackHandler, which is composed after this one so it takes precedence).
  *
  * [destination] is hoisted into `AppState` so the bottom bar can pop back to the
- * hub when More is tapped while a sub-page is showing.
+ * hub when More is tapped while a sub-page is showing. [webPageLinks] is
+ * `AppState.morePageLinks`: the [webPage] is keyed on it and the path, since it
+ * loads its URL only when built, so a deep link rebuilds it (also for the page
+ * already showing).
  */
 @Composable
 fun MoreScreen(
@@ -124,6 +128,16 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     onOpenWebPage: (String) -> Unit = {},
     unreadNotifications: Int = 0,
+    webPageLinks: Int = 0,
+    webPage: @Composable (url: String, modifier: Modifier) -> Unit = { url, pageModifier ->
+        EmbeddedWebScreen(
+            url = url,
+            baseUrl = credentials.serverUrl,
+            username = credentials.username,
+            authToken = credentials.authToken,
+            modifier = pageModifier,
+        )
+    },
 ) {
     when (val dest = destination) {
         null -> MoreHub(onSelect = onSelect, unreadNotifications = unreadNotifications, modifier = modifier)
@@ -131,13 +145,10 @@ fun MoreScreen(
             BackHandler { onBack() }
             when (dest) {
                 is MoreDestination.Web ->
-                    EmbeddedWebScreen(
-                        url = embeddedPageUrl(credentials.serverUrl, dest.path),
-                        baseUrl = credentials.serverUrl,
-                        username = credentials.username,
-                        authToken = credentials.authToken,
-                        modifier = modifier,
-                    )
+                    // The embedded page loads its URL once, when its WebView is built.
+                    key(dest.path, webPageLinks) {
+                        webPage(embeddedPageUrl(credentials.serverUrl, dest.path), modifier)
+                    }
 
                 MoreDestination.Live -> LiveScreen(modifier = modifier)
 

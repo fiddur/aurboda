@@ -75,6 +75,13 @@ class AppState(
     var tabReselections by mutableIntStateOf(0)
         private set
 
+    /**
+     * Bumped by every deep link that names a More page; the embedded page keys on it,
+     * so a link reloads a page already showing.
+     */
+    var morePageLinks by mutableIntStateOf(0)
+        private set
+
     var pendingServerUrl by mutableStateOf<String?>(null)
         private set
 
@@ -128,7 +135,10 @@ class AppState(
         // reselection, which would reload it and drop e.g. an unsaved article draft.
         if (link.tab == MainTab.More) moreDestination = null
         currentTab = link.tab
-        link.morePath?.let { moreDestination = MoreDestination.Web(it) }
+        link.morePath?.let {
+            moreDestination = MoreDestination.Web(it)
+            morePageLinks++
+        }
     }
 
     fun closeMoreDestination() {
