@@ -49,9 +49,9 @@ import {
   PERIOD_DAY_OPTIONS,
   readAnalyzeState,
   type SelectedItem,
-  urlShowsAnalyzeState,
   writeAnalyzeState,
 } from './urlState'
+import { createUrlWatch } from './urlWatch'
 import { isLongWindow } from './window'
 import './style.css'
 
@@ -171,28 +171,34 @@ export function Correlations() {
   // component, so re-read the URL then; our own replaceState writes do not change the router's url.
   const { url } = useLocation()
   const lastUrl = useRef(url)
+  const [urlWatch] = useState(() => createUrlWatch(window.location.href))
+  const rereadUrl = () => {
+    applyAnalyzeState(readAnalyzeState())
+    urlWatch.saw(window.location.href)
+  }
   useEffect(() => {
     if (url === lastUrl.current) return
     lastUrl.current = url
-    applyAnalyzeState(readAnalyzeState())
+    rereadUrl()
   }, [url])
 
   // A link to the URL the router already holds (the sidebar's plain /correlations while on it) keeps
-  // the router's url, so after any click a URL out of step with the page is re-read too.
+  // the router's url, so after any click a URL the page neither wrote nor read is re-read too.
   useEffect(() => {
     const path = window.location.pathname
     const onClick = () =>
       setTimeout(() => {
         const { href, pathname } = window.location
-        if (pathname === path && !urlShowsAnalyzeState(href, currentAnalyzeState())) {
-          applyAnalyzeState(readAnalyzeState())
-        }
+        if (pathname === path && urlWatch.changedElsewhere(href)) rereadUrl()
       })
     addEventListener('click', onClick)
     return () => removeEventListener('click', onClick)
   }, [])
 
-  useSignalEffect(() => writeAnalyzeState(currentAnalyzeState()))
+  useSignalEffect(() => {
+    writeAnalyzeState(currentAnalyzeState())
+    urlWatch.saw(window.location.href)
+  })
 
   const baselineQuery = useQuery({
     queryFn: () => fetchBaseline(),
