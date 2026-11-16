@@ -1,5 +1,6 @@
 import { ScreentimeCategoriesSettings } from '../../components/ScreentimeCategoriesSettings'
 import { auth } from '../../state/auth'
+import '../../components/page-layout.css'
 
 export function ScreentimeCategories() {
   const isLoggedIn = auth.value.token

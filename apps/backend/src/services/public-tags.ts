@@ -340,7 +340,7 @@ export const createPublicTagIngest = (
     const row = await store.getInstanceTagFollowByActor(actorUri)
     return row != null && row.accepted ? { actor_uri: row.actor_uri, tag: row.tag } : null
   },
-  removePublicTagAnnounce: (announceUri) => store.removePublicTagAnnounce(announceUri),
+  removePublicTagAnnounce: (announceUri, actorUri) => store.removePublicTagAnnounce(announceUri, actorUri),
   upsertPublicTagPost: async (input) => {
     if (await isPublicTagPostRefused(store, input.note_uri, input.actor_uri)) return null
     return store.upsertPublicTagPost(input)

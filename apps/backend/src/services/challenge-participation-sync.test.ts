@@ -131,11 +131,16 @@ describe('pushChallengeToLocalMembers', () => {
 
   test("patches local members' participations, by the challenge's canonical URL, and skips remote ones", async () => {
     const updates: Update[] = []
-    const lookups: { user: string; url: string }[] = []
+    const lookups: string[] = []
     await pushChallengeToLocalMembers('alice', renamed, `${WEB_HOST}/`, {
-      getParticipationByUrl: async (user, url) => {
-        lookups.push({ url, user })
-        return user === 'carol' ? null : participation({ id: `p-${user}` })
+      listChallengeParticipations: async (user) => {
+        lookups.push(user)
+        return user === 'carol'
+          ? [participation({ challenge_url: `${WEB_HOST}/u/alice/other`, id: 'p-other' })]
+          : [
+              participation({ challenge_url: `${WEB_HOST}/u/alice/other`, id: 'p-other' }),
+              participation({ id: `p-${user}` }),
+            ]
       },
       listChallengeMembers: async () => [
         member({ local_user: 'alice' }),
@@ -146,8 +151,7 @@ describe('pushChallengeToLocalMembers', () => {
       ],
       updateChallengeParticipationSnapshot: recordingUpdate(updates),
     })
-    expect(lookups.map((l) => l.user)).toEqual(['alice', 'bob', 'carol'])
-    expect(new Set(lookups.map((l) => l.url))).toEqual(new Set([`${WEB_HOST}/u/alice/nov`]))
+    expect(lookups).toEqual(['alice', 'bob', 'carol'])
     expect(updates).toEqual([
       { id: 'p-alice', patch: { end_ts: renamed.end_ts, name: 'Renamed' }, user: 'alice' },
       { id: 'p-bob', patch: { end_ts: renamed.end_ts, name: 'Renamed' }, user: 'bob' },
@@ -158,9 +162,9 @@ describe('pushChallengeToLocalMembers', () => {
     const updates: Update[] = []
     await expect(
       pushChallengeToLocalMembers('alice', renamed, WEB_HOST, {
-        getParticipationByUrl: async (user) => {
+        listChallengeParticipations: async (user) => {
           if (user === 'bob') throw new Error('no such database')
-          return participation({ id: `p-${user}` })
+          return [participation({ id: `p-${user}` })]
         },
         listChallengeMembers: async () => [
           member({ local_user: 'bob' }),
@@ -176,11 +180,25 @@ describe('pushChallengeToLocalMembers', () => {
   test('a participation already in line is not written', async () => {
     const updates: Update[] = []
     await pushChallengeToLocalMembers('alice', challenge(), WEB_HOST, {
-      getParticipationByUrl: async () => participation(),
       listChallengeMembers: async () => [member({ local_user: 'bob' })],
+      listChallengeParticipations: async () => [participation()],
       updateChallengeParticipationSnapshot: recordingUpdate(updates),
     })
     expect(updates).toEqual([])
+  })
+
+  test('finds a participation stored under another spelling of the challenge url', async () => {
+    const updates: Update[] = []
+    await pushChallengeToLocalMembers('alice', renamed, WEB_HOST, {
+      listChallengeMembers: async () => [member({ local_user: 'bob' })],
+      listChallengeParticipations: async () => [
+        participation({ challenge_url: 'https://AURBODA.example/u/alice/nov/?embed=1', id: 'p-old' }),
+      ],
+      updateChallengeParticipationSnapshot: recordingUpdate(updates),
+    })
+    expect(updates).toEqual([
+      { id: 'p-old', patch: { end_ts: renamed.end_ts, name: 'Renamed' }, user: 'bob' },
+    ])
   })
 })
 
@@ -326,6 +344,22 @@ describe('listParticipationsFresh: hosted elsewhere', () => {
       await Promise.all(tasks)
       expect(updates).toEqual([{ id: 'r1', patch: { host_checked_at: NOW }, user: 'carol' }])
     }
+  })
+
+  test('a name over the challenge name limit is cut to it', async () => {
+    const { deps, tasks, updates } = listDeps([remote('r1')], {
+      fetchRemoteChallenge: async () => ({
+        end_ts: '2027-01-01T00:00:00Z',
+        name: `  ${'x'.repeat(500)}  `,
+        start_ts: '2026-11-03T00:00:00Z',
+        timezone: 'UTC',
+      }),
+    })
+    await listParticipationsFresh('carol', { webHost: WEB_HOST }, deps)
+    await Promise.all(tasks)
+    expect(updates).toEqual([
+      { id: 'r1', patch: { host_checked_at: NOW, name: 'x'.repeat(120) }, user: 'carol' },
+    ])
   })
 
   test('the list does not wait for the host', async () => {

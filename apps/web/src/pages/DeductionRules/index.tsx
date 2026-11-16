@@ -13,6 +13,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { formatConditions } from './formatCondition'
+import '../../components/page-layout.css'
 import './style.css'
 
 const PRIORITY_LABELS: Record<number, string> = {

@@ -18,6 +18,30 @@
   color: var(--color-text);
 }
 
+.tag-moderation .confirm-inline .btn-danger,
+.tag-moderation .confirm-inline .btn-secondary {
+  padding: 0.3rem 0.75rem;
+  font: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tag-moderation .confirm-inline .btn-danger {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+
+.tag-moderation .confirm-inline .btn-danger:hover:not(:disabled) {
+  background: #ef4444;
+  color: white;
+}
+
+.tag-moderation .confirm-inline .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .tag-moderation-button {
   background: none;
   border: none;

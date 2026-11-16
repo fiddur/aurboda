@@ -5,6 +5,7 @@ import type {
   ChartDataBucket,
 } from '@aurboda/api-spec'
 
+import { canonicalChallengeUrl } from '@aurboda/api-spec'
 import { randomBytes } from 'node:crypto'
 
 /**
@@ -553,7 +554,7 @@ export const createChallengeParticipation = async (
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING ${PARTICIPATION_COLUMNS}`,
     [
-      input.challenge_url,
+      canonicalChallengeUrl(input.challenge_url) ?? input.challenge_url,
       input.host_identity,
       input.name,
       input.spec.source_type,

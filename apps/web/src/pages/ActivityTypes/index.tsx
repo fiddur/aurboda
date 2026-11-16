@@ -25,6 +25,7 @@ import {
   DISPLAY_CATEGORY_ORDER,
   displayCategoryOptions,
 } from '../../utils/displayCategories'
+import '../../components/page-layout.css'
 import './style.css'
 
 const catalogQuery = {

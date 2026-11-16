@@ -226,6 +226,7 @@ class SyncWorker(
       )
     }
     val activityTypes = getCachedActivityTypes(applicationContext)
+    val sentPayloads = mutableListOf<PendingPayload>()
     var sent = 0
     var failed = 0
 
@@ -249,6 +250,7 @@ class SyncWorker(
         is DataResult.Success<*> -> {
           removePendingEntry(applicationContext, entry.id)
           Log.d(TAG, "Pending entry ${entry.id} synced successfully")
+          sentPayloads.add(entry.data)
           sent++
           reporter.updateStage(SyncStage.PendingData) { it.copy(sentRecords = sent) }
         }
@@ -262,6 +264,7 @@ class SyncWorker(
             Log.i(TAG, "Pending entry ${entry.id} kept (read-only): ${result.message}")
           }
           if (stop != null) {
+            refreshInUseLists(serverUrl, authToken, sentPayloads, activityTypes)
             reporter.updateStage(SyncStage.PendingData) {
               it.copy(
                 status = SyncStageStatus.Failed,
@@ -274,6 +277,7 @@ class SyncWorker(
         }
       }
     }
+    refreshInUseLists(serverUrl, authToken, sentPayloads, activityTypes)
     reporter.updateStage(SyncStage.PendingData) {
       it.copy(
         status = if (failed == 0) SyncStageStatus.Done else SyncStageStatus.Failed,
@@ -281,6 +285,38 @@ class SyncWorker(
       )
     }
     return null
+  }
+
+  /**
+   * Refetch the Add tab's cached "in use" lists after a flush that adopted a catalogue entry, as
+   * the Add tab does after sending one online, so the entry no longer shows under the catalogue.
+   * A failed fetch keeps the cache as it is.
+   */
+  private suspend fun refreshInUseLists(
+    serverUrl: String,
+    authToken: String,
+    sent: List<PendingPayload>,
+    activityTypes: List<ActivityTypeDefinition>,
+  ) {
+    if (sent.isEmpty()) return
+    val adoptions = catalogAdoptions(
+      sent,
+      activityTypes,
+      getCachedActivityTypeCatalog(applicationContext),
+      getCachedMetricCatalog(applicationContext),
+    )
+    if (adoptions.activityTypes) {
+      val types = fetchActivityTypes(httpClient, serverUrl, authToken)
+      if (types is DataResult.Success) cacheActivityTypes(applicationContext, types.data)
+      val typeCatalog = fetchActivityTypeCatalog(httpClient, serverUrl, authToken)
+      if (typeCatalog is DataResult.Success) cacheActivityTypeCatalog(applicationContext, typeCatalog.data)
+    }
+    if (adoptions.metrics) {
+      val metrics = fetchCustomMetrics(httpClient, serverUrl, authToken)
+      if (metrics is DataResult.Success) cacheCustomMetrics(applicationContext, metrics.data)
+      val metricCatalog = fetchMetricCatalog(httpClient, serverUrl, authToken)
+      if (metricCatalog is DataResult.Success) cacheMetricCatalog(applicationContext, metricCatalog.data)
+    }
   }
 
   /**

@@ -1,4 +1,9 @@
-import { canonicalChallengeUrl, type ParsedChallengeUrl, parseChallengeUrl } from '@aurboda/api-spec'
+import {
+  canonicalChallengeUrl,
+  challengeNameSchema,
+  type ParsedChallengeUrl,
+  parseChallengeUrl,
+} from '@aurboda/api-spec'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 import {
@@ -7,7 +12,6 @@ import {
   type ChallengeParticipationSnapshotPatch,
   type ChallengeRecord,
   getChallengeBySlug,
-  getParticipationByUrl,
   listChallengeMembers,
   listChallengeParticipations,
   updateChallengeParticipationSnapshot,
@@ -44,14 +48,14 @@ export const participationDrift = (
 
 export interface PushDeps {
   listChallengeMembers: (user: string, challengeId: string) => Promise<ChallengeMemberRecord[]>
-  getParticipationByUrl: (user: string, challengeUrl: string) => Promise<ChallengeParticipationRecord | null>
+  listChallengeParticipations: (user: string) => Promise<ChallengeParticipationRecord[]>
   updateChallengeParticipationSnapshot: typeof updateChallengeParticipationSnapshot
 }
 
 // Wrapped so the db module is read on call, not at import: tests that mock it whole still load this.
 const defaultPushDeps: PushDeps = {
-  getParticipationByUrl: (user, url) => getParticipationByUrl(user, url),
   listChallengeMembers: (user, challengeId) => listChallengeMembers(user, challengeId),
+  listChallengeParticipations: (user) => listChallengeParticipations(user),
   updateChallengeParticipationSnapshot: (user, id, patch) =>
     updateChallengeParticipationSnapshot(user, id, patch),
 }
@@ -79,7 +83,9 @@ export const pushChallengeToLocalMembers = async (
   await Promise.all(
     locals.map(async (member) => {
       try {
-        const participation = await deps.getParticipationByUrl(member, challengeUrl)
+        const participation = (await deps.listChallengeParticipations(member)).find(
+          (p) => canonicalChallengeUrl(p.challenge_url) === challengeUrl,
+        )
         if (!participation) return
         const patch = participationDrift(participation, challenge)
         if (patch) await deps.updateChallengeParticipationSnapshot(member, participation.id, patch)
@@ -171,7 +177,9 @@ const refreshRemoteName = async (
 ): Promise<void> => {
   let name: string | null = null
   try {
-    name = (await deps.fetchRemoteChallenge(parsed)).name.trim()
+    name = (await deps.fetchRemoteChallenge(parsed)).name
+      .trim()
+      .slice(0, challengeNameSchema.maxLength ?? undefined)
   } catch (error) {
     console.warn(
       `⚠️ Challenge sync: host of participation ${participation.id} did not answer:`,

@@ -305,6 +305,21 @@ describe('Challenges integration', () => {
     expect(await deleteChallengeParticipation(user, p.id)).toBe(false)
   })
 
+  test('stores a participation under its canonical challenge url', async () => {
+    const user = getTestUser()
+    const p = await createChallengeParticipation(user, {
+      challenge_url: 'https://Aurboda.NET/u/alice/canon/?embed=1#top',
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://aurboda.net/u/alice',
+      name: 'C',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    expect(p.challenge_url).toBe('https://aurboda.net/u/alice/canon')
+    expect((await getParticipationByUrl(user, 'https://aurboda.net/u/alice/canon'))?.id).toBe(p.id)
+  })
+
   test('leaving tombstones the challenge url; rejoining clears it, leaving again re-records it', async () => {
     const user = getTestUser()
     const url = 'https://aurboda.net/u/alice/left-and-back'

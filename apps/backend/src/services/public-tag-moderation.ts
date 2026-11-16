@@ -6,6 +6,8 @@
  */
 import type { AddPublicTagBlockBody, PublicTagBlock, PublicTagHiddenPost } from '@aurboda/api-spec'
 
+import { actorHost, hostMatches } from '@aurboda/api-spec'
+
 import type { PublicTagBlockRecord, PublicTagHiddenRecord, PublicTagsApi } from './central-public-tags.ts'
 
 import { UUID_RE } from '../utils.ts'
@@ -30,17 +32,6 @@ type BlockRule = Pick<PublicTagBlockRecord, 'kind' | 'value'>
 
 const HOSTNAME_RE =
   /^(?=.{1,253}$)[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9])?)*$/
-
-export const actorHost = (actorUri: string): string | null => {
-  try {
-    const host = new URL(actorUri).hostname.toLowerCase()
-    return host === '' ? null : host
-  } catch {
-    return null
-  }
-}
-
-const hostMatches = (host: string, domain: string): boolean => host === domain || host.endsWith(`.${domain}`)
 
 /** Whether a post by `actorUri` is kept off the tag pages by one of `blocks`. */
 export const isBlocked = (actorUri: string, blocks: readonly BlockRule[]): boolean => {

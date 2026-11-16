@@ -55,8 +55,13 @@ base-URL federation identity, and the bucketed-data engine behind dashboards.
   `list_joined_challenges`) repairs any local copy that still differs. For a challenge
   hosted elsewhere only the **name** follows: when the host was not asked in the last six
   hours (`host_checked_at`), listing asks it in the background (at most five per list), so
-  a rename shows on the next load; a different window or spec from the host is ignored,
-  since it is frozen once a remote member has joined.
+  a rename shows on the next load (cut to the 120-character name limit); a different
+  window or spec from the host is ignored, since it is frozen once a remote member has
+  joined. A participation is stored under its canonical challenge URL (no query, fragment
+  or trailing slash), and the push compares canonical forms, so a row stored under another
+  spelling is still found. The copy keeps following for as long as the participant keeps
+  it, also after the host removed them as a member (on this instance through the repair on
+  listing, since the push only reaches current members): only the member list differs.
 - **Members** are identified by their full public base URL
   (`https://host/u/user`). The host is always a member. A member contributes data
   through a capability **data endpoint** on their own instance.

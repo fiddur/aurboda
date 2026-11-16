@@ -93,3 +93,21 @@ private fun savePendingEntries(context: Context, entries: List<PendingEntry>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     prefs.edit().putString(ENTRIES_KEY, appJson.encodeToString(entries)).apply()
 }
+
+/** Which cached "in use" lists a flush of `sent` made stale, judged as the Add tab does when online. */
+data class CatalogAdoptions(val activityTypes: Boolean, val metrics: Boolean)
+
+fun catalogAdoptions(
+    sent: List<PendingPayload>,
+    activityTypes: List<ActivityTypeDefinition>,
+    activityTypeCatalog: List<CatalogActivityType>,
+    metricCatalog: List<CatalogMetric>,
+): CatalogAdoptions = CatalogAdoptions(
+    activityTypes = sent.filterIsInstance<PendingPayload.Activity>().any { entry ->
+        val type = entry.payload.activity_type
+        activityTypes.none { it.name == type } && activityTypeCatalog.any { it.name == type }
+    },
+    metrics = sent.filterIsInstance<PendingPayload.Metric>().any { entry ->
+        metricCatalog.find { it.name == entry.payload.metric }?.inUse == false
+    },
+)

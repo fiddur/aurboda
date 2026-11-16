@@ -38,4 +38,33 @@ class PendingDataStoreTest {
         )
         assertFalse(appJson.encodeToString(listOf(entry)).contains("\"unit\""))
     }
+
+    @Test
+    fun `a flush that adopted a catalogue entry marks its in-use list stale`() {
+        val activity = { type: String ->
+            PendingPayload.Activity(PendingActivityPayload(activity_type = type, start_time = "2026-11-01T08:00:00Z"))
+        }
+        val metric = { name: String ->
+            PendingPayload.Metric(PendingMetricPayload(metric = name, value = 1.0, time = "2026-11-01T08:00:00Z"))
+        }
+        val types = listOf(ActivityTypeDefinition(name = "sleep", displayName = "Sleep"))
+        val typeCatalog = listOf(CatalogActivityType(name = "yoga", displayName = "Yoga"))
+        val metricCatalog = listOf(
+            CatalogMetric(name = "ldl", displayName = "LDL", unit = "mg/dL", inUse = false),
+            CatalogMetric(name = "hdl", displayName = "HDL", unit = "mg/dL", inUse = true),
+        )
+        assertEquals(
+            CatalogAdoptions(activityTypes = true, metrics = true),
+            catalogAdoptions(listOf(activity("yoga"), metric("ldl")), types, typeCatalog, metricCatalog),
+        )
+        assertEquals(
+            CatalogAdoptions(activityTypes = false, metrics = false),
+            catalogAdoptions(
+                listOf(activity("sleep"), activity("custom_thing"), metric("hdl"), metric("weight")),
+                types,
+                typeCatalog,
+                metricCatalog,
+            ),
+        )
+    }
 }
