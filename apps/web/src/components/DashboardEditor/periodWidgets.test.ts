@@ -18,4 +18,11 @@ describe('offeredWidgetTypes', () => {
     expect(offeredWidgetTypes(templates, true)).toEqual([{ type: 'metric_card' }])
     expect(appliesToPeriod('activity_summary')).toBe(true)
   })
+
+  it('hides the day overview on a period dashboard and on a shared dashboard', () => {
+    const withDay = [{ type: 'metric_card' as const }, { type: 'day_overview' as const }]
+    expect(offeredWidgetTypes(withDay, false)).toEqual(withDay)
+    expect(offeredWidgetTypes(withDay, true)).toEqual([{ type: 'metric_card' }])
+    expect(offeredWidgetTypes(withDay, false, true)).toEqual([{ type: 'metric_card' }])
+  })
 })

@@ -343,6 +343,7 @@ describe('GET /public/:username/challenge-entries/:token', () => {
     created_at: NOW,
     data_token: 'tok',
     end_ts: new Date('2026-11-30T23:00:00Z'),
+    host_checked_at: null,
     host_identity: 'https://qs.example/u/freja',
     id: 'p1',
     name: 'November steps',

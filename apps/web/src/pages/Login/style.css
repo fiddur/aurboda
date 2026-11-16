@@ -41,9 +41,14 @@
   border-radius: 4px;
 }
 
-.login-form .error {
+.login-form .error,
+.login-page .oidc-error {
   color: #d32f2f;
   margin: 0;
+}
+
+.login-page .oidc-error {
+  margin-bottom: 1rem;
 }
 
 .login-page button {
@@ -88,7 +93,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .login-form .error {
+  .login-form .error,
+  .login-page .oidc-error {
     color: #ff6b6b;
   }
 }

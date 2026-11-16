@@ -11,6 +11,7 @@ import { useState } from 'preact/hooks'
 
 import { HrAxisLabel, HrBoxPlot } from '../../components/sessions/HrBoxPlot'
 import { HrZoneStrip } from '../../components/sessions/HrZoneStrip'
+import { SessionGroupPicker } from '../../components/sessions/SessionGroupPicker'
 import { SessionsTable } from '../../components/sessions/SessionsTable'
 import {
   fieldLabel,
@@ -23,6 +24,7 @@ import {
   sortGroups,
 } from '../../components/sessions/sessionView'
 import { fetchActivitySessions } from '../../state/api'
+import { sessionScatterHref } from '../../utils/chart-url'
 
 const LOOKBACK_OPTIONS = [
   { label: '90 days', value: 90 },
@@ -197,24 +199,19 @@ const SessionsControls = ({
   onView,
   lookback,
   onLookback,
+  scatterHref,
 }: {
   fields: DataFieldDefinition[]
   view: string
   onView: (view: string) => void
   lookback: number
   onLookback: (days: number) => void
+  scatterHref: string
 }) => (
   <div class="sessions-controls">
     <label class="sessions-control">
       View
-      <select value={view} onChange={(e) => onView((e.target as HTMLSelectElement).value)}>
-        {fields.map((f) => (
-          <option key={f.name} value={f.name}>
-            By {fieldLabel(f).toLowerCase()}
-          </option>
-        ))}
-        <option value={LIST_VIEW}>All sessions</option>
-      </select>
+      <SessionGroupPicker fields={fields} value={view} onChange={onView} noneLabel="All sessions" />
     </label>
     <select
       aria-label="Period"
@@ -227,6 +224,9 @@ const SessionsControls = ({
         </option>
       ))}
     </select>
+    <a class="sessions-scatter-link" href={scatterHref}>
+      Plot sessions
+    </a>
   </div>
 )
 
@@ -261,6 +261,7 @@ export function SessionsSection({ name, fields }: { name: string; fields: DataFi
           onView={setView}
           lookback={lookback}
           onLookback={setLookback}
+          scatterHref={sessionScatterHref(name, groupField?.name, lookback)}
         />
       </div>
 

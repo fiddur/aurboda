@@ -4,7 +4,7 @@ import type { PostUpdateResender } from '../services/activitypub/post-update-res
 import type { CentralDb } from '../services/central-db.ts'
 import type { McpServer } from './helpers.ts'
 
-import { registerAdminFederationTools } from './admin-federation-tools.ts'
+import { registerAdminFederationTools, registerFederationDeliveryTools } from './admin-federation-tools.ts'
 
 type ToolHandler = () => Promise<{ content: { text: string }[] }>
 
@@ -43,5 +43,62 @@ describe('resend_post_updates', () => {
     const result = await call()
     expect(result.content[0].text).toBe('Admin permission required')
     expect(postUpdates.start).not.toHaveBeenCalled()
+  })
+})
+
+describe('list_federation_delivery_failures', () => {
+  const failing = {
+    failures: 3,
+    first_failed_at: new Date('2026-11-14T10:00:00Z'),
+    inbox_host: 'down.example',
+    last_error: 'HTTP 503 Service Unavailable',
+    last_failed_at: new Date('2026-11-14T12:00:00Z'),
+    last_inbox: 'https://down.example/inbox',
+    last_status: 503,
+    last_succeeded_at: null,
+  }
+
+  const setupList = (isAdmin: boolean) => {
+    const tools = new Map<string, ToolHandler>()
+    const server = {
+      tool: (name: string, _desc: string, _shape: unknown, handler: ToolHandler) => {
+        tools.set(name, handler)
+      },
+    } as unknown as McpServer
+    const listFailingDeliveryHosts = vi.fn(async () => [failing])
+    const centralDb = {
+      isAdmin: vi.fn(async () => isAdmin),
+      listFailingDeliveryHosts,
+    } as unknown as CentralDb
+    registerFederationDeliveryTools(server, 'fiddur', centralDb)
+    const handler = tools.get('list_federation_delivery_failures')
+    if (handler == null) throw new Error('no tool list_federation_delivery_failures')
+    return { call: handler, listFailingDeliveryHosts }
+  }
+
+  test('lists the failing servers with ISO timestamps', async () => {
+    const result = await setupList(true).call()
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      failures: [
+        {
+          failures: 3,
+          first_failed_at: '2026-11-14T10:00:00.000Z',
+          inbox_host: 'down.example',
+          last_error: 'HTTP 503 Service Unavailable',
+          last_failed_at: '2026-11-14T12:00:00.000Z',
+          last_inbox: 'https://down.example/inbox',
+          last_status: 503,
+          last_succeeded_at: null,
+        },
+      ],
+      success: true,
+    })
+  })
+
+  test('is admin-only', async () => {
+    const { call, listFailingDeliveryHosts } = setupList(false)
+    const result = await call()
+    expect(result.content[0].text).toBe('Admin permission required')
+    expect(listFailingDeliveryHosts).not.toHaveBeenCalled()
   })
 })

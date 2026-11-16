@@ -1,4 +1,4 @@
-import type { TimelineImage } from '@aurboda/api-spec'
+import type { PublicTagBlockKind, TimelineImage } from '@aurboda/api-spec'
 
 import type { Queryable } from '../db/pool.ts'
 import type { KeysetCursor } from './keyset-cursor.ts'
@@ -41,6 +41,47 @@ export const CREATE_PUBLIC_TAG_POSTS_INDEXES = [
   'CREATE INDEX IF NOT EXISTS idx_public_tag_posts_published ON public_tag_posts (published_at DESC, id DESC)',
 ]
 
+/** Which tag actor sent each Announce id, so only that actor's Undo withdraws it; `{}` on older rows. */
+export const ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS =
+  "ALTER TABLE public_tag_posts ADD COLUMN IF NOT EXISTS announce_actors JSONB NOT NULL DEFAULT '{}'::jsonb"
+
+export const CREATE_PUBLIC_TAG_HIDDEN_TABLE = `
+  CREATE TABLE IF NOT EXISTS public_tag_hidden (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_uri   TEXT NOT NULL UNIQUE,
+    actor_uri  TEXT,
+    hidden_by  TEXT NOT NULL,
+    hidden_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`
+
+export const CREATE_PUBLIC_TAG_BLOCKS_TABLE = `
+  CREATE TABLE IF NOT EXISTS public_tag_blocks (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind       VARCHAR(10) NOT NULL,
+    value      TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (kind, value)
+  )
+`
+
+export interface PublicTagHiddenRecord {
+  id: string
+  note_uri: string
+  actor_uri: string | null
+  hidden_by: string
+  hidden_at: Date
+}
+
+export interface PublicTagBlockRecord {
+  id: string
+  kind: PublicTagBlockKind
+  value: string
+  created_by: string
+  created_at: Date
+}
+
 export interface InstanceTagFollowRecord {
   tag: string
   actor_uri: string
@@ -70,6 +111,8 @@ export interface PublicTagPostInput {
   tags: string[]
   /** The tag actors' `Announce` ids that brought the post in; empty for a local post. */
   announce_uris: string[]
+  /** The actor of each of `announce_uris`, keyed by the Announce id. */
+  announce_actors?: Record<string, string>
   /** The local author of one of this server's own posts, else null. */
   local_user: string | null
   published_at: Date
@@ -97,8 +140,12 @@ export interface PublicTagsApi {
   deleteInstanceTagFollow: (tag: string) => Promise<boolean>
   /** Keyed on the Note's id: a re-announce or edit replaces it in place, gathering every Announce id. */
   upsertPublicTagPost: (input: PublicTagPostInput) => Promise<PublicTagPostRecord>
-  /** Drops the Announce, and the post once nothing keeps it (no Announce left and not local). */
-  removePublicTagAnnounce: (announceUri: string) => Promise<void>
+  /**
+   * `actorUri` withdrawing its Announce: drops it, and the post once nothing keeps it (no Announce
+   * left and not local). An Announce stored with another actor is left; one stored without its
+   * actor (before that was kept) is dropped as before.
+   */
+  removePublicTagAnnounce: (announceUri: string, actorUri: string) => Promise<void>
   /** The author's own Delete: scoped to the sender like the timeline's. */
   deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<boolean>
   deleteLocalPublicTagPost: (noteUri: string, localUser: string) => Promise<boolean>
@@ -128,6 +175,24 @@ export interface PublicTagsApi {
   prunePublicTagPosts: (olderThan: Date, keep?: PublicTagPruneKeep) => Promise<number>
   /** Drops the posts that carry none of `tags` (all of them when `tags` is empty). */
   prunePublicTagPostsNotTagged: (tags: string[]) => Promise<number>
+  /** Removes the post and remembers its Note id, in one statement; null when there is no such post. */
+  hidePublicTagPost: (id: string, hiddenBy: string) => Promise<PublicTagHiddenRecord | null>
+  /** Newest first. */
+  listHiddenPublicTagPosts: (limit: number) => Promise<PublicTagHiddenRecord[]>
+  unhidePublicTagPost: (id: string) => Promise<boolean>
+  isPublicTagPostHidden: (noteUri: string) => Promise<boolean>
+  /** Newest first. */
+  listPublicTagBlocks: () => Promise<PublicTagBlockRecord[]>
+  /** Null when the same block exists. */
+  insertPublicTagBlock: (
+    kind: PublicTagBlockKind,
+    value: string,
+    createdBy: string,
+  ) => Promise<PublicTagBlockRecord | null>
+  deletePublicTagBlock: (id: string) => Promise<boolean>
+  listPublicTagPostActors: () => Promise<string[]>
+  /** Every post by one of `actorUris`, local ones included. */
+  deletePublicTagPostsByActors: (actorUris: string[]) => Promise<number>
 }
 
 /** Posts exempt from the retention prune: by one of `handles` and carrying one of `tags`. */
@@ -142,6 +207,10 @@ const FOLLOW_COLUMNS = 'tag, actor_uri, inbox_uri, follow_activity_id, accepted,
 const POST_COLUMNS = `id, note_uri, actor_uri, handle, display_name, avatar_url, content, url, images, tags,
   announce_uris, local_user, published_at, created_at, updated_at, published_at::text AS cursor_ts`
 
+const HIDDEN_COLUMNS = 'id, note_uri, actor_uri, hidden_by, hidden_at'
+
+const BLOCK_COLUMNS = 'id, kind, value, created_by, created_at'
+
 const followWhere =
   (getClient: () => Promise<Queryable>, column: string) =>
   async (value: string): Promise<InstanceTagFollowRecord | null> => {
@@ -154,6 +223,82 @@ const followWhere =
   }
 
 export const createPublicTagsApi = (getClient: () => Promise<Queryable>): PublicTagsApi => ({
+  deletePublicTagBlock: async (id) => {
+    const client = await getClient()
+    const result = await client.query('DELETE FROM public_tag_blocks WHERE id = $1', [id])
+    return (result.rowCount ?? 0) > 0
+  },
+
+  deletePublicTagPostsByActors: async (actorUris) => {
+    if (actorUris.length === 0) return 0
+    const client = await getClient()
+    const result = await client.query('DELETE FROM public_tag_posts WHERE actor_uri = ANY($1::text[])', [
+      actorUris,
+    ])
+    return result.rowCount ?? 0
+  },
+
+  hidePublicTagPost: async (id, hiddenBy) => {
+    const client = await getClient()
+    const result = await client.query<PublicTagHiddenRecord>(
+      `WITH removed AS (DELETE FROM public_tag_posts WHERE id = $1 RETURNING note_uri, actor_uri)
+       INSERT INTO public_tag_hidden (note_uri, actor_uri, hidden_by)
+       SELECT note_uri, actor_uri, $2 FROM removed
+       ON CONFLICT (note_uri) DO UPDATE SET actor_uri = EXCLUDED.actor_uri
+       RETURNING ${HIDDEN_COLUMNS}`,
+      [id, hiddenBy],
+    )
+    return result.rows[0] ?? null
+  },
+
+  insertPublicTagBlock: async (kind, value, createdBy) => {
+    const client = await getClient()
+    const result = await client.query<PublicTagBlockRecord>(
+      `INSERT INTO public_tag_blocks (kind, value, created_by) VALUES ($1, $2, $3)
+       ON CONFLICT (kind, value) DO NOTHING
+       RETURNING ${BLOCK_COLUMNS}`,
+      [kind, value, createdBy],
+    )
+    return result.rows[0] ?? null
+  },
+
+  isPublicTagPostHidden: async (noteUri) => {
+    const client = await getClient()
+    const result = await client.query('SELECT 1 FROM public_tag_hidden WHERE note_uri = $1', [noteUri])
+    return result.rows.length > 0
+  },
+
+  listHiddenPublicTagPosts: async (limit) => {
+    const client = await getClient()
+    const result = await client.query<PublicTagHiddenRecord>(
+      `SELECT ${HIDDEN_COLUMNS} FROM public_tag_hidden ORDER BY hidden_at DESC, id DESC LIMIT $1`,
+      [limit],
+    )
+    return result.rows
+  },
+
+  listPublicTagBlocks: async () => {
+    const client = await getClient()
+    const result = await client.query<PublicTagBlockRecord>(
+      `SELECT ${BLOCK_COLUMNS} FROM public_tag_blocks ORDER BY created_at DESC, id DESC`,
+    )
+    return result.rows
+  },
+
+  listPublicTagPostActors: async () => {
+    const client = await getClient()
+    const result = await client.query<{ actor_uri: string }>(
+      'SELECT DISTINCT actor_uri FROM public_tag_posts',
+    )
+    return result.rows.map((row) => row.actor_uri)
+  },
+
+  unhidePublicTagPost: async (id) => {
+    const client = await getClient()
+    const result = await client.query('DELETE FROM public_tag_hidden WHERE id = $1', [id])
+    return (result.rowCount ?? 0) > 0
+  },
+
   deleteInstanceTagFollow: async (tag) => {
     const client = await getClient()
     const result = await client.query('DELETE FROM instance_tag_follows WHERE tag = $1', [tag])
@@ -245,14 +390,15 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     return result.rowCount ?? 0
   },
 
-  removePublicTagAnnounce: async (announceUri) => {
+  removePublicTagAnnounce: async (announceUri, actorUri) => {
     const client = await getClient()
     const result = await client.query<{ id: string }>(
       `UPDATE public_tag_posts
-       SET announce_uris = array_remove(announce_uris, $1), updated_at = NOW()
-       WHERE $1 = ANY(announce_uris)
+       SET announce_uris = array_remove(announce_uris, $1), announce_actors = announce_actors - $1,
+         updated_at = NOW()
+       WHERE $1 = ANY(announce_uris) AND COALESCE(announce_actors ->> $1 = $2, true)
        RETURNING id`,
-      [announceUri],
+      [announceUri, actorUri],
     )
     if (result.rows.length === 0) return
     await client.query(
@@ -293,8 +439,8 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
     const client = await getClient()
     const result = await client.query<PublicTagPostRecord>(
       `INSERT INTO public_tag_posts (note_uri, actor_uri, handle, display_name, avatar_url, content, url,
-         images, tags, announce_uris, local_user, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::text[], $10::text[], $11, $12)
+         images, tags, announce_uris, local_user, published_at, announce_actors)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::text[], $10::text[], $11, $12, $13::jsonb)
        ON CONFLICT (note_uri) DO UPDATE SET
          actor_uri = EXCLUDED.actor_uri,
          handle = EXCLUDED.handle,
@@ -307,6 +453,7 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
          announce_uris = ARRAY(
            SELECT DISTINCT unnest(public_tag_posts.announce_uris || EXCLUDED.announce_uris)
          ),
+         announce_actors = public_tag_posts.announce_actors || EXCLUDED.announce_actors,
          local_user = COALESCE(EXCLUDED.local_user, public_tag_posts.local_user),
          published_at = EXCLUDED.published_at,
          updated_at = NOW()
@@ -324,6 +471,7 @@ export const createPublicTagsApi = (getClient: () => Promise<Queryable>): Public
         input.announce_uris,
         input.local_user,
         input.published_at,
+        JSON.stringify(input.announce_actors ?? {}),
       ],
     )
     return result.rows[0]

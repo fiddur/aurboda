@@ -436,6 +436,22 @@ export const activityCorrelationSchema = hrvStatsWithDeltaSchema
 
 export type ActivityCorrelation = z.infer<typeof activityCorrelationSchema>
 
+export const mealSensitivityCorrelationSchema = hrvStatsWithDeltaSchema
+  .extend({
+    flag_id: z
+      .string()
+      .meta({ description: 'Sensitivity flag id; pass it as activity with activity_type meal_sensitivity' }),
+    flag_name: z.string().meta({ description: 'Sensitivity flag name', example: 'gluten' }),
+    occurrences: z.number().int().meta({ description: 'Meals carrying the flag, as sessions' }),
+  })
+  .meta({
+    description:
+      'Meals carrying one sensitivity flag, each a point occurrence at the meal time analysed like a point activity',
+    id: 'MealSensitivityCorrelation',
+  })
+
+export type MealSensitivityCorrelation = z.infer<typeof mealSensitivityCorrelationSchema>
+
 export const hrvActivitiesDataSchema = z
   .object({
     baseline: hrvStatsSchema,
@@ -450,6 +466,9 @@ export const hrvActivitiesDataSchema = z
     correlations: z.object({
       activities: z.array(activityCorrelationSchema),
       locations: z.array(locationCorrelationSchema),
+      meals: z
+        .array(mealSensitivityCorrelationSchema)
+        .meta({ description: 'One row per sensitivity flag carried by a meal in the period' }),
       productivity: z.array(productivityCorrelationSchema),
     }),
     flagged_exclusion: flaggedExclusionSchema.optional(),
@@ -478,14 +497,24 @@ export const hrvActivitiesResponseSchema = createDataResponseSchema(hrvActivitie
 export type HrvActivitiesResponse = z.infer<typeof hrvActivitiesResponseSchema>
 
 export const activityImpactTypeSchema = z
-  .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
+  .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type', 'meal_sensitivity'])
   .meta({
-    description: 'Type of activity to analyze',
+    description:
+      'Type of activity to analyze. meal_sensitivity: the meals carrying a sensitivity flag, with the flag id as the activity',
     example: 'productivity_category',
     id: 'ActivityImpactType',
   })
 
 export type ActivityImpactType = z.infer<typeof activityImpactTypeSchema>
+
+export const articleImpactTypeSchema = activityImpactTypeSchema.exclude(['meal_sensitivity']).meta({
+  description:
+    'Type of activity an article impact block shows; meal_sensitivity is not offered, as its flag id means nothing to a reader',
+  example: 'activity_type',
+  id: 'ArticleImpactType',
+})
+
+export type ArticleImpactType = z.infer<typeof articleImpactTypeSchema>
 
 export const activityImpactMatchSchema = z.enum(['contains', 'exact']).meta({
   description:
@@ -682,14 +711,37 @@ export const impactDimensionOptionSchema = z
 
 export type ImpactDimensionOption = z.infer<typeof impactDimensionOptionSchema>
 
+export const impactComparisonSchema = impactGroupSchema
+  .pick({
+    hr_effect: true,
+    hrv_effect: true,
+    metric_effects: true,
+    occurrences: true,
+    stress_effect: true,
+    timeline: true,
+  })
+  .meta({
+    description:
+      "A comparison group analysed exactly like the sessions: for meal_sensitivity, the meals without the flag on days marked 'meal log completed', the only days on which a meal without the flag means the flagged food was not eaten",
+    id: 'ImpactComparison',
+  })
+
+export type ImpactComparison = z.infer<typeof impactComparisonSchema>
+
 export const activityImpactDataSchema = z
   .object({
-    activity: z.string().meta({ description: 'Activity name/pattern searched' }),
+    activity: z.string().meta({
+      description: 'Activity name/pattern searched; for meal_sensitivity the flag name',
+    }),
     activity_type: activityImpactTypeSchema,
     avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
+    comparison: impactComparisonSchema.optional().meta({
+      description:
+        "For meal_sensitivity only: the meals without the flag on days marked 'meal log completed' (on any other day a meal without the flag does not show the flagged food was left out), analysed like the sessions; no breakdown",
+    }),
     comparisons: z.number().int().meta({
       description:
-        'How many changes in this response, the whole and every breakdown group, have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
+        'How many changes in this response, the whole, every breakdown group and the comparison group, have a p-value: the family p_value_adjusted is adjusted over. At p < 0.05, about one in twenty of them would pass by chance.',
     }),
     hr_effect: windowEffectSchema.meta({ description: 'Paired before -> after change of heart rate' }),
     hr_timeline: impactTimelineSchema,
@@ -1163,9 +1215,10 @@ const impactExtraMetricsInputSchema = z
 /** Activity impact MCP input schema (typed numbers instead of query strings) */
 export const activityImpactInputSchema = z
   .object({
-    activity: z
-      .string()
-      .meta({ description: 'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation")' }),
+    activity: z.string().meta({
+      description:
+        'The activity or tag name to analyze (e.g., "gym", "coffee", "meditation"); for meal_sensitivity the sensitivity flag id',
+    }),
     activity_type: activityImpactTypeSchema.meta({ description: 'Type of activity to search for' }),
     breakdown: impactDimensionSchema.optional(),
     duration_buckets: z
@@ -1349,6 +1402,13 @@ export const selectorSchema = z
       kind: z.enum(['productivity_category', 'productivity_app']),
       pattern: z.string().meta({ description: 'Regex matched against category/app' }),
     }),
+    z.object({
+      flag: z
+        .string()
+        .meta({ description: 'Sensitivity flag id (see list_correlation_selectors sensitivities)' }),
+      kind: z.literal('sensitivity'),
+      threshold: thresholdSpecSchema.optional(),
+    }),
   ])
   .meta({ id: 'CorrelationSelector' })
 
@@ -1360,7 +1420,12 @@ export type CorrelationSelector = z.infer<typeof selectorSchema>
  * and the backend server-side scatter renderer (article-block PNGs), so an axis
  * reads the same in-app and in a federated/exported image.
  */
-export const describeSelectorAxis = (selector: CorrelationSelector): string => {
+export const describeSelectorAxis = (selector: CorrelationSelector, flagName?: string): string =>
+  selector.kind === 'sensitivity'
+    ? `Meals with ${flagName || 'a sensitivity flag'} (count)`
+    : describeDataAxis(selector)
+
+const describeDataAxis = (selector: Exclude<CorrelationSelector, { kind: 'sensitivity' }>): string => {
   switch (selector.kind) {
     case 'metric': {
       if (!isValidMetric(selector.metric)) return selector.metric || 'metric'
@@ -1412,7 +1477,7 @@ export const linearRegression = (xs: number[], ys: number[]): RegressionLine | n
 
 export const nutritionCompletenessSchema = z.enum(['all', 'complete_only']).meta({
   description:
-    "How to treat partial nutrition days: 'all' keeps every known day; 'complete_only' drops days without real macros (flag-only). n_complete is reported either way.",
+    "How to treat partial nutrition days: 'all' keeps every known day; 'complete_only' drops days without real macros (flag-only), and for a sensitivity selector the days not marked 'meal log completed'. n_complete is reported either way.",
   id: 'NutritionCompleteness',
 })
 
@@ -1497,7 +1562,7 @@ export const continuousCorrelationDataSchema = z
     n: z.number().int().meta({ description: 'Number of aligned day pairs' }),
     n_complete: z.number().int().nullable().meta({
       description:
-        'Of the n aligned pairs, how many have complete nutrition on every nutrition side; null when no side is nutrition',
+        "Of the n aligned pairs, how many are complete on every nutrition or sensitivity side (nutrition: a real logged value; sensitivity: a day marked 'meal log completed'); null when neither side is either",
     }),
     outcome: selectorSchema,
     pearson: z.number().nullable().meta({ description: 'Pearson correlation (-1..1)' }),
@@ -1533,6 +1598,9 @@ export const correlationSelectorsDataSchema = z
     metrics: z.array(selectorOptionSchema),
     nutrients: z.array(selectorOptionSchema),
     productivity_categories: z.array(selectorOptionSchema),
+    sensitivities: z.array(selectorOptionSchema).meta({
+      description: 'Sensitivity flags: value is the flag id for a sensitivity selector, label its name',
+    }),
     tags: z.array(selectorOptionSchema),
   })
   .meta({ id: 'CorrelationSelectorsData' })

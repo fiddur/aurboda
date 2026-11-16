@@ -1,5 +1,8 @@
 import type {
   AddReportBody,
+  ImportReportsBody,
+  ImportReportsResponse,
+  ImportReportsResult,
   Report as ApiReport,
   ReportResponse,
   ReportsResponse,
@@ -61,4 +64,23 @@ export const deleteReport = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/reports/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+const serverError = (error: unknown): Error => {
+  if (axios.isAxiosError<{ error?: string }>(error) && error.response?.data?.error) {
+    return new Error(error.response.data.error)
+  }
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+export const importReports = async (body: ImportReportsBody): Promise<ImportReportsResult> => {
+  const { token } = auth.value
+  try {
+    const response = await axios.post<ImportReportsResponse>(`${API_URL}/reports/import`, body, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return response.data.data!
+  } catch (error) {
+    throw serverError(error)
+  }
 }

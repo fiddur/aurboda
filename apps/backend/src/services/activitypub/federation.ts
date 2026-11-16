@@ -27,6 +27,7 @@ import {
 } from '@fedify/fedify/vocab'
 
 import type { ActorPresentation } from './actor-presentation.ts'
+import type { QueuedDelivery } from './delivery-queue.ts'
 
 /**
  * Single actor per user: the actor identifier IS the username, and the actor
@@ -1049,8 +1050,9 @@ export const deliverActorUpdate = async (
 /**
  * Tell the user's followers' servers that the actor is gone, so they drop the
  * follow and the cached profile. Needs the user's database (key pair, follower
- * list), so it runs before the database is dropped; delivery is synchronous
- * (no message queue), so nothing reads that database after this resolves.
+ * list), so it runs before the database is dropped. Once this resolves nothing
+ * reads that database again: a queued delivery carries the recipients' inboxes
+ * and the signing key in its job.
  */
 export const deliverActorDelete = async (
   deps: Pick<FeedDeliveryDeps, 'federation' | 'listRelayRecipients' | 'origin'>,
@@ -1093,20 +1095,19 @@ export const createFeedFederation = (
   isReadOnly: (username: string) => Promise<boolean> = async () => false,
   /** The instance actor and its relay subscriptions; without it the instance actor does not exist. */
   instance?: InstanceActorDeps,
+  /** Outbound delivery through a persistent queue with retries; without it `sendActivity` delivers synchronously. */
+  delivery?: QueuedDelivery,
 ): Federation<void> => {
   const federation = createFederation<void>({
+    ...delivery?.options,
     kv: new MemoryKvStore(),
     // Pin the canonical origin (the public base URL) so actor ids, WebFinger
     // self-links, inbox/outbox URIs, etc. are always built with the right
     // scheme + host — Mastodon requires https, and reconstructing the scheme
     // from the request yields http behind the TLS-terminating proxy.
     origin,
-    // No message queue: `sendActivity` then delivers synchronously (awaits the
-    // POST). An in-process queue would need `federation.startQueue()` to drain —
-    // which the Express integration doesn't run — so queued activities (e.g. the
-    // Create on share) would never send. A persistent Postgres queue + worker is
-    // a later reliability slice; synchronous delivery is correct for now.
   })
+  if (delivery != null) federation.setOutboxPermanentFailureHandler(delivery.onPermanentFailure)
 
   // Fetches native structured data (typed metrics + series) for ingested posts
   // that come from Aurboda instances, so the web can render a native chart.

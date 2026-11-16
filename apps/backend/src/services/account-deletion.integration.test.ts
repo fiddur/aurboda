@@ -122,6 +122,31 @@ describe('account deletion', () => {
         username: user,
       })
       await centralDb.insertWebAuthnUserHandle(user, '11111111-1111-1111-1111-111111111111')
+      await centralDb.insertOidcProvider({
+        allow_signup: false,
+        allowed_email_domains: [],
+        client_id: 'c',
+        client_secret: 's',
+        display_name: 'Test SSO',
+        enabled: true,
+        id: `sso_${suffix}`.slice(0, 31),
+        issuer: 'https://sso.example.com',
+        preset: null,
+      })
+      await centralDb.insertOidcLink({
+        email: null,
+        issuer: 'https://sso.example.com',
+        provider_id: `sso_${suffix}`.slice(0, 31),
+        subject: `sub_${suffix}`,
+        username: user,
+      })
+      await centralDb.issueAccountEmailToken({
+        email: 'del@example.com',
+        expires_at: new Date(Date.now() + 3_600_000),
+        purpose: 'reset',
+        token_hash: `hash_${suffix}`,
+        username: user,
+      })
       await centralDb.upsertOuraUserMapping(`oura_${suffix}`, user)
       await centralDb.upsertStravaAthleteMapping(4242, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
@@ -161,9 +186,11 @@ describe('account deletion', () => {
 
       const client = centralPool
       for (const table of [
+        'account_email_tokens',
         'admins',
         'oauth_tokens',
         'oauth_authorization_codes',
+        'oidc_links',
         'webauthn_user_handles',
         'oura_user_mappings',
         'strava_athlete_mappings',

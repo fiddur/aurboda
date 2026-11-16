@@ -29,14 +29,12 @@ import multer from 'multer'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
 import {
-  type ChallengeParticipationRecord,
   type ChallengeRecord,
   createChallenge,
   deleteChallenge,
   deleteChallengeBanner,
   getChallengeById,
   listChallengeMembers,
-  listChallengeParticipations,
   listChallenges,
   removeChallengeMember,
   upsertChallengeBanner,
@@ -50,8 +48,14 @@ import {
   leaveChallenge,
   previewChallenge,
 } from '../services/challenge-federation.ts'
+import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { effectiveBucketSize, specToApi, toSpecFields } from '../services/challenge-spec.ts'
+import {
+  effectiveBucketSize,
+  serializeParticipation,
+  specToApi,
+  toSpecFields,
+} from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
@@ -62,19 +66,6 @@ import { validateBody, validateQuery } from '../validation.ts'
 const bannerUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   storage: multer.memoryStorage(),
-})
-
-const serializeParticipation = (p: ChallengeParticipationRecord) => ({
-  challenge_url: p.challenge_url,
-  created_at: p.created_at.toISOString(),
-  end_ts: p.end_ts.toISOString(),
-  host_identity: p.host_identity,
-  id: p.id,
-  name: p.name,
-  spec: specToApi(p.spec),
-  start_ts: p.start_ts.toISOString(),
-  status: p.status,
-  timezone: p.timezone,
 })
 
 const joinErrorStatus = (error: JoinChallengeError): 400 | 404 | 502 =>
@@ -179,15 +170,20 @@ export const createChallengesRouter = (
     async (req, res) => {
       const user = req.user!
       const b = req.body
-      const result = await updateHostedChallenge(user, req.params.id, {
-        announce_winner: b.announce_winner,
-        end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
-        is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
-        name: b.name,
-        spec: b.spec ? toSpecFields(b.spec) : undefined,
-        start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
-        timezone: b.timezone,
-      })
+      const result = await updateHostedChallenge(
+        user,
+        req.params.id,
+        {
+          announce_winner: b.announce_winner,
+          end_ts: b.end_ts ? new Date(b.end_ts) : undefined,
+          is_public: b.visibility === undefined ? undefined : visibilityToIsPublic(b.visibility),
+          name: b.name,
+          spec: b.spec ? toSpecFields(b.spec) : undefined,
+          start_ts: b.start_ts ? new Date(b.start_ts) : undefined,
+          timezone: b.timezone,
+        },
+        { webHost },
+      )
       if (result.status === 'not_found') {
         return res.status(404).json({ error: 'Challenge not found', success: false })
       }
@@ -296,7 +292,7 @@ export const createChallengesRouter = (
     authMiddleware,
     async (req, res) => {
       const user = req.user!
-      const records = await listChallengeParticipations(user)
+      const records = await listParticipationsFresh(user, { webHost })
       res.json({ participations: records.map(serializeParticipation), success: true })
     },
   )

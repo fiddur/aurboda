@@ -10,12 +10,16 @@ export interface SignupProfileDeps {
   logError?: (message: string, error: unknown) => void
 }
 
-export const defaultSignupProfileDeps = (centralDb: Pick<CentralDb, 'setUserEmail'>): SignupProfileDeps => ({
+export const defaultSignupProfileDeps = (
+  centralDb: Pick<CentralDb, 'setUserEmail'>,
+  startEmailVerification?: (username: string) => void,
+): SignupProfileDeps => ({
   setDisplayName: (username, displayName) => upsertUserSettings(username, { display_name: displayName }),
   setEmail: async (username, email) => {
     if (!(await centralDb.setUserEmail(username, email))) {
       throw new Error('the account has no user_accounts row')
     }
+    startEmailVerification?.(username)
   },
 })
 

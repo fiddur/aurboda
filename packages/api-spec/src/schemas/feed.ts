@@ -28,7 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
+import { articleImpactTypeSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -475,7 +475,7 @@ export const articleImpactBlockSchema = z
     activity: z.string().min(1).max(200).meta({
       description: 'The activity, location or category, exactly as the Analyze context table lists it',
     }),
-    activity_type: activityImpactTypeSchema,
+    activity_type: articleImpactTypeSchema,
     caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the chart' }),
     end: iso8601DateTimeSchema
       .optional()
@@ -1409,6 +1409,99 @@ export const publicTagPostsResponseSchema = baseResponseSchema
   })
 
 export type PublicTagPostsResponse = z.infer<typeof publicTagPostsResponseSchema>
+
+export const publicTagBlockKinds = ['actor', 'domain'] as const
+
+export const publicTagBlockKindSchema = z.enum(publicTagBlockKinds).meta({
+  description:
+    'actor: one author, by actor URI; domain: every author on a host and its subdomains (example.org also blocks social.example.org)',
+  id: 'PublicTagBlockKind',
+})
+
+export type PublicTagBlockKind = z.infer<typeof publicTagBlockKindSchema>
+
+export const publicTagBlockSchema = z
+  .object({
+    created_at: iso8601DateTimeSchema.meta({ description: 'When the block was added' }),
+    created_by: z.string().meta({ description: 'The admin who added it' }),
+    id: z.string().uuid().meta({ description: 'Block id' }),
+    kind: publicTagBlockKindSchema,
+    value: z.string().meta({ description: 'The actor URI, or the lowercased host' }),
+  })
+  .meta({
+    description: 'An author or domain kept off the public tag pages and the official feed',
+    id: 'PublicTagBlock',
+  })
+
+export type PublicTagBlock = z.infer<typeof publicTagBlockSchema>
+
+export const addPublicTagBlockBodySchema = z
+  .object({
+    kind: publicTagBlockKindSchema,
+    value: z.string().trim().min(1).max(2048).meta({
+      description:
+        'actor: the http(s) actor URI; domain: a host such as example.org (a scheme, path, port, leading @ or *. is stripped)',
+      example: 'spam.example',
+    }),
+  })
+  .meta({ id: 'AddPublicTagBlockBody' })
+
+export type AddPublicTagBlockBody = z.infer<typeof addPublicTagBlockBodySchema>
+
+export const publicTagBlocksResponseSchema = baseResponseSchema
+  .extend({
+    blocks: z.array(publicTagBlockSchema).optional().meta({ description: 'Every block, newest first' }),
+  })
+  .meta({ id: 'PublicTagBlocksResponse' })
+
+export type PublicTagBlocksResponse = z.infer<typeof publicTagBlocksResponseSchema>
+
+export const publicTagBlockResponseSchema = baseResponseSchema
+  .extend({
+    block: publicTagBlockSchema.optional().meta({ description: 'The added block; absent on error' }),
+    removed_posts: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'Posts the block took off the tag pages; absent on error' }),
+  })
+  .meta({ id: 'PublicTagBlockResponse' })
+
+export type PublicTagBlockResponse = z.infer<typeof publicTagBlockResponseSchema>
+
+export const publicTagHiddenPostSchema = z
+  .object({
+    actor_uri: z.string().nullable().meta({ description: "The post's author, when known" }),
+    hidden_at: iso8601DateTimeSchema.meta({ description: 'When the post was hidden' }),
+    hidden_by: z.string().meta({ description: 'The admin who hid it' }),
+    id: z.string().uuid().meta({ description: 'Id of the hide, used to unhide' }),
+    note_uri: z.string().meta({ description: "The post's ActivityPub object id" }),
+  })
+  .meta({
+    description: 'A post hidden from the public tag pages and the official feed; it is not stored again',
+    id: 'PublicTagHiddenPost',
+  })
+
+export type PublicTagHiddenPost = z.infer<typeof publicTagHiddenPostSchema>
+
+export const publicTagHiddenPostsResponseSchema = baseResponseSchema
+  .extend({
+    hidden: z
+      .array(publicTagHiddenPostSchema)
+      .optional()
+      .meta({ description: 'Hidden posts, newest first, at most 200' }),
+  })
+  .meta({ id: 'PublicTagHiddenPostsResponse' })
+
+export type PublicTagHiddenPostsResponse = z.infer<typeof publicTagHiddenPostsResponseSchema>
+
+export const publicTagHiddenPostResponseSchema = baseResponseSchema
+  .extend({
+    hidden: publicTagHiddenPostSchema.optional().meta({ description: 'The hide; absent on error' }),
+  })
+  .meta({ id: 'PublicTagHiddenPostResponse' })
+
+export type PublicTagHiddenPostResponse = z.infer<typeof publicTagHiddenPostResponseSchema>
 
 /** A post on the instance's official feed by a local user: as on its author's public profile, plus who wrote it. */
 export const officialFeedPostSchema = feedPostSchema

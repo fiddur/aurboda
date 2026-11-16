@@ -8,6 +8,7 @@ import {
   MELODY,
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
+  musicStripLabel,
   staffPositionToY,
 } from './drawMusicStaff'
 
@@ -256,5 +257,20 @@ describe('buildMusicTooltipHtml', () => {
 
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
+  })
+})
+
+describe('musicStripLabel', () => {
+  test('shows nothing on a strip too short for text', () => {
+    expect(musicStripLabel(12, 40, 10)).toBeNull()
+  })
+
+  test('shows the bare count on a narrow strip', () => {
+    expect(musicStripLabel(12, 40, 60)).toBe('12')
+  })
+
+  test('spells out tracks on a strip wide and tall enough', () => {
+    expect(musicStripLabel(12, 80, 60)).toBe('12 tracks')
+    expect(musicStripLabel(1, 80, 60)).toBe('1 track')
   })
 })

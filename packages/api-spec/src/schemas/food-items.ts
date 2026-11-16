@@ -52,6 +52,10 @@ export const foodItemEntitySchema = nutrientFieldsSchema
       .optional()
       .meta({ description: 'Stable identifier from the upstream source (e.g. LSV nummer)' }),
     updated_at: z.string().optional().meta({ description: 'Last update timestamp' }),
+    nutrient_data_incomplete: z.boolean().optional().meta({
+      description:
+        'True on a shared library item whose upstream source (e.g. Open Food Facts) lacks energy or a macro (protein, carbohydrate, fat), so meal totals that include it may be understated.',
+    }),
   })
   .meta({ description: 'A canonical food item with default nutritional data', id: 'FoodItemEntity' })
 
@@ -350,6 +354,31 @@ export const updateFoodItemBodySchema = nutrientFieldsSchema
   .meta({ description: 'Update a food item — only provided fields are changed', id: 'UpdateFoodItemBody' })
 
 export type UpdateFoodItemBody = z.infer<typeof updateFoodItemBodySchema>
+
+export const BARCODE_PATTERN = /^\d{8,14}$/
+
+export const stripBarcodeSeparators = (raw: string): string => raw.replaceAll(/[\s-]/g, '')
+
+export const findFoodByBarcodeBodySchema = z
+  .object({
+    barcode: z
+      .string()
+      .max(64)
+      .refine((value) => BARCODE_PATTERN.test(stripBarcodeSeparators(value)), {
+        message: 'A barcode is 8 to 14 digits (EAN-8, UPC-A, EAN-13 or GTIN-14)',
+      })
+      .meta({
+        description:
+          'The product barcode (EAN-8, UPC-A, EAN-13 or GTIN-14): 8 to 14 digits. Spaces and hyphens are ignored.',
+      }),
+  })
+  .meta({
+    description:
+      'Look up a branded product by barcode. The product is fetched once from Open Food Facts into the shared food library and reused for everyone afterwards.',
+    id: 'FindFoodByBarcodeBody',
+  })
+
+export type FindFoodByBarcodeBody = z.infer<typeof findFoodByBarcodeBodySchema>
 
 export const foodItemsQuerySchema = z
   .object({

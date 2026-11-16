@@ -22,6 +22,7 @@ const billing = { enabled: true, grace_days: 14 }
 const account = (overrides: Partial<UserAccount> = {}): UserAccount => ({
   created_at: day(-100),
   email: null,
+  email_verified_at: null,
   inserted_at: day(-100),
   paid_until: null,
   plan: 'trial',

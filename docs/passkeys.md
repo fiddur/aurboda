@@ -146,19 +146,26 @@ A passkey is bound to the device or password manager that holds it.
 Losing access (broken phone, deleted credential) means losing that
 passkey.
 
+- **If you linked a sign-in provider** ([single sign-on](sso.md)), it
+  signs you in too; register a new passkey from Settings.
 - **If you signed up with a password**, password login is always
   available as a fallback. Sign in with the password, register a new
   passkey, optionally delete the old one.
-- **If you signed up passkey-only**, there's no password to fall back
-  to. If you lose every registered passkey, the account is
-  unrecoverable without admin intervention. **Register at least two
-  passkeys** (e.g. one in your password manager that syncs across
-  devices, and one device-bound on Android) to mitigate this.
+- **If the server sends email and your account has a verified email
+  address**, a lost passkey (or a forgotten password) is recovered by an
+  emailed link: **Forgot your password or lost your passkey?** on the login
+  page, then **Sign in and add a new passkey**. See
+  [Account recovery](account-recovery.md).
+- **Otherwise**, a passkey-only account that loses every registered
+  passkey is unrecoverable without admin intervention. **Register at least
+  two passkeys** (e.g. one in your password manager that syncs across
+  devices, and one device-bound on Android), and verify an email address
+  in **Settings → Profile** if the server sends email.
 
 Self-hosters: there's no built-in admin tool to reset a user's
-passkeys yet — if it happens, the practical workaround is dropping
-the user's Postgres role + database and inviting them to re-sign-up
-(loses their data).
+passkeys. Set up email (Admin Settings → **Email (SMTP)**, see
+[admin.md](admin.md#email-smtp)) so users can recover their accounts
+themselves.
 
 ## Privacy & security notes
 

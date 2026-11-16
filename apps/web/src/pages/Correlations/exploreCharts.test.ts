@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
+import {
+  describeCompleteness,
+  describeSelectorAxis,
+  fiveNumberSummary,
+  linearRegression,
+  selectorAxisLabel,
+} from './exploreCharts'
 
 describe('linearRegression', () => {
   it('fits a clean line', () => {
@@ -48,5 +54,41 @@ describe('describeSelectorAxis', () => {
   it('labels tags by count and productivity by minutes', () => {
     expect(describeSelectorAxis({ kind: 'tag', pattern: 'sauna' })).toBe('sauna (count)')
     expect(describeSelectorAxis({ kind: 'productivity_app', pattern: 'vscode' })).toBe('vscode (min)')
+  })
+})
+
+describe('selectorAxisLabel', () => {
+  const selectors = { sensitivities: [{ label: 'gluten', value: 'flag-1' }] }
+
+  it('names a sensitivity selector by its flag', () => {
+    expect(selectorAxisLabel({ flag: 'flag-1', kind: 'sensitivity' }, selectors)).toBe(
+      'Meals with gluten (count)',
+    )
+  })
+
+  it('falls back when the flag is unknown or the selectors are not loaded', () => {
+    expect(selectorAxisLabel({ flag: 'flag-2', kind: 'sensitivity' }, selectors)).toBe(
+      'Meals with a sensitivity flag (count)',
+    )
+    expect(selectorAxisLabel({ flag: 'flag-1', kind: 'sensitivity' }, undefined)).toBe(
+      'Meals with a sensitivity flag (count)',
+    )
+  })
+
+  it('leaves other kinds as describeSelectorAxis labels them', () => {
+    expect(selectorAxisLabel({ kind: 'nutrition', nutrient: 'carbs' }, selectors)).toBe('carbs (g)')
+  })
+})
+
+describe('describeCompleteness', () => {
+  const flag = { flag: 'flag-1', kind: 'sensitivity' } as const
+  const sleep = { kind: 'metric', metric: 'sleep_score' } as const
+
+  it('speaks of nutrition when a side is nutrition, else of the meal log', () => {
+    expect(describeCompleteness(4, { kind: 'nutrition', nutrient: 'carbs' }, flag)).toBe(
+      '4 with full nutrition',
+    )
+    expect(describeCompleteness(4, flag, sleep)).toBe('4 on days with a complete meal log')
+    expect(describeCompleteness(null, flag, sleep)).toBeNull()
   })
 })

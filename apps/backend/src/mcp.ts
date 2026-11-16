@@ -20,6 +20,7 @@ import type { ouraClient } from './integrations/oura/client.ts'
 import type { AutosharePreviewDeps } from './mcp/autoshare-rule-tools.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 import type { AccountDeleter } from './services/account-deletion.ts'
+import type { AccountEmailDeps } from './services/account-email.ts'
 import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
@@ -35,6 +36,8 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
 import type { RunNotificationAction } from './services/notification-actions.ts'
+import type { OidcProviderAdmin } from './services/oidc-providers.ts'
+import type { PublicTagModeration } from './services/public-tag-moderation.ts'
 import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
 import type { RelayActions } from './services/relays.ts'
@@ -47,7 +50,12 @@ import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
 import { registerAccountPlanTools } from './mcp/account-plan-tools.ts'
 import { registerActivityTools } from './mcp/activity-tools.ts'
 import { registerActivityTypeTools } from './mcp/activity-type-tools.ts'
-import { registerAdminFederationTools } from './mcp/admin-federation-tools.ts'
+import {
+  registerAdminFederationTools,
+  registerFederationDeliveryTools,
+} from './mcp/admin-federation-tools.ts'
+import { registerAdminOidcTools } from './mcp/admin-oidc-tools.ts'
+import { registerAdminPublicTagTools } from './mcp/admin-public-tag-tools.ts'
 import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
@@ -73,6 +81,7 @@ import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
+import { registerSegmentTools } from './mcp/segment-tools.ts'
 import { registerSensitivityTools } from './mcp/sensitivity-tools.ts'
 import { registerSettingsTools } from './mcp/settings-tools.ts'
 import { registerSharedDashboardTools } from './mcp/shared-dashboard-tools.ts'
@@ -123,6 +132,8 @@ const SERVER_INSTRUCTIONS =
   'The tool list is abbreviated: each tool shows its first sentence and its top-level parameters only. Call describe_tools with one or more tool names for the full description and complete parameter schema (nested objects, enums, examples) before using a tool whose parameters are objects or arrays.'
 
 interface McpDeps {
+  /** The account email and its verification (`get_my_email`, `set_my_email`, `send_email_verification`). */
+  accountEmail?: AccountEmailDeps
   /** Account deletion (`delete_my_account`, `delete_user`). */
   accountDeleter?: AccountDeleter
   /** Refuses mutating tools for a read-only account (plan expired past the grace period). */
@@ -163,7 +174,10 @@ interface McpDeps {
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
   relayActions?: RelayActions
+  /** The admin's single sign-on providers (`list_oidc_providers` and the rest). */
+  oidcProviders?: OidcProviderAdmin
   publicTagActions?: PublicTagActions
+  publicTagModeration?: PublicTagModeration
   /** Admin re-send of every public post's Update (`resend_post_updates`). */
   postUpdateResender?: PostUpdateResender
   retroEnrichTimeline?: RetroEnrichTrigger
@@ -176,6 +190,15 @@ interface McpDeps {
     options?: { fullResync?: boolean; startDate?: Date },
   ) => Promise<HomeAssistantSyncResult>
   webHost?: string
+}
+
+/** The admin tools whose service this server was given. */
+const registerOptionalAdminTools = (server: McpServer, user: string, centralDb: CentralDb, deps: McpDeps) => {
+  if (deps.adminUsers) registerAdminUserTools(server, user, centralDb, deps.adminUsers)
+  if (deps.relayActions) registerAdminRelayTools(server, user, centralDb, deps.relayActions)
+  if (deps.oidcProviders) registerAdminOidcTools(server, user, centralDb, deps.oidcProviders)
+  if (deps.publicTagModeration) registerAdminPublicTagTools(server, user, centralDb, deps.publicTagModeration)
+  if (deps.postUpdateResender) registerAdminFederationTools(server, user, centralDb, deps.postUpdateResender)
 }
 
 const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
@@ -229,17 +252,15 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerFoodItemTools(server, user, deps.centralDb)
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
-    if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
-    if (deps.relayActions) registerAdminRelayTools(server, user, deps.centralDb, deps.relayActions)
-    if (deps.postUpdateResender) {
-      registerAdminFederationTools(server, user, deps.centralDb, deps.postUpdateResender)
-    }
+    registerOptionalAdminTools(server, user, deps.centralDb, deps)
+    registerFederationDeliveryTools(server, user, deps.centralDb)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)
-    registerAccountEmailTools(server, user, deps.centralDb)
+    if (deps.accountEmail) registerAccountEmailTools(server, user, deps.accountEmail)
   }
   registerReportTools(server, user)
   registerRouteTools(server, user)
+  registerSegmentTools(server, user)
   registerSharedDashboardTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
   registerExerciseCatalogTools(server)

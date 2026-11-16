@@ -33,6 +33,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import type { Auth } from '../auth.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { LoginMethodCounter } from '../services/login-methods.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware, TypedRouter } from '../typed-router.ts'
 
@@ -40,6 +41,7 @@ import { RESERVED_USERNAMES } from '../api/auth-routes.ts'
 import { dropUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { insertWebAuthnCredential } from '../db/webauthn.ts'
 import { recordNewAccount } from '../services/account-plan.ts'
+import { LAST_LOGIN_METHOD_ERROR } from '../services/login-methods.ts'
 import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
 import { typedRouter } from '../typed-router.ts'
@@ -54,6 +56,10 @@ interface WebAuthnRouterDeps {
   centralDb: CentralDb
   invitationAuth: InvitationAuth
   userDb: Client
+  /** Refuses deleting the last passkey of an account that has no other way to log in. */
+  loginMethods?: LoginMethodCounter
+  /** Sends the verification link to a just-signed-up account's email, in the background. */
+  startEmailVerification?: (username: string) => void
 }
 
 export const createWebAuthnRouter = ({
@@ -63,6 +69,8 @@ export const createWebAuthnRouter = ({
   centralDb,
   invitationAuth,
   userDb,
+  loginMethods,
+  startEmailVerification,
 }: WebAuthnRouterDeps): TypedRouter => {
   const router = typedRouter()
 
@@ -237,7 +245,10 @@ export const createWebAuthnRouter = ({
         return
       }
 
-      await saveSignupProfile(defaultSignupProfileDeps(centralDb), username, { display_name, email })
+      await saveSignupProfile(defaultSignupProfileDeps(centralDb, startEmailVerification), username, {
+        display_name,
+        email,
+      })
 
       // Step 4: first-user-becomes-admin (mirrors auth-routes.ts /signup).
       const adminCount = await centralDb.getAdminCount()
@@ -372,6 +383,13 @@ export const createWebAuthnRouter = ({
     '/credentials/:id',
     authMiddleware,
     async (req, res) => {
+      if (loginMethods && (await loginMethods(req.user!)) <= 1) {
+        const credentials = await webAuthn.listCredentials(req.user!)
+        if (credentials.some((credential) => credential.credential_id === req.params.id)) {
+          res.status(409).json({ error: LAST_LOGIN_METHOD_ERROR, success: false })
+          return
+        }
+      }
       const ok = await webAuthn.deleteCredential(req.user!, req.params.id)
       if (!ok) {
         res.status(404).json({ error: 'Credential not found', success: false })

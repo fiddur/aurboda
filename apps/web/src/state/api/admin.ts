@@ -1,6 +1,9 @@
 import type {
+  AddPublicTagBlockBody,
   AddRelayBody,
   AdminSettingsResponse,
+  AdminTestEmailBody,
+  AdminTestEmailResponse,
   AdminUserOverview,
   AdminUserPlan,
   AdminUserPlanResponse,
@@ -9,6 +12,13 @@ import type {
   AdminUsersResponse,
   BaseResponse,
   DeleteAccountBody,
+  FederationDeliveryFailure,
+  FederationDeliveryFailuresResponse,
+  PublicTagBlock,
+  PublicTagBlockResponse,
+  PublicTagBlocksResponse,
+  PublicTagHiddenPost,
+  PublicTagHiddenPostsResponse,
   Relay,
   RelayResponse,
   RelaysResponse,
@@ -119,6 +129,15 @@ export const fetchRelays = async (): Promise<Relay[]> => {
   return response.data.relays ?? []
 }
 
+export const fetchFederationDeliveryFailures = async (): Promise<FederationDeliveryFailure[]> => {
+  const { token } = auth.value
+  const response = await axios.get<FederationDeliveryFailuresResponse>(
+    `${API_URL}/admin/federation/delivery-failures`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data.failures ?? []
+}
+
 export const addRelay = async (body: AddRelayBody): Promise<Relay> => {
   const { token } = auth.value
   const response = await axios.post<RelayResponse>(`${API_URL}/admin/relays`, body, {
@@ -133,4 +152,63 @@ export const removeRelay = async (id: string): Promise<void> => {
   await axios.delete<BaseResponse>(`${API_URL}/admin/relays/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
+}
+
+const authHeaders = () => ({ headers: { Authorization: `Bearer ${auth.value.token}` } })
+
+export const hidePublicTagPost = async (postId: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-posts/${encodeURIComponent(postId)}`,
+    authHeaders(),
+  )
+}
+
+export const fetchHiddenPublicTagPosts = async (): Promise<PublicTagHiddenPost[]> => {
+  const response = await axios.get<PublicTagHiddenPostsResponse>(
+    `${API_URL}/admin/public-tag-hidden`,
+    authHeaders(),
+  )
+  return response.data.hidden ?? []
+}
+
+export const unhidePublicTagPost = async (id: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-hidden/${encodeURIComponent(id)}`,
+    authHeaders(),
+  )
+}
+
+export const fetchPublicTagBlocks = async (): Promise<PublicTagBlock[]> => {
+  const response = await axios.get<PublicTagBlocksResponse>(
+    `${API_URL}/admin/public-tag-blocks`,
+    authHeaders(),
+  )
+  return response.data.blocks ?? []
+}
+
+export const addPublicTagBlock = async (
+  body: AddPublicTagBlockBody,
+): Promise<{ block: PublicTagBlock; removed_posts: number }> => {
+  const response = await axios.post<PublicTagBlockResponse>(
+    `${API_URL}/admin/public-tag-blocks`,
+    body,
+    authHeaders(),
+  )
+  if (!response.data.block) throw new Error(response.data.error ?? 'Could not add the block')
+  return { block: response.data.block, removed_posts: response.data.removed_posts ?? 0 }
+}
+
+export const removePublicTagBlock = async (id: string): Promise<void> => {
+  await axios.delete<BaseResponse>(
+    `${API_URL}/admin/public-tag-blocks/${encodeURIComponent(id)}`,
+    authHeaders(),
+  )
+}
+
+export const sendAdminTestEmail = async (body: AdminTestEmailBody): Promise<AdminTestEmailResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<AdminTestEmailResponse>(`${API_URL}/admin/email/test`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
 }

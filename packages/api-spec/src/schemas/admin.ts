@@ -4,7 +4,7 @@ import { normalizeFediverseHandle, normalizeRedditUsername } from '../support-co
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema } from './common.ts'
 import { hashtagInputSchema, officialFeedSettingSchema } from './feed.ts'
 import { adminUserPlanShape } from './plans.ts'
-import { signupProfileShape } from './profile.ts'
+import { emailInputSchema, signupProfileShape } from './profile.ts'
 
 export const signupModeSchema = z.enum(['open', 'invite_only', 'closed']).meta({
   description: 'Server signup mode',
@@ -43,6 +43,10 @@ export const serverStatusResponseSchema = baseResponseSchema
       description:
         "The server admin's fediverse handle, `name@host` without a leading `@` (null when not set)",
     }),
+    email_enabled: z.boolean().optional().meta({
+      description:
+        'Whether this server sends email: when true, a password reset or passkey recovery link can be requested by email',
+    }),
     contact_reddit: z
       .string()
       .nullable()
@@ -65,6 +69,9 @@ export const serverStatusResponseSchema = baseResponseSchema
 
 export type ServerStatusResponse = z.infer<typeof serverStatusResponseSchema>
 
+/** The password rule signup, login and a password reset share: any non-empty string. */
+export const accountPasswordSchema = z.string().min(1)
+
 export const signupBodySchema = z
   .object({
     ...signupProfileShape,
@@ -72,7 +79,7 @@ export const signupBodySchema = z
       .string()
       .optional()
       .meta({ description: 'Invitation token (required in invite_only mode)' }),
-    password: z.string().min(1).meta({ description: 'User password' }),
+    password: accountPasswordSchema.meta({ description: 'User password' }),
     username: z.string().min(1).meta({ description: 'Username' }),
   })
   .meta({ id: 'SignupBody' })
@@ -136,6 +143,16 @@ export const publicTagFollowSchema = z
   })
 
 export type PublicTagFollow = z.infer<typeof publicTagFollowSchema>
+
+export const smtpSecuritySchema = z.enum(['starttls', 'tls', 'none']).meta({
+  description:
+    'How the SMTP connection is secured: `starttls` upgrades a plain connection (usually port 587, the default), `tls` is TLS from the start (usually port 465), `none` is unencrypted (only for a relay on the same host or network)',
+  id: 'SmtpSecurity',
+})
+
+export type SmtpSecurity = z.infer<typeof smtpSecuritySchema>
+
+export const DEFAULT_SMTP_PORT = 587
 
 export const adminSettingsResponseSchema = baseResponseSchema
   .extend({
@@ -207,6 +224,20 @@ export const adminSettingsResponseSchema = baseResponseSchema
     tag_actor_host: z.string().meta({
       description:
         'Host of the hashtag actors users follow to follow a tag: following `#running` follows `running@<host>` (default `tags.pub`)',
+    }),
+    smtp_from: z.string().meta({
+      description: "Sender of the server's mail, e.g. `Aurboda <no-reply@example.org>` (empty when not set)",
+    }),
+    smtp_host: z
+      .string()
+      .meta({ description: 'SMTP server host name (empty when not set: no mail is sent)' }),
+    smtp_password_set: z.boolean().meta({ description: 'Whether an SMTP password is configured' }),
+    smtp_port: z.number().int().meta({ description: 'SMTP server port (default 587)' }),
+    smtp_security: smtpSecuritySchema,
+    smtp_user: z.string().meta({ description: 'SMTP user name (empty when the server needs no login)' }),
+    email_enabled: z.boolean().meta({
+      description:
+        'Whether the server sends email: true when the SMTP host and the From address are set. Used for verifying account addresses, password reset and passkey recovery links.',
     }),
     trial_days: z.number().int().meta({ description: 'Length of the free trial for new accounts, in days' }),
   })
@@ -354,6 +385,46 @@ export const updateAdminSettingsBodySchema = z
         description:
           'Host of the hashtag actors (a bare hostname, e.g. `tags.pub`); empty resets to the default `tags.pub`',
       }),
+    smtp_from: z
+      .string()
+      .trim()
+      .max(320)
+      .refine((value) => value === '' || /^[^@\s<>]+@[^@\s<>]+$|<[^@\s<>]+@[^@\s<>]+>$/.test(value), {
+        message: 'A sender address, e.g. no-reply@example.org or Aurboda <no-reply@example.org>',
+      })
+      .nullable()
+      .optional()
+      .meta({
+        description:
+          "Sender of the server's mail: an address, or `Name <address>` (null or empty to clear, which turns email off)",
+      }),
+    smtp_host: z
+      .string()
+      .trim()
+      .max(253)
+      .nullable()
+      .optional()
+      .meta({ description: 'SMTP server host name (null or empty to clear, which turns email off)' }),
+    smtp_password: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'SMTP password (set to null to clear). Never returned.' }),
+    smtp_port: z
+      .number()
+      .int()
+      .min(1)
+      .max(65535)
+      .optional()
+      .meta({ description: 'SMTP server port (default 587)' }),
+    smtp_security: smtpSecuritySchema.optional(),
+    smtp_user: z
+      .string()
+      .trim()
+      .max(320)
+      .nullable()
+      .optional()
+      .meta({ description: 'SMTP user name (null or empty when the server needs no login)' }),
     trial_days: z
       .number()
       .int()
@@ -363,6 +434,27 @@ export const updateAdminSettingsBodySchema = z
       .meta({ description: 'Length of the free trial for new accounts, in days (0-3650, default 90)' }),
   })
   .meta({ id: 'UpdateAdminSettingsBody' })
+
+export const adminTestEmailBodySchema = z
+  .object({
+    to: emailInputSchema.optional().meta({
+      description: "Where to send the test mail; default the admin's own account email",
+      example: 'me@example.com',
+    }),
+  })
+  .meta({ id: 'AdminTestEmailBody' })
+
+export type AdminTestEmailBody = z.infer<typeof adminTestEmailBodySchema>
+
+export const adminTestEmailResponseSchema = baseResponseSchema
+  .extend({ to: z.string().optional().meta({ description: 'The address the test mail went to' }) })
+  .meta({
+    description:
+      'The outcome of a test mail: on failure, `error` carries the SMTP error to fix the settings by',
+    id: 'AdminTestEmailResponse',
+  })
+
+export type AdminTestEmailResponse = z.infer<typeof adminTestEmailResponseSchema>
 
 export type UpdateAdminSettingsBody = z.infer<typeof updateAdminSettingsBodySchema>
 
@@ -629,12 +721,50 @@ export type RelayResponse = z.infer<typeof relayResponseSchema>
 
 export const resendPostUpdatesResponseSchema = baseResponseSchema
   .extend({
-    posts: z
-      .number()
-      .int()
-      .optional()
-      .meta({ description: 'Public and unlisted posts whose Update is being re-sent; absent on error' }),
+    posts: z.number().int().optional().meta({
+      description: 'Public and unlisted posts whose Update is being queued for re-sending; absent on error',
+    }),
   })
   .meta({ id: 'ResendPostUpdatesResponse' })
 
 export type ResendPostUpdatesResponse = z.infer<typeof resendPostUpdatesResponseSchema>
+
+export const federationDeliveryFailureSchema = z
+  .object({
+    failures: z
+      .number()
+      .int()
+      .meta({ description: 'Failed delivery attempts since the server last accepted one' }),
+    first_failed_at: iso8601DateTimeSchema.meta({ description: 'The first failure of the current run' }),
+    inbox_host: z.string().meta({ description: 'Host of the inbox that could not be reached' }),
+    last_error: z.string().meta({
+      description: 'Status line of the latest failure (status code and reason, or the network error)',
+    }),
+    last_failed_at: iso8601DateTimeSchema.meta({ description: 'When the latest attempt failed' }),
+    last_inbox: z.string().meta({ description: 'The inbox URL of the latest failed attempt' }),
+    last_status: z
+      .number()
+      .int()
+      .nullable()
+      .meta({ description: 'HTTP status of the latest failure; null when no answer came' }),
+    last_succeeded_at: iso8601DateTimeSchema.nullable().meta({
+      description: 'When the server last accepted a delivery; null when never since recording began',
+    }),
+  })
+  .meta({
+    description: 'A remote server whose inbox could not be reached by the outbound delivery queue',
+    id: 'FederationDeliveryFailure',
+  })
+
+export type FederationDeliveryFailure = z.infer<typeof federationDeliveryFailureSchema>
+
+export const federationDeliveryFailuresResponseSchema = baseResponseSchema
+  .extend({
+    failures: z
+      .array(federationDeliveryFailureSchema)
+      .optional()
+      .meta({ description: 'Servers whose latest deliveries failed, most recent failure first' }),
+  })
+  .meta({ id: 'FederationDeliveryFailuresResponse' })
+
+export type FederationDeliveryFailuresResponse = z.infer<typeof federationDeliveryFailuresResponseSchema>

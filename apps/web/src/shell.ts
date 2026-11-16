@@ -1,12 +1,17 @@
 /**
- * Pages a logged-out visitor can land on from outside: the welcome page, login and signup, and
+ * Pages a logged-out visitor can land on from outside: the welcome page, login and signup, the
+ * account recovery and email confirmation pages, and
  * the public sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge,
  * `/challenges/join`, the instance blog at `/blog` and the public tag pages at `/tags/<tag>`). They get the guest bar instead of the app navigation.
  */
+/** The account recovery and email confirmation pages the emailed links open, and where a sign-in provider sends the browser back. */
+const ACCOUNT_LINK_PAGES = ['/recover-request', '/recover', '/verify-email', '/login/oidc', '/signup/oidc']
+
 const isGuestPage = (path: string): boolean =>
   path === '/' ||
   path === '/login' ||
   path === '/signup' ||
+  ACCOUNT_LINK_PAGES.includes(path) ||
   path.startsWith('/u/') ||
   path === '/challenges/join' ||
   path === '/blog' ||
@@ -31,7 +36,7 @@ export function shouldShowSiteFooter(path: string, isLoggedIn: boolean): boolean
   return isLoggedIn || path !== '/'
 }
 
-const PUBLIC_PAGES = ['/login', '/signup', '/privacy', '/terms', '/help']
+const PUBLIC_PAGES = ['/login', '/signup', ...ACCOUNT_LINK_PAGES, '/privacy', '/terms', '/help']
 
 /** The plan banner is for the signed-in app, not public share pages or the login and legal pages. */
 export function shouldShowPlanBanner(path: string, isLoggedIn: boolean): boolean {

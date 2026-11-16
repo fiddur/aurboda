@@ -144,6 +144,16 @@ The Chart Explorer (`/chart`) charts any activity type or metric as a trend or a
 
 Its **Lookback** is a fixed window (1 day to 2 years, or All time) or **Since…**, which shows a date picker and charts from that date up to today. The URL carries a fixed window as `lookback_days=90` and a date as `since=2026-03-01`, so a link keeps that start; when both are present `since` wins. A date in the future is refused with an inline message and the chart keeps its previous range. Bars start at the date's local midnight; a trend asks for the number of whole days from the date to today. Adding or updating a dashboard widget keeps the date as the widget's `since` (with that day count as its `lookback_days`), so on a board the chart keeps its fixed start, and opening it in the Chart Explorer carries the date back.
 
+#### Sessions scatter
+
+For an activity type, the **Sessions** chart type plots one dot per session in the range: its length across (`Duration (min)`) and its exertion up, to answer "I have 20 minutes and want something gentle" by looking in that corner. The type is offered only for activity types; a link with `chart_type=scatter` and a metric source opens the default chart instead.
+
+- **Exertion** (`y`): **Z3+ minutes** (`y=z3_minutes`, the default) is the session's minutes in heart-rate zone 3 or higher, as in the [sessions overview](activity-types.md#sessions-overview); **Average HR** (`y=avg_hr`) is the session's average heart rate in bpm. Sessions without the chosen value (no heart-rate data) or without a duration are left out, and a line under the chart says how many.
+- **Colour** (`group_by`): the same fields the sessions overview groups by (the categorical data fields and Place). Dots take the field value's colour, with a legend of the eight most frequent values and the rest as **Other**. Clicking a legend entry highlights its sessions and dims the others; clicking it again clears that.
+- **One dot per value** (`collapse=1`, only with a field): one dot per value at the median length and median exertion of its sessions, its area growing with the number of sessions.
+
+Hovering a dot (tapping it on a touch screen) shows the session's title or value, date, length and exertion. Clicking a session's dot (tapping it again on touch) opens the session; clicking a collapsed dot shows that value's sessions highlighted among the others. The range is the usual **Lookback** or **Since…**. The scatter has no dashboard widget, so its ⋮ menu (Add to dashboard, Set a goal) and **Update Chart** are not shown. Example: `/chart?source_type=activity_type&pattern=yoga&chart_type=scatter&y=z3_minutes&group_by=session_name&collapse=1&lookback_days=365`. The sessions overview's **Plot sessions** link opens it.
+
 ### Chart menu
 
 Charts in the Chart Explorer and on an exercise's page have a ⋮ menu with **Open in Chart Explorer** (not shown in the explorer itself), **Add to dashboard** and **Set a goal**. Set a goal opens the Goals page with a new goal prefilled from the chart (a trend goal for a trend, a measure goal for a measure's bars), so only the target is left to type.

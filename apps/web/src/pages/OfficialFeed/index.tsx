@@ -7,7 +7,7 @@ import { useEffect } from 'preact/hooks'
 import { listsAuthors, officialFeedOfPage, officialFeedSummary } from '../../components/official-feed'
 import { PublicTagLinks } from '../../components/PublicTagLinks'
 import { fetchOfficialFeed, officialFeedAtomUrl } from '../../state/api'
-import { ensureStatusLoaded, publicTagPages } from '../../state/auth'
+import { auth, ensureStatusLoaded, publicTagPages } from '../../state/auth'
 import { FeedPostCard } from '../Feed/FeedPostCard'
 import { RemotePostCard } from '../Feed/RemotePostCard'
 import { publicAuthor } from '../PublicProfile/public-author'
@@ -56,6 +56,7 @@ export function OfficialFeed() {
     )
   }
 
+  const isAdmin = auth.value.is_admin === true
   const pages = postsQuery.data?.pages ?? []
   const posts = pages.flatMap((page) => page.posts)
   const feed = officialFeedOfPage(pages[0])
@@ -81,7 +82,7 @@ export function OfficialFeed() {
         ) : (
           posts.map((post) =>
             post.origin === 'remote' ? (
-              <RemotePostCard key={post.id} entry={post} pages={publicTagPages.value} />
+              <RemotePostCard key={post.id} entry={post} pages={publicTagPages.value} moderate={isAdmin} />
             ) : (
               <FeedPostCard key={post.id} post={post} author={publicAuthor(post.author_username)} visitor />
             ),

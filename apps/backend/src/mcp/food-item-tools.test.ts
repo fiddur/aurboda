@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { FoodItemEntity } from '../db/types.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { SharedFoodItemEntity } from '../services/central-food-items.ts'
+import type { BarcodeLookupResult } from '../services/imports/openfoodfacts.ts'
 import type { McpServer } from './helpers.ts'
 
 import { registerFoodItemTools } from './food-item-tools.ts'
@@ -304,5 +305,45 @@ describe('MCP resnapshot_meals_for_food_item', () => {
     registerFoodItemTools(server, 'tester', fakeCentral())
     const text = await callTool(tools.get('resnapshot_meals_for_food_item')!, { id })
     expect(text).toMatch(/not found/i)
+  })
+})
+
+describe('MCP find_food_by_barcode', () => {
+  const OFF_ID = '44444444-4444-4444-8444-444444444444'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setUserFoodItem(async () => null)
+  })
+
+  test('returns the product as a food item detail', async () => {
+    const central = fakeCentral()
+    const item = sharedItem(OFF_ID, { name: 'Nutella (Ferrero)', source: 'openfoodfacts' })
+    vi.mocked(central.getSharedFoodItemById).mockResolvedValue(item)
+    const lookup = vi.fn(async (): Promise<BarcodeLookupResult> => ({ item, kind: 'found' }))
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', central, lookup)
+
+    const json = JSON.parse(await callTool(tools.get('find_food_by_barcode')!, { barcode: '3017624010701' }))
+    expect(lookup).toHaveBeenCalledWith('3017624010701')
+    expect(json.success).toBe(true)
+    expect(json.data.is_shared).toBe(true)
+    expect(json.data.item).toMatchObject({ id: OFF_ID, name: 'Nutella (Ferrero)', source: 'openfoodfacts' })
+  })
+
+  test('says so when Open Food Facts has no such product', async () => {
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral(), async () => ({ kind: 'not_found' }))
+    expect(await callTool(tools.get('find_food_by_barcode')!, { barcode: '12345678' })).toBe(
+      'No product with this barcode at Open Food Facts',
+    )
+  })
+
+  test('says so when Open Food Facts cannot be reached', async () => {
+    const { server, tools } = buildFakeServer()
+    registerFoodItemTools(server, 'tester', fakeCentral(), async () => ({ kind: 'upstream_error' }))
+    expect(await callTool(tools.get('find_food_by_barcode')!, { barcode: '12345678' })).toMatch(
+      /could not be reached/i,
+    )
   })
 })

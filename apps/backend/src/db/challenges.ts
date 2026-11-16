@@ -5,6 +5,7 @@ import type {
   ChartDataBucket,
 } from '@aurboda/api-spec'
 
+import { canonicalChallengeUrl } from '@aurboda/api-spec'
 import { randomBytes } from 'node:crypto'
 
 /**
@@ -113,6 +114,8 @@ export interface ChallengeParticipationRecord {
   status: 'active' | 'withdrawn'
   /** How the host was joined; null for participations from before it was recorded. */
   protocol: ChallengeParticipationProtocol | null
+  /** When a remote host was last asked for the challenge's current name; null until first asked. */
+  host_checked_at: Date | null
   created_at: Date
 }
 
@@ -129,6 +132,15 @@ export interface ChallengeParticipationInput {
   protocol?: ChallengeParticipationProtocol | null
 }
 
+export interface ChallengeParticipationSnapshotPatch {
+  name?: string
+  spec?: ChallengeSpecFields
+  start_ts?: Date
+  end_ts?: Date
+  timezone?: string
+  host_checked_at?: Date
+}
+
 const CHALLENGE_COLUMNS =
   'id, slug, name, is_public, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, join_token, announce_winner, result_published_at, created_at, updated_at'
 
@@ -138,7 +150,7 @@ const MEMBER_COLUMNS =
   'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
 const PARTICIPATION_COLUMNS =
-  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, protocol, created_at'
+  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, protocol, host_checked_at, created_at'
 
 interface ChallengeRow {
   id: string
@@ -220,6 +232,7 @@ interface ParticipationRow {
   data_token: string
   status: 'active' | 'withdrawn'
   protocol: string | null
+  host_checked_at: Date | null
   created_at: Date
 }
 
@@ -231,6 +244,7 @@ const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord =
   created_at: row.created_at,
   data_token: row.data_token,
   end_ts: row.end_ts,
+  host_checked_at: row.host_checked_at,
   host_identity: row.host_identity,
   id: row.id,
   name: row.name,
@@ -540,7 +554,7 @@ export const createChallengeParticipation = async (
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING ${PARTICIPATION_COLUMNS}`,
     [
-      input.challenge_url,
+      canonicalChallengeUrl(input.challenge_url) ?? input.challenge_url,
       input.host_identity,
       input.name,
       input.spec.source_type,
@@ -602,6 +616,49 @@ export const getParticipationByUrl = async (
     user,
     `SELECT ${PARTICIPATION_COLUMNS} FROM challenge_participations WHERE challenge_url = $1 LIMIT 1`,
     [challengeUrl],
+  )
+  return result.rows.length ? mapParticipation(result.rows[0]) : null
+}
+
+/** Bring a participation's copy of the host's challenge up to date; null when there is no such row. */
+export const updateChallengeParticipationSnapshot = async (
+  user: string,
+  id: string,
+  patch: ChallengeParticipationSnapshotPatch,
+): Promise<ChallengeParticipationRecord | null> => {
+  const sets: string[] = []
+  const params: unknown[] = []
+  const set = (col: string, value: unknown) => {
+    params.push(value)
+    sets.push(`${col} = $${params.length}`)
+  }
+
+  if (patch.name !== undefined) set('name', patch.name)
+  if (patch.start_ts !== undefined) set('start_ts', patch.start_ts)
+  if (patch.end_ts !== undefined) set('end_ts', patch.end_ts)
+  if (patch.timezone !== undefined) set('timezone', patch.timezone)
+  if (patch.host_checked_at !== undefined) set('host_checked_at', patch.host_checked_at)
+  if (patch.spec !== undefined) {
+    set('source_type', patch.spec.source_type)
+    set('pattern', patch.spec.pattern)
+    set('activity_type_id', patch.spec.activity_type_id)
+    set('aggregation', patch.spec.aggregation)
+    set('unit', patch.spec.unit)
+    set('bucket_size', patch.spec.bucket_size)
+    set('measure', patch.spec.measure)
+    set('filter_field', patch.spec.filter_field)
+    set('filter_value', patch.spec.filter_value)
+  }
+
+  if (sets.length === 0) return getParticipationById(user, id)
+
+  params.push(id)
+  const result = await query<ParticipationRow>(
+    user,
+    `UPDATE challenge_participations SET ${sets.join(', ')}
+      WHERE id = $${params.length}
+      RETURNING ${PARTICIPATION_COLUMNS}`,
+    params,
   )
   return result.rows.length ? mapParticipation(result.rows[0]) : null
 }

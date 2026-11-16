@@ -1,6 +1,7 @@
 import {
   activityMeasureLabels,
   type DashboardWidget,
+  dayOverviewDefaultMetrics,
   recordMeasures,
   type SectionType,
 } from '@aurboda/api-spec'
@@ -20,6 +21,8 @@ interface DashboardEditorProps {
   onClose: () => void
   /** A period dashboard: hide the widgets that have no meaning for a past period. */
   periodMode?: boolean
+  /** A shared dashboard: hide the widgets it never shows. */
+  sharedBoard?: boolean
 }
 
 const metricCardUnits: Record<string, string> = {
@@ -150,6 +153,13 @@ const widgetTemplates: WidgetTemplate[] = [
   },
   {
     allowedSections: ['charts'],
+    defaultConfig: () => ({ metrics: [...dayOverviewDefaultMetrics], window: 'rolling_24h' }),
+    description: 'Stress, Body Battery, sleep and activities of one day on one time axis',
+    label: 'Day overview',
+    type: 'day_overview',
+  },
+  {
+    allowedSections: ['charts'],
     defaultConfig: () => ({
       layers: [
         { bucket_size: '1w', kind: 'bars', pattern: 'coffee', source_type: 'activity_type' },
@@ -259,6 +269,7 @@ export function DashboardEditor({
   onAddWidget,
   onClose,
   periodMode = false,
+  sharedBoard = false,
 }: DashboardEditorProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
@@ -266,6 +277,7 @@ export function DashboardEditor({
   const availableTemplates = offeredWidgetTypes(
     widgetTemplates.filter((t) => t.allowedSections.includes(sectionType)),
     periodMode,
+    sharedBoard,
   )
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
@@ -693,6 +705,46 @@ export function DashboardEditor({
             />
           </div>
         )
+
+      case 'day_overview': {
+        const metrics = (configValues.metrics as string[] | undefined) ?? [...dayOverviewDefaultMetrics]
+        return (
+          <div class="config-form">
+            <div class="form-group">
+              <label>Window</label>
+              <select
+                value={(configValues.window as string) ?? 'rolling_24h'}
+                onChange={(e) => updateConfig('window', (e.target as HTMLSelectElement).value)}
+              >
+                <option value="rolling_24h">Last 24 hours</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="today">Today</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Bars</label>
+              <MetricPicker
+                value={metrics[0] ?? ''}
+                onChange={(metric) => updateConfig('metrics', [metric, ...metrics.slice(1)])}
+              />
+            </div>
+            <div class="form-group">
+              <label>Line</label>
+              <MetricPicker
+                value={metrics[1] ?? ''}
+                onChange={(metric) => updateConfig('metrics', [metrics[0] ?? metric, metric])}
+              />
+            </div>
+            <OptionalTextField
+              configKey="title"
+              configValues={configValues}
+              label="Title"
+              placeholder="Last 24 hours, Yesterday or Today"
+              setConfigValues={setConfigValues}
+            />
+          </div>
+        )
+      }
 
       case 'quick_link':
         return (

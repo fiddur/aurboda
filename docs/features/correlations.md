@@ -37,6 +37,8 @@ Each table covers a different category of data:
 
 **Locations** -- Named places you've visited. Shows visit count.
 
+**Meals** -- One row per sensitivity flag ("Meals with gluten"): each meal carrying the flag is one occurrence at its time. See [Meal sensitivities](#meal-sensitivities).
+
 **Productivity Categories** -- Screen time categories (e.g., "Software Development", "Social Media"). Shows the Pearson correlation coefficient (r) between the productivity score and each shown metric.
 
 Every row displays:
@@ -92,24 +94,38 @@ Every table here is many tests at once, one per row and metric, and at p < 0.05 
 
 The page keeps its tab and every selection in the URL, so a view can be bookmarked or shared; whoever opens the link sees the same settings over their own data. A parameter is left out while it holds its default, so plain `/correlations` is the default view, and other parameters (such as the Android app's `embed=1`) are kept.
 
-| Parameter                         | Meaning                                                                                             |
-| --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `tab`                             | `context` (default) or `explore`                                                                    |
-| `days`, `window`                  | Context period (14, 30, 60, 90; default 30) and before/after window in minutes (default 30)         |
-| `metrics`                         | Shown metrics: `hrv`, `hr`, `stress` and up to 4 other metric names, e.g. `hr,stress,body_battery`  |
-| `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `productivity_category`, ...)     |
-| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep` or `field:<path>`, e.g. `field:session_name`      |
-| `lengths`, `hours`                | Length limits in minutes (default `15,30,60`) and time-of-day limits in hours (default `0,6,12,18`) |
-| `filter`                          | Session filters, e.g. `duration:15-30,30-60;sleep:none`; each key URL-encoded                       |
-| `breakdown_metric`                | The metric the breakdown chart draws (`hrv`, `hr`, `stress` or a metric name); default stress       |
-| `mode`                            | Explore mode: `event` (default) or `continuous`                                                     |
-| `trigger`, `outcome`              | Explore selectors as `kind:value`, e.g. `activity:alcohol`, `nutrition:carbs`, `metric:sleep_score` |
-| `outcome_source`, `outcome_value` | Event-mode outcome: `metric` or `tag`, and its name or pattern                                      |
-| `lags`, `gap`, `denominator`      | Event-mode lag windows (default `24h,48h,7d`), collapse gap in days (default 3), `known` or `all`   |
-| `lag_days`, `nutrition`           | Continuous-mode outcome lag in days (default 0) and `all` or `complete_only` nutrition days         |
-| `start`, `end`, `explore_days`    | Explore regime: dates (YYYY-MM-DD), or the last N days (default 365)                                |
+| Parameter                         | Meaning                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `tab`                             | `context` (default) or `explore`                                                                     |
+| `days`, `window`                  | Context period (14, 30, 60, 90; default 30) and before/after window in minutes (default 30)          |
+| `metrics`                         | Shown metrics: `hrv`, `hr`, `stress` and up to 4 other metric names, e.g. `hr,stress,body_battery`   |
+| `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `meal_sensitivity` with flag id)   |
+| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep` or `field:<path>`, e.g. `field:session_name`       |
+| `lengths`, `hours`                | Length limits in minutes (default `15,30,60`) and time-of-day limits in hours (default `0,6,12,18`)  |
+| `filter`                          | Session filters, e.g. `duration:15-30,30-60;sleep:none`; each key URL-encoded                        |
+| `breakdown_metric`                | The metric the breakdown chart draws (`hrv`, `hr`, `stress` or a metric name); default stress        |
+| `mode`                            | Explore mode: `event` (default) or `continuous`                                                      |
+| `trigger`, `outcome`              | Explore selectors as `kind:value`, e.g. `activity:alcohol`, `metric:sleep_score`, `sensitivity:<id>` |
+| `outcome_source`, `outcome_value` | Event-mode outcome: `metric` or `tag`, and its name or pattern                                       |
+| `lags`, `gap`, `denominator`      | Event-mode lag windows (default `24h,48h,7d`), collapse gap in days (default 3), `known` or `all`    |
+| `lag_days`, `nutrition`           | Continuous-mode outcome lag in days (default 0) and `all` or `complete_only` nutrition days          |
+| `start`, `end`, `explore_days`    | Explore regime: dates (YYYY-MM-DD), or the last N days (default 365)                                 |
 
 An Explore link whose trigger and outcome are filled in runs the analysis once when it opens; changing the form afterwards only updates the URL until **Run analysis** is pressed.
+
+## Meal sensitivities
+
+The sensitivity flags you put on food items (gluten, dairy, alcohol, ...) can be analysed like anything else. Only a day you marked as a **complete meal log** says that a flagged food was _not_ eaten: on another day the meal may just not be logged.
+
+**In Explore** (Continuous mode), pick **meal sensitivity** and a flag in the trigger or outcome picker. The daily value is the number of meals that day carrying the flag. A day is known when it has a meal or is marked complete; there a day without a flagged meal counts as 0. Any other day is left out, not counted as 0. The axis reads "Meals with gluten (count)".
+
+**The next night**: a night's sleep score (and Garmin's overnight HRV) is stamped on the day the night ends. So `lag_days: 1` (**Outcome lag (days)** 1) pairs the meals of a day with the sleep that follows that evening; `lag_days: 0` would pair them with the night before. "Do I sleep worse after gluten?" is trigger **meal sensitivity → gluten**, outcome **metric → sleep_score** (or `hrv_rmssd`), lag 1, and the binary trigger makes the group comparison the headline.
+
+**In Context**, the **Meals** table has a row per flag carried by a meal in the period. Selecting one shows HRV, heart rate and stress in the window before and after each meal with the flag ("stress in the 2 hours after a meal with gluten" is the ±2 h window), with the Time of day and Sleep in the window breakdowns and filters; Length and data fields do not apply to a meal. Next to it is a **comparison**: the same analysis over the meals **without** the flag on days marked as a complete meal log, tabled as "Meals without gluten, on days with a complete meal log", with its n, and its changes counted among the comparisons the p-values are adjusted for. A completed day is the meal's local date in your timezone.
+
+Over the API this is `activity_type=meal_sensitivity` with the flag id as the activity (`GET /correlations/activity-impact/:flag_id`, MCP `get_activity_impact`); the response names the flag in `activity` and carries the comparison in `comparison`. Article impact blocks and shared dashboards do not offer this source: a flag id means nothing to a reader.
+
+Combinations of flags, doses and confounders are not modelled.
 
 ## Event Probability (API / MCP only)
 

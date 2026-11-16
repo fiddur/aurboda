@@ -68,3 +68,14 @@ export function buildChartUrl(params: ChartUrlParams): string {
 
   return `/chart?${qs}`
 }
+
+const ALL_TIME_LOOKBACK_DAYS = 3650
+
+/** The Chart Explorer's sessions scatter for a type, coloured by `groupBy`; a lookback of 0 is all time. */
+export const sessionScatterHref = (activityType: string, groupBy?: string, lookbackDays?: number): string => {
+  const qs = new URLSearchParams({ source_type: 'activity_type', pattern: activityType })
+  if (lookbackDays !== undefined) qs.set('lookback_days', String(lookbackDays || ALL_TIME_LOOKBACK_DAYS))
+  qs.set('chart_type', 'scatter')
+  if (groupBy) qs.set('group_by', groupBy)
+  return `/chart?${qs}`
+}

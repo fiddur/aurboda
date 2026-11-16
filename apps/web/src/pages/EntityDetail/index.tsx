@@ -44,7 +44,6 @@ import { resolveItemIcon } from '../../utils/emojiLookup'
 import { hrZoneColors } from '../../utils/hrZones'
 import { renderMarkdown } from '../../utils/markdown'
 import { ActivityChart } from './ActivityChart'
-import { ActivityMap } from './ActivityMap'
 import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import {
   type ActivityStatRow,
@@ -76,6 +75,8 @@ import { RunCategories, RunFeatures } from './RunCategoryChips'
 import { SameValueSessions } from './SameValueSessions'
 import { activityRouteAfterSave } from './saveNavigation'
 import { SchemaDataFields } from './SchemaDataFields'
+import { ActivityMapWithSegmentCreator } from './SegmentCreator'
+import { SegmentEfforts } from './SegmentEfforts'
 import { ShareActivityButton } from './ShareActivityButton'
 import './style.css'
 
@@ -421,6 +422,8 @@ const ActivityDetailContent = ({
           </div>
         )}
 
+        {!isEditing && <SegmentEfforts efforts={activity.segment_efforts} />}
+
         {!isEditing &&
           (runCategories(activityData).length > 0 || isRunType(activity.activity_type, typeDefinitions)) && (
             <RunCategories
@@ -517,12 +520,13 @@ const ActivityDetailContent = ({
             onHoverTime={setHoverTime}
             onEnabledMetricsChange={onChartMetricsChange}
           />
-          <ActivityMap
+          <ActivityMapWithSegmentCreator
             activityId={activity.id}
             activityStart={activity.start_time}
             start={displayStart}
             end={displayEnd}
             hoverTime={hoverTime}
+            canCreate={!isEditing && !activity.deleted_at}
           />
         </div>
       )}

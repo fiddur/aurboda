@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 vi.mock('./audit-log', () => ({ auditError: vi.fn(), auditInfo: vi.fn(), auditWarn: vi.fn() }))
 vi.mock('./run-category-rules', () => ({ ensureDefaultRunCategoryRules: vi.fn() }))
 
-import { auditInfo } from './audit-log.ts'
+import { auditError, auditInfo } from './audit-log.ts'
 import { runTrackBackfillJob } from './track-queues.ts'
 
 const emptyDeps = {
@@ -15,8 +15,11 @@ const emptyDeps = {
   listActivitiesWithoutFeatures: vi.fn(async (): Promise<{ activity_id: string }[]> => []),
   matchRoutes: vi.fn(async () => ({ created: 0, matched: 0 })),
   notify: vi.fn(),
+  scanSuggestedSegments: vi.fn(async () => ({ remaining: 0, scanned: 0, suggested: 0 })),
   upsertActivityTrack: vi.fn(async () => undefined),
 }
+
+const NO_SUGGESTIONS = { remaining: 0, scanned: 0, suggested: 0 }
 
 describe('runTrackBackfillJob', () => {
   beforeEach(() => {
@@ -32,6 +35,7 @@ describe('runTrackBackfillJob', () => {
       routes: { created: 0, matched: 0 },
       skipped: 0,
       strava: 0,
+      suggestions: NO_SUGGESTIONS,
     })
     expect(emptyDeps.getGarminCandidates).toHaveBeenCalledWith('alice', { after: undefined, limit: 50 })
     expect(emptyDeps.matchRoutes).toHaveBeenCalledWith('alice')
@@ -54,6 +58,7 @@ describe('runTrackBackfillJob', () => {
       routes: { created: 0, matched: 0 },
       skipped: 0,
       strava: 1,
+      suggestions: NO_SUGGESTIONS,
     })
     expect(auditInfo).toHaveBeenCalledWith('alice', 'data', expect.any(String), {
       garmin: 0,
@@ -98,11 +103,15 @@ describe('runTrackBackfillJob', () => {
         order.push('routes')
         return { created: 0, matched: 0 }
       }),
+      scanSuggestedSegments: vi.fn(async () => {
+        order.push('suggest')
+        return NO_SUGGESTIONS
+      }),
     }
 
     const result = await runTrackBackfillJob({ user: 'alice' }, deps)
 
-    expect(order).toEqual(['routes', 'features'])
+    expect(order).toEqual(['routes', 'suggest', 'features'])
     expect(result.features).toEqual({ computed: 1 })
     expect(deps.computeFeatures).toHaveBeenCalledWith('alice', 'a1')
     expect(deps.ensureDefaultRules).toHaveBeenCalledWith('alice', 'running')
@@ -116,5 +125,17 @@ describe('runTrackBackfillJob', () => {
     vi.clearAllMocks()
     await runTrackBackfillJob({ user: 'alice' }, emptyDeps)
     expect(emptyDeps.deleteAllFeatures).not.toHaveBeenCalled()
+  })
+
+  test('a failed suggestion scan is audited and the features are still computed', async () => {
+    const deps = {
+      ...emptyDeps,
+      listActivitiesWithoutFeatures: vi.fn(async () => [{ activity_id: 'a1' }]),
+      scanSuggestedSegments: vi.fn(async () => Promise.reject(new Error('scan'))),
+    }
+    const result = await runTrackBackfillJob({ user: 'alice' }, deps)
+    expect(result.suggestions).toBeNull()
+    expect(auditError).toHaveBeenCalledWith('alice', 'data', expect.any(String), { error: 'Error: scan' })
+    expect(deps.computeFeatures).toHaveBeenCalledWith('alice', 'a1')
   })
 })

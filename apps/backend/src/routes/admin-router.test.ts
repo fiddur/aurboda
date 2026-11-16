@@ -6,10 +6,13 @@ import type { AccountDeleter } from '../services/account-deletion.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { Mailer } from '../services/email.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { RelayActions } from '../services/relays.ts'
 
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
+import { createTokenBucketLimiter } from '../services/rate-limit.ts'
 import { createAdminRouter } from './admin-router.ts'
 
 const centralDb = {
@@ -19,6 +22,18 @@ const centralDb = {
   getOuraWebhookEnabled: vi.fn().mockResolvedValue(false),
   getServerSetting: vi.fn().mockResolvedValue(null),
   getSignupMode: vi.fn().mockResolvedValue('closed'),
+  listFailingDeliveryHosts: vi.fn().mockResolvedValue([
+    {
+      failures: 2,
+      first_failed_at: new Date('2026-11-14T10:00:00Z'),
+      inbox_host: 'down.example',
+      last_error: 'Error: ECONNREFUSED',
+      last_failed_at: new Date('2026-11-14T11:00:00Z'),
+      last_inbox: 'https://down.example/inbox',
+      last_status: null,
+      last_succeeded_at: new Date('2026-11-13T09:00:00Z'),
+    },
+  ]),
   listInstanceTagFollows: vi.fn().mockResolvedValue([]),
   setServerSetting: vi.fn().mockResolvedValue(undefined),
 } as unknown as CentralDb
@@ -129,6 +144,35 @@ const relayActions: RelayActions = {
 
 const publicTagActions = { apply: vi.fn(async () => ({ followed: [], unresolved: [] })) }
 
+const POST_ID = '22222222-2222-4222-8222-222222222222'
+const hiddenPost = {
+  actor_uri: 'https://spam.example/users/x',
+  hidden_at: '2026-11-15T00:00:00.000Z',
+  hidden_by: 'root',
+  id: '33333333-3333-4333-8333-333333333333',
+  note_uri: 'https://spam.example/notes/1',
+}
+const block = {
+  created_at: '2026-11-15T00:00:00.000Z',
+  created_by: 'root',
+  id: '44444444-4444-4444-8444-444444444444',
+  kind: 'domain' as const,
+  value: 'spam.example',
+}
+
+const moderation: PublicTagModeration = {
+  addBlock: vi.fn(async (input) =>
+    input.value === 'web.example.test'
+      ? { error: 'own host', ok: false as const, status: 400 as const }
+      : { block, ok: true as const, removed_posts: 3 },
+  ),
+  hide: vi.fn(async (id: string) => (id === POST_ID ? hiddenPost : null)),
+  listBlocks: vi.fn(async () => [block]),
+  listHidden: vi.fn(async () => [hiddenPost]),
+  removeBlock: vi.fn(async (id: string) => id === block.id),
+  unhide: vi.fn(async (id: string) => id === hiddenPost.id),
+}
+
 const postUpdates = {
   start: vi.fn(
     async (): Promise<{ done: Promise<void>; posts: number } | null> => ({
@@ -158,6 +202,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       relayActions,
       publicTagActions,
       postUpdates,
+      moderation,
     ),
   )
   return app
@@ -633,6 +678,72 @@ describe('admin relays', () => {
   })
 })
 
+describe('public tag page moderation', () => {
+  test('DELETE /public-tag-posts/:id hides the post as the admin, 404 when unknown', async () => {
+    const res = await supertest(buildApp()).delete(`/admin/public-tag-posts/${POST_ID}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ hidden: hiddenPost, success: true })
+    expect(moderation.hide).toHaveBeenLastCalledWith(POST_ID, 'root')
+    expect((await supertest(buildApp()).delete('/admin/public-tag-posts/nope')).status).toBe(404)
+  })
+
+  test('GET /public-tag-hidden and /public-tag-blocks list them', async () => {
+    expect((await supertest(buildApp()).get('/admin/public-tag-hidden')).body).toEqual({
+      hidden: [hiddenPost],
+      success: true,
+    })
+    expect((await supertest(buildApp()).get('/admin/public-tag-blocks')).body).toEqual({
+      blocks: [block],
+      success: true,
+    })
+  })
+
+  test('POST /public-tag-blocks adds one and says how many posts it removed', async () => {
+    const res = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'domain', value: 'spam.example' })
+    expect(res.status).toBe(201)
+    expect(res.body).toEqual({ block, removed_posts: 3, success: true })
+    expect(moderation.addBlock).toHaveBeenLastCalledWith({ kind: 'domain', value: 'spam.example' }, 'root')
+  })
+
+  test('POST /public-tag-blocks passes a refusal through and validates the body', async () => {
+    const own = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'domain', value: 'web.example.test' })
+    expect(own.status).toBe(400)
+    expect(own.body).toEqual({ error: 'own host', success: false })
+    const invalid = await supertest(buildApp())
+      .post('/admin/public-tag-blocks')
+      .send({ kind: 'server', value: 'x' })
+    expect(invalid.status).toBe(400)
+  })
+
+  test('DELETE unhides and unblocks, 404 when unknown', async () => {
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-hidden/${hiddenPost.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-hidden/${POST_ID}`)).status).toBe(404)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-blocks/${block.id}`)).status).toBe(200)
+    expect((await supertest(buildApp()).delete(`/admin/public-tag-blocks/${POST_ID}`)).status).toBe(404)
+  })
+
+  test('non-admins are refused', async () => {
+    vi.mocked(moderation.hide).mockClear()
+    vi.mocked(moderation.addBlock).mockClear()
+    const app = buildApp(forbid)
+    expect((await supertest(app).delete(`/admin/public-tag-posts/${POST_ID}`)).status).toBe(403)
+    expect((await supertest(app).get('/admin/public-tag-hidden')).status).toBe(403)
+    expect((await supertest(app).delete(`/admin/public-tag-hidden/${hiddenPost.id}`)).status).toBe(403)
+    expect((await supertest(app).get('/admin/public-tag-blocks')).status).toBe(403)
+    expect(
+      (await supertest(app).post('/admin/public-tag-blocks').send({ kind: 'domain', value: 'a.example' }))
+        .status,
+    ).toBe(403)
+    expect((await supertest(app).delete(`/admin/public-tag-blocks/${block.id}`)).status).toBe(403)
+    expect(moderation.hide).not.toHaveBeenCalled()
+    expect(moderation.addBlock).not.toHaveBeenCalled()
+  })
+})
+
 describe('re-sending post Updates', () => {
   test('POST /federation/resend-post-updates starts a re-send and answers how many posts', async () => {
     const res = await supertest(buildApp()).post('/admin/federation/resend-post-updates')
@@ -651,6 +762,32 @@ describe('re-sending post Updates', () => {
     postUpdates.start.mockClear()
     expect((await supertest(buildApp(forbid)).post('/admin/federation/resend-post-updates')).status).toBe(403)
     expect(postUpdates.start).not.toHaveBeenCalled()
+  })
+})
+
+describe('federation delivery failures', () => {
+  test('GET /federation/delivery-failures lists the failing servers', async () => {
+    const res = await supertest(buildApp()).get('/admin/federation/delivery-failures')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      failures: [
+        {
+          failures: 2,
+          first_failed_at: '2026-11-14T10:00:00.000Z',
+          inbox_host: 'down.example',
+          last_error: 'Error: ECONNREFUSED',
+          last_failed_at: '2026-11-14T11:00:00.000Z',
+          last_inbox: 'https://down.example/inbox',
+          last_status: null,
+          last_succeeded_at: '2026-11-13T09:00:00.000Z',
+        },
+      ],
+      success: true,
+    })
+  })
+
+  test('non-admins are refused', async () => {
+    expect((await supertest(buildApp(forbid)).get('/admin/federation/delivery-failures')).status).toBe(403)
   })
 })
 
@@ -743,5 +880,141 @@ describe('public tag pages setting', () => {
     expect(
       (await supertest(app).patch('/admin/settings').send({ public_tag_retention_days: 366 })).status,
     ).toBe(400)
+  })
+})
+
+describe('email (SMTP) settings and the test mail', () => {
+  const SECRET = 'smtp-secret-value'
+  const settings: Record<string, unknown> = {
+    smtp_from: 'Aurboda <no-reply@example.org>',
+    smtp_host: 'smtp.example.org',
+    smtp_password: SECRET,
+    smtp_port: 465,
+    smtp_security: 'tls',
+    smtp_user: 'mailer',
+  }
+
+  const buildEmailApp = ({
+    adminEmail = 'root@example.com' as string | null,
+    sendResult = { ok: true } as Awaited<ReturnType<Mailer['send']>>,
+    capacity = 10,
+  } = {}) => {
+    const db = {
+      ...centralDb,
+      getServerSetting: vi.fn(async (key: string) => settings[key] ?? null),
+      getUserAccount: vi.fn(async () => ({ email: adminEmail })),
+      setServerSetting: vi.fn().mockResolvedValue(undefined),
+    } as unknown as CentralDb
+    const send = vi.fn<Mailer['send']>(async () => sendResult)
+    const app = express()
+    app.use(express.json())
+    app.use(
+      '/admin',
+      createAdminRouter(
+        pass,
+        pass,
+        db,
+        adminUsers,
+        {} as InvitationAuth,
+        'https://web.example.test',
+        gravlRedirectUri('https://api.example.test/api'),
+        async () => true,
+        null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          mailer: { send },
+          testLimiter: createTokenBucketLimiter({ capacity, refill_per_second: 0 }, () => 0),
+        },
+      ),
+    )
+    return { app, db, send }
+  }
+
+  test('GET returns the SMTP settings but never the password, only whether one is set', async () => {
+    const res = await supertest(buildEmailApp().app).get('/admin/settings')
+    expect(res.body).toMatchObject({
+      email_enabled: true,
+      smtp_from: 'Aurboda <no-reply@example.org>',
+      smtp_host: 'smtp.example.org',
+      smtp_password_set: true,
+      smtp_port: 465,
+      smtp_security: 'tls',
+      smtp_user: 'mailer',
+    })
+    expect(JSON.stringify(res.body)).not.toContain(SECRET)
+    expect(res.body).not.toHaveProperty('smtp_password')
+  })
+
+  test('PATCH stores the SMTP fields, a null clearing one, and answers without the password', async () => {
+    const { app, db } = buildEmailApp()
+    const res = await supertest(app).patch('/admin/settings').send({
+      smtp_from: 'no-reply@example.org',
+      smtp_host: ' smtp.example.org ',
+      smtp_password: SECRET,
+      smtp_port: 587,
+      smtp_security: 'starttls',
+      smtp_user: null,
+    })
+    expect(res.status).toBe(200)
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_host', 'smtp.example.org')
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_port', 587)
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_security', 'starttls')
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_user', '')
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_password', SECRET)
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_from', 'no-reply@example.org')
+    expect(JSON.stringify(res.body)).not.toContain(SECRET)
+  })
+
+  test('PATCH refuses a From that is not an address', async () => {
+    const res = await supertest(buildEmailApp().app).patch('/admin/settings').send({ smtp_from: 'nobody' })
+    expect(res.status).toBe(400)
+  })
+
+  test("the test mail goes to the given address, else the admin's own", async () => {
+    const given = buildEmailApp()
+    const res = await supertest(given.app).post('/admin/email/test').send({ to: 'other@example.com' })
+    expect(res.body).toEqual({ success: true, to: 'other@example.com' })
+    expect(given.send).toHaveBeenCalledWith('other@example.com', expect.any(Object), 'test')
+
+    const own = buildEmailApp()
+    expect((await supertest(own.app).post('/admin/email/test').send({})).body).toEqual({
+      success: true,
+      to: 'root@example.com',
+    })
+  })
+
+  test('the test mail is a 400 with neither an address nor an account email', async () => {
+    const { app, send } = buildEmailApp({ adminEmail: null })
+    const res = await supertest(app).post('/admin/email/test').send({})
+    expect(res.status).toBe(400)
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  test('a failed test mail answers 502 with the SMTP error, and not configured is a 400', async () => {
+    const failed = await supertest(
+      buildEmailApp({
+        sendResult: { error: 'Invalid login: 535 Authentication failed', ok: false, reason: 'failed' },
+      }).app,
+    )
+      .post('/admin/email/test')
+      .send({})
+    expect(failed.status).toBe(502)
+    expect(failed.body).toMatchObject({ error: 'Invalid login: 535 Authentication failed', success: false })
+
+    const off = await supertest(buildEmailApp({ sendResult: { ok: false, reason: 'not_configured' } }).app)
+      .post('/admin/email/test')
+      .send({})
+    expect(off.status).toBe(400)
+  })
+
+  test('test mails are rate-limited per admin', async () => {
+    const { app } = buildEmailApp({ capacity: 1 })
+    expect((await supertest(app).post('/admin/email/test').send({})).status).toBe(200)
+    expect((await supertest(app).post('/admin/email/test').send({})).status).toBe(429)
   })
 })

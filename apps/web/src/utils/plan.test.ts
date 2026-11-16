@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
-import { type MyPlan, planBanner, planSummary, signupBillingLine } from './plan'
+import {
+  type MyPlan,
+  planBanner,
+  planBannerAction,
+  planPayment,
+  planSummary,
+  signupBillingLine,
+} from './plan'
 
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 
@@ -45,6 +52,53 @@ describe('planBanner', () => {
   })
 })
 
+describe('planBannerAction', () => {
+  test('a Pay link with the price for the advance notice, Renew once it has ended', () => {
+    expect(planBannerAction(plan(), 'info', false)).toEqual({
+      href: 'https://pay.example',
+      label: 'Pay (3 € / month)',
+    })
+    expect(planBannerAction(plan({ price_text: null }), 'bad', false)).toEqual({
+      href: 'https://pay.example',
+      label: 'Renew',
+    })
+  })
+
+  test('none without a payment URL', () => {
+    expect(planBannerAction(undefined, 'info', false)).toBeNull()
+    expect(planBannerAction(plan({ payment_url: null }), 'warn', false)).toBeNull()
+  })
+
+  test('none in the Google Play build', () => {
+    expect(planBannerAction(plan(), 'info', true)).toBeNull()
+    expect(planBannerAction(plan({ state: 'read_only' }), 'bad', true)).toBeNull()
+  })
+})
+
+describe('planPayment', () => {
+  test('the price and Pay link of a billed plan', () => {
+    expect(planPayment(plan(), false)).toEqual({
+      payment_url: 'https://pay.example',
+      price_text: '3 € / month',
+    })
+    expect(planPayment(plan({ plan: 'paid', price_text: null, state: 'active' }), false)).toEqual({
+      payment_url: 'https://pay.example',
+      price_text: null,
+    })
+  })
+
+  test('neither for an exempt account', () => {
+    expect(planPayment(plan({ plan: 'exempt', state: 'active' }), false)).toEqual({
+      payment_url: null,
+      price_text: null,
+    })
+  })
+
+  test('neither in the Google Play build', () => {
+    expect(planPayment(plan(), true)).toEqual({ payment_url: null, price_text: null })
+  })
+})
+
 describe('planSummary', () => {
   test.each([
     [plan({ plan: 'exempt', state: 'active' }), 'Your account is exempt from billing.'],
@@ -74,6 +128,15 @@ describe('signupBillingLine', () => {
     )
     expect(signupBillingLine({ billing_enabled: true, price_text: '3 €', trial_days: 0 })).toBe(
       'Paid from the start: 3 €.',
+    )
+  })
+
+  test('the trial length without the price in the Google Play build', () => {
+    expect(
+      signupBillingLine({ billing_enabled: true, price_text: '3 € / month', trial_days: 90 }, true),
+    ).toBe('Free for 90 days.')
+    expect(signupBillingLine({ billing_enabled: true, price_text: '3 €', trial_days: 0 }, true)).toBe(
+      'Paid from the start.',
     )
   })
 })

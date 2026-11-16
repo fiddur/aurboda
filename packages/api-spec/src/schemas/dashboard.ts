@@ -419,6 +419,42 @@ export const sleepDebtConfigSchema = z
 
 export type SleepDebtConfig = z.infer<typeof sleepDebtConfigSchema>
 
+export const dayOverviewWindows = ['rolling_24h', 'yesterday', 'today'] as const
+
+export const dayOverviewWindowSchema = z.enum(dayOverviewWindows).meta({
+  description: 'The span shown: the last 24 hours up to now, yesterday, or today so far (local days)',
+  id: 'DayOverviewWindow',
+})
+
+export type DayOverviewWindow = z.infer<typeof dayOverviewWindowSchema>
+
+export const dayOverviewDefaultMetrics = ['stress_level', 'body_battery'] as const
+
+export const dayOverviewConfigSchema = z
+  .object({
+    metrics: z
+      .array(dashboardMetricSchema)
+      .min(1)
+      .max(2)
+      .default([...dayOverviewDefaultMetrics])
+      .meta({
+        description:
+          'One or two metrics: the first drawn as bars (stress bands for stress_level), the second as a line with a soft area (default: stress_level, body_battery)',
+      }),
+    title: z
+      .string()
+      .optional()
+      .meta({ description: 'Card title (default: "Last 24 hours", "Yesterday" or "Today" by window)' }),
+    window: dayOverviewWindowSchema.default('rolling_24h'),
+  })
+  .meta({
+    description:
+      'One day at a glance on a single time axis: bars and a line of two metrics, sleep shaded behind, activities as icons. Not shown on shared dashboards',
+    id: 'DayOverviewConfig',
+  })
+
+export type DayOverviewConfig = z.infer<typeof dayOverviewConfigSchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -436,6 +472,7 @@ export const widgetTypeSchema = z.enum([
   'activity_type_card',
   'top_list_card',
   'places_card',
+  'day_overview',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -520,6 +557,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: placesCardConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('places_card'),
+  }),
+  z.object({
+    config: dayOverviewConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('day_overview'),
   }),
 ])
 

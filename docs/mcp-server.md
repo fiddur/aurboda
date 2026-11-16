@@ -19,6 +19,7 @@ Key areas covered by MCP tools:
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
+- **Single sign-on** (admins) -- `list_oidc_providers`, `add_oidc_provider`, `update_oidc_provider`, `delete_oidc_provider` ([sso.md](sso.md))
 
 ### Tool discovery
 
@@ -109,6 +110,25 @@ see [run features and categories](features/routes-and-segments.md#phase-3-run-fe
 | `delete_route` | Delete a route; its runs are kept, stay attached to it and are not matched again                                                          |
 | `merge_routes` | Move every run of `source_route_id` onto the route `id` and delete the source                                                             |
 | `match_routes` | Match every tracked activity without a route (attach to a covering route, or pair two unrouted tracks into a new one); returns the counts |
+
+### Segment tools
+
+A segment is a directional stretch timed on every pass, cut from an activity's track or a
+route. See [Routes and segments](features/routes-and-segments.md#phase-4-segments).
+`get_activity_detail` carries the activity's `segment_efforts`.
+
+| Tool                        | What it does                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_segments`             | Every segment with its type, length, effort count, best time and latest effort; filter by `activity_type` (with subtypes), order by `sort`                       |
+| `get_segment`               | One segment with its line, the named locations near its ends and its efforts, newest first, the best one marked                                                  |
+| `create_segment`            | Cut a segment from an activity (`activity_id`, `start_offset_s`, `end_offset_s`) or a route (`route_id`, `start_km`, `end_km`) and time history on it            |
+| `update_segment`            | Rename a segment                                                                                                                                                 |
+| `delete_segment`            | Delete a segment and its efforts                                                                                                                                 |
+| `match_segment`             | Time every tracked activity of the segment's type on it again; returns the counts                                                                                |
+| `list_suggested_segments`   | Pending suggestions: stretches at least three activities of one type pass the same way on different routes, with line, length, activity count and a nearby place |
+| `promote_suggested_segment` | Add a suggestion as a segment, optionally trimmed (`start_km`, `end_km`) and named, and time history on it                                                       |
+| `dismiss_suggested_segment` | Dismiss a suggestion; the stretch is not suggested again                                                                                                         |
+| `scan_suggested_segments`   | Look through tracked activities not yet looked at (about 20 s per call); returns `scanned`, `suggested`, `remaining`                                             |
 
 ### Exercise catalogue tools
 

@@ -7,7 +7,7 @@ import { useEffect } from 'preact/hooks'
 
 import { publicTagSummary } from '../../components/public-tag-pages'
 import { fetchPublicTagPosts, publicTagAtomUrl } from '../../state/api'
-import { ensureStatusLoaded, publicTagPages } from '../../state/auth'
+import { auth, ensureStatusLoaded, publicTagPages } from '../../state/auth'
 import { RemotePostCard } from '../Feed/RemotePostCard'
 import '../OfficialFeed/style.css'
 import '../PublicProfile/style.css'
@@ -56,6 +56,7 @@ export function PublicTag() {
     )
   }
 
+  const isAdmin = auth.value.is_admin === true
   const pages = postsQuery.data?.pages ?? []
   const posts = pages.flatMap((page) => page.posts)
   const pageTag = pages[0]?.tag ?? tag
@@ -81,7 +82,9 @@ export function PublicTag() {
         {posts.length === 0 ? (
           <p class="public-muted">No posts yet.</p>
         ) : (
-          posts.map((entry) => <RemotePostCard key={entry.id} entry={entry} pages={linkedTags} />)
+          posts.map((entry) => (
+            <RemotePostCard key={entry.id} entry={entry} pages={linkedTags} moderate={isAdmin} />
+          ))
         )}
         {postsQuery.hasNextPage && (
           <button

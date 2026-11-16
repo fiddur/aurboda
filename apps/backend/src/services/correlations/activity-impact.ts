@@ -5,6 +5,7 @@ import {
   DEFAULT_IMPACT_DURATION_BUCKETS,
   DEFAULT_IMPACT_TIME_BUCKETS,
   type ImpactBreakdown,
+  type ImpactComparison,
   type ImpactDimensionOption,
   type ImpactFilter,
   type ImpactGroup,
@@ -15,6 +16,7 @@ import {
   type WindowEffect,
 } from '@aurboda/api-spec'
 
+import type { MealFlags } from '../../db/meals.ts'
 import type { MergedActivity } from '../../db/types.ts'
 import type { SyncProvider } from '../queries/index.ts'
 import type { ActivityImpactResult } from './types.ts'
@@ -24,7 +26,10 @@ import {
   getActivityTypeDefinitions,
   getBinnedTimeSeries,
   getEffectiveActivitiesInRange,
+  getMealFlagsInRange,
+  getMealLogCompletedInRange,
   getProductivity,
+  listSensitivityFlags,
 } from '../../db/index.ts'
 import {
   flaggedExclusion,
@@ -34,6 +39,7 @@ import {
 } from '../flagged-windows.ts'
 import { getPlaceVisits } from '../locations.ts'
 import { getUserTimezone } from '../settings.ts'
+import { localDate } from '../sleep-debt.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import {
   breakdownGroups,
@@ -101,6 +107,53 @@ const activityMatcher =
   (act: MergedActivity): boolean =>
     match === 'exact' ? act.activity_type === activity : containsIgnoringCase(act.activity_type, activity)
 
+const atMealTime = (meal: MealFlags): Occurrence => ({ end: meal.time.getTime(), start: meal.time.getTime() })
+
+export interface MealOccurrences {
+  flagged: Occurrence[]
+  /** Meals without the flag on days marked meal log completed, the only days where such a meal shows it was left out. */
+  comparison: Occurrence[]
+}
+
+export const mealOccurrences = (
+  meals: MealFlags[],
+  flag: string,
+  completedDays: readonly string[],
+  tz: string,
+): MealOccurrences => {
+  const completed = new Set(completedDays)
+  return {
+    comparison: meals
+      .filter((meal) => !meal.flag_ids.includes(flag) && completed.has(localDate(meal.time, tz)))
+      .map(atMealTime),
+    flagged: meals.filter((meal) => meal.flag_ids.includes(flag)).map(atMealTime),
+  }
+}
+
+interface MealSource extends MealOccurrences {
+  flagName: string
+}
+
+const loadMealSource = async (
+  user: string,
+  flag: string,
+  range: { start: Date; end: Date },
+  tz: string | undefined,
+): Promise<MealSource> => {
+  const zone = tz ?? (await getUserTimezone(user))
+  const dayBefore = new Date(range.start.getTime() - DAY_MS)
+  const dayAfter = new Date(range.end.getTime() + DAY_MS)
+  const [meals, completed, flags] = await Promise.all([
+    getMealFlagsInRange(user, range.start, range.end),
+    getMealLogCompletedInRange(user, localDate(dayBefore, zone), localDate(dayAfter, zone)),
+    listSensitivityFlags(user),
+  ])
+  return {
+    ...mealOccurrences(meals, flag, completed, zone),
+    flagName: flags.find((f) => f.id === flag)?.name ?? flag,
+  }
+}
+
 const findOccurrences = async (
   user: string,
   activity: string,
@@ -109,7 +162,9 @@ const findOccurrences = async (
   start: Date,
   end: Date,
   activities?: MergedActivity[],
+  meals?: MealOccurrences,
 ): Promise<Occurrence[]> => {
+  if (activityType === 'meal_sensitivity') return meals?.flagged ?? []
   const exact = match === 'exact'
   if (activityType === 'productivity_category' || activityType === 'productivity_app') {
     const productivity = await getProductivity(user, start, end)
@@ -153,10 +208,21 @@ const needsDefinitions = (slicing: ImpactSlicing, activityType: ActivityImpactTy
   (slicing.includeDimensions === true ||
     (slicing.breakdown !== undefined && impactFieldPath(slicing.breakdown) !== null))
 
+/** Point meals have no length worth splitting and no data fields. */
+export const listedDimensions = (
+  activityType: ActivityImpactType,
+  definition: ActivityTypeDefinition | undefined,
+): string[] =>
+  activityType === 'meal_sensitivity'
+    ? IMPACT_FIXED_DIMENSIONS.filter((d) => d !== 'duration')
+    : [...IMPACT_FIXED_DIMENSIONS, ...categoricalFieldDimensions(definition)]
+
 interface SliceSources {
   /** Activities starting in the analysed period, when the analysis reads activities. */
   activities?: MergedActivity[]
   definition?: ActivityTypeDefinition
+  listed: string[]
+  meals?: MealSource
   sleeps: Interval[]
   tz: string
 }
@@ -177,7 +243,7 @@ const loadSliceSources = async (
 ): Promise<SliceSources> => {
   const sleep = wantsDimension(slicing, 'sleep')
   const windowMs = windowMinutes * MINUTE_MS
-  const [activities, around, sleepTypes, tz, definitions] = await Promise.all([
+  const [activities, around, sleepTypes, tz, definitions, meals] = await Promise.all([
     isActivityKind(activityType)
       ? getEffectiveActivitiesInRange(user, range.start, range.end)
       : Promise.resolve(undefined),
@@ -191,12 +257,23 @@ const loadSliceSources = async (
     sleep ? expandActivityTypes(user, ['sleep', 'nap']) : Promise.resolve([]),
     wantsDimension(slicing, 'time_of_day') ? (slicing.tz ?? getUserTimezone(user)) : 'UTC',
     needsDefinitions(slicing, activityType) ? getActivityTypeDefinitions(user) : Promise.resolve([]),
+    activityType === 'meal_sensitivity'
+      ? loadMealSource(user, activity, range, slicing.tz)
+      : Promise.resolve(undefined),
   ])
   const analysed = isActivityKind(activityType) ? activityMatcher(activity, match) : () => false
   const sleeps = around
     .filter((act) => sleepTypes.includes(act.activity_type) && !analysed(act))
     .map(activityInterval)
-  return { activities, definition: definitions.find((d) => d.name === activity), sleeps, tz }
+  const definition = definitions.find((d) => d.name === activity)
+  return {
+    activities,
+    definition,
+    listed: listedDimensions(activityType, definition),
+    meals,
+    sleeps,
+    tz,
+  }
 }
 
 interface Analysis {
@@ -232,6 +309,15 @@ const metricEffects = (analysis: Analysis, extraMetrics: string[]) =>
 
 type EffectsOf = Pick<ImpactGroup, 'hr_effect' | 'hrv_effect' | 'metric_effects' | 'stress_effect'>
 
+const comparisonGroup = (analysis: Analysis, extraMetrics: string[]): ImpactComparison => ({
+  hr_effect: analysis.summary.effects.hr,
+  hrv_effect: analysis.summary.effects.hrv,
+  ...metricEffects(analysis, extraMetrics),
+  occurrences: analysis.occurrences,
+  stress_effect: analysis.summary.effects.stress,
+  timeline: analysis.summary.buckets,
+})
+
 const groupEffects = (slice: EffectsOf): WindowEffect[] => [
   slice.hrv_effect,
   slice.hr_effect,
@@ -254,9 +340,7 @@ const sliceSessions = (
   windowMinutes: number,
 ): Slices => {
   const filters = slicing.filters ?? []
-  const listed = slicing.includeDimensions
-    ? [...IMPACT_FIXED_DIMENSIONS, ...categoricalFieldDimensions(sources.definition)]
-    : []
+  const listed = slicing.includeDimensions ? sources.listed : []
   const dimensions = [
     ...new Set([
       ...filters.map((f) => f.dimension),
@@ -305,6 +389,22 @@ const sliceSessions = (
   }
 }
 
+/** The comparison meals, analysed as their own sessions so that the flagged meals do not clip their windows. */
+const analyseComparison = (
+  meals: MealSource | undefined,
+  flagged: Parameters<typeof withoutFlagged>[2],
+  series: MetricSeries,
+  window: number,
+  extraMetrics: string[],
+): { comparison?: ImpactComparison; excluded: number } => {
+  if (!meals) return { excluded: 0 }
+  const found = withoutFlagged(meals.comparison, (o) => o.start, flagged)
+  const analysis = analyse(mergeIntoSessions(found.kept), series, window, extraMetrics)
+  return { comparison: comparisonGroup(analysis, extraMetrics), excluded: found.excluded }
+}
+
+const sourceName = (sources: SliceSources, activity: string): string => sources.meals?.flagName ?? activity
+
 export async function getActivityImpact(
   user: string,
   activity: string,
@@ -339,7 +439,7 @@ export async function getActivityImpact(
   ])
 
   const found = withoutFlagged(
-    await findOccurrences(user, activity, activityType, match, start, end, sources.activities),
+    await findOccurrences(user, activity, activityType, match, start, end, sources.activities, sources.meals),
     (o) => o.start,
     flagged,
   )
@@ -355,7 +455,8 @@ export async function getActivityImpact(
     flagged,
   )
   const series = binnedSeries.kept
-  const excludedPoints = found.excluded + binnedSeries.excluded
+  const compared = analyseComparison(sources.meals, flagged, series, window, extraMetrics)
+  const excludedPoints = found.excluded + compared.excluded + binnedSeries.excluded
   const analyseGroup = ({ indices, key, label }: GroupSelection): ImpactGroup => {
     const analysis = analyse(sessions, series, window, extraMetrics, indices)
     return {
@@ -380,9 +481,11 @@ export async function getActivityImpact(
   )
   const overall = analyse(sessions, series, window, extraMetrics, selected)
   const { buckets, effects, timeline } = overall.summary
+  const { comparison } = compared
   const { adjust, comparisons } = adjustEffects([
     ...Object.values(effects),
     ...(breakdown?.groups ?? []).flatMap(groupEffects),
+    ...(comparison ? groupEffects(comparison) : []),
   ])
   const adjustEffectsOf = <Slice extends EffectsOf>(slice: Slice): Slice => ({
     ...slice,
@@ -399,10 +502,11 @@ export async function getActivityImpact(
   })
 
   return {
-    activity,
+    activity: sourceName(sources, activity),
     activity_type: activityType,
     avg_duration_min: overall.avg_duration_min,
     ...(breakdown ? { breakdown: { ...breakdown, groups: breakdown.groups.map(adjustEffectsOf) } } : {}),
+    ...(comparison ? { comparison: adjustEffectsOf(comparison) } : {}),
     comparisons,
     ...(dimensions ? { dimensions } : {}),
     ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),

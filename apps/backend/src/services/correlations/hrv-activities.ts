@@ -1,5 +1,12 @@
-import type { ExtraMetricStats, HrvContextMetric, WindowEffect } from '@aurboda/api-spec'
+import type {
+  ExtraMetricStats,
+  HrvContextMetric,
+  MealSensitivityCorrelation,
+  WindowEffect,
+} from '@aurboda/api-spec'
 
+import type { MealFlags } from '../../db/meals.ts'
+import type { SensitivityFlag } from '../../db/sensitivities.ts'
 import type { Activity, ProductivityRecord } from '../../db/types.ts'
 import type { PlaceVisit } from '../locations.ts'
 import type { SyncProvider } from '../queries/index.ts'
@@ -12,7 +19,13 @@ import type {
   ProductivityCorrelation,
 } from './types.ts'
 
-import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
+import {
+  getEffectiveActivitiesInRange,
+  getMealFlagsInRange,
+  getProductivity,
+  getTimeSeries,
+  listSensitivityFlags,
+} from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
 import {
   type FlaggedWindow,
@@ -235,6 +248,29 @@ const activityCorrelations = (activities: Activity[], ctx: GroupContext): Activi
   return correlations.toSorted((a, b) => b.occurrences - a.occurrences)
 }
 
+export const mealCorrelations = (
+  meals: MealFlags[],
+  flags: SensitivityFlag[],
+  ctx: GroupContext,
+): MealSensitivityCorrelation[] =>
+  flags
+    .flatMap((flag) => {
+      const intervals = meals
+        .filter((meal) => meal.flag_ids.includes(flag.id))
+        .map((meal) => ({ end: meal.time.getTime(), start: meal.time.getTime() }))
+      if (intervals.length === 0) return []
+      const sessions = mergeIntoSessions(intervals)
+      return [
+        {
+          ...groupStats(sessions, ctx, sessionMinutes(sessions)),
+          flag_id: flag.id,
+          flag_name: flag.name,
+          occurrences: sessions.length,
+        },
+      ]
+    })
+    .toSorted((a, b) => b.occurrences - a.occurrences)
+
 const rowEffects = (row: HrvStatsWithDelta): WindowEffect[] => [
   row.hrv_effect,
   row.hr_effect,
@@ -322,8 +358,10 @@ export async function getHrvActivitiesCorrelation(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [flagged, ...data] = await Promise.all([
+  const [flagged, allMeals, flags, ...data] = await Promise.all([
     loadFlaggedWindows(user, seriesStart, seriesEnd, options.excludeFlagged),
+    getMealFlagsInRange(user, start, end),
+    listSensitivityFlags(user),
     getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
     getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
@@ -334,6 +372,7 @@ export async function getHrvActivitiesCorrelation(
   ])
   const { excludedPoints, hrvData, hrData, stressData, productivity, locations, activities, extraData } =
     withoutFlaggedInputs(data, flagged)
+  const meals = withoutFlagged(allMeals, (meal) => meal.time.getTime(), flagged)
 
   const extraRaw = Object.fromEntries(extraMetrics.map((metric, i) => [metric, extraData[i]]))
   const series: MetricSeries = {
@@ -348,6 +387,7 @@ export async function getHrvActivitiesCorrelation(
   const tables = {
     activities: activityCorrelations(activities, ctx),
     locations: locationCorrelations(locations, ctx),
+    meals: mealCorrelations(meals.kept, flags, ctx),
     productivity: productivityCorrelations(
       productivity,
       { heart_rate: hrData, hrv_rmssd: hrvData, stress_level: stressData },
@@ -357,7 +397,7 @@ export async function getHrvActivitiesCorrelation(
     ),
   }
   const { adjust, comparisons } = adjustEffects(
-    [...tables.activities, ...tables.locations, ...tables.productivity].flatMap(rowEffects),
+    [...tables.activities, ...tables.locations, ...tables.meals, ...tables.productivity].flatMap(rowEffects),
   )
   const adjustRow = <Row extends HrvStatsWithDelta>(row: Row): Row => withAdjustedEffects(row, adjust)
 
@@ -368,9 +408,10 @@ export async function getHrvActivitiesCorrelation(
     correlations: {
       activities: tables.activities.map(adjustRow),
       locations: tables.locations.map(adjustRow),
+      meals: tables.meals.map(adjustRow),
       productivity: tables.productivity.map(adjustRow),
     },
-    ...flaggedExclusion(flagged, { excluded_points: excludedPoints }),
+    ...flaggedExclusion(flagged, { excluded_points: excludedPoints + meals.excluded }),
     ...(extraMetrics.length > 0 ? { metric_baselines: metricBaselines } : {}),
     period: {
       days: periodDays,

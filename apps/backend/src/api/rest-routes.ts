@@ -13,7 +13,9 @@ import type { DetailSyncedCallback, TrackWrittenCallback } from '../integrations
 import type { HomeAssistantClient } from '../integrations/home-assistant/client.ts'
 import type { AutosharePreviewDeps } from '../mcp/autoshare-rule-tools.ts'
 import type { AccountDeleter } from '../services/account-deletion.ts'
+import type { AccountEmailDeps } from '../services/account-email.ts'
 import type { AccountPlans } from '../services/account-plan.ts'
+import type { AccountRecovery } from '../services/account-recovery.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
@@ -22,6 +24,7 @@ import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
+import type { Mailer } from '../services/email.ts'
 import type { DumpExporter, DumpLinkIssuer } from '../services/export-dump.ts'
 import type { ExportTokens } from '../services/export-token.ts'
 import type { ReactionActions } from '../services/feed-reactions.ts'
@@ -29,10 +32,15 @@ import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
+import type { LoginMethodCounter } from '../services/login-methods.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
+import type { OidcProviderAdmin } from '../services/oidc-providers.ts'
+import type { OidcService } from '../services/oidc.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
 import type { SyncProvider } from '../services/queries/index.ts'
+import type { TokenBucketLimiter } from '../services/rate-limit.ts'
 import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
@@ -50,10 +58,12 @@ import {
 } from '../db/index.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
+import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
 import { createAccountRouter } from '../routes/account-router.ts'
 import { createActivitiesRouter } from '../routes/activities-router.ts'
 import { createActivityTypeCatalogRouter } from '../routes/activity-type-catalog-router.ts'
 import { createActivityTypesRouter } from '../routes/activity-types-router.ts'
+import { createAdminOidcRouter } from '../routes/admin-oidc-router.ts'
 import { createAdminRouter } from '../routes/admin-router.ts'
 import { createAgentsRouter } from '../routes/agents-router.ts'
 import { createAuditLogRouter } from '../routes/audit-log-router.ts'
@@ -88,6 +98,7 @@ import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
+import { createOidcRouter } from '../routes/oidc-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
@@ -98,6 +109,7 @@ import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createRoutesRouter } from '../routes/routes-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
+import { createSegmentsRouter } from '../routes/segments-router.ts'
 import { createSensitivityFlagsRouter } from '../routes/sensitivity-flags-router.ts'
 import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
@@ -144,6 +156,12 @@ import { createTemplateLoader } from '../services/web-template.ts'
 interface RestRoutesDeps {
   httpd: Express
   accountDeleter: AccountDeleter
+  accountEmail: AccountEmailDeps
+  accountRecovery: AccountRecovery
+  /** The admin's "Send test mail". */
+  adminTestEmail: { mailer: Pick<Mailer, 'send'>; testLimiter: TokenBucketLimiter }
+  /** Sends the verification link to a just-signed-up account's email, in the background. */
+  startEmailVerification: (username: string) => void
   accountPlans: AccountPlans
   authMiddleware: AnyMiddleware
   adminMiddleware: AnyMiddleware
@@ -169,6 +187,9 @@ interface RestRoutesDeps {
   ouraWebhookManager: OuraWebhookManager
   auth: Auth
   webAuthn: WebAuthnService
+  /** Sign-in through OpenID Connect providers and the admin's management of them. */
+  oidc: { service: OidcService; providers: OidcProviderAdmin }
+  loginMethods: LoginMethodCounter
   wellKnown: WellKnownConfig
   userDb: Client
   feedDeliver: FeedDeliver
@@ -176,6 +197,7 @@ interface RestRoutesDeps {
   followerActions: FollowerActions
   relayActions: RelayActions
   publicTagActions: PublicTagActions
+  publicTagModeration: PublicTagModeration
   postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
@@ -216,6 +238,10 @@ export const postChartDeps: PostChartDeps = {
 export const mountRestRouters = ({
   httpd,
   accountDeleter,
+  accountEmail,
+  accountRecovery,
+  adminTestEmail,
+  startEmailVerification,
   accountPlans,
   authMiddleware,
   adminMiddleware,
@@ -243,6 +269,7 @@ export const mountRestRouters = ({
   followerActions,
   relayActions,
   publicTagActions,
+  publicTagModeration,
   postUpdateResender,
   previewArticle,
   reactionActions,
@@ -254,6 +281,8 @@ export const mountRestRouters = ({
   ouraWebhookManager,
   auth,
   webAuthn,
+  oidc,
+  loginMethods,
   wellKnown,
   userDb,
 }: RestRoutesDeps): void => {
@@ -274,6 +303,8 @@ export const mountRestRouters = ({
   httpd.use('/sensitivity-flags', createSensitivityFlagsRouter(authMiddleware))
   httpd.use('/nutrient-recommendations', createNutrientRecommendationsRouter(authMiddleware))
   httpd.use('/admin/imports', createImportsRouter(authMiddleware, adminMiddleware, centralDb))
+  httpd.use('/admin/oidc-providers', createAdminOidcRouter(authMiddleware, adminMiddleware, oidc.providers))
+  httpd.use(createOidcRouter(authMiddleware, oidc.service))
   httpd.use('/reports', createReportsRouter(authMiddleware))
   httpd.use(
     createActivitiesRouter(
@@ -312,7 +343,8 @@ export const mountRestRouters = ({
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))
-  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans, centralDb))
+  httpd.use('/account', createAccountRouter(authMiddleware, accountDeleter, accountPlans, accountEmail))
+  httpd.use('/account', createAccountRecoveryRouter(accountRecovery))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
@@ -424,6 +456,7 @@ export const mountRestRouters = ({
   httpd.use('/correlations', createCorrelationsRouter(authMiddleware, syncProvider))
   httpd.use('/tracks', createTracksRouter(authMiddleware))
   httpd.use('/routes', createRoutesRouter(authMiddleware))
+  httpd.use('/segments', createSegmentsRouter(authMiddleware))
   httpd.use('/training-load', createTrainingLoadRouter(authMiddleware))
   httpd.use('/trends', createTrendsRouter(authMiddleware))
   httpd.use('/chart-data', createChartDataRouter(authMiddleware))
@@ -445,11 +478,22 @@ export const mountRestRouters = ({
       relayActions,
       publicTagActions,
       postUpdateResender,
+      publicTagModeration,
+      adminTestEmail,
     ),
   )
   httpd.use(
     '/webauthn',
-    createWebAuthnRouter({ auth, authMiddleware, centralDb, invitationAuth, userDb, webAuthn }),
+    createWebAuthnRouter({
+      auth,
+      authMiddleware,
+      centralDb,
+      invitationAuth,
+      loginMethods,
+      startEmailVerification,
+      userDb,
+      webAuthn,
+    }),
   )
   httpd.use(createWellKnownRouter(wellKnown))
 }

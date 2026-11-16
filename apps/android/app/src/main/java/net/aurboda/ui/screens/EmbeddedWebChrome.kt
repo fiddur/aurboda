@@ -1,16 +1,19 @@
 package net.aurboda.ui.screens
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.view.View
 import android.view.WindowManager
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -21,9 +24,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import java.net.URI
 import java.util.concurrent.atomic.AtomicReference
 
 typealias WebFileChooser = (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Boolean
+
+/** Settles the page's `getUserMedia` permission requests; [onCancel] drops one the page withdrew. */
+data class WebCameraPermission(
+    val onRequest: (PermissionRequest) -> Unit,
+    val onCancel: (PermissionRequest) -> Unit,
+)
+
+/** For a page that is not on the signed-in server's origin: every device request is denied. */
+val denyWebPermissions = WebCameraPermission(onRequest = { it.deny() }, onCancel = {})
 
 /**
  * The [WebChromeClient] for [EmbeddedWebScreen]. Without one, WebView suppresses
@@ -34,8 +49,20 @@ typealias WebFileChooser = (ValueCallback<Array<Uri>>, WebChromeClient.FileChoos
  * @param activityContext the composition's context (an Activity): dialogs need an
  *   Activity window token, which the WebView's themed wrapper context does not carry
  */
-fun embeddedWebChromeClient(activityContext: Context, showFileChooser: WebFileChooser): WebChromeClient =
+fun embeddedWebChromeClient(
+    activityContext: Context,
+    showFileChooser: WebFileChooser,
+    cameraPermission: WebCameraPermission,
+): WebChromeClient =
     object : WebChromeClient() {
+        override fun onPermissionRequest(request: PermissionRequest) {
+            cameraPermission.onRequest(request)
+        }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            cameraPermission.onCancel(request)
+        }
+
         override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
             showJsDialog(
                 context = activityContext,
@@ -191,5 +218,68 @@ fun rememberWebFileChooser(): WebFileChooser {
             }
             true
         }
+    }
+}
+
+/**
+ * Whether [requestOrigin] (a `PermissionRequest.origin`) has the scheme, host and
+ * port of [baseUrl]. A missing port counts as the scheme's default.
+ */
+internal fun isSameOrigin(requestOrigin: Uri, baseUrl: String): Boolean {
+    val base = runCatching { URI(baseUrl) }.getOrNull() ?: return false
+    val baseScheme = base.scheme?.lowercase() ?: return false
+    val baseHost = base.host ?: return false
+    val scheme = requestOrigin.scheme?.lowercase() ?: return false
+    val host = requestOrigin.host ?: return false
+    return scheme == baseScheme &&
+        host.equals(baseHost, ignoreCase = true) &&
+        effectivePort(scheme, requestOrigin.port) == effectivePort(baseScheme, base.port)
+}
+
+private fun effectivePort(scheme: String, port: Int): Int = when {
+    port != -1 -> port
+    scheme == "https" -> 443
+    scheme == "http" -> 80
+    else -> -1
+}
+
+/**
+ * Lets the embedded page on [baseUrl]'s origin use the camera (barcode scanning).
+ * Only video capture is ever granted, and only to that origin; the app's camera
+ * permission is asked for on first use. A request still pending when the screen
+ * leaves, or superseded by a newer one, is denied.
+ */
+@Composable
+fun rememberWebCameraPermission(baseUrl: String): WebCameraPermission {
+    val context = LocalContext.current
+    val pending = remember { AtomicReference<PermissionRequest?>(null) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = pending.getAndSet(null) ?: return@rememberLauncherForActivityResult
+        if (granted) request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) else request.deny()
+    }
+    DisposableEffect(Unit) {
+        onDispose { pending.getAndSet(null)?.deny() }
+    }
+    return remember(launcher, baseUrl) {
+        WebCameraPermission(
+            onRequest = { request ->
+                val wantsCamera = PermissionRequest.RESOURCE_VIDEO_CAPTURE in request.resources
+                val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+                when {
+                    !wantsCamera || !isSameOrigin(request.origin, baseUrl) -> request.deny()
+                    hasCamera -> request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                    else -> {
+                        pending.getAndSet(request)?.deny()
+                        try {
+                            launcher.launch(Manifest.permission.CAMERA)
+                        } catch (e: ActivityNotFoundException) {
+                            pending.getAndSet(null)?.deny()
+                        }
+                    }
+                }
+            },
+            onCancel = { request -> pending.compareAndSet(request, null) },
+        )
     }
 }

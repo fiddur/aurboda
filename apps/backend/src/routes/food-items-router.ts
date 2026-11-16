@@ -21,6 +21,8 @@ import {
   type FoodItemsQuery,
   type FoodItemsResponse,
   foodItemsQuerySchema,
+  type FindFoodByBarcodeBody,
+  findFoodByBarcodeBodySchema,
   type MergeFoodItemsBody,
   mergeFoodItemsBodySchema,
   type MergeFoodItemsPreviewResponse,
@@ -87,6 +89,11 @@ import {
   type MergedFoodItem,
   prepareIngredientInputs,
 } from '../services/food-items.ts'
+import {
+  type BarcodeLookupResult,
+  barcodeLookupFailure,
+  lookupFoodByBarcode,
+} from '../services/imports/openfoodfacts.ts'
 import { resnapshotMealsForFoodItem } from '../services/meals.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
@@ -96,7 +103,7 @@ const serializeFoodItem = (
 ): FoodItemEntity => {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(item)) {
-    if (key === 'name_lower') continue
+    if (key === 'name_lower' || key === 'last_fetched_at') continue
     result[key] = value instanceof Date ? value.toISOString() : value
   }
   return result as FoodItemEntity
@@ -197,7 +204,12 @@ const serializeOverride = (override: DbSharedFoodItemOverride): ApiSharedFoodIte
   updated_at: override.updated_at.toISOString(),
 })
 
-export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: CentralDb): TypedRouter => {
+export const createFoodItemsRouter = (
+  authMiddleware: AnyMiddleware,
+  centralDb: CentralDb,
+  lookupBarcode: (barcode: string) => Promise<BarcodeLookupResult> = (barcode) =>
+    lookupFoodByBarcode(barcode, { store: centralDb }),
+): TypedRouter => {
   const router = typedRouter()
   const service = createFoodItemsService(centralDb)
   const mergeService = createFoodItemsMergeService(centralDb)
@@ -213,6 +225,22 @@ export const createFoodItemsRouter = (authMiddleware: AnyMiddleware, centralDb: 
 
       const items = q ? await service.search(user, q, maxResults) : await listFoodItems(user, maxResults)
       res.json({ data: items.map(serializeFoodItem), success: true })
+    },
+  )
+
+  router.post<Record<string, never>, FoodItemDetailResponse, FindFoodByBarcodeBody>(
+    '/by-barcode',
+    authMiddleware,
+    validateBody(findFoodByBarcodeBodySchema),
+    async (req, res) => {
+      const result = await lookupBarcode(req.body.barcode)
+      if (result.kind !== 'found') {
+        const { status, error } = barcodeLookupFailure(result.kind)
+        return res.status(status).json({ error, success: false })
+      }
+      const detail = await service.getDetail(req.user!, result.item.id)
+      if (!detail) return res.status(404).json({ error: 'Food item not found', success: false })
+      res.json({ data: serializeDetail(detail), success: true })
     },
   )
 

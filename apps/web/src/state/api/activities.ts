@@ -198,6 +198,8 @@ export interface TimedGpsPoint {
 
 export interface ActivityTrackPoints {
   full_resolution: boolean
+  /** Each point's `t`: seconds since the activity's start, as segment cuts take them. */
+  offsets_s: number[]
   points: TimedGpsPoint[]
 }
 
@@ -216,6 +218,7 @@ export const fetchActivityTrack = async (id: string, start: Date): Promise<Activ
     if (!track) return null
     return {
       full_resolution: track.full_resolution,
+      offsets_s: track.points.map((p) => p.t),
       points: track.points.map((p) => ({
         lat: p.lat,
         lon: p.lon,

@@ -446,6 +446,8 @@ describe('createPublicTagIngest', () => {
       deletePublicTagPost: vi.fn(async () => true),
       deletePublicTagPostsByActor: vi.fn(async () => 0),
       getInstanceTagFollowByActor: async (uri) => rows.get(uri) ?? null,
+      isPublicTagPostHidden: vi.fn(async () => false),
+      listPublicTagBlocks: vi.fn(async () => []),
       removePublicTagAnnounce: vi.fn(async () => {}),
       upsertPublicTagPost: vi.fn(async () => record(1)),
     })
@@ -455,6 +457,70 @@ describe('createPublicTagIngest', () => {
     })
     expect(await ingest.followedTagActor('https://tags.example/user/running')).toBeNull()
     expect(await ingest.followedTagActor('https://tags.example/user/other')).toBeNull()
+  })
+
+  const blockRow = (kind: 'actor' | 'domain', value: string) => ({
+    created_at: new Date(),
+    created_by: 'root',
+    id: '55555555-5555-4555-8555-555555555555',
+    kind,
+    value,
+  })
+
+  const ingestWith = (hidden: string[], blocks: ReturnType<typeof blockRow>[]) => {
+    const upsertPublicTagPost = vi.fn(async (input: PublicTagPostInput) => record(1, input))
+    const ingest = createPublicTagIngest({
+      deletePublicTagPost: vi.fn(async () => true),
+      deletePublicTagPostsByActor: vi.fn(async () => 0),
+      getInstanceTagFollowByActor: async () => null,
+      isPublicTagPostHidden: async (noteUri) => hidden.includes(noteUri),
+      listPublicTagBlocks: async () => blocks,
+      removePublicTagAnnounce: vi.fn(async () => {}),
+      upsertPublicTagPost,
+    })
+    return { ingest, upsertPublicTagPost }
+  }
+
+  const input = (n: number, actor = 'https://peer.example/users/bob'): PublicTagPostInput => {
+    const {
+      announce_uris,
+      avatar_url,
+      content,
+      display_name,
+      handle,
+      images,
+      local_user,
+      published_at,
+      tags,
+      url,
+    } = record(n)
+    return {
+      actor_uri: actor,
+      announce_uris,
+      avatar_url,
+      content,
+      display_name,
+      handle,
+      images,
+      local_user,
+      note_uri: `https://peer.example/notes/${n}`,
+      published_at,
+      tags,
+      url,
+    }
+  }
+
+  test('does not store a hidden post, nor one by a blocked actor or domain', async () => {
+    const { ingest, upsertPublicTagPost } = ingestWith(
+      ['https://peer.example/notes/1'],
+      [blockRow('actor', 'https://peer.example/users/eve'), blockRow('domain', 'spam.example')],
+    )
+    expect(await ingest.upsertPublicTagPost(input(1))).toBeNull()
+    expect(await ingest.upsertPublicTagPost(input(2, 'https://peer.example/users/eve'))).toBeNull()
+    expect(await ingest.upsertPublicTagPost(input(3, 'https://social.spam.example/users/x'))).toBeNull()
+    expect(upsertPublicTagPost).not.toHaveBeenCalled()
+    await ingest.upsertPublicTagPost(input(4))
+    expect(upsertPublicTagPost).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -468,14 +534,28 @@ describe('createLocalPublicTagPosts', () => {
       url: new URL(`${ORIGIN}/u/alice/posts/11111111-1111-4111-8111-111111111111`),
     })
 
-  const setup = () => {
+  const setup = (
+    hidden: string[] = [],
+    blocks: {
+      created_at: Date
+      created_by: string
+      id: string
+      kind: 'actor' | 'domain'
+      value: string
+    }[] = [],
+  ) => {
     const upsertPublicTagPost = vi.fn(async (_input: PublicTagPostInput) => record(1))
     const deleteLocalPublicTagPost = vi.fn(async () => true)
     const posts = createLocalPublicTagPosts({
       localActor: async () =>
         new Person({ id: new URL(`${ORIGIN}/users/alice`), name: 'Alice', preferredUsername: 'alice' }),
       publicTagPages: async () => ['aurboda'],
-      store: { deleteLocalPublicTagPost, upsertPublicTagPost },
+      store: {
+        deleteLocalPublicTagPost,
+        isPublicTagPostHidden: async (noteUri) => hidden.includes(noteUri),
+        listPublicTagBlocks: async () => blocks,
+        upsertPublicTagPost,
+      },
     })
     const ctx = {
       getActorUri: (user: string) => new URL(`${ORIGIN}/users/${user}`),
@@ -500,6 +580,26 @@ describe('createLocalPublicTagPosts', () => {
       tags: ['aurboda', 'running'],
       url: `${ORIGIN}/u/alice/posts/11111111-1111-4111-8111-111111111111`,
     })
+  })
+
+  test('does not record a hidden post, nor one whose author or domain is blocked', async () => {
+    const noteId = `${ORIGIN}/users/alice/feed/11111111-1111-4111-8111-111111111111`
+    const block = (kind: 'actor' | 'domain', value: string) => ({
+      created_at: new Date(),
+      created_by: 'root',
+      id: '55555555-5555-4555-8555-555555555555',
+      kind,
+      value,
+    })
+    for (const { blocks, hidden } of [
+      { blocks: [], hidden: [noteId] },
+      { blocks: [block('actor', `${ORIGIN}/users/alice`)], hidden: [] },
+      { blocks: [block('domain', 'example')], hidden: [] },
+    ]) {
+      const { ctx, posts, upsertPublicTagPost } = setup(hidden, blocks)
+      await posts.record('alice', note(['aurboda']), ctx)
+      expect(upsertPublicTagPost).not.toHaveBeenCalled()
+    }
   })
 
   test('removes a post whose edit dropped the configured tag, and removes by author', async () => {

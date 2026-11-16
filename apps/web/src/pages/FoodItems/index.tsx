@@ -2,10 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
+import { ScanBarcodeButton } from '../../components/BarcodeScanner'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { MergeFoodItemDialog } from '../../components/MergeFoodItemDialog'
-import { addFoodItemApi, duplicateFoodItemApi, searchFoodItemsApi } from '../../state/api'
+import {
+  addFoodItemApi,
+  duplicateFoodItemApi,
+  findFoodByBarcodeApi,
+  searchFoodItemsApi,
+} from '../../state/api'
 import { auth } from '../../state/auth'
+import { barcodeFromText } from '../../utils/barcode'
 import './style.css'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -114,6 +121,8 @@ export function FoodItems() {
         </button>
       </div>
 
+      <BarcodeLookup onFound={(id) => route(`/food-items/${id}`)} />
+
       {actionError && (
         <p class="fi-error" role="alert">
           {actionError}
@@ -197,5 +206,64 @@ export function FoodItems() {
         />
       )}
     </div>
+  )
+}
+
+function BarcodeLookup({ onFound }: { onFound: (id: string) => void }) {
+  const [text, setText] = useState('')
+  const barcode = barcodeFromText(text)
+  const lookup = useMutation({
+    mutationFn: (code: string) => findFoodByBarcodeApi(code),
+    onSuccess: (item) => onFound(item.id),
+  })
+  const showFormatHint = text.trim().length > 0 && !barcode
+
+  return (
+    <form
+      class="fi-barcode"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (barcode && !lookup.isPending) lookup.mutate(barcode)
+      }}
+    >
+      <label for="fi-barcode-input">Look up a barcode</label>
+      <div class="fi-barcode-row">
+        <input
+          id="fi-barcode-input"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="EAN or UPC, e.g. 3017624010701"
+          value={text}
+          onInput={(e) => {
+            setText((e.target as HTMLInputElement).value)
+            if (lookup.isError) lookup.reset()
+          }}
+        />
+        <button type="submit" class="btn-primary fi-barcode-btn" disabled={!barcode || lookup.isPending}>
+          {lookup.isPending ? 'Looking up…' : 'Look up'}
+        </button>
+        <ScanBarcodeButton
+          variant="text"
+          class="btn-secondary fi-barcode-btn"
+          onCode={(code) => {
+            setText(code)
+            lookup.reset()
+            lookup.mutate(code)
+          }}
+        />
+      </div>
+      {lookup.isPending && (
+        <p class="fi-barcode-status" role="status">
+          Asking Open Food Facts…
+        </p>
+      )}
+      {lookup.isError && (
+        <p class="fi-error" role="alert">
+          {lookup.error.message}
+        </p>
+      )}
+      {showFormatHint && <p class="fi-barcode-status">A barcode is 8 to 14 digits.</p>}
+    </form>
   )
 }

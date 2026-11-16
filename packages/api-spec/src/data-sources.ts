@@ -160,6 +160,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'Click "Import from Livsmedelsverket" on /food-items',
   },
   {
+    name: 'Open Food Facts',
+    homepage: 'https://world.openfoodfacts.org/',
+    doc: 'openfoodfacts.md',
+    provides: 'Branded products by barcode (EAN/UPC): name, brand and nutrients per 100 g',
+    how: 'On demand per barcode, cached 90 days',
+    adminSetup: 'None',
+    userSetup: 'Type or paste a barcode on /food-items or in a meal',
+  },
+  {
     name: 'Manual Entry',
     provides: 'Any metric, tag, activity, meal, or note',
     how: 'Web UI, REST API, or MCP',

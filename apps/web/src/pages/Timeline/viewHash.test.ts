@@ -33,6 +33,11 @@ describe('parseViewHash', () => {
     expect(result.hide).toEqual(['sleep_rest'])
   })
 
+  it('keeps the screen time block and bar toggles apart', () => {
+    window.location.hash = '#hide=screentime,screentime:work,screen_time_h'
+    expect(parseViewHash().hide).toEqual(['screentime', 'screentime:work', 'screen_time_h'])
+  })
+
   it('parses orientation', () => {
     window.location.hash = '#o=h'
     expect(parseViewHash().orientation).toBe('horizontal')

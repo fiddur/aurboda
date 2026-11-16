@@ -9,6 +9,7 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/timeline')).toBe('Timeline')
     expect(pageTitleForPath('/correlations')).toBe('Analyze')
     expect(pageTitleForPath('/training-load')).toBe('Training load')
+    expect(pageTitleForPath('/segments')).toBe('Segments')
     expect(pageTitleForPath('/dashboards')).toBe('Dashboards')
     expect(pageTitleForPath('/shared-dashboards')).toBe('Dashboards')
     expect(pageTitleForPath('/data-sources/oura')).toBe('Oura Ring')
@@ -34,6 +35,7 @@ describe('pageTitleForPath', () => {
   test('falls back to the parent section for nested routes', () => {
     expect(pageTitleForPath('/reports/add')).toBe('Reports')
     expect(pageTitleForPath('/meals/123')).toBe('Meals')
+    expect(pageTitleForPath('/segments/123')).toBe('Segments')
     expect(pageTitleForPath('/data-sources/unknown')).toBe('Data Sources')
     expect(pageTitleForPath('/admin/users/maja')).toBe('Admin')
   })

@@ -1,0 +1,71 @@
+.tag-moderation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--color-border);
+  font-size: 0.8rem;
+}
+
+.tag-moderation .confirm-inline {
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.tag-moderation .confirm-inline > span {
+  color: var(--color-text);
+}
+
+.tag-moderation .confirm-inline .btn-danger,
+.tag-moderation .confirm-inline .btn-secondary {
+  padding: 0.3rem 0.75rem;
+  font: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tag-moderation .confirm-inline .btn-danger {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+}
+
+.tag-moderation .confirm-inline .btn-danger:hover:not(:disabled) {
+  background: #ef4444;
+  color: white;
+}
+
+.tag-moderation .confirm-inline .btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tag-moderation-button {
+  background: none;
+  border: none;
+  padding: 0.15rem 0;
+  font: inherit;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.tag-moderation-button:hover,
+.tag-moderation-button:focus-visible {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.tag-moderation-error {
+  color: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag-moderation-error {
+    color: #f87171;
+  }
+}

@@ -38,6 +38,8 @@ export const contactFediverse = signal<string | null>(null)
 export const contactReddit = signal<string | null>(null)
 /** What the server reports as its version: `1.0.<n>` for a release, else a commit sha or `dev`. */
 export const serverVersion = signal<string | null>(null)
+/** Whether the server sends email: the login page offers account recovery only then. */
+export const emailEnabled = signal(false)
 /** The last /status request failed: the signup mode is unknown, so say nothing about signing up. */
 export const statusFailed = signal(false)
 
@@ -54,6 +56,7 @@ export const fetchStatus = async () => {
         billing_enabled,
         contact_fediverse,
         contact_reddit,
+        email_enabled,
         official_feed,
         price_text,
         public_tag_pages,
@@ -68,6 +71,7 @@ export const fetchStatus = async () => {
       publicTagPages.value = public_tag_pages ?? []
       contactFediverse.value = contact_fediverse || null
       contactReddit.value = contact_reddit || null
+      emailEnabled.value = email_enabled === true
       serverBilling.value = { billing_enabled, price_text, trial_days }
       serverVersion.value = version || null
       statusFailed.value = false

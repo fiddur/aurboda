@@ -55,3 +55,36 @@
     background: #2a2a2a;
   }
 }
+
+.settings-section .email-status {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.settings-section .email-status.verified {
+  color: var(--color-accent);
+}
+
+.settings-section .link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.settings-section .link-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-section .recovery-prompt {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-accent-border);
+  border-radius: 6px;
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
+import { apiErrorMessage } from '../state/api'
 import { deletePasskey, listPasskeys, registerPasskey, renamePasskey } from '../state/api/webauthn'
 import { SettingsSection } from './SettingsSection'
 
@@ -9,11 +10,16 @@ const formatDate = (iso: string | null): string => {
   return new Date(iso).toLocaleString()
 }
 
-export function PasskeySettings() {
+/** `recovered`: the user just signed in with a recovery link to add a new passkey. */
+export function PasskeySettings({ recovered = false }: { recovered?: boolean }) {
   const queryClient = useQueryClient()
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
+
+  useEffect(() => {
+    if (recovered) document.getElementById('passkeys')?.scrollIntoView({ block: 'start' })
+  }, [recovered])
 
   const { data: passkeys, isLoading } = useQuery({
     queryFn: listPasskeys,
@@ -27,7 +33,11 @@ export function PasskeySettings() {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePasskey(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['passkeys'] }),
+    onError: (err) => setError(apiErrorMessage(err, 'The passkey could not be deleted')),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['passkeys'] })
+      void queryClient.invalidateQueries({ queryKey: ['oidcLinks'] })
+    },
   })
 
   const onRegister = async () => {
@@ -41,6 +51,7 @@ export function PasskeySettings() {
     }
     setNickname('')
     queryClient.invalidateQueries({ queryKey: ['passkeys'] })
+    queryClient.invalidateQueries({ queryKey: ['oidcLinks'] })
   }
 
   const onRename = (id: string, current: string | null) => {
@@ -52,15 +63,23 @@ export function PasskeySettings() {
 
   const onDelete = (id: string) => {
     if (window.confirm('Delete this passkey? You will not be able to use it to sign in anymore.')) {
+      setError(null)
       deleteMut.mutate(id)
     }
   }
 
   return (
     <SettingsSection
+      id="passkeys"
       title="Passkeys"
       description="Register a passkey to sign in without a password. Passkeys created here can also be used from the Aurboda Android app on the same device or via cross-device QR sync."
     >
+      {recovered && (
+        <p class="recovery-prompt">
+          You signed in with a recovery link. Add a new passkey now, and delete any you have lost.
+        </p>
+      )}
+
       <div class="form-field">
         <label for="passkey-nickname">Nickname (optional)</label>
         <input

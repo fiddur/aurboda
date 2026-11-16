@@ -61,9 +61,14 @@ export function Reports() {
     <div class="reports-page">
       <div class="reports-header">
         <h1>Lab Reports</h1>
-        <a href="/reports/add" class="btn-primary">
-          + Add Report
-        </a>
+        <div class="reports-header-actions">
+          <a href="/reports/import" class="btn-import">
+            Import from spreadsheet
+          </a>
+          <a href="/reports/add" class="btn-primary">
+            + Add Report
+          </a>
+        </div>
       </div>
 
       {reportTypes.length > 0 && (
@@ -85,7 +90,8 @@ export function Reports() {
         <div class="reports-empty">
           <p>No lab reports yet.</p>
           <p>
-            <a href="/reports/add">Add your first report</a>
+            <a href="/reports/add">Add your first report</a> or{' '}
+            <a href="/reports/import">import your results from a spreadsheet</a>
           </p>
         </div>
       )}

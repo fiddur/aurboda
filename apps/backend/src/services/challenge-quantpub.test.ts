@@ -192,6 +192,7 @@ describe('entries', () => {
     created_at: START,
     data_token: 'tok',
     end_ts: END,
+    host_checked_at: null,
     host_identity: 'https://qs.example/u/freja',
     id: 'p1',
     name: 'November steps',

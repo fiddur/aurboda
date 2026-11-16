@@ -63,6 +63,35 @@ android {
     buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp\"")
   }
 
+  // Distribution channel. Same applicationId everywhere; see docs/android-stores.md.
+  // github: the APK on GitHub releases, which updates itself (src/github).
+  // play, fdroid: updated by their store, so they share the no-op updater in src/store.
+  flavorDimensions += "channel"
+  productFlavors {
+    create("github") {
+      dimension = "channel"
+      isDefault = true
+      buildConfigField("String", "CHANNEL", "\"github\"")
+    }
+    create("play") {
+      dimension = "channel"
+      buildConfigField("String", "CHANNEL", "\"play\"")
+    }
+    create("fdroid") {
+      dimension = "channel"
+      buildConfigField("String", "CHANNEL", "\"fdroid\"")
+    }
+  }
+
+  sourceSets {
+    getByName("play") {
+      java.srcDir("src/store/java")
+    }
+    getByName("fdroid") {
+      java.srcDir("src/store/java")
+    }
+  }
+
   signingConfigs {
     val keystoreFile = getLocalProperty("KEYSTORE_FILE", rootProject.projectDir)
     val keystorePassword = getLocalProperty("KEYSTORE_PASSWORD", rootProject.projectDir)
@@ -149,15 +178,18 @@ dependencies {
   // Encrypted SharedPreferences for secure credential storage
   implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-  // Credential Manager for passkey (WebAuthn) login
+  // Credential Manager for passkey (WebAuthn) login. minSdk 34 has the platform provider,
+  // so no Play Services bridge (credentials-play-services-auth), which F-Droid would reject.
   implementation("androidx.credentials:credentials:1.3.0")
-  implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
 
   implementation("androidx.work:work-runtime-ktx:2.9.0")
 
   // WebView helpers: origin-scoped document-start script injection for the
   // embedded web screens (EmbeddedWebScreen)
   implementation("androidx.webkit:webkit:1.12.1")
+
+  // Custom Tabs for signing in through an OpenID Connect provider: Google refuses OAuth in a WebView
+  implementation("androidx.browser:browser:1.9.0")
 
   testImplementation(libs.junit)
   testImplementation("io.mockk:mockk:1.13.9")

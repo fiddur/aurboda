@@ -40,6 +40,11 @@ Each meal has:
 A meal can also carry [comments](./comments.md) -- threaded remarks anchored to
 the meal's time, surfaced as `comments` on the meal in the daily summary.
 
+A meal's sensitivity flags (its food items' flags plus its own) can be correlated on the Analyze page:
+the meals carrying a flag per day against, say, the next night's sleep score, and HRV, heart rate and
+stress around each such meal, compared with the meals without the flag on days marked as a complete meal
+log. See [Meal sensitivities](./correlations.md#meal-sensitivities).
+
 ### Micronutrient Format
 
 Micronutrients use structured `{ value, unit }` objects for explicit unit tracking:
@@ -104,7 +109,7 @@ Conversions are **direct-to-base only** -- a unit never references another unit 
 A food's preselected logging amount is a **unit + quantity** pair, resolved on the food-item detail response as `effective_default_portion_id` (the unit) and `effective_default_quantity` (the amount):
 
 - **Per-user food** -- `food_items.default_portion_id` + `food_items.default_log_quantity`. A NULL unit means the base unit; a NULL quantity falls back to `default_quantity` (the base quantity).
-- **Central shared food** -- the user's `shared_food_item_overrides.default_portion_id` + `default_log_quantity` (NULL ⇒ fall through to the central row's own default / base). This lets a user pin e.g. "2 dl" as their default on a read-only LSV milk row without forking it.
+- **Central shared food** -- the user's `shared_food_item_overrides.default_portion_id` + `default_log_quantity` (NULL ⇒ fall through to the central row's own default: its `default_log_quantity`, which an [Open Food Facts](../openfoodfacts.md) product sets to its serving, else the base). This lets a user pin e.g. "2 dl" as their default on a read-only LSV milk row without forking it.
 
 The default amount can differ from the base sizing -- e.g. a base of `1 wrap` but a default of `2 wrap`.
 
@@ -123,6 +128,7 @@ Logging on the base unit uses the legacy free-form `quantity` + `unit` path, unc
 - `GET /food-items?q=&limit=` -- search the merged (user + central) library
 - `GET /food-items/:id` -- detail; includes `portions[]`, `effective_default_portion_id`, composite ingredients/derived nutrients, reference enrichment, sensitivities
 - `POST /food-items` -- create a per-user food item
+- `POST /food-items/by-barcode` -- body `{ "barcode": "<8 to 14 digits>" }`; looks a branded product up at [Open Food Facts](../openfoodfacts.md), caches it in the central library and returns its detail (400 for a malformed barcode, 404 when Open Food Facts has no such product, 502 when it cannot be reached and nothing is cached)
 - `PATCH /food-items/:id` -- update a per-user food item (does **not** accept `default_portion_id` -- use the dedicated endpoint below)
 - `DELETE /food-items/:id` -- delete a per-user food item (409 while it is an ingredient of a recipe: remove it from those recipes, or merge it into a replacement, first)
 - `POST /food-items/:id/duplicate` -- duplicate into a fresh per-user copy named `"<name> (copy)"` (deduped); copies nutrients, defaults, composite ingredients, portions, reference, and sensitivities. Works on per-user **and** central items (a central copy becomes an editable per-user fork). Returns the new copy's detail.
@@ -192,6 +198,7 @@ Meals:
 Food items & portions:
 
 - `search_food_items` / `get_food_item` -- search / fetch the merged library (detail includes `portions[]` + `effective_default_portion_id`)
+- `find_food_by_barcode` -- look a branded product up by barcode at [Open Food Facts](../openfoodfacts.md); returns the same detail as `get_food_item`
 - `add_food_item` / `update_food_item` / `delete_food_item` -- per-user food item CRUD
 - `duplicate_food_item` -- copy a food item (per-user or central) into a fresh editable per-user `"<name> (copy)"`, including ingredients, portions, reference, and sensitivities
 - `list_food_item_portions` -- list a food's portions

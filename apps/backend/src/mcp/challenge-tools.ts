@@ -20,8 +20,9 @@ import {
 } from '../db/index.ts'
 import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { joinChallenge, previewChallenge } from '../services/challenge-federation.ts'
+import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
 import { announcementPending } from '../services/challenge-results.ts'
-import { specToApi, toSpecFields } from '../services/challenge-spec.ts'
+import { serializeParticipation, specToApi, toSpecFields } from '../services/challenge-spec.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -90,15 +91,20 @@ export const registerChallengeTools = (
     'Update a hosted challenge (name, spec, date range, visibility, announce_winner). Only provided fields change. The spec, dates and timezone are frozen once someone from another instance has joined: a different value is refused then, an unchanged one passes.',
     { id: z.string().uuid().describe('Challenge ID'), ...updateChallengeBodySchema.shape },
     async ({ id, ...body }) => {
-      const result = await updateHostedChallenge(user, id, {
-        announce_winner: body.announce_winner,
-        end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
-        is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
-        name: body.name,
-        spec: body.spec ? toSpecFields(body.spec) : undefined,
-        start_ts: body.start_ts ? new Date(body.start_ts) : undefined,
-        timezone: body.timezone,
-      })
+      const result = await updateHostedChallenge(
+        user,
+        id,
+        {
+          announce_winner: body.announce_winner,
+          end_ts: body.end_ts ? new Date(body.end_ts) : undefined,
+          is_public: body.visibility === undefined ? undefined : visibilityToIsPublic(body.visibility),
+          name: body.name,
+          spec: body.spec ? toSpecFields(body.spec) : undefined,
+          start_ts: body.start_ts ? new Date(body.start_ts) : undefined,
+          timezone: body.timezone,
+        },
+        { webHost: deps.webHost },
+      )
       if (result.status === 'not_found') return errorResponse('Challenge not found')
       if (result.status !== 'updated') return errorResponse(LOCKED_MESSAGES[result.status])
       return jsonResponse(serialize(result.record, deps.webHost, user))
@@ -127,6 +133,17 @@ export const registerChallengeTools = (
       const record = await getChallengeById(user, id)
       if (!record) return errorResponse('Challenge not found')
       return jsonResponse(serialize(record, deps.webHost, user))
+    },
+  )
+
+  server.tool(
+    'list_joined_challenges',
+    'List challenges you joined, on this or another Aurboda instance: name, host, window and spec. A challenge hosted on this instance shows its current name, window and scoring; one hosted elsewhere refreshes its name from the host every few hours.',
+    {},
+    async () => {
+      if (!deps.webHost) return errorResponse('Federation is not configured on this server')
+      const records = await listParticipationsFresh(user, { webHost: deps.webHost })
+      return jsonResponse(records.map(serializeParticipation))
     },
   )
 

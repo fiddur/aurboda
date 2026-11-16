@@ -7,6 +7,8 @@ import { computeAndStoreActivityFeatures, defaultActivityFeatureDeps } from './a
 import { auditError, auditInfo } from './audit-log.ts'
 import { defaultRouteMatchDeps, matchActivityRoute, rematchActivityRoute } from './routes.ts'
 import { ensureDefaultRunCategoryRules } from './run-category-rules.ts'
+import { defaultSegmentDeps, matchActivitySegments, rematchActivitySegments } from './segments.ts'
+import { defaultSuggestedSegmentDeps, suggestSegmentsForActivity } from './suggested-segments.ts'
 
 export interface AnalysedActivity {
   /** The type the merged view shows: an override's retype wins over the synced row's. */
@@ -25,6 +27,8 @@ export interface FeatureStepDeps {
 
 export interface TrackAnalyseStepDeps extends FeatureStepDeps {
   matchRoute: (user: string, activityId: string) => Promise<unknown>
+  matchSegments: (user: string, activityId: string) => Promise<unknown>
+  suggestSegments: (user: string, activityId: string) => Promise<unknown>
 }
 
 export interface FeatureBackfillDeps extends FeatureStepDeps {
@@ -58,7 +62,10 @@ export const defaultFeatureStepDeps = {
 export const createTrackAnalyseStepDeps = (notify: AnalysedNotifier): TrackAnalyseStepDeps => ({
   ...defaultFeatureStepDeps,
   matchRoute: (user, activityId) => matchActivityRoute(user, activityId, defaultRouteMatchDeps),
+  matchSegments: (user, activityId) => matchActivitySegments(user, activityId, defaultSegmentDeps),
   notify,
+  suggestSegments: (user, activityId) =>
+    suggestSegmentsForActivity(user, activityId, defaultSuggestedSegmentDeps),
 })
 
 const attempt = async <T>(
@@ -96,6 +103,20 @@ export const analyseTrack = async (
     'Activity feature computation failed',
     activityId,
     () => deps.computeFeatures(user, activityId),
+    failures,
+  )
+  await attempt(
+    user,
+    'Segment matching failed',
+    activityId,
+    () => deps.matchSegments(user, activityId),
+    failures,
+  )
+  await attempt(
+    user,
+    'Segment suggestion failed',
+    activityId,
+    () => deps.suggestSegments(user, activityId),
     failures,
   )
   if (analysed) {
@@ -167,6 +188,7 @@ export const defaultFeatureBackfillDeps = {
 
 export interface ReanalyseDeps {
   rematchRoutes: (user: string, activityIds: string[]) => Promise<unknown>
+  rematchSegments: (user: string, activityIds: string[]) => Promise<unknown>
   recomputeFeatures: (user: string, activityId: string) => Promise<unknown>
   getActivity: (user: string, id: string) => Promise<Activity | null>
 }
@@ -179,11 +201,13 @@ export const defaultReanalyseDeps: ReanalyseDeps = {
     }
   },
   rematchRoutes: (user, activityIds) => rematchActivityRoute(user, activityIds, defaultRouteMatchDeps),
+  rematchSegments: (user, activityIds) => rematchActivitySegments(user, activityIds, defaultSegmentDeps),
 }
 
 /**
  * After the type the merged view shows changed (a retype, or an override deleted or restored):
- * routes are matched again so a walk does not stay on a run's route, and features are recomputed
+ * routes and segments are matched again so a walk does not stay on a run's route or keep a
+ * run's segment efforts, and features are recomputed
  * for the rows that own a track. Failures are audited, never thrown: the edit itself succeeded.
  */
 export const reanalyseActivities = async (
@@ -193,6 +217,9 @@ export const reanalyseActivities = async (
 ): Promise<void> => {
   await attempt(user, 'Failed to re-match routes after activity retype', undefined, () =>
     deps.rematchRoutes(user, activityIds),
+  )
+  await attempt(user, 'Failed to re-match segments after activity retype', undefined, () =>
+    deps.rematchSegments(user, activityIds),
   )
   for (const id of activityIds) {
     await attempt(user, 'Failed to recompute activity features after retype', id, () =>

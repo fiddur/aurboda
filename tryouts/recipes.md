@@ -1340,7 +1340,7 @@ Robolectric against the tryout server.
   generated) placed so the relative
   `../../../packages/api-spec/generated/kotlin/src/main/kotlin` srcDir resolves, plus
   `local.properties` with `sdk.dir`.
-- `./gradlew :app:testDebugUnitTest --tests '*MyTest*'` — ~15–40 s with a warm Gradle cache. Test
+- `./gradlew :app:testGithubDebugUnitTest --tests '*MyTest*'` — ~15–40 s with a warm Gradle cache. Test
   code must be warning-free (`-Werror`).
 - Gotchas, each of which cost a round trip:
   - `CredentialsManager` uses EncryptedSharedPreferences → `KeyStoreException` under Robolectric.

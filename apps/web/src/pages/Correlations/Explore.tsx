@@ -1,6 +1,7 @@
 import type {
   ContinuousCorrelationData,
   CorrelationSelector,
+  CorrelationSelectorsData,
   EventOutcome,
   GenericCorrelationData,
   GroupComparison,
@@ -19,7 +20,7 @@ import {
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { comparisonsNote, SIGNIFICANCE_LEVEL } from './effects'
-import { describeSelectorAxis, fiveNumberSummary, linearRegression } from './exploreCharts'
+import { describeCompleteness, fiveNumberSummary, linearRegression, selectorAxisLabel } from './exploreCharts'
 import {
   describeCorrelationStrength,
   describeEffectSize,
@@ -68,8 +69,8 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
   'productivity_app',
 ]
 
-// Every selector kind (continuous mode allows a metric on either side).
-const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS]
+// Every selector kind (continuous mode allows a metric or a meal sensitivity on either side).
+const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS, 'sensitivity']
 
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: ExploreMode) => {
@@ -351,7 +352,12 @@ function AxisLabels({ x, y }: { x: string; y: string }) {
   )
 }
 
-function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
+interface ContinuousProps {
+  data: ContinuousCorrelationData
+  selectors: CorrelationSelectorsData | undefined
+}
+
+function ScatterPlot({ data, selectors }: ContinuousProps) {
   const points = data.series
   const xs = points.map((p) => p.trigger)
   const ys = points.map((p) => p.outcome)
@@ -399,12 +405,15 @@ function ScatterPlot({ data }: { data: ContinuousCorrelationData }) {
       <text x={CHART_PAD.left + 6} y={CHART_PAD.top + 10} class="plot-annot">
         r={fmt(data.pearson)} · ρ={fmt(data.spearman)} · n={data.n} · p={fmtP(data.pearson_p)}
       </text>
-      <AxisLabels x={describeSelectorAxis(data.trigger)} y={describeSelectorAxis(data.outcome)} />
+      <AxisLabels
+        x={selectorAxisLabel(data.trigger, selectors)}
+        y={selectorAxisLabel(data.outcome, selectors)}
+      />
     </svg>
   )
 }
 
-function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
+function BoxPlot({ data, selectors }: ContinuousProps) {
   const withVals = data.series.filter((p) => p.trigger > 0).map((p) => p.outcome)
   const withoutVals = data.series.filter((p) => p.trigger === 0).map((p) => p.outcome)
   const absent = fiveNumberSummary(withoutVals)
@@ -468,23 +477,24 @@ function BoxPlot({ data }: { data: ContinuousCorrelationData }) {
           </text>
         </g>
       ))}
-      <AxisLabels x="trigger present?" y={describeSelectorAxis(data.outcome)} />
+      <AxisLabels x="trigger present?" y={selectorAxisLabel(data.outcome, selectors)} />
     </svg>
   )
 }
 
-function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
+function ContinuousResults({ data, selectors }: ContinuousProps) {
   const gc = data.group_comparison
   // A Pearson r on a binary/presence trigger is misleading, so when the trigger
   // is binary the group comparison is the headline rather than the correlation.
   const showGroupAsHeadline = gc !== null && gc.trigger_is_binary
   const caution = sampleCaution(data.n)
+  const completeness = describeCompleteness(data.n_complete, data.trigger, data.outcome)
 
   return (
     <div class="explore-results">
       <p class="explore-summary">
         n={data.n}
-        {data.n_complete !== null && ` (${data.n_complete} with full nutrition)`} · Pearson r=
+        {completeness && ` (${completeness})`} · Pearson r=
         {fmt(data.pearson)} · Spearman ρ={fmt(data.spearman)} · lag {data.lag_days}d
       </p>
       {!showGroupAsHeadline && (
@@ -502,7 +512,11 @@ function ContinuousResults({ data }: { data: ContinuousCorrelationData }) {
       )}
       {/* Shown in both modes: a small-n caution matters most for a present-vs-absent split. */}
       {caution && <p class="explore-verdict explore-caution">⚠ {caution}</p>}
-      {showGroupAsHeadline ? <BoxPlot data={data} /> : <ScatterPlot data={data} />}
+      {showGroupAsHeadline ? (
+        <BoxPlot data={data} selectors={selectors} />
+      ) : (
+        <ScatterPlot data={data} selectors={selectors} />
+      )}
     </div>
   )
 }
@@ -778,7 +792,7 @@ export function ExploreTab() {
       {resultQuery.isFetching && <div class="loading">Analyzing…</div>}
       {resultQuery.isError && <div class="explore-error">Analysis failed. Check the inputs and retry.</div>}
       {result?.kind === 'event' && <EventOutcomeResults data={result.data} />}
-      {result?.kind === 'continuous' && <ContinuousResults data={result.data} />}
+      {result?.kind === 'continuous' && <ContinuousResults data={result.data} selectors={selectors} />}
     </div>
   )
 }

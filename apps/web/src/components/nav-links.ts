@@ -30,6 +30,7 @@ export const NAV_LINKS_SECONDARY = [
   { href: '/training-load', label: 'Training load', icon: '💪' },
   { href: '/places', label: 'Places', icon: '📍' },
   { href: '/routes', label: 'Routes', icon: '🗺' },
+  { href: '/segments', label: 'Segments', icon: '⏱' },
   { href: '/activity-types', label: 'Types', icon: '🏷' },
   { href: '/deduction-rules', label: 'Rules', icon: '🔗' },
 ]

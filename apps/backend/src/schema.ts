@@ -74,7 +74,7 @@ export const createTableStatements: Record<string, string> = {
  *  - meals + food_items before meal_food_items (FK)
  *  - deduction_rules before deduction_rule_runs (FK)
  *  - tag_definitions before tags (FK)
- *  - activities before activity_tracks, routes, activity_routes (FK)
+ *  - activities before activity_tracks, routes, activity_routes, segments, segment_efforts (FK)
  */
 export const tableCreationOrder = [
   'raw_records',
@@ -99,6 +99,13 @@ export const tableCreationOrder = [
   'routes_indexes',
   'activity_routes',
   'activity_routes_indexes',
+  'segments',
+  'segments_indexes',
+  'segment_efforts',
+  'segment_efforts_indexes',
+  'suggested_segments',
+  'suggested_segments_indexes',
+  'activity_tracks_segments_suggested_at',
   'activity_features',
   'item_value_aliases',
   'item_value_aliases_indexes',
@@ -177,6 +184,7 @@ export const tableCreationOrder = [
   'challenge_participations',
   'challenge_participations_indexes',
   'challenge_participations_protocol_column',
+  'challenge_participations_host_checked_column',
   'challenge_left',
   'challenge_left_token_column',
   'feed_posts',

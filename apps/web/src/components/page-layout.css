@@ -1,0 +1,60 @@
+.data-sources-page {
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.data-sources-page .page-header {
+  margin-bottom: 2rem;
+}
+
+.data-sources-page h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.data-sources-page .page-subtitle {
+  color: #4b5563;
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 700px;
+}
+
+.data-sources-page h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 1rem 0;
+}
+
+.data-sources-page .loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+}
+
+@media (prefers-color-scheme: dark) {
+  .data-sources-page h1 {
+    color: #f9fafb;
+  }
+
+  .data-sources-page .page-subtitle {
+    color: #9ca3af;
+  }
+
+  .data-sources-page h2 {
+    color: #e5e7eb;
+  }
+}
+
+@media (max-width: 639px) {
+  .data-sources-page {
+    padding: 1rem;
+  }
+
+  .data-sources-page h1 {
+    font-size: 1.5rem;
+  }
+}

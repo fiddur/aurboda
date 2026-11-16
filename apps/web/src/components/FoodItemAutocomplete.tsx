@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { type FoodItemEntity, searchFoodItemsApi } from '../state/api'
+import { barcodeFromText } from '../utils/barcode'
+import { canScanBarcodes } from '../utils/barcodeReader'
+import { ScanBarcodeButton } from './BarcodeScanner'
 import './FoodItemAutocomplete.css'
 
 interface FoodItemAutocompleteProps {
@@ -15,6 +18,13 @@ interface FoodItemAutocompleteProps {
    * triggered implicitly by autosave keystrokes.
    */
   onCreate?: (name: string) => Promise<FoodItemEntity>
+  /**
+   * When provided and the typed text is a barcode (8 to 14 digits), a
+   * "Look up barcode … at Open Food Facts" row is offered; the product it
+   * resolves to is selected like a search result. Rejects with a message
+   * ready to show.
+   */
+  onLookupBarcode?: (barcode: string) => Promise<FoodItemEntity>
   placeholder?: string
   class?: string
   autoFocus?: boolean
@@ -25,6 +35,7 @@ export function FoodItemAutocomplete({
   onChange,
   onSelect,
   onCreate,
+  onLookupBarcode,
   placeholder,
   autoFocus,
   ...rest
@@ -48,10 +59,13 @@ export function FoodItemAutocomplete({
   }, [])
 
   const trimmed = value.trim()
-  const canCreate = !!onCreate && trimmed.length >= 2
+  const barcodeLookup = useBarcodeLookup(trimmed, onLookupBarcode)
+  const { barcode } = barcodeLookup
+  const scannable = !!onLookupBarcode && canScanBarcodes()
+  const canCreate = !!onCreate && trimmed.length >= 2 && !barcode
   const exactMatch = suggestions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())
   const showCreate = canCreate && !exactMatch
-  const createIndex = showCreate ? suggestions.length : -1
+  const { barcodeIndex, createIndex, optionCount } = optionLayout(suggestions.length, !!barcode, showCreate)
 
   // Debounced search — only when the input is focused. Re-runs when
   // hasFocus flips true so re-focusing a populated field also re-fetches.
@@ -71,12 +85,12 @@ export function FoodItemAutocomplete({
       // Open the dropdown whenever there's either a suggestion or a
       // "+ Create" row to show. With explicit-create enabled, zero matches
       // still means there's a row to pick.
-      setOpen(results.length > 0 || !!onCreate)
+      setOpen(results.length > 0 || !!onCreate || isBarcodeQuery(query, onLookupBarcode))
       setActiveIndex(-1)
     }, 300)
 
     return () => clearTimeout(debounceRef.current)
-  }, [value, hasFocus, onCreate])
+  }, [value, hasFocus, onCreate, onLookupBarcode])
 
   useEffect(() => {
     if (!open) return
@@ -104,7 +118,17 @@ export function FoodItemAutocomplete({
     }
   }
 
-  const optionCount = suggestions.length + (showCreate ? 1 : 0)
+  const handleLookupBarcode = async () => {
+    const item = await barcodeLookup.lookup()
+    if (item) handleSelect(item)
+  }
+
+  const handleScan = async (code: string) => {
+    onChange(code)
+    setOpen(true)
+    const item = await barcodeLookup.lookup(code)
+    if (item) handleSelect(item)
+  }
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!open || optionCount === 0) return
@@ -119,6 +143,8 @@ export function FoodItemAutocomplete({
       e.preventDefault()
       if (activeIndex === createIndex) {
         void handleCreate()
+      } else if (activeIndex === barcodeIndex) {
+        void handleLookupBarcode()
       } else {
         handleSelect(suggestions[activeIndex])
       }
@@ -128,7 +154,7 @@ export function FoodItemAutocomplete({
   }
 
   return (
-    <div ref={ref} class={`food-autocomplete ${rest.class ?? ''}`}>
+    <div ref={ref} class={`food-autocomplete ${scannable ? 'has-scan' : ''} ${rest.class ?? ''}`}>
       <input
         ref={inputRef}
         type="text"
@@ -140,7 +166,7 @@ export function FoodItemAutocomplete({
           setHasFocus(true)
           // Re-show pre-cached suggestions immediately. The effect will
           // re-fire to refresh them in the background.
-          if (suggestions.length > 0 || (canCreate && !exactMatch)) setOpen(true)
+          if (suggestions.length > 0 || (canCreate && !exactMatch) || barcode) setOpen(true)
         }}
         onBlur={() => {
           // Don't close on blur — clicking a suggestion blurs the input
@@ -150,6 +176,9 @@ export function FoodItemAutocomplete({
           setHasFocus(false)
         }}
       />
+      {scannable && (
+        <ScanBarcodeButton variant="icon" class="ac-scan" onCode={(code) => void handleScan(code)} />
+      )}
       {open && optionCount > 0 && (
         <ul class="autocomplete-dropdown">
           {suggestions.map((item, i) => (
@@ -165,6 +194,16 @@ export function FoodItemAutocomplete({
               </span>
             </li>
           ))}
+          {barcode && (
+            <BarcodeOption
+              barcode={barcode}
+              active={barcodeIndex === activeIndex}
+              lookingUp={barcodeLookup.lookingUp}
+              error={barcodeLookup.error}
+              onHover={() => setActiveIndex(barcodeIndex)}
+              onPick={() => void handleLookupBarcode()}
+            />
+          )}
           {showCreate && (
             <li
               key="__create"
@@ -179,4 +218,82 @@ export function FoodItemAutocomplete({
       )}
     </div>
   )
+}
+
+const isBarcodeQuery = (query: string, onLookupBarcode: unknown): boolean =>
+  !!onLookupBarcode && barcodeFromText(query) !== null
+
+const useBarcodeLookup = (
+  trimmed: string,
+  onLookupBarcode: ((barcode: string) => Promise<FoodItemEntity>) | undefined,
+) => {
+  const [lookingUp, setLookingUp] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const barcode = onLookupBarcode ? barcodeFromText(trimmed) : null
+
+  useEffect(() => {
+    setError(null)
+  }, [trimmed])
+
+  const lookup = async (code: string | null = barcode): Promise<FoodItemEntity | null> => {
+    if (!onLookupBarcode || !code || lookingUp) return null
+    setLookingUp(true)
+    setError(null)
+    try {
+      return await onLookupBarcode(code)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The barcode lookup failed.')
+      return null
+    } finally {
+      setLookingUp(false)
+    }
+  }
+
+  return { barcode, error, lookingUp, lookup }
+}
+
+function BarcodeOption({
+  barcode,
+  active,
+  lookingUp,
+  error,
+  onHover,
+  onPick,
+}: {
+  barcode: string
+  active: boolean
+  lookingUp: boolean
+  error: string | null
+  onHover: () => void
+  onPick: () => void
+}) {
+  return (
+    <li
+      class={`autocomplete-option autocomplete-barcode ${active ? 'active' : ''}`}
+      onMouseEnter={onHover}
+      onClick={onPick}
+    >
+      <span class="ac-name">
+        {lookingUp
+          ? `Looking up barcode ${barcode} at Open Food Facts…`
+          : `Look up barcode ${barcode} at Open Food Facts`}
+        {error && (
+          <span class="ac-error" role="alert">
+            {error}
+          </span>
+        )}
+      </span>
+    </li>
+  )
+}
+
+/** Suggestions first, then the barcode row, then the create row; -1 for a row that is not shown. */
+const optionLayout = (suggestionCount: number, hasBarcode: boolean, hasCreate: boolean) => {
+  const barcodeIndex = hasBarcode ? suggestionCount : -1
+  const afterBarcode = suggestionCount + (hasBarcode ? 1 : 0)
+  return {
+    barcodeIndex,
+    createIndex: hasCreate ? afterBarcode : -1,
+    optionCount: afterBarcode + (hasCreate ? 1 : 0),
+  }
 }

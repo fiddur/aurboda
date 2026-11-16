@@ -2,14 +2,24 @@ import type { PublicTagPost } from '@aurboda/api-spec'
 
 import { tagLinks } from '../../components/public-tag-pages'
 import './FeedPostCard.css'
+import { PublicTagModerationMenu } from './PublicTagModerationMenu'
 import { TimelineEntryHead } from './TimelineEntryHead'
 
 /**
  * A public post from another server (or this one) as a public tag page or the
  * official feed shows it: the author, the received content and images, and its
- * tags, each linking to its public tag page when it has one.
+ * tags, each linking to its public tag page when it has one. With `moderate`
+ * (an admin viewing), the post carries the tag page moderation buttons.
  */
-export function RemotePostCard({ entry, pages }: { entry: PublicTagPost; pages: readonly string[] }) {
+export function RemotePostCard({
+  entry,
+  pages,
+  moderate = false,
+}: {
+  entry: PublicTagPost
+  pages: readonly string[]
+  moderate?: boolean
+}) {
   return (
     <article class="feed-post">
       <TimelineEntryHead entry={entry} />
@@ -39,6 +49,7 @@ export function RemotePostCard({ entry, pages }: { entry: PublicTagPost; pages: 
           )}
         </p>
       )}
+      {moderate && <PublicTagModerationMenu entry={entry} />}
     </article>
   )
 }

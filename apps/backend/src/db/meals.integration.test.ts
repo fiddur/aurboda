@@ -8,6 +8,7 @@ import {
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
+  getMealFlagsInRange,
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
@@ -17,6 +18,7 @@ import {
   updateMeal,
 } from './meals.ts'
 import { getNoteById, insertNote } from './notes.ts'
+import { insertSensitivityFlag, setFoodItemSensitivities } from './sensitivities.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -514,6 +516,37 @@ describe('Meals Integration Tests', () => {
       // Without the filter both items are returned.
       const all = await getFrequentFoodItems(user, { limit: 10, since_days: 30 })
       expect(all.map((r) => r.food_item_id).sort()).toEqual([oats, soup].sort())
+    })
+  })
+
+  describe('getMealFlagsInRange', () => {
+    test("lists meals in the range oldest first with their food items' and own flags, by id", async () => {
+      const user = getTestUser()
+      const gluten = await insertSensitivityFlag(user, { name: 'gluten', sort_order: 1 })
+      const dairy = await insertSensitivityFlag(user, { name: 'dairy', sort_order: 2 })
+      const breadId = '11111111-1111-1111-1111-111111111111'
+      const appleId = '22222222-2222-2222-2222-222222222222'
+      await setFoodItemSensitivities(user, breadId, [gluten.id])
+
+      const sandwich = await insertMeal(user, {
+        sensitivities: ['dairy'],
+        time: new Date('2024-03-02T12:00:00Z'),
+      })
+      await setMealFoodItems(user, sandwich.id, [{ food_item_id: breadId }, { food_item_id: breadId }])
+      const snack = await insertMeal(user, { time: new Date('2024-03-01T15:00:00Z') })
+      await setMealFoodItems(user, snack.id, [{ food_item_id: appleId }])
+      await insertMeal(user, { time: new Date('2024-03-05T08:00:00Z') })
+
+      const meals = await getMealFlagsInRange(
+        user,
+        new Date('2024-03-01T00:00:00Z'),
+        new Date('2024-03-03T00:00:00Z'),
+      )
+
+      expect(meals).toEqual([
+        { flag_ids: [], id: snack.id, time: new Date('2024-03-01T15:00:00Z') },
+        { flag_ids: [gluten.id, dairy.id], id: sandwich.id, time: new Date('2024-03-02T12:00:00Z') },
+      ])
     })
   })
 

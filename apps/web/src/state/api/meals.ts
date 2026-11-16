@@ -28,6 +28,7 @@ import axios from 'axios'
 import type { Meal } from './types'
 
 import { API_URL } from '../../config'
+import { barcodeLookupErrorMessage } from '../../utils/barcode'
 import { newId } from '../../utils/uuid'
 import { auth } from '../auth'
 
@@ -160,6 +161,18 @@ export const searchFoodItemsApi = async (q: string, limit = 10): Promise<FoodIte
     params: { q, limit },
   })
   return response.data.data ?? []
+}
+
+/** Throws an Error whose message is ready to show the user. */
+export const findFoodByBarcodeApi = async (barcode: string): Promise<FoodItemEntity> => {
+  const { token } = auth.value
+  const response = await axios.post<{ data?: FoodItemEntity; error?: unknown; success: boolean }>(
+    `${API_URL}/food-items/by-barcode`,
+    { barcode },
+    { headers: { Authorization: `Bearer ${token}` }, validateStatus: () => true },
+  )
+  if (response.status >= 200 && response.status < 300 && response.data?.data) return response.data.data
+  throw new Error(barcodeLookupErrorMessage(response.status, response.data?.error))
 }
 
 export type { MergeFoodItemsPreview, MergeFoodItemsResult }

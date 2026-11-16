@@ -459,11 +459,29 @@ relays too. The instance actor answers only `Accept`/`Reject` of its own relay
 follows and a LitePub relay's follow-back; everything else delivered to it, including whatever a
 relay forwards, is dropped.
 
+### Delivery queue
+
+Every outgoing activity — post `Create`/`Update`/`Delete`, likes, boosts, follows, accepts,
+rejects, profile updates, an account's actor `Delete` — is handed to Fedify's outbox queue,
+kept in pg-boss (`fedify-outbox`, with `fedify-fanout` for sends to many followers), and
+`sendActivity` returns once it is queued. The backend process works the queue; during an
+overlapping deploy both processes may. A failed inbox is retried by Fedify's policy: the first
+retry after one to two minutes, each wait four times the last, capped at 12 hours, ten attempts
+in all; `404` and `410` are given up on at once, and a server failing repeatedly within minutes
+has its deliveries held by Fedify's circuit breaker (dropped after three days). pg-boss never
+retries a job itself, and a finished job is deleted after an hour, because a queued delivery
+carries the sender's signing key. Followers-only posts are
+queued like public ones; nothing of a payload is logged. Failing servers are recorded for
+admins in `federation_delivery_failures` (see [admin docs](../admin.md#federation)). Only the
+relay `Follow` is sent at once, so its error shows on the relay. Inbound activities are not
+queued. A server without a job queue delivers synchronously, without retries, as before; the
+startup log says which (`📮 Federation delivery: …`).
+
 ### Publishing & lifecycle delivery
 
 Sharing, editing, or unsharing a post federates the matching activity to the user's
-followers (best-effort, fire-and-forget; delivery is synchronous — a durable retry queue
-is a later slice):
+followers (fire-and-forget; the activity is queued and a failed inbox is retried with
+backoff for about two to three days, see [Delivery queue](#delivery-queue)):
 
 | Action  | Federated activity  | Effect on followers                       |
 | ------- | ------------------- | ----------------------------------------- |
@@ -598,7 +616,7 @@ The feed also runs the **inbound** direction: a user can follow other fediverse 
 
 Following **yourself** is rejected (it would deliver a `Follow` to your own inbox and echo your
 posts into your timeline). Resolving the actor's avatar is bounded by a short timeout, so a slow
-icon host can't hang the (synchronous) follow. When a follow fails, the web panel surfaces the
+icon host can't hang the follow. When a follow fails, the web panel surfaces the
 server's specific reason (e.g. an unresolvable handle) rather than a generic message.
 
 Every remote fetch made on a user's behalf — resolving a followee, the backfill's outbox walk,
@@ -609,8 +627,9 @@ secure mode, GoToSocial) answer instead of refusing with a 401.
 When the followee's server answers with an `Accept`, the inbox marks the follow
 **accepted**; a `Reject` drops it. Unfollowing sends an `Undo{Follow}` to the cached inbox
 and removes the row. Local follows use the exact same path (delivered to the local inbox
-over loopback), so there is no special-casing. Delivery is best-effort/synchronous, matching
-the rest of the feed — a failed `Follow` POST leaves the pending row so the user can retry.
+over loopback), so there is no special-casing. The `Follow` and `Undo{Follow}` go through the
+delivery queue like the rest of the feed, so a server that is down gets them on a retry; the
+follow stays pending until the followee answers, and following again re-sends it.
 
 **Inbound `Update{Person}`** (#1057) — the mirror of the `Update{Person}` we deliver when our
 own profile changes. A remote actor renaming themselves (or changing their avatar) sends one to
@@ -701,7 +720,7 @@ With manual approval on, an inbound `Follow`:
 **Approving** flips the row to accepted and sends the deferred `Accept` — echoing the
 original `Follow` id so the follower's server matches it to its pending request.
 **Rejecting** (or later **removing** an accepted follower) sends a `Reject` and drops the
-row. Both are best-effort/synchronous like the rest of the feed. A re-delivered `Follow`
+row. Both go through the delivery queue like the rest of the feed. A re-delivered `Follow`
 from an already-accepted follower never demotes them back to pending.
 
 Only **accepted** followers appear in the followers collection + count and receive
@@ -1461,8 +1480,11 @@ ways, into one central `public_tag_posts` table, the first through the instance 
   attributed id. The content is sanitised like a timeline post's, the images captured the same
   way, the tags are the Note's own, and the link is the Note's `url` only when it is `http(s)`
   (else its id). One row per Note, keyed on its id: a second tag actor's `Announce` of the same
-  post adds its Announce id to the row. A tag actor's `Undo{Announce}` removes its Announce id,
-  and the row goes once no Announce keeps it. An author's `Delete` of a post removes its row
+  post adds its Announce id to the row, with the actor that sent it (`announce_actors`). A tag
+  actor's `Undo{Announce}` removes its Announce id, and only when the row stored that id from the
+  same actor, so another tag actor on the same host cannot withdraw it (a row stored before the
+  actor was kept takes any followed actor on the Announce's host, as before); the row goes once
+  no Announce keeps it. An author's `Delete` of a post removes its row
   (scoped to the sender, like the timeline's), and an actor's `Delete` of itself removes all of
   theirs; but a remote author's own `Delete` rarely reaches this server (it goes to their
   followers), so a deleted remote post usually leaves the page on the tag actor's
@@ -1483,9 +1505,14 @@ ways, into one central `public_tag_posts` table, the first through the instance 
 Rows older than the retention (`public_tag_retention_days`, default 30, by publication time),
 except the [official feed](#official-feed)'s remote posts, and rows with no followed tag left (a
 public page's, or the official feed's while it lists remote authors) are pruned nightly, and the listing and the Atom feed apply the
-retention when read, so a shortened retention takes effect at once. There is no moderation of tag
-pages yet beyond removing the tag; a follow-up issue tracks hiding posts and blocking actors and
-domains. The listing is
+retention when read, so a shortened retention takes effect at once. The pages are moderated: an
+admin can hide a post (its Note id is remembered and it is not stored again) or block an author
+or a whole domain (with its subdomains); both are checked whenever a post is stored, from the
+fediverse or from this server, and the matching stored posts are removed at once. A hidden or
+blocked post of this server's own is only kept off the tag pages and the official feed's remote
+posts: the author's feed, profile and federation are untouched. Unhiding or unblocking fetches
+nothing back; a post returns when it is announced or edited again. See
+[Tag page moderation](../admin.md#tag-page-moderation). The listing is
 `GET /public/tags/:tag/posts?cursor=` (unauthenticated, `no-store`; 404 for a tag without a
 page): 20 entries newest-first by `(published_at, id)` with `next_cursor`, each in the home
 timeline's entry shape (no structured payload, reactions or replies), plus the `tag` and
@@ -1493,7 +1520,8 @@ timeline's entry shape (no structured payload, reactions or replies), plus the `
 its author, identified by the Note's id and linking to the original; a tag without a page falls
 through to the next handler). The MCP tool `list_public_tag_posts` (`tag`, `cursor`)
 returns the same page. The web page (public, like `/blog`) renders each post as a read-only card
-with its `#tag` line, linking the tags that have a page of their own; the logged-out front page
+with its `#tag` line, linking the tags that have a page of their own (for an admin, with the
+**Hide post** / **Block** buttons); the logged-out front page
 and `/blog` link every configured tag ("See what people share with #aurboda").
 
 ## API
@@ -1540,6 +1568,12 @@ Owner-facing (authenticated, scoped to the caller):
 Admin-only: `GET /admin/relays`, `POST /admin/relays` (`{ url, style }`) and
 `DELETE /admin/relays/:id` manage the [relays](../admin.md#federation) public posts are pushed to
 (MCP `list_relays`, `add_relay`, `remove_relay`).
+Admin-only, the [tag page moderation](../admin.md#tag-page-moderation):
+`DELETE /admin/public-tag-posts/:id` hides a tag page post, `GET /admin/public-tag-hidden` and
+`DELETE /admin/public-tag-hidden/:id` list and unhide, `GET`/`POST /admin/public-tag-blocks`
+(`{ kind: "actor" | "domain", value }`) and `DELETE /admin/public-tag-blocks/:id` manage the blocks
+(MCP `hide_public_tag_post`, `list_hidden_public_tag_posts`, `unhide_public_tag_post`,
+`list_public_tag_blocks`, `add_public_tag_block`, `remove_public_tag_block`).
 
 Public / federation (unauthenticated):
 

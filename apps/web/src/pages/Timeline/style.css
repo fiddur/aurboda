@@ -112,6 +112,50 @@
   line-height: 0;
 }
 
+.timeline-range-presets {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.timeline-range-presets .timeline-range-preset {
+  background: transparent;
+  border: none;
+  border-left: 1px solid #d1d5db;
+  padding: 0.25rem 0.625rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #374151;
+  cursor: pointer;
+}
+
+.timeline-range-presets .timeline-range-preset:first-child {
+  border-left: none;
+}
+
+.timeline-range-presets .timeline-range-preset:hover {
+  background: #e5e7eb;
+}
+
+.timeline-range-presets .timeline-range-preset.active {
+  background: #374151;
+  color: #fff;
+}
+
+.timeline-legend .legend-daily-item {
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.timeline-legend .legend-daily-item input {
+  margin: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
 .timeline-date-label {
   font-size: 0.875rem;
   color: #374151;
@@ -311,6 +355,15 @@
   flex-shrink: 0;
 }
 
+.timeline-column-header {
+  box-sizing: border-box;
+  padding: 0 4px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timeline-tooltip {
   position: absolute;
   pointer-events: none;
@@ -414,6 +467,21 @@
 
   .timeline-date-label {
     color: #d1d5db;
+  }
+
+  .timeline-range-presets,
+  .timeline-range-presets .timeline-range-preset {
+    border-color: #4b5563;
+    color: #d1d5db;
+  }
+
+  .timeline-range-presets .timeline-range-preset:hover {
+    background: #374151;
+  }
+
+  .timeline-range-presets .timeline-range-preset.active {
+    background: #d1d5db;
+    color: #111827;
   }
 
   .timeline-legend-toggle {

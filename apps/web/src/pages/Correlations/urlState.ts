@@ -106,6 +106,7 @@ const SELECTOR_KINDS: readonly CorrelationSelector['kind'][] = [
   'nutrition',
   'productivity_category',
   'productivity_app',
+  'sensitivity',
 ]
 
 const selectorValue = (selector: CorrelationSelector): string => {
@@ -114,6 +115,8 @@ const selectorValue = (selector: CorrelationSelector): string => {
       return selector.metric
     case 'nutrition':
       return selector.nutrient
+    case 'sensitivity':
+      return selector.flag
     default:
       return selector.pattern
   }
@@ -134,7 +137,9 @@ export const decodeSelector = (raw: string): CorrelationSelector | null => {
       ? { kind, metric: value }
       : kind === 'nutrition'
         ? { kind, nutrient: value }
-        : { kind, pattern: value }
+        : kind === 'sensitivity'
+          ? { flag: value, kind }
+          : { kind, pattern: value }
   const parsed = selectorSchema.safeParse(candidate)
   return parsed.success ? parsed.data : null
 }

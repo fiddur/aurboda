@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'preact-iso'
 import { useCallback, useState } from 'preact/hooks'
 
 import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../../state/api'
@@ -6,6 +7,7 @@ import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../..
 import { AvatarSettings } from '../../components/AvatarSettings'
 import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
+import { LinkedProvidersSettings } from '../../components/LinkedProvidersSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { NotificationSettings } from '../../components/NotificationSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
@@ -29,6 +31,7 @@ import './style.css'
 
 export function Settings() {
   const isLoggedIn = auth.value.token
+  const { query } = useLocation()
   const queryClient = useQueryClient()
 
   const { data: userSettings, isLoading } = useQuery({
@@ -361,7 +364,12 @@ export function Settings() {
 
       <MealPreferencesSettings />
 
-      <PasskeySettings />
+      <PasskeySettings recovered={query.recovered === 'passkey'} />
+
+      <LinkedProvidersSettings
+        linked={query.oidc === 'linked'}
+        linkError={typeof query.oidc_error === 'string' ? query.oidc_error : undefined}
+      />
 
       <section class="settings-section">
         <p class="section-description">

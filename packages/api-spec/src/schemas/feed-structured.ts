@@ -26,7 +26,7 @@ import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
 import {
-  activityImpactTypeSchema,
+  articleImpactTypeSchema,
   alignedPointSchema,
   groupComparisonSchema,
   impactBucketSchema,
@@ -298,7 +298,7 @@ export type FeedStructuredArticleChallengeBlock = z.infer<typeof feedStructuredA
 export const feedStructuredArticleImpactBlockSchema = z
   .object({
     activity: z.string().meta({ description: 'The activity grouping key, matched exactly' }),
-    activity_type: activityImpactTypeSchema,
+    activity_type: articleImpactTypeSchema,
     avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
     caption: z.string().optional().meta({ description: 'Optional caption' }),
     end: iso8601DateTimeSchema.meta({ description: "Block's locked window end (ISO 8601)" }),

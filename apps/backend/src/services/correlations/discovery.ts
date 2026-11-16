@@ -7,7 +7,12 @@ import type { CorrelationSelectorsData } from '@aurboda/api-spec'
 
 import { nutrientKeySchema } from '@aurboda/api-spec'
 
-import { getActivityTypeDefinitions, getDistinctMetrics, getScreentimeCategories } from '../../db/index.ts'
+import {
+  getActivityTypeDefinitions,
+  getDistinctMetrics,
+  getScreentimeCategories,
+  listSensitivityFlags,
+} from '../../db/index.ts'
 
 /** How far back to look for metrics that actually have data. */
 const METRIC_LOOKBACK_DAYS = 365
@@ -16,10 +21,11 @@ export const getCorrelationSelectors = async (user: string): Promise<Correlation
   const end = new Date()
   const start = new Date(end.getTime() - METRIC_LOOKBACK_DAYS * 86_400_000)
 
-  const [metrics, activityTypes, categories] = await Promise.all([
+  const [metrics, activityTypes, categories, flags] = await Promise.all([
     getDistinctMetrics(user, start, end),
     getActivityTypeDefinitions(user),
     getScreentimeCategories(user),
+    listSensitivityFlags(user),
   ])
 
   return {
@@ -30,6 +36,7 @@ export const getCorrelationSelectors = async (user: string): Promise<Correlation
       const path = c.name.join(' > ')
       return { label: path, value: path }
     }),
+    sensitivities: flags.map((f) => ({ label: f.name, value: f.id })),
     // Tags are user-defined (non-builtin) activity types.
     tags: activityTypes.filter((t) => !t.is_builtin).map((t) => ({ label: t.display_name, value: t.name })),
   }

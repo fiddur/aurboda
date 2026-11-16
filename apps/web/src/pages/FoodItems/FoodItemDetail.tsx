@@ -21,6 +21,7 @@ import {
   updateFoodItemPortionApi,
 } from '../../state/api/meals'
 import { auth } from '../../state/auth'
+import { OPEN_FOOD_FACTS_SOURCE, openFoodFactsProductUrl } from '../../utils/barcode'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import './FoodItemDetail.css'
 
@@ -488,6 +489,8 @@ export function FoodItemDetail() {
 
       <NameHeading item={item} isShared={isShared} name={name} setName={setName} commitName={commitName} />
 
+      {item.source === OPEN_FOOD_FACTS_SOURCE && <OpenFoodFactsAttribution barcode={item.source_id} />}
+
       <div class="fi-icon-row">
         <label class="fi-icon-label">Icon</label>
         <IconInput value={icon} onChange={setIcon} onBlur={commitIcon} />
@@ -518,6 +521,21 @@ export function FoodItemDetail() {
         save={save}
       />
     </div>
+  )
+}
+
+function OpenFoodFactsAttribution({ barcode }: { barcode?: string }) {
+  return (
+    <p class="fi-attribution">
+      Data from <a href="https://world.openfoodfacts.org/">Open Food Facts</a>, licensed{' '}
+      <a href="https://opendatacommons.org/licenses/odbl/">ODbL</a>.
+      {barcode && (
+        <>
+          {' '}
+          <a href={openFoodFactsProductUrl(barcode)}>Product page for {barcode}</a>
+        </>
+      )}
+    </p>
   )
 }
 
@@ -1034,6 +1052,12 @@ function CompositeOrAtomicSection({
       )}
 
       <div class="nutrient-sections">
+        {item.nutrient_data_incomplete && (
+          <p class="composite-incomplete">
+            ⚠ The source lacks energy or a macro (protein, carbs, fat) for this item — meal totals that
+            include it may be understated.
+          </p>
+        )}
         {CATEGORIES.map(({ key, label }) => {
           const fields = NUTRIENT_FIELDS.filter((f) => f.category === key)
           if (fields.length === 0) return null

@@ -13,6 +13,7 @@ export const READ_ONLY_ALLOWED_TOOLS = new Set([
   'export_data_dump',
   'mark_all_notifications_read',
   'mark_notification_read',
+  'send_email_verification',
   'set_my_email',
 ])
 

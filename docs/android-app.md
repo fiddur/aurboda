@@ -22,8 +22,19 @@ The Add tab's Activity form starts with **Log a strength session**, which opens 
 [strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
 sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
 declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
-field that does not parse is marked on the field and nothing is sent. A queued entry whose values
-are strings (the older queue format) is converted with the cached activity types when it is sent.
+field that does not parse, or falls outside the field's `min` and `max` ("Must be between 0 and 10"),
+is marked on the field and nothing is sent. A queued entry whose values are strings (the older queue
+format) is converted with the cached activity types when it is sent.
+
+Like the web Add data form, the Add tab offers the built-in catalogues. The activity type picker lists
+the [activity type catalogue](features/activity-type-catalog.md)'s types not in use yet under
+**Built-in**, after your own (matched by name, display name or alias; variants are not listed), and a
+picked one shows its fields at once; saving the activity adds the type. The metric picker lists the
+[metric catalogue](features/metric-catalog.md)'s metrics not in use yet under **Catalogue**, and a
+catalogue metric gets a **Unit** choice next to the value, offering the same units as the web form,
+the unit the metric is stored in preselected. A unit is sent only when another one is picked, and a
+queued metric keeps it. Both catalogues are cached, so the pickers offer them offline after one
+successful load; after logging a type or metric not in use yet, the tab reloads the lists.
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
@@ -134,6 +145,24 @@ native dialogs (back or an outside tap counts as Cancel) and backs file inputs,
 including `multiple`, with the system picker. Embedded pages can therefore keep
 using the browser's own dialogs and file inputs.
 
+### Camera (barcode scanning)
+
+The food pages can read a product barcode with the camera (see
+[openfoodfacts.md → Scanning](openfoodfacts.md#scanning)), which in the WebView
+needs both the app's `CAMERA` permission and a `WebChromeClient` that answers the
+page's `getUserMedia` request. The manifest declares `android.permission.CAMERA`
+with `android.hardware.camera` marked `required="false"`, so the app still installs
+on devices without a camera. The permission is not asked for at install or start:
+the first time a page opens the scanner, the system dialog asks for it, and a
+refusal shows the page's "camera is blocked" message.
+
+`EmbeddedWebChrome.kt` (`rememberWebCameraPermission`) grants only
+`RESOURCE_VIDEO_CAPTURE` (never the microphone or anything else a page asks for),
+and only to a request whose origin has the scheme, host and port of the signed-in
+server (`isSameOrigin`). A page that is not on that origin (a challenge on another
+instance) gets a chrome client that denies every such request. A request still
+pending when the screen leaves is denied.
+
 ### Page height and `vh` units
 
 The WebView can resolve CSS viewport units (`100vh`, `40vh`) and the `%` height
@@ -214,6 +243,24 @@ the external browser (via `ACTION_VIEW`); same-origin links stay in the WebView.
 The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
+
+## Login screen
+
+The login screen (`ui/screens/LoginScreen.kt`) is native, since it works logged out: the server
+URL, **Sign in with passkey** (Credential Manager), one button per
+[sign-in provider](sso.md#in-the-android-app) the server offers, and username and password. The
+providers load with the email check, half a second after the server URL stops changing
+(`AuthApi.oidcProviders`; an older server without them shows none).
+
+A provider button starts an app sign-in (`AuthApi.oidcStart`, `{"client": "app"}`), keeps the
+verifier in memory (`OidcLogin.pending`, `OidcLogin.kt`, for ten minutes) and opens the provider in a
+Custom Tab (`androidx.browser`), falling back to `ACTION_VIEW`. The server sends the browser back to
+`net.aurboda.oidc://callback?code=…` (or `?error=…`), which `MainActivity` claims with an intent
+filter. `MainActivity` hands the callback to `OidcLogin.callback` and clears the intent's data so a
+rotation does not replay it; when the browser started a second `MainActivity` on top of its tab, that
+copy brings the running one forward (`CLEAR_TOP | SINGLE_TOP`) and finishes. The login screen trades
+the code with the verifier (`AuthApi.oidcExchange`) and saves the session like a password login.
+Linking a provider is web-only: the embedded Settings page shows no Link buttons.
 
 ## Refused tokens and read-only accounts
 
@@ -333,8 +380,13 @@ anything else opens the More hub.
 
 ## Update channels
 
-The app checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate` in
-`MainActivity.kt`). CI bakes the URL in per branch (`.github/workflows/android.yml`):
+Only the `github` build flavor (the APK on GitHub releases) updates itself; the Google Play and
+F-Droid builds are updated by their store and share a no-op `SelfUpdate`. See
+[Android distribution: GitHub, Google Play and F-Droid](android-stores.md) for the flavors.
+
+The `github` build checks `BuildConfig.VERSION_JSON_URL` for a newer build (`checkForUpdate`,
+called from `SelfUpdate` in `src/github/java/net/aurboda/update/`). CI bakes the URL in per branch
+(`.github/workflows/android.yml`):
 
 | Built from | Release                             | `VERSION_JSON_URL`                      |
 | ---------- | ----------------------------------- | --------------------------------------- |

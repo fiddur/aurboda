@@ -1,7 +1,12 @@
 import {
+  type AddPublicTagBlockBody,
+  addPublicTagBlockBodySchema,
   type AddRelayBody,
   addRelayBodySchema,
   type AdminSettingsResponse,
+  type AdminTestEmailBody,
+  adminTestEmailBodySchema,
+  type AdminTestEmailResponse,
   type AdminUserUsageQuery,
   adminUserUsageQuerySchema,
   type AdminUserUsageResponse,
@@ -12,7 +17,12 @@ import {
   type AdminUserPlanResponse,
   type DeleteAccountBody,
   deleteAccountBodySchema,
+  type FederationDeliveryFailuresResponse,
   type InvitationResponse,
+  type PublicTagBlockResponse,
+  type PublicTagBlocksResponse,
+  type PublicTagHiddenPostResponse,
+  type PublicTagHiddenPostsResponse,
   type RelayResponse,
   type RelaysResponse,
   type ResendPostUpdatesResponse,
@@ -27,14 +37,21 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { Mailer } from '../services/email.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { PublicTagActions } from '../services/public-tags.ts'
+import type { TokenBucketLimiter } from '../services/rate-limit.ts'
 import type { RelayActions } from '../services/relays.ts'
 
+import { limitBy } from '../api/rate-limit-middleware.ts'
 import { readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { accountDeletionStatus } from '../services/account-deletion.ts'
 import { readBillingSettings } from '../services/account-plan.ts'
+import { listFederationDeliveryFailures } from '../services/central-federation-delivery.ts'
+import { testEmail } from '../services/email-templates.ts'
+import { isSmtpConfigured, readSmtpSettings } from '../services/email.ts'
 import {
   normalizeOfficialFeedSetting,
   readOfficialFeedSetting,
@@ -68,6 +85,8 @@ export const createAdminRouter = (
   relays?: RelayActions,
   publicTags?: Pick<PublicTagActions, 'apply'>,
   postUpdates?: PostUpdateResender,
+  publicTagModeration?: PublicTagModeration,
+  email?: { mailer: Pick<Mailer, 'send'>; testLimiter: TokenBucketLimiter },
 ): TypedRouter => {
   const router = typedRouter()
   const readSettings = async (): Promise<AdminSettingsResponse> => {
@@ -93,6 +112,7 @@ export const createAdminRouter = (
       publicTagFollows,
       contacts,
       garminPersonalKeyEnabled,
+      smtp,
     ] = await Promise.all([
       centralDb.getSignupMode(),
       centralDb.getAdminCount(),
@@ -115,6 +135,7 @@ export const createAdminRouter = (
       readPublicTagFollows(centralDb),
       readSupportContacts(centralDb),
       readGarminPersonalKeyEnabled(centralDb),
+      readSmtpSettings(centralDb),
     ])
     return {
       admin_count: adminCount,
@@ -122,6 +143,7 @@ export const createAdminRouter = (
       billing_enabled: billing.enabled,
       contact_fediverse: contacts.contact_fediverse,
       contact_reddit: contacts.contact_reddit,
+      email_enabled: isSmtpConfigured(smtp),
       garmin_personal_key_enabled: garminPersonalKeyEnabled,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
@@ -142,6 +164,12 @@ export const createAdminRouter = (
       // Sentry DSNs are public values designed to be embedded in clients.
       sentry_dsn: sentryDsn || null,
       signup_mode: signupMode,
+      smtp_from: smtp.from,
+      smtp_host: smtp.host,
+      smtp_password_set: !!smtp.password,
+      smtp_port: smtp.port,
+      smtp_security: smtp.security,
+      smtp_user: smtp.user,
       strava_client_id_set: !!stravaClientId,
       strava_client_secret_set: !!stravaClientSecret,
       success: true,
@@ -187,6 +215,12 @@ export const createAdminRouter = (
         public_tag_retention_days,
         sentry_dsn,
         signup_mode,
+        smtp_from,
+        smtp_host,
+        smtp_password,
+        smtp_port,
+        smtp_security,
+        smtp_user,
         strava_client_id,
         strava_client_secret,
         tag_actor_host,
@@ -257,6 +291,12 @@ export const createAdminRouter = (
       if (tag_actor_host !== undefined) {
         await centralDb.setServerSetting('tag_actor_host', tag_actor_host)
       }
+      if (smtp_host !== undefined) await centralDb.setServerSetting('smtp_host', smtp_host ?? '')
+      if (smtp_port !== undefined) await centralDb.setServerSetting('smtp_port', smtp_port)
+      if (smtp_security !== undefined) await centralDb.setServerSetting('smtp_security', smtp_security)
+      if (smtp_user !== undefined) await centralDb.setServerSetting('smtp_user', smtp_user ?? '')
+      if (smtp_password !== undefined) await centralDb.setServerSetting('smtp_password', smtp_password ?? '')
+      if (smtp_from !== undefined) await centralDb.setServerSetting('smtp_from', smtp_from ?? '')
       if (contact_fediverse !== undefined) {
         await centralDb.setServerSetting('contact_fediverse', contact_fediverse)
       }
@@ -413,6 +453,119 @@ export const createAdminRouter = (
       },
     )
   }
+
+  if (publicTagModeration) {
+    router.delete<{ id: string }, PublicTagHiddenPostResponse>(
+      '/public-tag-posts/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        const hidden = await publicTagModeration.hide(req.params.id, req.user!)
+        if (hidden == null) {
+          res.status(404).json({ error: 'Post not found on the tag pages', success: false })
+          return
+        }
+        res.json({ hidden, success: true })
+      },
+    )
+
+    router.get<Record<string, never>, PublicTagHiddenPostsResponse>(
+      '/public-tag-hidden',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ hidden: await publicTagModeration.listHidden(), success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/public-tag-hidden/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await publicTagModeration.unhide(req.params.id))) {
+          res.status(404).json({ error: 'Not hidden', success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+
+    router.get<Record<string, never>, PublicTagBlocksResponse>(
+      '/public-tag-blocks',
+      authMiddleware,
+      adminMiddleware,
+      async (_req, res) => {
+        res.json({ blocks: await publicTagModeration.listBlocks(), success: true })
+      },
+    )
+
+    router.post<Record<string, never>, PublicTagBlockResponse, AddPublicTagBlockBody>(
+      '/public-tag-blocks',
+      authMiddleware,
+      adminMiddleware,
+      validateBody(addPublicTagBlockBodySchema),
+      async (req, res) => {
+        const result = await publicTagModeration.addBlock(req.body, req.user!)
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error, success: false })
+          return
+        }
+        res.status(201).json({ block: result.block, removed_posts: result.removed_posts, success: true })
+      },
+    )
+
+    router.delete<{ id: string }, BaseResponse>(
+      '/public-tag-blocks/:id',
+      authMiddleware,
+      adminMiddleware,
+      async (req, res) => {
+        if (!(await publicTagModeration.removeBlock(req.params.id))) {
+          res.status(404).json({ error: 'Block not found', success: false })
+          return
+        }
+        res.json({ success: true })
+      },
+    )
+  }
+
+  if (email) {
+    router.post<Record<string, never>, AdminTestEmailResponse, AdminTestEmailBody>(
+      '/email/test',
+      authMiddleware,
+      adminMiddleware,
+      limitBy(email.testLimiter, (req) => req.user),
+      validateBody(adminTestEmailBodySchema),
+      async (req, res) => {
+        const to = req.body.to || (await centralDb.getUserAccount(req.user!))?.email
+        if (!to) {
+          return res.status(400).json({
+            error: 'Give an address: your account has no email to send the test mail to',
+            success: false,
+          })
+        }
+        const result = await email.mailer.send(to, testEmail(), 'test')
+        if (result.ok) return res.json({ success: true, to })
+        if (result.reason === 'not_configured') {
+          return res.status(400).json({
+            error: 'Email is not configured: set the SMTP host and the From address first',
+            success: false,
+            to,
+          })
+        }
+        res.status(502).json({ error: result.error, success: false, to })
+      },
+    )
+  }
+
+  router.get<Record<string, never>, FederationDeliveryFailuresResponse>(
+    '/federation/delivery-failures',
+    authMiddleware,
+    adminMiddleware,
+    async (_req, res) => {
+      res.json({ failures: await listFederationDeliveryFailures(centralDb), success: true })
+    },
+  )
 
   if (postUpdates) {
     router.post<Record<string, never>, ResendPostUpdatesResponse>(

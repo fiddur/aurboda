@@ -1,3 +1,4 @@
+import type { TimelineDailyMetric } from '@aurboda/api-spec'
 import type { FunctionComponent, RefObject } from 'preact'
 
 import type { LegendCategory, ScreentimeSubEntry } from './legendCategories'
@@ -13,9 +14,45 @@ import {
   TAG_COLOR,
   tagSourceColors,
 } from './colors'
+import { DAILY_METRIC_SPECS } from './drawDailyMetricTracks'
 import { CALORIES_COLOR, HR_COLOR, HRV_COLOR, STEPS_COLOR, STRESS_COLOR } from './drawMetricsTrack'
 import { SCREENTIME_COLOR } from './drawScreentimeTrack'
 import { CTL_COLOR } from './drawTrainingLoadTrack'
+
+interface DailyPickerProps {
+  shown: boolean
+  options: readonly TimelineDailyMetric[]
+  picked: readonly TimelineDailyMetric[]
+  toggle: (metric: TimelineDailyMetric) => void
+}
+
+const DailyMetricPicker: FunctionComponent<DailyPickerProps & { metricsHidden: boolean }> = ({
+  options,
+  picked,
+  toggle,
+  metricsHidden,
+}) => {
+  const disabled = metricsHidden ? ' legend-sub-item--disabled' : ''
+  return (
+    <>
+      <span class="legend-separator" />
+      <div class="legend-group" role="group" aria-label="Daily metrics">
+        <span class={`legend-item legend-group-header${disabled}`}>Daily</span>
+        {options.map((metric) => (
+          <label key={metric} class={`legend-item legend-sub-item legend-daily-item${disabled}`}>
+            <input
+              type="checkbox"
+              checked={picked.includes(metric)}
+              onChange={() => toggle(metric)}
+              style={{ accentColor: DAILY_METRIC_SPECS[metric].color }}
+            />
+            {DAILY_METRIC_SPECS[metric].label}
+          </label>
+        ))}
+      </div>
+    </>
+  )
+}
 
 interface TimelineLegendProps {
   orientation: Orientation
@@ -27,6 +64,8 @@ interface TimelineLegendProps {
   legendRef: RefObject<HTMLDivElement>
   /** Dynamic per-top-level screentime category sub-toggles (#718). */
   screentimeSubEntries: ScreentimeSubEntry[]
+  /** The daily metric picker, shown while the daily tracks can be drawn. */
+  dailyPicker: DailyPickerProps
 }
 
 export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
@@ -38,6 +77,7 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
   setLegendCollapsed,
   legendRef,
   screentimeSubEntries,
+  dailyPicker,
 }) => {
   const hiddenCount = hiddenCategories.size
 
@@ -85,13 +125,23 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
               { cat: 'exercise' as LegendCategory, color: hrZoneColors[2]!, label: 'Exercise' },
               { cat: 'other' as LegendCategory, color: TAG_COLOR, label: 'Other' },
               { cat: 'calendar' as LegendCategory, color: tagSourceColors.calendar!, label: 'Calendar' },
-              { cat: 'screentime' as LegendCategory, color: productivityColors[1]!, label: 'Screen Time' },
-              // Dynamic per-top-level screentime category toggles (#718). One
-              // entry per top-level activity_type linked to a screentime_category
-              // (e.g. Work, Media, Comms). The umbrella `screentime` toggle
-              // above hides all of them; these let the user toggle a single
-              // top-level category and its descendants in isolation.
-              ...screentimeSubEntries.map((e) => ({ cat: e.legendKey, color: e.color, label: e.label })),
+              // Screen time blocks are drawn only in the horizontal Activity lane; vertically,
+              // screen time is the Metrics bars alone. One sub-toggle per top-level screentime
+              // category (#718) hides that category's blocks with its descendants.
+              ...(orientation === 'horizontal'
+                ? [
+                    {
+                      cat: 'screentime' as LegendCategory,
+                      color: productivityColors[1]!,
+                      label: 'Screen Time',
+                    },
+                    ...screentimeSubEntries.map((e) => ({
+                      cat: e.legendKey,
+                      color: e.color,
+                      label: e.label,
+                    })),
+                  ]
+                : []),
             ].map(({ cat, color, label }) => (
               <button
                 key={cat}
@@ -121,14 +171,12 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
               { cat: 'hr' as LegendCategory, color: HR_COLOR, label: 'HR' },
               { cat: 'hrv' as LegendCategory, color: HRV_COLOR, label: 'HRV' },
               { cat: 'stress' as LegendCategory, color: STRESS_COLOR, label: 'Stress' },
+              { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
+              { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
               ...(orientation === 'horizontal'
-                ? [
-                    { cat: 'steps' as LegendCategory, color: STEPS_COLOR, label: 'Steps' },
-                    { cat: 'calories' as LegendCategory, color: CALORIES_COLOR, label: 'Calories' },
-                    { cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' },
-                    { cat: 'screen_time_h' as LegendCategory, color: SCREENTIME_COLOR, label: 'Screen Time' },
-                  ]
+                ? [{ cat: 'training_load' as LegendCategory, color: CTL_COLOR, label: 'Training Load' }]
                 : []),
+              { cat: 'screen_time_h' as LegendCategory, color: SCREENTIME_COLOR, label: 'Screen Time' },
             ].map(({ cat, color, label }) => (
               <button
                 key={cat}
@@ -141,6 +189,10 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
               </button>
             ))}
           </div>
+
+          {dailyPicker.shown && (
+            <DailyMetricPicker {...dailyPicker} metricsHidden={hiddenCategories.has('metrics')} />
+          )}
 
           <span class="legend-separator" />
 

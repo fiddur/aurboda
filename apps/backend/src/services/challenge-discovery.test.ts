@@ -78,6 +78,7 @@ const participation = (
   created_at: NOW,
   data_token: 'dt',
   end_ts: new Date('2026-09-30T22:00:00Z'),
+  host_checked_at: null,
   host_identity: 'https://peer.example/u/alice',
   id: `p-${url}`,
   name: 'joined',

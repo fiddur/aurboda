@@ -42,6 +42,7 @@ import {
 import { tagActorHandle } from './following.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { readOfficialFeedSetting } from './official-feed.ts'
+import { isPublicTagPostRefused, type PublicTagRefusalStore } from './public-tag-moderation.ts'
 import { withTimeout } from './with-timeout.ts'
 
 export const PUBLIC_TAG_PAGE_SIZE = 20
@@ -330,7 +331,8 @@ export const createPublicTagIngest = (
     | 'getInstanceTagFollowByActor'
     | 'removePublicTagAnnounce'
     | 'upsertPublicTagPost'
-  >,
+  > &
+    PublicTagRefusalStore,
 ): PublicTagIngest => ({
   deletePublicTagPost: (noteUri, actorUri) => store.deletePublicTagPost(noteUri, actorUri),
   deletePublicTagPostsByActor: (actorUri) => store.deletePublicTagPostsByActor(actorUri),
@@ -338,12 +340,15 @@ export const createPublicTagIngest = (
     const row = await store.getInstanceTagFollowByActor(actorUri)
     return row != null && row.accepted ? { actor_uri: row.actor_uri, tag: row.tag } : null
   },
-  removePublicTagAnnounce: (announceUri) => store.removePublicTagAnnounce(announceUri),
-  upsertPublicTagPost: (input) => store.upsertPublicTagPost(input),
+  removePublicTagAnnounce: (announceUri, actorUri) => store.removePublicTagAnnounce(announceUri, actorUri),
+  upsertPublicTagPost: async (input) => {
+    if (await isPublicTagPostRefused(store, input.note_uri, input.actor_uri)) return null
+    return store.upsertPublicTagPost(input)
+  },
 })
 
 export const createLocalPublicTagPosts = (deps: {
-  store: Pick<PublicTagStore, 'deleteLocalPublicTagPost' | 'upsertPublicTagPost'>
+  store: Pick<PublicTagStore, 'deleteLocalPublicTagPost' | 'upsertPublicTagPost'> & PublicTagRefusalStore
   publicTagPages: () => Promise<string[]>
   /** The local actor as the actor dispatcher serves it (no network). */
   localActor: (ctx: Context<void>, user: string) => Promise<Actor | null>
@@ -357,6 +362,8 @@ export const createLocalPublicTagPosts = (deps: {
       await deps.store.deleteLocalPublicTagPost(note.id.href, user)
       return
     }
+    const actorUri = ctx.getActorUri(user).href
+    if (await isPublicTagPostRefused(deps.store, note.id.href, actorUri)) return
     const actor = await deps.localActor(ctx, user)
     const presentation =
       actor == null
@@ -366,7 +373,7 @@ export const createLocalPublicTagPosts = (deps: {
       note.published == null ? (deps.now?.() ?? new Date()) : temporalInstantToDate(note.published)
     await deps.store.upsertPublicTagPost({
       ...presentation,
-      actor_uri: ctx.getActorUri(user).href,
+      actor_uri: actorUri,
       announce_uris: [],
       content: sanitizeRemoteHtml(note.content?.toString() ?? ''),
       images: await extractNoteImages(note),

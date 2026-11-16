@@ -1,6 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
+import { OidcButtons } from '../../components/OidcButtons'
+import { isPlayStoreBuild } from '../../embed'
+import { fetchOidcProviders, startOidcLogin } from '../../state/api'
 import {
   auth,
   ensureStatusLoaded,
@@ -39,6 +43,11 @@ export function Signup() {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const emailInput = useRef<HTMLInputElement>(null)
+  const { data: providers = [] } = useQuery({
+    queryFn: fetchOidcProviders,
+    queryKey: ['oidcProviders'],
+    retry: false,
+  })
 
   const invitation = useMemo(() => {
     const params = new URLSearchParams(query)
@@ -54,7 +63,7 @@ export function Signup() {
     return null
   }
 
-  const billingLine = signupBillingLine(serverBilling.value)
+  const billingLine = signupBillingLine(serverBilling.value, isPlayStoreBuild())
 
   const unavailable = signupUnavailableReason(signupMode.value, statusFailed.value, invitation)
   if (unavailable) {
@@ -226,6 +235,12 @@ export function Signup() {
           </p>
         </form>
       )}
+
+      <OidcButtons
+        providers={providers.filter((provider) => provider.allow_signup)}
+        start={(id) => startOidcLogin(id, invitation)}
+        verb="Sign up"
+      />
 
       <p class="login-link">
         Already have an account? <a href="/login">Login</a>

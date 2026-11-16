@@ -73,6 +73,12 @@ const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
 const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
+const LoginOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LoginOidc')
+const SignupOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'SignupOidc')
+const LinkOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LinkOidc')
+const Recover = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'Recover')
+const RecoverRequest = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'RecoverRequest')
+const VerifyEmail = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'VerifyEmail')
 const Meals = lazyPage(() => import('./pages/Meals/index.jsx'), 'Meals')
 const MealDetail = lazyPage(() => import('./pages/Meals/MealDetail.jsx'), 'MealDetail')
 const MealTypeMeta = lazyPage(() => import('./pages/MealTypeMeta/index.jsx'), 'MealTypeMeta')
@@ -83,12 +89,15 @@ const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicT
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
+const SegmentsPage = lazyPage(() => import('./pages/Segments/index.jsx'), 'Segments')
+const SegmentDetailPage = lazyPage(() => import('./pages/Segments/SegmentDetail.jsx'), 'SegmentDetail')
 const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
 const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
 const PublicArticles = lazyPage(() => import('./pages/PublicArticles/index.jsx'), 'PublicArticles')
 const PublicProfile = lazyPage(() => import('./pages/PublicProfile/index.jsx'), 'PublicProfile')
 const PublicPost = lazyPage(() => import('./pages/PublicPost/index.jsx'), 'PublicPost')
 const AddReport = lazyPage(() => import('./pages/Reports/AddReport.jsx'), 'AddReport')
+const ImportReports = lazyPage(() => import('./pages/Reports/ImportReports.jsx'), 'ImportReports')
 const Reports = lazyPage(() => import('./pages/Reports/index.jsx'), 'Reports')
 const ReportDetail = lazyPage(() => import('./pages/Reports/ReportDetail.jsx'), 'ReportDetail')
 const CategoryDetail = lazyPage(
@@ -142,6 +151,12 @@ function AppShell() {
             <Route path="/tags/:tag" component={PublicTag} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
+            <Route path="/login/oidc" component={LoginOidc} />
+            <Route path="/signup/oidc" component={SignupOidc} />
+            <Route path="/settings/oidc-link" component={LinkOidc} />
+            <Route path="/recover-request" component={RecoverRequest} />
+            <Route path="/recover" component={Recover} />
+            <Route path="/verify-email" component={VerifyEmail} />
             <Route path="/privacy" component={Privacy} />
             <Route path="/terms" component={Terms} />
             <Route path="/goals" component={Goals} />
@@ -154,6 +169,7 @@ function AppShell() {
             <Route path="/meals" component={Meals} />
             <Route path="/meal-type/:name" component={MealTypeMeta} />
             <Route path="/reports/add" component={AddReport} />
+            <Route path="/reports/import" component={ImportReports} />
             <Route path="/reports/:id" component={ReportDetail} />
             <Route path="/reports" component={Reports} />
             <Route path="/detail/:type/:id" component={EntityDetail} />
@@ -172,6 +188,8 @@ function AppShell() {
             <Route path="/places" component={Places} />
             <Route path="/routes/:id" component={RouteDetailPage} />
             <Route path="/routes" component={RoutesPage} />
+            <Route path="/segments/:id" component={SegmentDetailPage} />
+            <Route path="/segments" component={SegmentsPage} />
             <Route path="/data-sources" component={DataSources} />
             <Route path="/data-sources/aurboda" component={AurbodaSource} />
             <Route path="/data-sources/android-app" component={AndroidAppSource} />

@@ -9,8 +9,11 @@ import { binSeries } from './impact.ts'
 vi.mock('../../db', () => ({
   getBinnedTimeSeries: vi.fn(),
   getEffectiveActivitiesInRange: vi.fn(),
+  getMealFlagsInRange: vi.fn(),
+  getMealLogCompletedInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
+  listSensitivityFlags: vi.fn(),
 }))
 
 vi.mock('../locations', () => ({
@@ -20,6 +23,9 @@ vi.mock('../locations', () => ({
 describe('getHrvActivitiesCorrelation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(db.getMealFlagsInRange).mockResolvedValue([])
+    vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
+    vi.mocked(db.listSensitivityFlags).mockResolvedValue([])
     vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, start, end, binMinutes) =>
       binSeries(await db.getTimeSeries(user, metric, start, end), binMinutes),
     )
@@ -381,6 +387,53 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(row.hrv_effect).toEqual(impact.hrv_effect)
     expect(row.mean_stress).toBe(impact.stress_timeline.during.mean)
     expect(impact.stress_effect.paired_occurrences).toBeGreaterThan(0)
+  })
+
+  test('a meal row per flag, agreeing with the meal_sensitivity impact', async () => {
+    const base = new Date()
+    base.setDate(base.getDate() - 3)
+    base.setHours(0, 0, 0, 0)
+    const atMinute = (minutes: number) => new Date(base.getTime() + minutes * 60_000)
+    const gluten = { created_at: base, id: 'flag-gluten', name: 'gluten', sort_order: 0, updated_at: base }
+    const dairy = { created_at: base, id: 'flag-dairy', name: 'dairy', sort_order: 1, updated_at: base }
+    vi.mocked(db.listSensitivityFlags).mockResolvedValue([gluten, dairy])
+    vi.mocked(db.getMealFlagsInRange).mockResolvedValue(
+      [100, 300, 500, 700].map((m, i) => ({
+        flag_ids: i === 3 ? [] : [gluten.id],
+        id: `meal-${m}`,
+        time: atMinute(m),
+      })),
+    )
+    vi.mocked(db.getProductivity).mockResolvedValue([])
+    vi.mocked(locations.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([])
+    const points = (offset: number) =>
+      Array.from({ length: 300 }, (_, i) => [atMinute(i * 4 - 60), offset + ((i * 7) % 17)] as [Date, number])
+    vi.mocked(db.getTimeSeries).mockImplementation(async (_u: string, metric: string) =>
+      metric === 'heart_rate' ? points(60) : metric === 'stress_level' ? points(20) : points(40),
+    )
+
+    const { correlations } = await getHrvActivitiesCorrelation('testuser', 30)
+    const impact = await getActivityImpact(
+      'testuser',
+      gluten.id,
+      'meal_sensitivity',
+      30,
+      30,
+      undefined,
+      undefined,
+      undefined,
+      'exact',
+      [],
+      { tz: 'UTC' },
+    )
+
+    expect(correlations.meals.map((m) => [m.flag_id, m.flag_name, m.occurrences])).toEqual([
+      [gluten.id, 'gluten', 3],
+    ])
+    expect(impact.activity).toBe('gluten')
+    expect(impact.occurrences).toBe(3)
+    expect(correlations.meals[0].hrv_effect).toEqual(impact.hrv_effect)
   })
 
   test('a sample before the period but inside the window feeds the effect, not the baseline', async () => {

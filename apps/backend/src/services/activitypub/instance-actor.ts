@@ -44,7 +44,7 @@ export interface PublicTagIngest {
   /** The accepted follow whose tag actor is `actorUri`, else null. */
   followedTagActor: (actorUri: string) => Promise<{ tag: string; actor_uri: string } | null>
   upsertPublicTagPost: (input: PublicTagPostInput) => Promise<unknown>
-  removePublicTagAnnounce: (announceUri: string) => Promise<void>
+  removePublicTagAnnounce: (announceUri: string, actorUri: string) => Promise<void>
   deletePublicTagPost: (noteUri: string, actorUri: string) => Promise<unknown>
   /** A remote actor deleting themselves: every post of theirs goes. */
   deletePublicTagPostsByActor: (actorUri: string) => Promise<unknown>

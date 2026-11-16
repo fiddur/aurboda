@@ -1,4 +1,6 @@
+import { type TimelineDailyMetric, timelineDailyMetrics, type UserSettingsResponse } from '@aurboda/api-spec'
 import { useSignalEffect } from '@preact/signals'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
@@ -6,34 +8,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LegendCategory } from './legendCategories'
 import type { ChartItem, Orientation } from './types'
 
-import { BAR_BUCKET_NOMINAL_MS } from '../../utils/barWindows'
-import { aggregateBucketsAligned } from '../../utils/chart'
+import { updateUserSettings } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
-import { computeBarLayout, type BarSlot } from './barLayout'
 import { CommentPanel, type CommentPanelState } from './CommentPanel'
-import { drawActivitySparklines } from './drawActivitySparklines'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
+import { drawDailyMetricTracks, layoutDailyTracks } from './drawDailyMetricTracks'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
-import {
-  computeYScales,
-  drawMetricsTrack,
-  HR_COLOR,
-  HRV_COLOR,
-  LINE_CHUNK_ALIGNMENT,
-} from './drawMetricsTrack'
+import { barAggregatedBuckets, drawMetricsLane } from './drawMetricsLane'
+import { computeYScales, drawMetricsYAxes } from './drawMetricsTrack'
 import {
   buildMusicTooltipHtml,
   drawMusicSessions,
+  drawVerticalMusicSessions,
   getMergeGapMs,
   mergeScrobblesIntoSessions,
   MUSIC_STAFF_HEIGHT,
 } from './drawMusicStaff'
-import { drawScreentimeBars } from './drawScreentimeTrack'
-import { drawTrainingLoadTrack } from './drawTrainingLoadTrack'
 import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerticalHelpers'
 import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { formatTimelineTick } from './formatting'
+import { isMultiDaySpan, type RangePreset } from './rangePreset'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
 import { TimelineLegend } from './TimelineLegend'
@@ -42,8 +37,8 @@ import { useTimelineContextMenu } from './useTimelineContextMenu'
 import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
+import { layoutVerticalTracks, verticalTrackSpecs } from './verticalLayout'
 import { buildViewHash, getDefaultOrientation } from './viewHash'
-import { visibleBuckets } from './visibleBuckets'
 import './style.css'
 
 // eslint-disable-next-line complexity -- D3 visualization component
@@ -87,6 +82,10 @@ export const Timeline = () => {
     viewEnd,
     handleZoom,
     handleJumpDays,
+    handleStep,
+    handlePreset,
+    rangePreset,
+    navigationSeq,
     handleResetToToday,
     viewLabel,
     bucketSize,
@@ -127,10 +126,14 @@ export const Timeline = () => {
   const hiddenCategoriesRef = useRef<Set<LegendCategory>>(hiddenCategories)
   hiddenCategoriesRef.current = hiddenCategories
 
+  const dailyTracksShown =
+    orientation === 'horizontal' && isMultiDaySpan(effectiveViewStart, effectiveViewEnd)
+
   const data = useTimelineData({
     barBucketSize,
     bucketSize,
     collapseDepth,
+    dailyTracksShown,
     fetchEnd,
     fetchStart,
     fromDateKey: fromDate.value,
@@ -146,8 +149,9 @@ export const Timeline = () => {
     columnData,
     columns,
     commentNotes,
-    sparklineBuckets,
-    horizontalMetricBuckets,
+    dailyMetrics,
+    dailySeries,
+    metricBuckets,
     scrobbles,
     trainingLoadQuery,
     screentimeBucketedQuery,
@@ -174,6 +178,34 @@ export const Timeline = () => {
     const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategories, orientation)
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
   }, [hiddenCategories, orientation])
+
+  const queryClient = useQueryClient()
+  const dailyPickMutation = useMutation({
+    mutationFn: (picked: TimelineDailyMetric[]) => updateUserSettings({ timeline_daily_metrics: picked }),
+    onMutate: (picked) => {
+      queryClient.setQueryData<UserSettingsResponse>(['userSettings'], (prev) =>
+        prev ? { ...prev, timeline_daily_metrics: picked } : prev,
+      )
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['userSettings'] }),
+  })
+  const toggleDailyMetric = useCallback(
+    (metric: TimelineDailyMetric) => {
+      const next = timelineDailyMetrics.filter((m) =>
+        m === metric ? !dailyMetrics.includes(m) : dailyMetrics.includes(m),
+      )
+      dailyPickMutation.mutate(next)
+    },
+    [dailyMetrics, dailyPickMutation],
+  )
+
+  const handleRangePreset = useCallback(
+    (preset: RangePreset) => {
+      if (preset !== 'day') setOrientation('horizontal')
+      handlePreset(preset)
+    },
+    [handlePreset],
+  )
 
   const toggleCategory = useCallback((cat: LegendCategory) => {
     setHiddenCategories((prev) => {
@@ -204,12 +236,15 @@ export const Timeline = () => {
 
   const drawRef = useRef<((scale: d3.ScaleTime<number, number>) => void) | null>(null)
   const hAxisGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  const hYAxesGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
+  const hDailyLabelsGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null)
 
   const scaffoldOrientationRef = useRef<Orientation | null>(null)
   const scaffoldDimsRef = useRef<{ w: number; h: number } | null>(null)
   const scaffoldLayoutKeyRef = useRef<string>('')
   /** Tracks the fetch range the base scale was built for. */
   const scaffoldFetchKeyRef = useRef<string>('')
+  const scaffoldNavigationSeqRef = useRef<number>(navigationSeq)
 
   const todayKey = format(new Date(), 'yyyy-MM-dd')
   const baseScaleDomain = useMemo(
@@ -275,12 +310,37 @@ export const Timeline = () => {
     [],
   )
 
+  const showTooltipHtml = useCallback((event: MouseEvent, html: string) => {
+    if (!tooltipRef.current || !containerRef.current) return
+    const tip = tooltipRef.current
+    const containerRect = containerRef.current.getBoundingClientRect()
+    tip.innerHTML = html
+    tip.style.display = 'block'
+    const x = event.clientX - containerRect.left + 12
+    const yRaw = event.clientY - containerRect.top - 10
+    const tipH = tip.scrollHeight
+    const yMax = containerRect.height - tipH - 4
+    const y = Math.min(yRaw, Math.max(yMax, 4))
+    tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
+    tip.style.top = `${y}px`
+  }, [])
+
+  const showVerticalMusicTrack = scrobbles.length > 0 && !hiddenCategories.has('music')
+  const showVerticalMetricsTrack = !hiddenCategories.has('metrics')
+  const verticalSlots = useMemo(
+    () =>
+      layoutVerticalTracks(
+        verticalTrackSpecs(columns, showVerticalMusicTrack, showVerticalMetricsTrack),
+        Math.max(0, containerSize.w - VERTICAL_MARGIN.left - VERTICAL_MARGIN.right),
+      ),
+    [columns, showVerticalMusicTrack, showVerticalMetricsTrack, containerSize.w],
+  )
+
   // Scaffold refs: SVG groups that persist across data changes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type SvgGroup = d3.Selection<any, unknown, null, undefined>
   const scaffoldGroupRef = useRef<SvgGroup | null>(null)
   const scaffoldChartGroupRef = useRef<SvgGroup | null>(null)
-  const scaffoldDefsRef = useRef<SvgGroup | null>(null)
 
   // Resize counter — incremented by ResizeObserver to trigger the render effect.
   const [resizeKey, setResizeKey] = useState(0)
@@ -351,7 +411,8 @@ export const Timeline = () => {
       dims.w !== containerWidth ||
       dims.h !== containerHeight ||
       scaffoldLayoutKeyRef.current !== layoutKey ||
-      scaffoldFetchKeyRef.current !== fetchKey
+      scaffoldFetchKeyRef.current !== fetchKey ||
+      scaffoldNavigationSeqRef.current !== navigationSeq
 
     if (needsSetup) {
       const svg = d3.select(svgRef.current)
@@ -375,7 +436,6 @@ export const Timeline = () => {
 
         scaffoldGroupRef.current = g
         scaffoldChartGroupRef.current = chartGroup
-        scaffoldDefsRef.current = defs
 
         const baseScale = d3.scaleTime().domain(baseScaleDomain).range([0, chartHeight])
         attachZoom(baseScale, effectiveViewStart, effectiveViewEnd, chartHeight)
@@ -478,36 +538,8 @@ export const Timeline = () => {
 
         scaffoldGroupRef.current = outerG
         scaffoldChartGroupRef.current = chartGroup
-        scaffoldDefsRef.current = defs
-
-        const metricBuckets = horizontalMetricBuckets
-        const metricsTrackBottom = trackMetricsS + metricsTrackHeightS
-        const barAggBuckets =
-          metricBuckets.length >= 2 &&
-          metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() <
-            BAR_BUCKET_NOMINAL_MS[barBucketSize]
-            ? aggregateBucketsAligned(metricBuckets, barBucketSize)
-            : metricBuckets
-        const metricsYScales =
-          metricBuckets.length > 0
-            ? computeYScales(metricBuckets, trackMetricsS, metricsTrackBottom, barAggBuckets)
-            : null
-
-        if (showMetricsTrackS && metricsYScales) {
-          outerG
-            .append('g')
-            .attr('class', 'metrics-y-axis')
-            .call(d3.axisLeft(metricsYScales.yHr).ticks(4))
-            .selectAll('text')
-            .style('fill', HR_COLOR)
-          outerG
-            .append('g')
-            .attr('class', 'metrics-y-axis')
-            .attr('transform', `translate(${chartWidth},0)`)
-            .call(d3.axisRight(metricsYScales.yHrv).ticks(4))
-            .selectAll('text')
-            .style('fill', HRV_COLOR)
-        }
+        hYAxesGroupRef.current = outerG.append('g').attr('class', 'metrics-y-axes')
+        hDailyLabelsGroupRef.current = outerG.append('g').attr('class', 'daily-metric-labels')
 
         const hFetch = fetchWindowFromRange({ from: fromDate.value, to: toDate.value })
         const baseScale = d3.scaleTime().domain([hFetch.start, hFetch.end]).range([0, chartWidth])
@@ -518,19 +550,38 @@ export const Timeline = () => {
       scaffoldDimsRef.current = { w: containerWidth, h: containerHeight }
       scaffoldLayoutKeyRef.current = layoutKey
       scaffoldFetchKeyRef.current = fetchKey
+      scaffoldNavigationSeqRef.current = navigationSeq
     }
 
     const chartGroup = scaffoldChartGroupRef.current
     const g = scaffoldGroupRef.current
-    const defs = scaffoldDefsRef.current
     if (!chartGroup || !g) return
 
     if (orientation === 'vertical') {
       const margin = VERTICAL_MARGIN
       const chartWidth = containerWidth - margin.left - margin.right
-      const colWidth = chartWidth / columns.length
+      const chartHeight = Math.max(200, containerHeight - margin.top - margin.bottom)
       const colGap = 4
       const colPadding = 2
+
+      const slots = layoutVerticalTracks(
+        verticalTrackSpecs(columns, showVerticalMusicTrack, showVerticalMetricsTrack),
+        chartWidth,
+      )
+      const slotOf = (id: string) => slots.find((slot) => slot.id === id)
+      const musicSlot = slotOf('Music')
+      const metricsSlot = slotOf('Metrics')
+      const metricsTrackWidth = metricsSlot ? Math.max(0, metricsSlot.width - colGap * 2) : 0
+      const metricsTrackRight = metricsSlot ? metricsSlot.x + metricsSlot.width - colGap : 0
+      const metricsYScales =
+        metricsSlot && metricBuckets.length > 0
+          ? computeYScales(
+              metricBuckets,
+              0,
+              metricsTrackWidth,
+              barAggregatedBuckets(metricBuckets, barBucketSize),
+            )
+          : null
 
       // eslint-disable-next-line complexity -- D3 vertical layout draw loop
       drawRef.current = (currentYScale: d3.ScaleTime<number, number>) => {
@@ -615,21 +666,50 @@ export const Timeline = () => {
             .text(format(sep, separatorLabelFormat))
         }
 
-        for (let i = 1; i < columns.length; i++) {
+        for (const slot of slots.slice(1)) {
           chartGroup
             .append('line')
-            .attr('x1', i * colWidth)
-            .attr('x2', i * colWidth)
+            .attr('x1', slot.x)
+            .attr('x2', slot.x)
             .attr('y1', currentYScale.range()[0]!)
             .attr('y2', currentYScale.range()[1]!)
             .attr('stroke', 'currentColor')
             .attr('stroke-opacity', 0.08)
         }
 
+        if (metricsSlot) {
+          // rotate(90) maps lane (x, y) to screen (-y, x): time runs down, and with the
+          // origin at the track's right edge, larger values land further right.
+          const lane = chartGroup
+            .append('g')
+            .attr('class', 'metrics-lane-vertical')
+            .attr('transform', `translate(${metricsTrackRight},0) rotate(90)`)
+          drawMetricsLane({
+            barBucketSize,
+            chartGroup: lane,
+            chartWidth: chartHeight,
+            domainEndMs: domainEnd.getTime(),
+            domainStartMs: domainStart.getTime(),
+            hidden: hiddenCategories,
+            hideTooltip,
+            metricBuckets,
+            outerG: lane,
+            pixelsPerHour,
+            screentimeBuckets: screentimeBucketedQuery.data ?? [],
+            screentimeCategories: screentimeCategoriesQuery.data ?? [],
+            showTooltipHtml,
+            trackHeight: metricsTrackWidth,
+            trackY: 0,
+            trainingLoad: null,
+            xScale: currentYScale,
+            yScales: metricsYScales,
+          })
+        }
+
         drawColumnItems(
           chartGroup,
           columnData,
-          colWidth,
+          slotOf,
           colGap,
           colPadding,
           currentYScale,
@@ -638,34 +718,20 @@ export const Timeline = () => {
           handleCommentClick,
         )
 
-        const showSparkHR = !hiddenCategories.has('hr')
-        const showSparkHRV = !hiddenCategories.has('hrv')
-        const showSparkStress = !hiddenCategories.has('stress')
-        if (defs && sparklineBuckets.length > 0 && (showSparkHR || showSparkHRV || showSparkStress)) {
-          const getItemRect = (item: ChartItem): { x: number; width: number } | undefined => {
-            for (let ci = 0; ci < columnData.length; ci++) {
-              const cd = columnData[ci]!
-              const found = cd.items.find((packed) => packed.item === item)
-              if (found) {
-                const cx = ci * colWidth + colGap
-                const usable = colWidth - colGap * 2
-                const lanes = Math.max(cd.laneCount, 1)
-                const lw = (usable - (lanes - 1) * colPadding) / lanes
-                return { width: lw, x: cx + found.lane * (lw + colPadding) }
-              }
-            }
-            return undefined
-          }
-          drawActivitySparklines(
+        if (musicSlot) {
+          const domainStartMs = domainStart.getTime()
+          const domainEndMs = domainEnd.getTime()
+          const sessions = mergeScrobblesIntoSessions(scrobbles, getMergeGapMs(pixelsPerHour)).filter(
+            (session) => session.end.getTime() >= domainStartMs && session.start.getTime() <= domainEndMs,
+          )
+          drawVerticalMusicSessions(
             chartGroup,
-            defs,
-            chartItems,
-            sparklineBuckets,
+            sessions,
             currentYScale,
-            showSparkHR,
-            showSparkHRV,
-            showSparkStress,
-            getItemRect,
+            musicSlot.x + colGap,
+            Math.max(2, musicSlot.width - colGap * 2),
+            showMusicTooltip,
+            hideTooltip,
           )
         }
 
@@ -704,20 +770,26 @@ export const Timeline = () => {
       nextY += metricsTrackHeight
       const trackPlaces = nextY
 
-      const metricBuckets = horizontalMetricBuckets
       const trainingLoadData = trainingLoadQuery.data ?? null
 
-      const metricsTrackBottom = trackMetrics + metricsTrackHeight
-      const barAggBuckets =
-        metricBuckets.length >= 2 &&
-        metricBuckets[1]!.start.getTime() - metricBuckets[0]!.start.getTime() <
-          BAR_BUCKET_NOMINAL_MS[barBucketSize]
-          ? aggregateBucketsAligned(metricBuckets, barBucketSize)
-          : metricBuckets
+      const dailyLayout = layoutDailyTracks(trackMetrics, metricsTrackHeight, dailySeries.length)
+      const metricsMainHeight = dailyLayout.mainHeight
+      const metricsTrackBottom = trackMetrics + metricsMainHeight
       const metricsYScales =
         metricBuckets.length > 0
-          ? computeYScales(metricBuckets, trackMetrics, metricsTrackBottom, barAggBuckets)
+          ? computeYScales(
+              metricBuckets,
+              trackMetrics,
+              metricsTrackBottom,
+              barAggregatedBuckets(metricBuckets, barBucketSize),
+            )
           : null
+
+      // Redrawn on every data change rather than in the scaffold: the HRV axis follows the data,
+      // and the scaffold is usually built before the metrics arrive.
+      if (hYAxesGroupRef.current) {
+        drawMetricsYAxes(hYAxesGroupRef.current, showMetricsTrackH ? metricsYScales : null, chartWidth)
+      }
 
       const allActivityLaneItems = chartItems.filter(
         (i) => i.column === 'Activity' || i.column === 'Screen Time',
@@ -939,106 +1011,39 @@ export const Timeline = () => {
           }
         }
 
-        const showHR = !hiddenCategories.has('hr') && showMetricsTrackH
-        const showHRV = !hiddenCategories.has('hrv') && showMetricsTrackH
-        const showStress = !hiddenCategories.has('stress') && showMetricsTrackH
-        const showSteps = !hiddenCategories.has('steps') && showMetricsTrackH
-        const showCalories = !hiddenCategories.has('calories') && showMetricsTrackH
-        const showTL = !hiddenCategories.has('training_load') && showMetricsTrackH
-        const showScreentimeH = !hiddenCategories.has('screen_time_h') && showMetricsTrackH
-        const screentimeBuckets = screentimeBucketedQuery.data ?? []
-        const screentimeHasData = screentimeBuckets.length > 0
+        if (showMetricsTrackH) {
+          drawMetricsLane({
+            barBucketSize,
+            chartGroup,
+            chartWidth,
+            domainEndMs,
+            domainStartMs,
+            hidden: hiddenCategories,
+            hideTooltip,
+            metricBuckets,
+            outerG,
+            pixelsPerHour,
+            screentimeBuckets: screentimeBucketedQuery.data ?? [],
+            screentimeCategories: screentimeCategoriesQuery.data ?? [],
+            showTooltipHtml,
+            trackHeight: metricsMainHeight,
+            trackY: trackMetrics,
+            trainingLoad: trainingLoadData,
+            xScale: currentXScale,
+            yScales: metricsYScales,
+          })
+        }
 
-        const barSlots: BarSlot[] = [
-          { id: 'fatigue', visible: showTL && !!trainingLoadData },
-          { id: 'impulse', visible: showTL && !!trainingLoadData },
-          { id: 'screentime', visible: showScreentimeH && screentimeHasData },
-          { id: 'steps', visible: showSteps },
-          { id: 'calories', visible: showCalories },
-        ]
-        const barLayout = computeBarLayout(barSlots)
-
-        if (showMetricsTrackH && (metricsYScales || (showTL && trainingLoadData) || screentimeHasData)) {
-          drawMetricsTrack({
-            buckets: visibleBuckets(
-              metricBuckets,
-              domainStartMs,
-              domainEndMs,
-              barBucketSize,
-              LINE_CHUNK_ALIGNMENT,
-            ),
+        if (hDailyLabelsGroupRef.current) {
+          drawDailyMetricTracks({
             chartGroup,
             chartWidth,
             hideTooltip,
-            outerG,
-            pixelsPerHour,
-            showCalories,
-            showHR,
-            showHRV,
-            showSteps,
-            showStress,
-            showTooltipHtml: (event: MouseEvent, html: string) => {
-              if (!tooltipRef.current || !containerRef.current) return
-              const tip = tooltipRef.current
-              const containerRect = containerRef.current.getBoundingClientRect()
-              tip.innerHTML = html
-              tip.style.display = 'block'
-              const x = event.clientX - containerRect.left + 12
-              const yRaw = event.clientY - containerRect.top - 10
-              const tipH = tip.scrollHeight
-              const yMax = containerRect.height - tipH - 4
-              const y = Math.min(yRaw, Math.max(yMax, 4))
-              tip.style.left = `${Math.min(x, containerRect.width - 320)}px`
-              tip.style.top = `${y}px`
-            },
-            trackHeight: metricsTrackHeight,
-            trackY: trackMetrics,
-            ...(metricsYScales
-              ? { yScales: metricsYScales }
-              : { yScales: computeYScales([], trackMetrics, trackMetrics + metricsTrackHeight) }),
-            xScale: currentXScale,
-            barBucketSize,
-            barLayout,
-            caloriesSlotId: 'calories',
-            stepsSlotId: 'steps',
-            ...(showScreentimeH && screentimeHasData
-              ? { screentimeBuckets, screentimeCategories: screentimeCategoriesQuery.data ?? [] }
-              : {}),
-            ...(showTL && trainingLoadData
-              ? {
-                  trainingLoadPoints: trainingLoadData.points,
-                  trainingLoadWorkouts: trainingLoadData.workouts,
-                  trainingLoadZones: trainingLoadData.zones ?? undefined,
-                }
-              : {}),
-          })
-        }
-
-        if (showMetricsTrackH && showTL && trainingLoadData) {
-          drawTrainingLoadTrack({
-            barLayout,
-            bootstrapping: trainingLoadData.bootstrapping,
-            chartGroup,
-            fatigueSlotId: 'fatigue',
-            impulseSlotId: 'impulse',
-            points: trainingLoadData.points,
-            trackHeight: metricsTrackHeight,
-            trackY: trackMetrics,
-            workouts: trainingLoadData.workouts,
-            xScale: currentXScale,
-            zones: trainingLoadData.zones ?? undefined,
-          })
-        }
-
-        if (showMetricsTrackH && showScreentimeH && screentimeHasData) {
-          drawScreentimeBars({
-            barLayout,
-            buckets: screentimeBuckets,
-            categories: screentimeCategoriesQuery.data ?? [],
-            chartGroup,
-            slotId: 'screentime',
-            trackHeight: metricsTrackHeight,
-            trackY: trackMetrics,
+            labelGroup: hDailyLabelsGroupRef.current,
+            labelX: -margin.left + 4,
+            rows: showMetricsTrackH ? dailyLayout.rows : [],
+            series: showMetricsTrackH ? dailySeries : [],
+            showTooltipHtml,
             xScale: currentXScale,
           })
         }
@@ -1077,19 +1082,23 @@ export const Timeline = () => {
     handleCommentClick,
     effectiveViewEnd,
     effectiveViewStart,
-    sparklineBuckets,
     hiddenCategories,
-    horizontalMetricBuckets,
+    metricBuckets,
     scrobbles,
     activityItems,
     showTooltip,
     hideTooltip,
     showMusicTooltip,
+    showTooltipHtml,
+    showVerticalMusicTrack,
+    showVerticalMetricsTrack,
     trainingLoadQuery.data,
     screentimeBucketedQuery.data,
     screentimeCategoriesQuery.data,
     barBucketSize,
     attachZoom,
+    dailySeries,
+    navigationSeq,
   ])
 
   return (
@@ -1100,6 +1109,9 @@ export const Timeline = () => {
         isFullscreen={isFullscreen}
         setIsFullscreen={setIsFullscreen}
         handleJumpDays={handleJumpDays}
+        handleStep={handleStep}
+        rangePreset={rangePreset}
+        onPreset={handleRangePreset}
         handleResetToToday={handleResetToToday}
         viewLabel={viewLabel}
         isFetching={isFetching}
@@ -1114,6 +1126,12 @@ export const Timeline = () => {
         setLegendCollapsed={setLegendCollapsed}
         legendRef={legendRef}
         screentimeSubEntries={screentimeSubEntries}
+        dailyPicker={{
+          options: timelineDailyMetrics,
+          picked: dailyMetrics,
+          shown: dailyTracksShown,
+          toggle: toggleDailyMetric,
+        }}
       />
 
       {errorSources.length > 0 && (
@@ -1122,9 +1140,14 @@ export const Timeline = () => {
 
       {orientation === 'vertical' && !isInitialLoad && (
         <div class="timeline-column-headers" style={{ paddingLeft: `${VERTICAL_MARGIN.left}px` }}>
-          {columns.map((col, i) => (
-            <div key={col} style={{ flex: 1, paddingLeft: i === 0 ? '0' : '4px', textAlign: 'center' }}>
-              {col}
+          {verticalSlots.map((slot) => (
+            <div
+              key={slot.id}
+              class="timeline-column-header"
+              style={{ flex: `0 0 ${slot.width}px`, width: `${slot.width}px` }}
+              title={slot.id}
+            >
+              {slot.id === 'Music' ? '♪' : slot.id}
             </div>
           ))}
         </div>

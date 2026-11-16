@@ -6,7 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
-import { registerAuthRoutes } from './api/auth-routes.ts'
+import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
 import { registerOAuthRoutes } from './api/oauth-routes.ts'
@@ -48,6 +48,8 @@ import {
   listUnenrichedAurbodaEntries,
   listUserNames,
   loginToUserDb,
+  setUserPassword,
+  getWebAuthnCredentialsForUser,
   markChallengeResultPublished,
   markEnrichTransientFailure,
   migrateAllUsers,
@@ -71,6 +73,7 @@ import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/ga
 import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
 import {
+  chooseGarminSource,
   garminRoutedClient,
   getGarminConnections,
   hasGarminConnection,
@@ -91,8 +94,11 @@ import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/act
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
+import { startVerification } from './services/account-email.ts'
 import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
 import { backfillAccounts, createAccountPlans, readBillingSettings } from './services/account-plan.ts'
+import { createAccountRecovery } from './services/account-recovery.ts'
+import { createAccount, isUsernameTaken } from './services/account-signup.ts'
 import {
   deliverFeedArticlePost,
   deliverFeedArticleUpdate,
@@ -115,6 +121,7 @@ import {
   toDeliverableExercise,
   toDeliverableReply,
 } from './services/activitypub/deliver.ts'
+import { federationDelivery } from './services/activitypub/delivery-queue.ts'
 import {
   buildActorPerson,
   createFeedFederation,
@@ -152,6 +159,7 @@ import {
 import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
+import { createMailer } from './services/email.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
 import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
@@ -180,6 +188,7 @@ import {
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
+import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
 import { notificationStore, notifier } from './services/notifications.ts'
 import {
@@ -187,8 +196,12 @@ import {
   officialRemoteHandles,
   readOfficialFeedSetting,
 } from './services/official-feed.ts'
+import { allowHttpIssuer, createDiscoveryCache, createOidcClient } from './services/oidc-client.ts'
+import { createOidcProviderAdmin, oidcRedirectUri } from './services/oidc-providers.ts'
+import { createOidcService } from './services/oidc.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
+import { createPublicTagModeration } from './services/public-tag-moderation.ts'
 import { createPublicTagPruneQueue } from './services/public-tag-prune-queue.ts'
 import {
   applyInstanceTagFollowsAtStartup,
@@ -200,7 +213,7 @@ import {
   readPublicTagPages,
   readPublicTagRetentionDays,
 } from './services/public-tags.ts'
-import { accountUploadLimiter } from './services/rate-limit.ts'
+import { accountUploadLimiter, createTokenBucketLimiter, RATE_LIMITS } from './services/rate-limit.ts'
 import {
   createRelayActions,
   createRelayInboxHooks,
@@ -622,6 +635,61 @@ const main = async () => {
   })
   mountRateLimits(httpd, rateLimits)
 
+  const mailer = createMailer({ centralDb })
+  const accountRecovery = createAccountRecovery({
+    audit: (user, message) => auditInfo(user, 'auth', message),
+    centralDb,
+    clearFailedLogins: rateLimits.failedLogins.clear,
+    createSessionToken: (user) => auth.createToken(user),
+    isValidUsername,
+    mailer,
+    recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
+    setPassword: async (user, password) => {
+      await setUserPassword(userDb, user, password)
+      await centralDb.setPasswordLogin(user, true)
+    },
+    verificationLimiter: createTokenBucketLimiter(RATE_LIMITS.verification_mails, Date.now),
+    webHost,
+  })
+  const accountEmail = {
+    centralDb,
+    emailEnabled: mailer.isConfigured,
+    sendVerification: accountRecovery.sendVerification,
+  }
+  const startEmailVerification = (user: string) => startVerification(accountEmail, user)
+
+  const loginMethods = createLoginMethodCounter({
+    countOidcLinks: centralDb.countOidcLinks,
+    countPasskeys: async (user) => (await getWebAuthnCredentialsForUser(user)).length,
+    getPasswordLogin: centralDb.getPasswordLogin,
+  })
+  const oidcClient = createOidcClient({ allowHttp: allowHttpIssuer() })
+  const oidcRedirect = oidcRedirectUri(apiBaseUrl)
+  const signupDeps = accountSignupDeps({ auth, centralDb, invitationAuth, startEmailVerification, userDb })
+  const oidc = {
+    providers: createOidcProviderAdmin({
+      allowHttp: allowHttpIssuer(),
+      loginMethods,
+      redirectUri: oidcRedirect,
+      store: centralDb,
+      verifyIssuer: async (issuer, clientId, clientSecret) => {
+        await oidcClient.discover(issuer, clientId, clientSecret)
+      },
+    }),
+    service: createOidcService({
+      createAccount: (input) => createAccount(signupDeps, input),
+      createSessionToken: (user) => auth.createToken(user),
+      discover: createDiscoveryCache(oidcClient),
+      invitationAuth,
+      loginMethods,
+      redirectUri: oidcRedirect,
+      startEmailVerification,
+      store: centralDb,
+      usernameTaken: (user) => isUsernameTaken(signupDeps, user),
+      webHost,
+    }),
+  }
+
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
 
@@ -633,6 +701,8 @@ const main = async () => {
     void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
   }
 
+  const federationQueueAbort = new AbortController()
+  const queuedDelivery = await federationDelivery(boss, centralDb)
   // ActivityPub federation object (one instance, shared by the actor mount, the
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
@@ -656,7 +726,13 @@ const main = async () => {
       relays: createRelayInboxHooks(centralDb),
       tagFollows: createPublicTagInboxHooks(centralDb),
     },
+    queuedDelivery ?? undefined,
   )
+  if (queuedDelivery != null) {
+    feedFederation
+      .startQueue(undefined, { signal: federationQueueAbort.signal })
+      .catch((error: unknown) => console.error('⚠️ Federation delivery queue stopped:', error))
+  }
   const backfill = createTimelineBackfiller(feedFederation, webHost)
   const feedDeps = {
     apiBaseUrl,
@@ -671,6 +747,10 @@ const main = async () => {
     tagActorHost: () => readTagActorHost(centralDb),
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
+  const publicTagModeration = createPublicTagModeration({
+    ownHost: new URL(webHost).hostname,
+    store: centralDb,
+  })
   const publicTagActions = createPublicTagActions({
     federation: feedFederation,
     origin: webHost,
@@ -945,7 +1025,7 @@ const main = async () => {
       sourceEnrichQueue = await createSourceEnrichQueue(boss, {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
         garminDetailPending: async (user, garminActivityId) => {
-          if (!(await getGarminConnections(user)).session) return false
+          if (chooseGarminSource('activityDetail', await getGarminConnections(user)) === null) return false
           const row = await findActivityByExternalId(
             user,
             'garmin',
@@ -1089,6 +1169,7 @@ const main = async () => {
     '/mcp',
     createMcpRouter(auth, {
       accountDeleter,
+      accountEmail,
       accountGate,
       accountPlans,
       adminUsers,
@@ -1097,10 +1178,12 @@ const main = async () => {
       runNotificationAction: notificationActionRunner,
       skipAutoshare: skipAutoshareActivity,
       relayActions,
+      oidcProviders: oidc.providers,
       postUpdateResender,
       centralDb,
       previewArticle,
       publicTagActions,
+      publicTagModeration,
       requestDumpLink: dataExport.requestDumpLink,
       deductionQueue: deductionQueue ?? undefined,
       discoverChallenges,
@@ -1176,6 +1259,7 @@ const main = async () => {
     failedLogins: rateLimits.failedLogins,
     invitationAuth,
     userDb,
+    startEmailVerification,
     unauthorized,
     userExists: async (username) => (await listUserNames(userDb)).includes(username),
   })
@@ -1270,6 +1354,13 @@ const main = async () => {
 
   mountRestRouters({
     accountDeleter,
+    accountEmail,
+    accountRecovery,
+    adminTestEmail: {
+      mailer,
+      testLimiter: createTokenBucketLimiter(RATE_LIMITS.admin_test_mails, Date.now),
+    },
+    startEmailVerification,
     accountPlans,
     activityNotifier,
     autosharePreviewDeps: autoshareDeps,
@@ -1302,12 +1393,15 @@ const main = async () => {
     onProfileChanged,
     ouraWebhookManager,
     publicTagActions,
+    publicTagModeration,
     reactionActions,
     retroEnrichTimeline,
     syncProvider,
     timelineHub,
     userDb,
     webAuthn,
+    oidc,
+    loginMethods,
     webHost,
     webIndexPath,
     wellKnown,
@@ -1351,6 +1445,7 @@ const main = async () => {
     now: () => Date.now(),
     startTimer: startUnrefTimer,
     stopJobs: async () => {
+      federationQueueAbort.abort()
       await boss?.stop({ graceful: true, timeout: JOB_STOP_TIMEOUT_MS })
     },
     stopTimers: () => {

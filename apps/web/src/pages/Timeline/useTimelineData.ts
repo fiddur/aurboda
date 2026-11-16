@@ -1,8 +1,10 @@
 import {
+  defaultTimelineDailyMetrics,
   isLocationVisitActivity,
   isMusicScrobbleActivity,
   type Note,
   type ScreentimeCategory,
+  type TimelineDailyMetric,
 } from '@aurboda/api-spec'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -27,6 +29,7 @@ import { browserTz } from '../../state/api/client'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
 import {
+  ACTIVITY_LANE_CATEGORIES,
   buildActivityColumnItems,
   collapseToParentType,
   EXCLUDED_ACTIVITY_PREFIXES,
@@ -40,23 +43,25 @@ import {
   categorizeOtherActivities,
   categorizeScreentimeActivities,
 } from './categorize'
-import { categorizeMusic } from './categorizeMusic'
 import { activityColors, getExerciseColor } from './colors'
 import { buildCommentItems } from './commentItems'
-import { parseBucketedData } from './drawActivitySparklines'
+import {
+  dailyPointsFromBuckets,
+  dailySleepPoints,
+  type DailySeries,
+  isBucketedDailyMetric,
+} from './drawDailyMetricTracks'
 import { padFetchWindow } from './fetchRange'
 import { getExerciseTypeName } from './formatting'
 import {
-  BASE_COLUMNS,
   buildCategoryMatchers,
   buildScreentimeSubEntries,
+  ITEM_COLUMNS,
   type LegendCategory,
   type ScreentimeSubEntry,
 } from './legendCategories'
 import { TIMELINE_METRICS, TIMELINE_SLEEP_METRICS } from './timelineMetrics'
 import { buildSleepDetails, type SleepMetricsByDate } from './tooltipBuilder'
-
-const ACTIVITY_CATEGORIES = new Set(['sleep_rest', 'exercise', 'meditation', 'wellness'])
 
 /**
  * The Timeline now fetches every activity-sourced track in a single
@@ -75,8 +80,7 @@ export interface TimelineData {
   activityItems: ChartItem[]
   columnData: { column: Column; items: { item: ChartItem; lane: number }[]; laneCount: number }[]
   columns: Column[]
-  sparklineBuckets: ReturnType<typeof parseBucketedData>
-  horizontalMetricBuckets: ReturnType<typeof parseBucketedResponse>
+  metricBuckets: ReturnType<typeof parseBucketedResponse>
   trainingLoadQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchTrainingLoad>>>>
   screentimeBucketedQuery: ReturnType<typeof useQuery<Awaited<ReturnType<typeof fetchScreentimeBucketed>>>>
   screentimeCategoriesQuery: ReturnType<typeof useQuery<ScreentimeCategory[]>>
@@ -86,6 +90,10 @@ export interface TimelineData {
   hasLastFm: boolean
   /** Dynamic screentime sub-toggles to render in the legend. */
   screentimeSubEntries: ScreentimeSubEntry[]
+  /** The user's picked daily metrics, in the order they are drawn. */
+  dailyMetrics: TimelineDailyMetric[]
+  /** One series per picked daily metric; empty while the daily tracks are off. */
+  dailySeries: DailySeries[]
 }
 
 export interface UseTimelineDataOptions {
@@ -102,6 +110,8 @@ export interface UseTimelineDataOptions {
   splitAbutting: boolean
   /** Hierarchy walk depth: 0=no walk, 1=one hop, Infinity=walk to root. */
   collapseDepth: number
+  /** Whether the daily metric tracks are drawn: a span over three days in the horizontal layout. */
+  dailyTracksShown: boolean
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -116,6 +126,7 @@ export const useTimelineData = ({
   mergeGapMs,
   splitAbutting,
   collapseDepth,
+  dailyTracksShown,
 }: UseTimelineDataOptions): TimelineData => {
   const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
   const { data: activityTypeDefs = [] } = useQuery({
@@ -141,7 +152,10 @@ export const useTimelineData = ({
   })
 
   const screentimeCategoriesQuery = useQuery<ScreentimeCategory[]>({
-    enabled: !hiddenCategories.has('activity') && !hiddenCategories.has('screentime'),
+    // Colours the screen time blocks and bars, and keeps screen time types out of the Activity column.
+    enabled:
+      (!hiddenCategories.has('activity') && !hiddenCategories.has('screentime')) ||
+      (!hiddenCategories.has('metrics') && !hiddenCategories.has('screen_time_h')),
     queryFn: fetchScreentimeCategories,
     queryKey: ['screentime-categories'],
     staleTime: 30 * 60 * 1000,
@@ -160,6 +174,18 @@ export const useTimelineData = ({
     placeholderData: keepPreviousData,
     queryFn: () => fetchBucketedMetrics(paddedStart, paddedEnd, TIMELINE_METRICS, bucketSize),
     queryKey: ['timeline-bucketed-metrics', fromDateKey, toDateKey, bucketSize],
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const dailyMetrics = settingsQuery.data?.timeline_daily_metrics ?? defaultTimelineDailyMetrics
+  const dailyTracksOn = dailyTracksShown && !hiddenCategories.has('metrics') && dailyMetrics.length > 0
+  const dailyBucketedMetrics = dailyMetrics.filter(isBucketedDailyMetric)
+  const dailyMetricsQuery = useQuery({
+    enabled: dailyTracksOn && dailyBucketedMetrics.length > 0,
+    placeholderData: keepPreviousData,
+    // Daily buckets are laid from `start`, so it must be a local midnight: the unpadded window.
+    queryFn: () => fetchBucketedMetrics(fetchStart, fetchEnd, dailyBucketedMetrics, '1d'),
+    queryKey: ['timeline-daily-metrics', fromDateKey, toDateKey, dailyBucketedMetrics.join(',')],
     staleTime: 5 * 60 * 1000,
   })
 
@@ -256,7 +282,7 @@ export const useTimelineData = ({
   // one "exercise" bar rather than a comb of sub-type slivers.
   const activities = useMemo(() => {
     const filtered = allActivities.filter((a) =>
-      ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
+      ACTIVITY_LANE_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other'),
     )
     return collapseToParentType(filtered, typeDefsMap, mergeGapMs, collapseDepth, { splitAbutting })
   }, [allActivities, categoryByType, collapseDepth, typeDefsMap, mergeGapMs, splitAbutting])
@@ -270,7 +296,7 @@ export const useTimelineData = ({
     () =>
       allActivities.filter(
         (a) =>
-          !ACTIVITY_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other') &&
+          !ACTIVITY_LANE_CATEGORIES.has(categoryByType.get(a.activity_type) ?? 'other') &&
           a.activity_type !== 'screentime' &&
           !screentimeDerivedTypes.has(a.activity_type),
       ),
@@ -293,7 +319,7 @@ export const useTimelineData = ({
   //   1. Legacy `screentime` umbrella activities (pre-derived-types data).
   //   2. Per-category derived types (e.g. `programming`, `slack`) — present
   //      whenever the user has screentime categories with linked types.
-  // Both render in the Screen Time column. Legacy spans merge by
+  // Both render as blocks in the horizontal Activity lane. Legacy spans merge by
   // `category_path` (their activity_type is the same umbrella for every
   // category, so without that discriminator they'd collapse into one bar).
   // Derived types feed through `collapseToParentType` so the same hierarchy
@@ -351,18 +377,21 @@ export const useTimelineData = ({
     return itemIconsQuery.data ?? {}
   }, [itemIconsQuery.data])
 
-  const musicItems = useMemo(() => (hasLastFm ? categorizeMusic(scrobbles) : []), [hasLastFm, scrobbles])
-  const showMusicColumn = musicItems.length > 0
-
-  const sparklineBuckets = useMemo(
-    () => parseBucketedData(bucketedMetricsQuery.data),
-    [bucketedMetricsQuery.data],
-  )
-
-  const horizontalMetricBuckets = useMemo(
+  const metricBuckets = useMemo(
     () => parseBucketedResponse(bucketedMetricsQuery.data),
     [bucketedMetricsQuery.data],
   )
+
+  const dailySeries = useMemo<DailySeries[]>(() => {
+    if (!dailyTracksOn) return []
+    const buckets = parseBucketedResponse(dailyMetricsQuery.data)
+    return dailyMetrics.map((metric) => ({
+      metric,
+      points: isBucketedDailyMetric(metric)
+        ? dailyPointsFromBuckets(buckets, metric)
+        : dailySleepPoints(activitiesQuery.data ?? []),
+    }))
+  }, [dailyTracksOn, dailyMetrics, dailyMetricsQuery.data, activitiesQuery.data])
 
   const uniquePlaceNames = useMemo(
     () => [...new Set(places.map((p) => p.region))].filter(Boolean).sort(),
@@ -400,12 +429,6 @@ export const useTimelineData = ({
     })
   }, [secondaryActivities, activityItems])
 
-  // Comments sit last so the 💬 column is the rightmost one in vertical mode.
-  const allColumns: Column[] = useMemo(
-    () => [...BASE_COLUMNS, ...(showMusicColumn ? (['Music'] as Column[]) : []), 'Comments'],
-    [showMusicColumn],
-  )
-
   const mealItems = useMemo(
     () => categorizeMeals(mealsQuery.data?.meals ?? [], itemIcons),
     [mealsQuery.data, itemIcons],
@@ -442,7 +465,6 @@ export const useTimelineData = ({
         screentimeDerivedTypes,
         typeDefsMap,
       ),
-      ...musicItems,
       ...mealItems,
       ...commentItems,
     ],
@@ -456,7 +478,6 @@ export const useTimelineData = ({
       screentimeActivities,
       screentimeCategoriesQuery.data,
       screentimeDerivedTypes,
-      musicItems,
       mealItems,
       commentItems,
     ],
@@ -477,10 +498,7 @@ export const useTimelineData = ({
     return grouped
   }, [chartItems])
 
-  const columns = useMemo(
-    () => allColumns.filter((col) => itemsByColumn.has(col)),
-    [allColumns, itemsByColumn],
-  )
+  const columns = useMemo(() => ITEM_COLUMNS.filter((col) => itemsByColumn.has(col)), [itemsByColumn])
 
   const columnData = useMemo(
     () =>
@@ -496,7 +514,11 @@ export const useTimelineData = ({
     [columns, itemsByColumn],
   )
 
-  const isFetching = activitiesQuery.isFetching || mealsQuery.isFetching || bucketedMetricsQuery.isFetching
+  const isFetching =
+    activitiesQuery.isFetching ||
+    mealsQuery.isFetching ||
+    bucketedMetricsQuery.isFetching ||
+    dailyMetricsQuery.isFetching
 
   const isInitialLoad = activitiesQuery.isLoading
 
@@ -509,16 +531,17 @@ export const useTimelineData = ({
     columnData,
     columns,
     commentNotes,
+    dailyMetrics,
+    dailySeries,
     errorSources,
     hasLastFm,
-    horizontalMetricBuckets,
     isFetching,
     isInitialLoad,
+    metricBuckets,
     screentimeBucketedQuery,
     screentimeCategoriesQuery,
     screentimeSubEntries,
     scrobbles,
-    sparklineBuckets,
     trainingLoadQuery,
   }
 }

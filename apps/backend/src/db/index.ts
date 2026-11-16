@@ -54,6 +54,7 @@ export {
   migrateSchemaIfNeeded,
   query,
   schemaInitialized,
+  setUserPassword,
   userDbName,
   withUserTransaction,
 } from './connection.ts'
@@ -310,6 +311,7 @@ export {
   type ChallengeParticipationInput,
   type ChallengeParticipationProtocol,
   type ChallengeParticipationRecord,
+  type ChallengeParticipationSnapshotPatch,
   type ChallengePatch,
   type ChallengeRecord,
   type ChallengeSpecFields,
@@ -334,6 +336,7 @@ export {
   removeChallengeMember,
   updateChallenge,
   updateChallengeMemberCache,
+  updateChallengeParticipationSnapshot,
   upsertChallengeMember,
 } from './challenges.ts'
 
@@ -598,11 +601,13 @@ export {
   getFrequentFoodItems,
   getFrequentMeals,
   getMealById,
+  getMealFlagsInRange,
   getMealLogCompleted,
   getMealLogCompletedInRange,
   getMeals,
   getNutritionCompleteDaysInRange,
   insertMeal,
+  type MealFlags,
   type NutrientKey,
   NUTRIENT_KEYS,
   upsertMeal,
@@ -780,6 +785,30 @@ export {
   type TrackPairCandidate,
   type TrackedActivity,
 } from './routes.ts'
+
+export {
+  deleteSegment,
+  findSegmentCandidatesForActivity,
+  findTrackCandidatesForSegment,
+  getSegmentById,
+  getSegmentLine,
+  getTimingTrack,
+  insertSegment,
+  listActivitySegmentEfforts,
+  listSegmentEfforts,
+  listSegments,
+  replaceSegmentEfforts,
+  segmentLineFromActivity,
+  segmentLineFromRoute,
+  updateSegment,
+  type ActivitySegmentEffortRow,
+  type SegmentEffortInput,
+  type SegmentEffortRow,
+  type SegmentLine,
+  type SegmentLineResult,
+  type SegmentRecord,
+  type TimingTrack,
+} from './segments.ts'
 
 export {
   getActivityTrack,

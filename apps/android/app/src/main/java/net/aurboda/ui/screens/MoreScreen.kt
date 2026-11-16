@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import net.aurboda.BuildConfig
 import net.aurboda.CredentialsManager
 import net.aurboda.MoreDestination
 import net.aurboda.badgeText
@@ -29,16 +30,18 @@ data class MoreItem(val label: String, val destination: MoreDestination)
 /**
  * The URL an embedded page loads for a [MoreDestination.Web]: site paths are
  * resolved against [serverUrl], absolute URLs are taken as-is; both get the
- * `embed=1` flag that hides the web app's chrome.
+ * `embed=1` flag that hides the web app's chrome. The Google Play build also adds
+ * `store=play`, which hides prices and the Pay link (Play's payments policy).
  */
-fun embeddedPageUrl(serverUrl: String, path: String): String {
+fun embeddedPageUrl(serverUrl: String, path: String, channel: String = BuildConfig.CHANNEL): String {
     val absolute = path.startsWith("http://") || path.startsWith("https://")
     val page = if (absolute) path else "${serverUrl.trimEnd('/')}$path"
     val hashAt = page.indexOf('#')
     val base = if (hashAt >= 0) page.substring(0, hashAt) else page
     val fragment = if (hashAt >= 0) page.substring(hashAt) else ""
     val separator = if (base.contains('?')) '&' else '?'
-    return "$base${separator}embed=1$fragment"
+    val storeFlag = if (channel == "play") "&store=play" else ""
+    return "$base${separator}embed=1$storeFlag$fragment"
 }
 
 data class MoreGroup(val header: String, val items: List<MoreItem>)
@@ -62,6 +65,7 @@ val moreGroups: List<MoreGroup> = listOf(
             MoreItem("Goals", MoreDestination.Web("/goals")),
             MoreItem("Places", MoreDestination.Web("/places")),
             MoreItem("Routes", MoreDestination.Web("/routes")),
+            MoreItem("Segments", MoreDestination.Web("/segments")),
         ),
     ),
     MoreGroup(

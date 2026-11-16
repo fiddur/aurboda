@@ -86,6 +86,8 @@ export type LoginAttempt =
  */
 export interface FailedLogins {
   begin: (req: Request, username: string) => LoginAttempt
+  /** Forgets the username's failures, after its password was reset. */
+  clear: (username: string) => void
 }
 
 export interface RateLimits {
@@ -134,6 +136,7 @@ export const createRateLimits = ({ now, clientIp, accountOf, uploadLimiter }: Ra
           },
         }
       },
+      clear: (username) => failuresByUsername.reset(usernameKey(username)),
     },
     publicReads: limitBy(createTokenBucketLimiter(RATE_LIMITS.public_reads, now), clientIp),
     signups: limitBy(createTokenBucketLimiter(RATE_LIMITS.signups, now), clientIp),
@@ -163,16 +166,23 @@ export const mountRateLimits = (httpd: Express, limits: RateLimits) => {
   httpd.post(
     [
       '/login',
+      '/account/email/verify',
+      '/account/recovery/request',
+      '/account/recovery/complete',
       '/authorize',
       '/token',
       '/register',
       '/webauthn/auth/options',
       '/webauthn/auth/verify',
       '/webauthn/signup/options',
+      '/auth/oidc/:provider/start',
+      '/auth/oidc/exchange',
+      '/account/oidc/link/complete',
     ],
     limits.authRequests,
   )
-  httpd.post(['/signup', '/webauthn/signup/verify'], limits.signups)
+  httpd.get(['/auth/oidc/callback', '/auth/oidc/signup-info'], limits.authRequests)
+  httpd.post(['/signup', '/webauthn/signup/verify', '/auth/oidc/signup'], limits.signups)
   httpd.post(['/profile/avatar', '/challenges/:id/banner', '/feed/images'], limits.uploads)
   httpd.use(['/public', '/u', '/oembed'], limits.publicReads)
 }

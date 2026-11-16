@@ -40,6 +40,7 @@ describe('fetchActivityTrack', () => {
     expect(vi.mocked(axios.get).mock.calls[0]?.[0]).toBe('http://api.test/activities/merged%3Aa1/track')
     expect(points).toEqual({
       full_resolution: true,
+      offsets_s: [0, 1.5],
       points: [
         { lat: 59, lon: 18, time: new Date('2026-06-08T10:00:00.000Z') },
         { lat: 59.01, lon: 18, time: new Date('2026-06-08T10:00:01.500Z') },
@@ -67,22 +68,25 @@ describe('pickActivityPoints', () => {
 
   it('uses a full-resolution track without loading raw locations', async () => {
     const loadRaw = vi.fn()
-    expect(await pickActivityPoints({ full_resolution: true, points: trackPoints }, loadRaw)).toBe(
-      trackPoints,
-    )
+    expect(
+      await pickActivityPoints({ full_resolution: true, offsets_s: [], points: trackPoints }, loadRaw),
+    ).toBe(trackPoints)
     expect(loadRaw).not.toHaveBeenCalled()
   })
 
   it('prefers raw locations over a shape-only track', async () => {
     const points = await pickActivityPoints(
-      { full_resolution: false, points: trackPoints },
+      { full_resolution: false, offsets_s: [], points: trackPoints },
       async () => rawPoints,
     )
     expect(points).toBe(rawPoints)
   })
 
   it('falls back to a shape-only track when the window has no raw locations', async () => {
-    const points = await pickActivityPoints({ full_resolution: false, points: trackPoints }, async () => [])
+    const points = await pickActivityPoints(
+      { full_resolution: false, offsets_s: [], points: trackPoints },
+      async () => [],
+    )
     expect(points).toBe(trackPoints)
   })
 

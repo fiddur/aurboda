@@ -43,6 +43,36 @@ export function isEmbedded(): boolean {
   return embedded
 }
 
+const STORE_QUERY_KEY = 'store'
+const STORE_STORAGE_KEY = 'aurboda_store'
+const PLAY_STORE = 'play'
+
+/**
+ * Pure: is this page embedded in the Google Play build of the app? That build
+ * appends `store=play` next to `embed=1`; `stored` keeps it across client-side
+ * navigation, like the embed flag.
+ */
+export function computePlayStoreBuild(search: string, stored: string | null): boolean {
+  const params = new URLSearchParams(search)
+  if (params.get(STORE_QUERY_KEY) === PLAY_STORE) return true
+  return stored === PLAY_STORE
+}
+
+let playStoreCache: boolean | undefined
+
+/**
+ * Whether the page runs in the Google Play build, where Play's payments policy
+ * forbids pointing at payment outside Play: prices and Pay links are left out.
+ */
+export function isPlayStoreBuild(): boolean {
+  if (playStoreCache !== undefined) return playStoreCache
+  const stored = sessionStorage.getItem(STORE_STORAGE_KEY)
+  const playStore = computePlayStoreBuild(window.location.search, stored)
+  if (playStore) sessionStorage.setItem(STORE_STORAGE_KEY, PLAY_STORE)
+  playStoreCache = playStore
+  return playStore
+}
+
 export interface EmbedAuth {
   user?: string
   token?: string

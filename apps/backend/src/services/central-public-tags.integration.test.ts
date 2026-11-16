@@ -2,12 +2,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { getTestDbClient, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS,
   createPublicTagsApi,
   CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
+  CREATE_PUBLIC_TAG_BLOCKS_TABLE,
+  CREATE_PUBLIC_TAG_HIDDEN_TABLE,
   CREATE_PUBLIC_TAG_POSTS_INDEXES,
   CREATE_PUBLIC_TAG_POSTS_TABLE,
   type PublicTagPostInput,
 } from './central-public-tags.ts'
+import { createPublicTagModeration, isPublicTagPostRefused } from './public-tag-moderation.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -36,7 +40,10 @@ describe('central public tag pages', () => {
     const client = getTestDbClient()
     await client.query(CREATE_INSTANCE_TAG_FOLLOWS_TABLE)
     await client.query(CREATE_PUBLIC_TAG_POSTS_TABLE)
+    await client.query(ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS)
     for (const stmt of CREATE_PUBLIC_TAG_POSTS_INDEXES) await client.query(stmt)
+    await client.query(CREATE_PUBLIC_TAG_HIDDEN_TABLE)
+    await client.query(CREATE_PUBLIC_TAG_BLOCKS_TABLE)
   }, CONTAINER_TIMEOUT)
 
   afterAll(async () => {
@@ -44,7 +51,9 @@ describe('central public tag pages', () => {
   })
 
   beforeEach(async () => {
-    await getTestDbClient().query('TRUNCATE TABLE instance_tag_follows, public_tag_posts')
+    await getTestDbClient().query(
+      'TRUNCATE TABLE instance_tag_follows, public_tag_posts, public_tag_hidden, public_tag_blocks',
+    )
   })
 
   const api = () => createPublicTagsApi(async () => getTestDbClient())
@@ -103,15 +112,33 @@ describe('central public tag pages', () => {
     await a.upsertPublicTagPost(post(1, { announce_uris: ['https://tags.example/announce/1b'] }))
     await a.upsertPublicTagPost(post(2, { local_user: 'alice' }))
 
-    await a.removePublicTagAnnounce('https://tags.example/announce/1')
+    await a.removePublicTagAnnounce('https://tags.example/announce/1', 'https://tags.example/user/aurboda')
     expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toContain(
       'https://peer.example/notes/1',
     )
-    await a.removePublicTagAnnounce('https://tags.example/announce/1b')
-    await a.removePublicTagAnnounce('https://tags.example/announce/2')
+    await a.removePublicTagAnnounce('https://tags.example/announce/1b', 'https://tags.example/user/aurboda')
+    await a.removePublicTagAnnounce('https://tags.example/announce/2', 'https://tags.example/user/aurboda')
     expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toEqual([
       'https://peer.example/notes/2',
     ])
+  })
+
+  test("only the announcing actor's withdrawal removes an Announce; one stored without its actor goes as before", async () => {
+    const a = api()
+    const announcer = 'https://tags.example/user/aurboda'
+    const neighbour = 'https://tags.example/user/running'
+    await a.upsertPublicTagPost(
+      post(1, { announce_actors: { 'https://tags.example/announce/1': announcer } }),
+    )
+    await a.upsertPublicTagPost(post(2))
+    const notes = async () => (await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri).sort()
+
+    await a.removePublicTagAnnounce('https://tags.example/announce/1', neighbour)
+    expect(await notes()).toEqual(['https://peer.example/notes/1', 'https://peer.example/notes/2'])
+    await a.removePublicTagAnnounce('https://tags.example/announce/1', announcer)
+    expect(await notes()).toEqual(['https://peer.example/notes/2'])
+    await a.removePublicTagAnnounce('https://tags.example/announce/2', neighbour)
+    expect(await notes()).toEqual([])
   })
 
   test('deletes are scoped to the author, and to the local user', async () => {
@@ -239,5 +266,103 @@ describe('central public tag pages', () => {
       'https://peer.example/notes/1',
     ])
     expect(await a.listOfficialRemotePosts([], ['aurbodablog'], 10)).toEqual([])
+  })
+
+  test('hiding a post removes it and remembers its Note id; unhiding forgets it', async () => {
+    const a = api()
+    const kept = await a.upsertPublicTagPost(post(1))
+    const target = await a.upsertPublicTagPost(post(2, { actor_uri: 'https://spam.example/users/x' }))
+    expect(await a.isPublicTagPostHidden(target.note_uri)).toBe(false)
+    const hidden = await a.hidePublicTagPost(target.id, 'root')
+    expect(hidden).toMatchObject({
+      actor_uri: 'https://spam.example/users/x',
+      hidden_by: 'root',
+      note_uri: target.note_uri,
+    })
+    expect(hidden?.hidden_at).toBeInstanceOf(Date)
+    expect(await a.isPublicTagPostHidden(target.note_uri)).toBe(true)
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.id)).toEqual([kept.id])
+    expect(await a.hidePublicTagPost(target.id, 'root')).toBeNull()
+    expect(await a.hidePublicTagPost('00000000-0000-4000-8000-000000000000', 'root')).toBeNull()
+
+    const again = await a.upsertPublicTagPost(post(2, { actor_uri: 'https://spam.example/users/x' }))
+    expect((await a.hidePublicTagPost(again.id, 'other'))?.id).toBe(hidden?.id)
+
+    await a.hidePublicTagPost(kept.id, 'root')
+    const list = await a.listHiddenPublicTagPosts(10)
+    expect(list.map((h) => h.note_uri)).toEqual([kept.note_uri, target.note_uri])
+    expect(await a.listHiddenPublicTagPosts(1)).toHaveLength(1)
+
+    expect(await a.unhidePublicTagPost(hidden?.id ?? '')).toBe(true)
+    expect(await a.unhidePublicTagPost(hidden?.id ?? '')).toBe(false)
+    expect(await a.isPublicTagPostHidden(target.note_uri)).toBe(false)
+  })
+
+  test('blocks: insert once per kind and value, list newest first, delete', async () => {
+    const a = api()
+    const domain = await a.insertPublicTagBlock('domain', 'spam.example', 'root')
+    expect(domain).toMatchObject({ created_by: 'root', kind: 'domain', value: 'spam.example' })
+    expect(await a.insertPublicTagBlock('domain', 'spam.example', 'other')).toBeNull()
+    const actor = await a.insertPublicTagBlock('actor', 'spam.example', 'root')
+    expect(actor?.kind).toBe('actor')
+    expect((await a.listPublicTagBlocks()).map((b) => b.id)).toEqual([actor?.id, domain?.id])
+    expect(await a.deletePublicTagBlock(domain?.id ?? '')).toBe(true)
+    expect(await a.deletePublicTagBlock(domain?.id ?? '')).toBe(false)
+    expect((await a.listPublicTagBlocks()).map((b) => b.id)).toEqual([actor?.id])
+  })
+
+  test('lists the distinct post actors and deletes every post by some of them, local ones too', async () => {
+    const a = api()
+    await a.upsertPublicTagPost(post(1, { actor_uri: 'https://spam.example/users/x' }))
+    await a.upsertPublicTagPost(post(2, { actor_uri: 'https://spam.example/users/x' }))
+    await a.upsertPublicTagPost(
+      post(3, { actor_uri: 'https://aurboda.test/users/alice', local_user: 'alice' }),
+    )
+    await a.upsertPublicTagPost(post(4))
+    expect((await a.listPublicTagPostActors()).sort()).toEqual([
+      'https://aurboda.test/users/alice',
+      'https://peer.example/users/bob',
+      'https://spam.example/users/x',
+    ])
+    expect(await a.deletePublicTagPostsByActors([])).toBe(0)
+    expect(
+      await a.deletePublicTagPostsByActors([
+        'https://spam.example/users/x',
+        'https://aurboda.test/users/alice',
+      ]),
+    ).toBe(3)
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/4',
+    ])
+  })
+
+  test('a block of a local author still matches their posts after they change their display name and avatar', async () => {
+    const a = api()
+    const alice = 'https://aurboda.test/users/alice'
+    const local = (n: number, display_name: string, avatar_url: string | null) =>
+      post(n, {
+        actor_uri: alice,
+        announce_uris: [],
+        avatar_url,
+        display_name,
+        handle: '@alice@aurboda.test',
+        local_user: 'alice',
+        note_uri: `https://aurboda.test/notes/${n}`,
+      })
+    await a.upsertPublicTagPost(local(1, 'Alice', null))
+    await a.upsertPublicTagPost(local(2, 'Alice Renamed', 'https://aurboda.test/avatars/new.png'))
+    await a.upsertPublicTagPost(post(3))
+    const [before, after] = (await a.listPublicTagPosts('aurboda', 10, KEEP))
+      .filter((p) => p.local_user === 'alice')
+      .sort((x, y) => x.note_uri.localeCompare(y.note_uri))
+    expect([before.display_name, after.display_name]).toEqual(['Alice', 'Alice Renamed'])
+
+    const moderation = createPublicTagModeration({ ownHost: 'aurboda.test', store: a })
+    const result = await moderation.addBlock({ kind: 'actor', value: alice }, 'root')
+    expect(result).toMatchObject({ ok: true, removed_posts: 2 })
+    expect((await a.listPublicTagPosts('aurboda', 10, KEEP)).map((p) => p.note_uri)).toEqual([
+      'https://peer.example/notes/3',
+    ])
+    expect(await isPublicTagPostRefused(a, 'https://aurboda.test/notes/4', alice)).toBe(true)
   })
 })

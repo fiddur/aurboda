@@ -96,8 +96,9 @@ const deliverAll = async (
  * Re-sends the `Update` of every public and unlisted post of every user (#1549). Mastodon cached
  * "nobody may quote" for posts federated before their Notes declared a quote policy, and an Update
  * of the Note is what refreshes it. Only Updates are sent, so running it again is harmless. The
- * posts are listed up front and delivered one after another in the background, so one run never
- * floods followers' servers with every post at once.
+ * posts are listed up front and handed to delivery one after another in the background; with the
+ * delivery queue they are queued at once and its bounded workers keep one run from flooding
+ * followers' servers.
  */
 export const createPostUpdateResender = (deps: PostUpdateResendDeps): PostUpdateResender => {
   let running = false

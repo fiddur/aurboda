@@ -1,6 +1,7 @@
 import type { ChallengePatch, ChallengeRecord } from '../db/index.ts'
 
 import { getChallengeById, updateChallenge } from '../db/index.ts'
+import { pushChallengeToLocalMembers } from './challenge-participation-sync.ts'
 import { sameSpec } from './challenge-spec.ts'
 
 export const LOCKED_MESSAGES = {
@@ -41,12 +42,16 @@ export const updateHostedChallenge = async (
   user: string,
   id: string,
   patch: ChallengePatch,
+  { webHost }: { webHost?: string } = {},
 ): Promise<UpdateHostedChallengeResult> => {
   const existing = await getChallengeById(user, id)
   if (!existing) return { status: 'not_found' }
   const frozen = frozenChange(existing, patch)
   const record = await updateChallenge(user, id, patch, { unlessRemoteMember: frozen !== null })
-  if (record) return { record, status: 'updated' }
+  if (record) {
+    if (webHost) await pushChallengeToLocalMembers(user, record, webHost)
+    return { record, status: 'updated' }
+  }
   if (frozen === null || !(await getChallengeById(user, id))) return { status: 'not_found' }
   return { status: frozen === 'spec' ? 'spec_locked' : 'window_locked' }
 }

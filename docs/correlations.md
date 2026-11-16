@@ -22,13 +22,24 @@ series, and the set of days where its status is _known_:
 | `metric`                                     | `time_series` entries (avg/sum per day)¹               | days with ≥1 entry (incl. explicit 0s)           |
 | `nutrition`                                  | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
 | `productivity_category` / `productivity_app` | productivity minutes matched by category/app           | every day in range                               |
+| `sensitivity` (`flag`: a flag id)            | meals per day carrying the sensitivity flag            | days with a meal **or** marked meal-log-complete |
 
 ¹ The daily average of an instantaneous-sample metric (heart rate, stress, body
 battery, respiration, SpO2) is time-weighted: per 5-minute bin, then across the
 day's bins (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
-available metrics, tags, activity types, nutrients and productivity categories.
+available metrics, tags, activity types, nutrients, productivity categories and
+sensitivity flags (`sensitivities`: value the flag id, label its name).
+
+A `sensitivity` selector counts the meals carrying the flag, through their food
+items' flags (resolved live) or the meal's own. Its known days are exactly the
+`nutrition` rule: a day with a meal, or one marked meal log completed, is known
+and 0 when no meal carried the flag; any other day is unknown, not 0. Its
+complete days (`nutrition_completeness: "complete_only"`, `n_complete`) are the
+days marked meal log completed. The selector stores the flag id, so a renamed
+flag keeps its correlations; the axis label resolves the name ("Meals with
+gluten (count)"). See [Meal sensitivities](features/correlations.md#meal-sensitivities).
 
 `tag` and `activity` both match `activity_type` by regex and behave identically —
 tags were long ago merged into activities. The API still accepts both for
@@ -351,6 +362,9 @@ Dimensions:
   (`[end, end + W]`) by at least 5 minutes. Keys `none`, `before`, `after`,
   `both`. The analysed occurrences never count as sleep. Sleep is looked for
   from a day and a window before the period to a window after it.
+- For `activity_type=meal_sensitivity` (meals carrying a sensitivity flag, each
+  a point occurrence at the meal's time) only `time_of_day` and `sleep` are
+  listed; a meal has no length and no data fields.
 - **`field:<path>`**: a data field of the activity type, a scalar
   (`field:session_name`) or an item of a list field (`field:sets.exercise`,
   grouped by normalized value as the sessions view groups them). The key is the

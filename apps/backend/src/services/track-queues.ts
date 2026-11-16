@@ -52,7 +52,11 @@ export const runTrackBackfillJob = async (
   job: TrackBackfillJobData,
   deps: TrackBackfillJobDeps,
 ): Promise<
-  TrackBackfillResult & { routes: { matched: number; created: number }; features: { computed: number } }
+  TrackBackfillResult & {
+    routes: { matched: number; created: number }
+    suggestions: { scanned: number; suggested: number; remaining: number } | null
+    features: { computed: number }
+  }
 > => {
   const result = await backfillUserTracks(job.user, deps)
   if (result.garmin + result.strava + result.skipped > 0) {
@@ -62,10 +66,16 @@ export const runTrackBackfillJob = async (
   if (routes.matched + routes.created > 0) {
     auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
   }
+  let suggestions = null
+  try {
+    suggestions = await deps.scanSuggestedSegments(job.user)
+  } catch (error) {
+    auditError(job.user, 'data', 'Segment suggestion scan failed', { error: String(error) })
+  }
   const features = await backfillActivityFeatures(job.user, deps, {
     recompute: job.recompute_features === true,
   })
-  return { ...result, features, routes }
+  return { ...result, features, routes, suggestions }
 }
 
 /* v8 ignore start -- requires real pg-boss instance */
@@ -118,7 +128,7 @@ export const createTrackBackfillQueue = async (
       if (!job) return
       const result = await runTrackBackfillJob(job.data, deps)
       console.info(
-        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created; features: ${result.features.computed} computed`,
+        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created; suggested segments: ${result.suggestions?.suggested ?? 'failed'}; features: ${result.features.computed} computed`,
       )
     },
   )

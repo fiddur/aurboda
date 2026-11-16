@@ -68,6 +68,7 @@ const hasBoundedWindow = (
 const isChosen = (selector: CorrelationSelector | undefined): boolean => {
   if (selector === undefined) return false
   if (selector.kind === 'metric') return selector.metric.trim() !== ''
+  if (selector.kind === 'sensitivity') return selector.flag.trim() !== ''
   return selector.kind === 'nutrition' || selector.pattern.trim() !== ''
 }
 
