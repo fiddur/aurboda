@@ -16,6 +16,7 @@ const PATH_COLOR = CHART_PRIMARY
 const PATH_WEIGHT = 3
 const PATH_OPACITY = 0.8
 const FIT_BOUNDS_PADDING = 20
+const CUT_WEIGHT = 6
 /** Start loading a map (Leaflet + OSM tiles) a little before it scrolls into view. */
 const PRELOAD_MARGIN = { rootMargin: '200px' }
 
@@ -36,12 +37,15 @@ export interface RoutePoint {
 interface RouteMapProps {
   points: RoutePoint[]
   hoverTime: Date | null
+  /** A stretch of `points` (inclusive indexes) drawn over the line, e.g. a segment being cut. */
+  highlight?: { from: number; to: number } | null
 }
 
-export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
+export const RouteMap = ({ points, hoverTime, highlight }: RouteMapProps) => {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const highlightMarkerRef = useRef<L.Marker | null>(null)
+  const cutLineRef = useRef<L.Polyline | null>(null)
   // A feed of routes would otherwise mount a map and fetch tiles for every post,
   // off-screen ones included. The container keeps its size while empty.
   const { inView, ref: observeContainer } = useInView(PRELOAD_MARGIN)
@@ -77,8 +81,33 @@ export const RouteMap = ({ points, hoverTime }: RouteMapProps) => {
       map.remove()
       mapRef.current = null
       highlightMarkerRef.current = null
+      cutLineRef.current = null
     }
   }, [inView, points])
+
+  const cutFrom = highlight?.from
+  const cutTo = highlight?.to
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const latLngs: L.LatLngExpression[] =
+      cutFrom === undefined || cutTo === undefined
+        ? []
+        : points.slice(cutFrom, cutTo + 1).map((p) => [p.lat, p.lon])
+    if (latLngs.length < MIN_POINTS_FOR_PATH) {
+      cutLineRef.current?.remove()
+      cutLineRef.current = null
+      return
+    }
+    if (cutLineRef.current) cutLineRef.current.setLatLngs(latLngs)
+    else {
+      cutLineRef.current = L.polyline(latLngs, {
+        className: 'route-map-cut',
+        opacity: 1,
+        weight: CUT_WEIGHT,
+      }).addTo(map)
+    }
+  }, [cutFrom, cutTo, inView, points])
 
   useEffect(() => {
     const map = mapRef.current

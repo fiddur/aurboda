@@ -3,7 +3,7 @@ import type { RouteDetail as RouteDetailData, RouteEffort } from '@aurboda/api-s
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useMemo, useState } from 'preact/hooks'
 
 import { RouteMap } from '../../components/charts/RouteMap'
 import { ConfirmButton } from '../../components/ConfirmButton'
@@ -12,15 +12,73 @@ import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusI
 import { deleteRoute, fetchRoute, fetchRoutes, mergeRoutes, updateRoute } from '../../state/api'
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
+import { cumulativeDistancesM, indexRangeForKm } from '../../utils/segmentCut'
 import { formatDistance, formatPace } from '../EntityDetail/format-utils'
+import { CreateSegmentForm } from '../Segments/CreateSegmentForm'
 import { ActivityTypeName } from './ActivityTypeName'
 import { effortSeries, effortsWithCategory, formatElapsed } from './format'
+import '../DataSources/style.css'
 import './style.css'
 
 /** RouteMap draws a line from timed points; a route line has no times and is never hovered. */
 const NO_TIME = new Date(0)
 
 const MIN_TREND_POINTS = 2
+
+const INITIAL_CUT_KM = 1
+
+interface KmCut {
+  start: string
+  end: string
+}
+
+const parseKm = (value: string): number => {
+  const km = Number(value)
+  return Number.isFinite(km) && km > 0 ? km : 0
+}
+
+function RouteCutPanel({
+  route,
+  cut,
+  onCutChange,
+  onCancel,
+}: {
+  route: RouteDetailData
+  cut: KmCut
+  onCutChange: (cut: KmCut) => void
+  onCancel: () => void
+}) {
+  const maxKm = Math.ceil(route.length_m / 100) / 10
+  const startKm = parseKm(cut.start)
+  const endKm = parseKm(cut.end)
+  const lengthM = Math.max(0, Math.min(endKm * 1000, route.length_m) - startKm * 1000)
+  const kmInput = (edge: keyof KmCut, label: string) => (
+    <label class="segment-cut-km">
+      {label}
+      <input
+        type="number"
+        min={0}
+        max={maxKm}
+        step={0.1}
+        value={cut[edge]}
+        onInput={(e) => onCutChange({ ...cut, [edge]: (e.target as HTMLInputElement).value })}
+      />
+    </label>
+  )
+  return (
+    <div class="segment-create-panel">
+      <div class="segment-cut-kms">
+        {kmInput('start', 'From km')}
+        {kmInput('end', 'To km')}
+      </div>
+      <CreateSegmentForm
+        cut={{ end_km: endKm, route_id: route.id, start_km: startKm }}
+        lengthM={lengthM}
+        onCancel={onCancel}
+      />
+    </div>
+  )
+}
 
 function NameEditor({ route }: { route: RouteDetailData }) {
   const queryClient = useQueryClient()
@@ -188,6 +246,9 @@ export function RouteDetail() {
     queryFn: () => fetchRoute(id),
     queryKey: ['route', id],
   })
+  const [kmCut, setKmCut] = useState<KmCut | null>(null)
+  const mapPoints = useMemo(() => route?.points.map((p) => ({ ...p, time: NO_TIME })) ?? [], [route?.points])
+  const distancesM = useMemo(() => cumulativeDistancesM(mapPoints), [mapPoints])
 
   if (!auth.value.token) {
     return (
@@ -230,7 +291,30 @@ export function RouteDetail() {
         </a>
       </div>
 
-      <RouteMap points={route.points.map((p) => ({ ...p, time: NO_TIME }))} hoverTime={null} />
+      <RouteMap
+        points={mapPoints}
+        hoverTime={null}
+        highlight={kmCut && indexRangeForKm(distancesM, parseKm(kmCut.start), parseKm(kmCut.end))}
+      />
+
+      {kmCut ? (
+        <RouteCutPanel route={route} cut={kmCut} onCutChange={setKmCut} onCancel={() => setKmCut(null)} />
+      ) : (
+        <div class="segment-create-open">
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() =>
+              setKmCut({
+                end: String(Math.min(INITIAL_CUT_KM, Math.ceil(route.length_m / 100) / 10)),
+                start: '0',
+              })
+            }
+          >
+            Create segment
+          </button>
+        </div>
+      )}
 
       {lowHr.length > 0 && (
         <label class="route-low-hr-toggle">

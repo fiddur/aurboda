@@ -13,7 +13,7 @@ export const SegmentEfforts = ({ efforts }: { efforts: ActivitySegmentEffort[] |
           {rows.map((r) => (
             <tr key={r.key}>
               <th scope="row">
-                {r.name}
+                <a href={`/segments/${r.segment_id}`}>{r.name}</a>
                 {r.best && <span class="segment-best"> ★ best</span>}
               </th>
               <td>{r.time}</td>

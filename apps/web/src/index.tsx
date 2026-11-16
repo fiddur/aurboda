@@ -86,6 +86,8 @@ const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicT
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
+const SegmentsPage = lazyPage(() => import('./pages/Segments/index.jsx'), 'Segments')
+const SegmentDetailPage = lazyPage(() => import('./pages/Segments/SegmentDetail.jsx'), 'SegmentDetail')
 const Privacy = lazyPage(() => import('./pages/Privacy/index.jsx'), 'Privacy')
 const PublicResource = lazyPage(() => import('./pages/PublicDashboard/index.jsx'), 'PublicResource')
 const PublicArticles = lazyPage(() => import('./pages/PublicArticles/index.jsx'), 'PublicArticles')
@@ -180,6 +182,8 @@ function AppShell() {
             <Route path="/places" component={Places} />
             <Route path="/routes/:id" component={RouteDetailPage} />
             <Route path="/routes" component={RoutesPage} />
+            <Route path="/segments/:id" component={SegmentDetailPage} />
+            <Route path="/segments" component={SegmentsPage} />
             <Route path="/data-sources" component={DataSources} />
             <Route path="/data-sources/aurboda" component={AurbodaSource} />
             <Route path="/data-sources/android-app" component={AndroidAppSource} />
