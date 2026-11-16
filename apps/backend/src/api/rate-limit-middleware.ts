@@ -175,10 +175,14 @@ export const mountRateLimits = (httpd: Express, limits: RateLimits) => {
       '/webauthn/auth/options',
       '/webauthn/auth/verify',
       '/webauthn/signup/options',
+      '/auth/oidc/:provider/start',
+      '/auth/oidc/exchange',
+      '/account/oidc/link/complete',
     ],
     limits.authRequests,
   )
-  httpd.post(['/signup', '/webauthn/signup/verify'], limits.signups)
+  httpd.get(['/auth/oidc/callback', '/auth/oidc/signup-info'], limits.authRequests)
+  httpd.post(['/signup', '/webauthn/signup/verify', '/auth/oidc/signup'], limits.signups)
   httpd.post(['/profile/avatar', '/challenges/:id/banner', '/feed/images'], limits.uploads)
   httpd.use(['/public', '/u', '/oembed'], limits.publicReads)
 }

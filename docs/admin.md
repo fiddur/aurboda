@@ -40,16 +40,17 @@ with a `Retry-After` header in seconds and the usual error body,
 constants in `apps/backend/src/services/rate-limit.ts`, set well above what a person or the Android
 app does; there is no admin setting for them.
 
-| What                                                                                                                                                                     | Keyed by  | Limit                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------ |
-| `POST /login`, the passkey sign-in and passkey signup options (`/webauthn/auth/*`, `/webauthn/signup/options`), OAuth `/authorize`, `/token`, `/register`                | client IP | 30 at once, then one every 2 s       |
-| `POST /signup`, `POST /webauthn/signup/verify` (new accounts)                                                                                                            | client IP | 5 at once, then one every 10 min     |
-| Everything under `/public`, `/u` and `/oembed`: public posts, articles and their images, OG images, avatars, banners, dashboards, tag pages, the structured feed payload | client IP | 300 at once, then three a second     |
-| Avatar, challenge banner and feed picture uploads, REST and MCP's `add_feed_image` together                                                                              | account   | 30 at once, then one every 6 s       |
-| `POST /account/email/verify`, `/account/recovery/request`, `/account/recovery/complete` (the emailed links)                                                              | client IP | shared with `POST /login` above      |
-| Email verification links (`POST /account/email/verification`, a changed address, `send_email_verification`)                                                              | account   | 3 an hour, then `429`                |
-| Password reset and recovery links                                                                                                                                        | account   | 3 an hour, the rest dropped silently |
-| Admin test mails (`POST /admin/email/test`)                                                                                                                              | admin     | 10 an hour                           |
+| What                                                                                                                                                                                          | Keyed by  | Limit                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------ |
+| `POST /login`, the passkey sign-in and passkey signup options (`/webauthn/auth/*`, `/webauthn/signup/options`), OAuth `/authorize`, `/token`, `/register`                                     | client IP | 30 at once, then one every 2 s       |
+| Single sign-on: `POST /auth/oidc/:provider/start`, `GET /auth/oidc/callback`, `POST /auth/oidc/exchange`, `GET /auth/oidc/signup-info`, `POST /account/oidc/link/complete` ([sso.md](sso.md)) | client IP | shared with `POST /login` above      |
+| `POST /signup`, `POST /webauthn/signup/verify`, `POST /auth/oidc/signup` (new accounts)                                                                                                       | client IP | 5 at once, then one every 10 min     |
+| Everything under `/public`, `/u` and `/oembed`: public posts, articles and their images, OG images, avatars, banners, dashboards, tag pages, the structured feed payload                      | client IP | 300 at once, then three a second     |
+| Avatar, challenge banner and feed picture uploads, REST and MCP's `add_feed_image` together                                                                                                   | account   | 30 at once, then one every 6 s       |
+| `POST /account/email/verify`, `/account/recovery/request`, `/account/recovery/complete` (the emailed links)                                                                                   | client IP | shared with `POST /login` above      |
+| Email verification links (`POST /account/email/verification`, a changed address, `send_email_verification`)                                                                                   | account   | 3 an hour, then `429`                |
+| Password reset and recovery links                                                                                                                                                             | account   | 3 an hour, the rest dropped silently |
+| Admin test mails (`POST /admin/email/test`)                                                                                                                                                   | admin     | 10 an hour                           |
 
 **Failed password logins** (`POST /login` and the OAuth sign-in form) are counted per username and
 per client IP. After 5 failures for a username (20 from an IP) each further attempt waits 1 s,
@@ -103,6 +104,12 @@ connection gives up after a few seconds. The backend logs only "Sent <kind> mail
 class, never a recipient, a link or a token.
 
 Session tokens are stateless, so a password reset does not sign out the account's other sessions.
+
+## Single sign-on providers
+
+**Admin settings → SSO providers (OpenID Connect)** adds the providers users can log in, link and
+optionally sign up with: Google, Microsoft Entra ID, GitLab, Keycloak, Authentik or any other
+OpenID Connect issuer. Setup per provider, the redirect URI and the rules are in [sso.md](sso.md).
 
 ## Usage counters
 
@@ -175,7 +182,7 @@ Deleting an account, in order:
 4. Drops the user's database and Postgres role: every metric, activity, location, setting,
    integration token, passkey, feed post, follower and key pair.
 5. Removes every central row that names the user (admin entry, OAuth codes and tokens, passkey user
-   handle, Oura and Strava mappings, the `user_accounts` row and the usage counters) and clears their
+   handle, single sign-on links, flows and codes, Oura and Strava mappings, the `user_accounts` row and the usage counters) and clears their
    name from the shared import jobs they started.
 
 Steps 1 and 2 are best effort: a server or provider that cannot be reached is logged and skipped.
@@ -255,7 +262,7 @@ their account. No new data is stored until the plan is renewed:
 - Authenticated REST writes (`POST`, `PUT`, `PATCH`, `DELETE`) answer `402` with
   `{ "success": false, "error": "This account is read-only until the plan is renewed", "payment_url": … }`
   (the `AccountReadOnlyResponse` schema in the OpenAPI document).
-  Allowed anyway: `/export/*`, `DELETE /account`, `PUT /account/email`, passkey management (`/webauthn/*`) and the
+  Allowed anyway: `/export/*`, `DELETE /account`, `PUT /account/email`, passkey management (`/webauthn/*`), linked sign-in providers (`/account/oidc/*`) and the
   previews that store nothing (`POST /autoshare-rules/preview`, `/deduction-rules/preview`,
   `/feed/activities/:id/preview` and `/feed/exercises/preview`).
 - MCP tools that change data (the same verbs the usage counters treat as writes) return a tool error

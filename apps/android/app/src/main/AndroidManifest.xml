@@ -131,6 +131,18 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
             </intent-filter>
 
+            <!--
+                The server's OpenID Connect callback sends a sign-in the app started back here
+                (OidcLogin.kt). A custom scheme, since a self-hosted server's host cannot be a
+                verified App Link; a code another app intercepts is useless without the verifier.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="net.aurboda.oidc" android:host="callback" />
+            </intent-filter>
+
         </activity>
         <activity-alias
             android:name="androidx.health.connect.client.ui.HealthConnectPermissionControllerActivity"

@@ -36,6 +36,7 @@ import type { FollowerActions } from './services/followers.ts'
 import type { FollowActions } from './services/following.ts'
 import type { NamedLocationsChanged } from './services/locations.ts'
 import type { RunNotificationAction } from './services/notification-actions.ts'
+import type { OidcProviderAdmin } from './services/oidc-providers.ts'
 import type { PublicTagModeration } from './services/public-tag-moderation.ts'
 import type { PublicTagActions } from './services/public-tags.ts'
 import type { SyncProvider } from './services/queries/index.ts'
@@ -53,6 +54,7 @@ import {
   registerAdminFederationTools,
   registerFederationDeliveryTools,
 } from './mcp/admin-federation-tools.ts'
+import { registerAdminOidcTools } from './mcp/admin-oidc-tools.ts'
 import { registerAdminPublicTagTools } from './mcp/admin-public-tag-tools.ts'
 import { registerAdminRelayTools } from './mcp/admin-relay-tools.ts'
 import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
@@ -172,6 +174,8 @@ interface McpDeps {
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
   relayActions?: RelayActions
+  /** The admin's single sign-on providers (`list_oidc_providers` and the rest). */
+  oidcProviders?: OidcProviderAdmin
   publicTagActions?: PublicTagActions
   publicTagModeration?: PublicTagModeration
   /** Admin re-send of every public post's Update (`resend_post_updates`). */
@@ -186,6 +190,15 @@ interface McpDeps {
     options?: { fullResync?: boolean; startDate?: Date },
   ) => Promise<HomeAssistantSyncResult>
   webHost?: string
+}
+
+/** The admin tools whose service this server was given. */
+const registerOptionalAdminTools = (server: McpServer, user: string, centralDb: CentralDb, deps: McpDeps) => {
+  if (deps.adminUsers) registerAdminUserTools(server, user, centralDb, deps.adminUsers)
+  if (deps.relayActions) registerAdminRelayTools(server, user, centralDb, deps.relayActions)
+  if (deps.oidcProviders) registerAdminOidcTools(server, user, centralDb, deps.oidcProviders)
+  if (deps.publicTagModeration) registerAdminPublicTagTools(server, user, centralDb, deps.publicTagModeration)
+  if (deps.postUpdateResender) registerAdminFederationTools(server, user, centralDb, deps.postUpdateResender)
 }
 
 const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
@@ -239,14 +252,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     registerFoodItemTools(server, user, deps.centralDb)
     registerSensitivityTools(server, user, deps.centralDb)
     registerImportTools(server, user, deps.centralDb)
-    if (deps.adminUsers) registerAdminUserTools(server, user, deps.centralDb, deps.adminUsers)
-    if (deps.relayActions) registerAdminRelayTools(server, user, deps.centralDb, deps.relayActions)
-    if (deps.publicTagModeration) {
-      registerAdminPublicTagTools(server, user, deps.centralDb, deps.publicTagModeration)
-    }
-    if (deps.postUpdateResender) {
-      registerAdminFederationTools(server, user, deps.centralDb, deps.postUpdateResender)
-    }
+    registerOptionalAdminTools(server, user, deps.centralDb, deps)
     registerFederationDeliveryTools(server, user, deps.centralDb)
     if (deps.accountDeleter) registerAccountDeletionTools(server, user, deps.centralDb, deps.accountDeleter)
     if (deps.accountPlans) registerAccountPlanTools(server, user, deps.centralDb, deps.accountPlans)

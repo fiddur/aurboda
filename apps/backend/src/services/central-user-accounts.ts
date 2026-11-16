@@ -47,6 +47,11 @@ export const ALTER_USER_ACCOUNTS_PROFILE_COLUMNS = [
   'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ',
 ]
 
+/** False for an account created through a sign-in provider, whose password nobody knows. */
+export const ALTER_USER_ACCOUNTS_LOGIN_COLUMNS = [
+  'ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS password_login BOOLEAN NOT NULL DEFAULT TRUE',
+]
+
 const COLUMNS =
   'username, created_at, pre_existing, inserted_at, plan, trial_ends_at, paid_until, plan_note, email, email_verified_at'
 
@@ -110,6 +115,10 @@ export interface UserAccountsApi {
   markEmailVerified: (username: string, email: string) => Promise<boolean>
   /** The accounts whose verified email is `email`, compared without case, at most `limit`. */
   listAccountsByVerifiedEmail: (email: string, limit: number) => Promise<UserAccount[]>
+  /** Whether the account's password is one its user knows; true for an account without a row. */
+  getPasswordLogin: (username: string) => Promise<boolean>
+  /** Resolves to whether the account has a row to set it on. */
+  setPasswordLogin: (username: string, enabled: boolean) => Promise<boolean>
 }
 
 export const createUserAccountsApi = (getClient: () => Promise<Queryable>): UserAccountsApi => ({
@@ -140,6 +149,15 @@ export const createUserAccountsApi = (getClient: () => Promise<Queryable>): User
       [username, createdAt, preExisting, plan, trialEndsAt],
     )
     return (result.rowCount ?? 0) > 0
+  },
+
+  getPasswordLogin: async (username) => {
+    const client = await getClient()
+    const result = await client.query<{ password_login: boolean }>(
+      'SELECT password_login FROM user_accounts WHERE username = $1',
+      [username],
+    )
+    return result.rows[0]?.password_login ?? true
   },
 
   getUserAccount: async (username) => {
@@ -177,6 +195,15 @@ export const createUserAccountsApi = (getClient: () => Promise<Queryable>): User
       'UPDATE user_accounts SET email_verified_at = NOW() WHERE username = $1 AND email = $2',
       [username, email],
     )
+    return (result.rowCount ?? 0) > 0
+  },
+
+  setPasswordLogin: async (username, enabled) => {
+    const client = await getClient()
+    const result = await client.query('UPDATE user_accounts SET password_login = $2 WHERE username = $1', [
+      username,
+      enabled,
+    ])
     return (result.rowCount ?? 0) > 0
   },
 

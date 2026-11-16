@@ -160,6 +160,17 @@ class MainActivity : ComponentActivity() {
   // is already open — where they navigate the running app to the same place.
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    if (takeOidcCallback(intent) && !isTaskRoot) {
+      // The browser started this instance on top of its Custom Tab, which sits on the running
+      // activity (singleTop only reuses the top one). Hand over to that activity, whose login
+      // screen holds the pending sign-in, and close the tab and this copy.
+      startActivity(
+        Intent(this, MainActivity::class.java)
+          .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+      )
+      finish()
+      return
+    }
     val link = deepLinkFrom(intent)
     markTappedNotificationRead(intent)
     setContent {
@@ -173,6 +184,7 @@ class MainActivity : ComponentActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
+    if (takeOidcCallback(intent)) return
     deepLinkFrom(intent)?.let { runningDeepLink = DeepLinkEvent(++deepLinkSeq, it) }
     markTappedNotificationRead(intent)
   }
@@ -191,6 +203,18 @@ class MainActivity : ComponentActivity() {
         client.close()
       }
     }
+  }
+
+  /**
+   * Routes a `net.aurboda.oidc://callback` intent to the login screen through [OidcLogin], and
+   * clears the intent's data so a rotation does not replay it. False for any other intent.
+   */
+  private fun takeOidcCallback(intent: Intent?): Boolean {
+    val uri = intent?.data ?: return false
+    if (!isOidcCallbackUri(uri)) return false
+    intent.data = null
+    OidcLogin.deliver(parseOidcCallback(uri) ?: OidcCallback.Failure("failed"))
+    return true
   }
 
   private fun deepLinkFrom(intent: Intent?): DeepLink? =

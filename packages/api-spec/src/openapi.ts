@@ -121,6 +121,25 @@ import {
   setNotificationPreferenceResponseSchema,
 } from './schemas/notifications.ts'
 import {
+  addOidcProviderBodySchema,
+  deleteOidcProviderQuerySchema,
+  deleteOidcProviderResponseSchema,
+  oidcCallbackQuerySchema,
+  oidcExchangeBodySchema,
+  oidcLinkCompleteBodySchema,
+  oidcLinksResponseSchema,
+  oidcLoginResponseSchema,
+  oidcProviderResponseSchema,
+  oidcProvidersResponseSchema,
+  oidcPublicProvidersResponseSchema,
+  oidcSignupBodySchema,
+  oidcSignupInfoQuerySchema,
+  oidcSignupInfoResponseSchema,
+  oidcStartBodySchema,
+  oidcStartResponseSchema,
+  updateOidcProviderBodySchema,
+} from './schemas/oidc.ts'
+import {
   outboundSyncAckBodySchema,
   outboundSyncAckResponseSchema,
   outboundSyncResponseSchema,
@@ -2254,6 +2273,289 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Verify registration',
+        tags: ['Auth'],
+      },
+    },
+
+    '/auth/oidc/providers': {
+      get: {
+        description:
+          'The enabled single sign-on (OpenID Connect) providers, for the login and signup pages. Public.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcPublicProvidersResponseSchema } },
+            description: 'Enabled providers',
+          },
+        },
+        summary: 'List sign-in providers',
+        tags: ['Auth'],
+      },
+    },
+    '/auth/oidc/{provider}/start': {
+      post: {
+        description:
+          "Begin a login (or a signup, when the provider allows it) through a provider: returns the provider's authorization URL to send the browser to. Authorization Code with PKCE; the state, nonce and verifier stay on the server.",
+        requestBody: { content: { 'application/json': { schema: oidcStartBodySchema } } },
+        requestParams: { path: z.object({ provider: z.string().meta({ description: 'Provider id' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcStartResponseSchema } },
+            description: 'Where to send the browser',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such enabled provider',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The provider could not be reached',
+          },
+        },
+        summary: 'Start a provider sign-in',
+        tags: ['Auth'],
+      },
+    },
+    '/auth/oidc/callback': {
+      get: {
+        description:
+          'The one redirect URI registered with every provider. Always answers with a 302 to the web: /login/oidc#code=… after a login, /signup/oidc#code=… for a new account, /settings/oidc-link#code=… for a link, or /login?oidc_error=<code> (/settings?oidc_error=<code> for a link) when it fails. Nothing is signed in or linked here: the browser that started the flow trades the code together with the verifier its start answered with, and the session token never travels in a URL.',
+        requestParams: { query: oidcCallbackQuerySchema },
+        responses: { 302: { description: 'Redirect to the web' } },
+        summary: 'Provider redirect target',
+        tags: ['Auth'],
+      },
+    },
+    '/auth/oidc/exchange': {
+      post: {
+        description:
+          'Trade the one-time login code (valid 60 seconds) and the verifier of the start for a session token.',
+        requestBody: { content: { 'application/json': { schema: oidcExchangeBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcLoginResponseSchema } },
+            description: 'Signed in',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown, used or expired code, or a verifier that does not match it',
+          },
+        },
+        summary: 'Finish a provider login',
+        tags: ['Auth'],
+      },
+    },
+    '/auth/oidc/signup-info': {
+      get: {
+        description:
+          'What the provider said about a new user, for the signup form: the provider, the email and a suggested username. Does not use up the code (valid 5 minutes).',
+        requestParams: { query: oidcSignupInfoQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcSignupInfoResponseSchema } },
+            description: 'The signup details',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown, used or expired code',
+          },
+        },
+        summary: 'Provider signup details',
+        tags: ['Auth'],
+      },
+    },
+    '/auth/oidc/signup': {
+      post: {
+        description:
+          'Create an account for a provider identity with the chosen username, link the identity and sign in. Needs the verifier of the start. Goes through the same checks as a password signup; the account has no password its user knows.',
+        requestBody: { content: { 'application/json': { schema: oidcSignupBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcLoginResponseSchema } },
+            description: 'Signed up and in',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid username, or an expired code or a verifier that does not match it',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Signup closed or invitation invalid',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Username taken, or the identity is linked already',
+          },
+        },
+        summary: 'Sign up through a provider',
+        tags: ['Auth'],
+      },
+    },
+    '/account/oidc/{provider}/link/start': {
+      post: {
+        description:
+          "Begin linking a provider identity to the signed-in account: returns the provider's authorization URL. Web only, like the rest of linking.",
+        requestParams: { path: z.object({ provider: z.string().meta({ description: 'Provider id' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcStartResponseSchema } },
+            description: 'Where to send the browser',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such enabled provider',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Start linking a provider',
+        tags: ['Auth'],
+      },
+    },
+    '/account/oidc/link/complete': {
+      post: {
+        description:
+          "Finish linking: the code the provider's redirect put on /settings/oidc-link (valid 5 minutes) and the verifier of the link start, from the account that started it.",
+        requestBody: { content: { 'application/json': { schema: oidcLinkCompleteBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Linked (or linked to this account already)',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown, used or expired code, another account, or a verifier that does not match',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The identity is linked to another account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Complete linking a provider',
+        tags: ['Auth'],
+      },
+    },
+    '/account/oidc/links': {
+      get: {
+        description:
+          'The provider identities linked to the signed-in account, and how many ways it has to log in.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcLinksResponseSchema } },
+            description: 'Linked providers',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List linked providers',
+        tags: ['Auth'],
+      },
+    },
+    '/account/oidc/links/{id}': {
+      delete: {
+        description: 'Unlink a provider identity. Refused when it is the last way the account can log in.',
+        requestParams: { path: z.object({ id: z.uuid().meta({ description: 'Link id' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Unlinked',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such link',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The last login method',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unlink a provider',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/oidc-providers': {
+      get: {
+        description:
+          'The single sign-on providers, with the redirect URI to register with each. The client secret is never returned. Admin-only.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcProvidersResponseSchema } },
+            description: 'Every provider',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List sign-in providers (admin)',
+        tags: ['Auth'],
+      },
+      post: {
+        description:
+          'Add a single sign-on provider. The issuer must be https and answer with an OpenID Connect discovery document. Admin-only.',
+        requestBody: { content: { 'application/json': { schema: addOidcProviderBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: oidcProviderResponseSchema } },
+            description: 'The added provider',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not an https issuer, or not an OpenID Connect issuer',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The id is taken',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a sign-in provider',
+        tags: ['Auth'],
+      },
+    },
+    '/admin/oidc-providers/{id}': {
+      delete: {
+        description:
+          'Delete a provider and its links. Refused with the count when a linked user would be left with no way to log in, unless force=true. Admin-only.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Provider id' }) }),
+          query: deleteOidcProviderQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteOidcProviderResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such provider',
+          },
+          409: {
+            content: { 'application/json': { schema: deleteOidcProviderResponseSchema } },
+            description: 'Users would be left without a login method',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a sign-in provider',
+        tags: ['Auth'],
+      },
+      put: {
+        description:
+          'Change a provider; an omitted field, the client secret included, keeps its value. Admin-only.',
+        requestBody: { content: { 'application/json': { schema: updateOidcProviderBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Provider id' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: oidcProviderResponseSchema } },
+            description: 'The changed provider',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not an https issuer, or not an OpenID Connect issuer',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such provider',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Change a sign-in provider',
         tags: ['Auth'],
       },
     },

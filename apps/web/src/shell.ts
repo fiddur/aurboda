@@ -4,8 +4,8 @@
  * the public sharing pages (`/u/...`: a profile, post, article, shared dashboard or challenge,
  * `/challenges/join`, the instance blog at `/blog` and the public tag pages at `/tags/<tag>`). They get the guest bar instead of the app navigation.
  */
-/** The account recovery and email confirmation pages the emailed links open. */
-const ACCOUNT_LINK_PAGES = ['/recover-request', '/recover', '/verify-email']
+/** The account recovery and email confirmation pages the emailed links open, and where a sign-in provider sends the browser back. */
+const ACCOUNT_LINK_PAGES = ['/recover-request', '/recover', '/verify-email', '/login/oidc', '/signup/oidc']
 
 const isGuestPage = (path: string): boolean =>
   path === '/' ||

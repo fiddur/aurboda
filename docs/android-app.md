@@ -244,6 +244,24 @@ The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
 
+## Login screen
+
+The login screen (`ui/screens/LoginScreen.kt`) is native, since it works logged out: the server
+URL, **Sign in with passkey** (Credential Manager), one button per
+[sign-in provider](sso.md#in-the-android-app) the server offers, and username and password. The
+providers load with the email check, half a second after the server URL stops changing
+(`AuthApi.oidcProviders`; an older server without them shows none).
+
+A provider button starts an app sign-in (`AuthApi.oidcStart`, `{"client": "app"}`), keeps the
+verifier in memory (`OidcLogin.pending`, `OidcLogin.kt`, for ten minutes) and opens the provider in a
+Custom Tab (`androidx.browser`), falling back to `ACTION_VIEW`. The server sends the browser back to
+`net.aurboda.oidc://callback?code=…` (or `?error=…`), which `MainActivity` claims with an intent
+filter. `MainActivity` hands the callback to `OidcLogin.callback` and clears the intent's data so a
+rotation does not replay it; when the browser started a second `MainActivity` on top of its tab, that
+copy brings the running one forward (`CLEAR_TOP | SINGLE_TOP`) and finishes. The login screen trades
+the code with the verifier (`AuthApi.oidcExchange`) and saves the session like a password login.
+Linking a provider is web-only: the embedded Settings page shows no Link buttons.
+
 ## Refused tokens and read-only accounts
 
 - **401: logged out.** The HTTP clients that carry the stored token (background

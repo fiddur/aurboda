@@ -73,6 +73,9 @@ const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
 const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
+const LoginOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LoginOidc')
+const SignupOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'SignupOidc')
+const LinkOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LinkOidc')
 const Recover = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'Recover')
 const RecoverRequest = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'RecoverRequest')
 const VerifyEmail = lazyPage(() => import('./pages/AccountRecovery/index.jsx'), 'VerifyEmail')
@@ -148,6 +151,9 @@ function AppShell() {
             <Route path="/tags/:tag" component={PublicTag} />
             <Route path="/login" component={Login} />
             <Route path="/signup" component={Signup} />
+            <Route path="/login/oidc" component={LoginOidc} />
+            <Route path="/signup/oidc" component={SignupOidc} />
+            <Route path="/settings/oidc-link" component={LinkOidc} />
             <Route path="/recover-request" component={RecoverRequest} />
             <Route path="/recover" component={Recover} />
             <Route path="/verify-email" component={VerifyEmail} />

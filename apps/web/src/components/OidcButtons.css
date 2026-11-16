@@ -1,0 +1,74 @@
+.oidc-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.oidc-buttons .oidc-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 1rem;
+  font-size: 1rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.oidc-buttons .oidc-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Google's sign-in button: neutral light fill, its own border and text colours, the "G" mark at 18 px. */
+.oidc-buttons .oidc-button.google {
+  font-family: Roboto, Arial, sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.25px;
+  color: #1f1f1f;
+  background: #ffffff;
+  border-color: #747775;
+  border-radius: 20px;
+  min-height: 40px;
+}
+
+.oidc-buttons .oidc-button.google:hover:not(:disabled) {
+  background: #f8f9fa;
+}
+
+.oidc-buttons .oidc-button .google-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.oidc-buttons .error {
+  color: #d32f2f;
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .oidc-buttons .oidc-button.google {
+    color: #e3e3e3;
+    background: #131314;
+    border-color: #8e918f;
+  }
+
+  .oidc-buttons .oidc-button.google:hover:not(:disabled) {
+    background: #1f1f20;
+  }
+
+  .oidc-buttons .error {
+    color: #ff6b6b;
+  }
+}

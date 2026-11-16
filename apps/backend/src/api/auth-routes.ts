@@ -23,7 +23,8 @@ import type { FailedLogins } from './rate-limit-middleware.ts'
 
 import { isInvalidPasswordError, loginToUserDb, makeNewUserDb, query } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
-import { readBillingSettings, recordNewAccount } from '../services/account-plan.ts'
+import { readBillingSettings } from '../services/account-plan.ts'
+import { type AccountSignupDeps, createAccount } from '../services/account-signup.ts'
 import { appVersion } from '../services/app-version.ts'
 import { pruneAuditLog } from '../services/audit-log.ts'
 import { isEmailConfigured } from '../services/email.ts'
@@ -31,7 +32,7 @@ import { notifier, notifyAdminsOfSignup } from '../services/notifications.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { readPublicTagPages } from '../services/public-tags.ts'
 import { tooManyFailedLoginsMessage } from '../services/rate-limit.ts'
-import { defaultSignupProfileDeps, saveSignupProfile } from '../services/signup-profile.ts'
+import { defaultSignupProfileDeps } from '../services/signup-profile.ts'
 import { readSupportContacts } from '../services/support-contacts.ts'
 import { validateBody } from '../validation.ts'
 import { sendTooManyRequests } from './rate-limit-middleware.ts'
@@ -50,31 +51,34 @@ interface AuthRoutesDeps {
   startEmailVerification?: (username: string) => void
 }
 
-export const RESERVED_USERNAMES = [
-  'postgres',
-  'admin',
-  'root',
-  'administrator',
-  'superuser',
-  'system',
-  'public',
-  'guest',
-  'test',
-  'aurboda',
-  'tags',
-]
+export { isValidUsername, RESERVED_USERNAMES, USERNAME_REGEX } from '../services/account-signup.ts'
 
-/**
- * Username format: a valid lowercase PostgreSQL role name. This also selects
- * which per-user database a request connects to, so any caller that resolves a
- * username to a database (e.g. public sharing routes) MUST validate against
- * this same rule — reuse `isValidUsername` rather than re-declaring the regex.
- */
-export const USERNAME_REGEX = /^[a-z][a-z0-9_]{2,30}$/
-
-/** True when `user` is a well-formed, non-reserved username. */
-export const isValidUsername = (user: string): boolean =>
-  USERNAME_REGEX.test(user) && !RESERVED_USERNAMES.includes(user)
+/** The account creation `/signup` uses, for the other ways to sign up. */
+export const accountSignupDeps = ({
+  auth,
+  centralDb,
+  invitationAuth,
+  userDb,
+  startEmailVerification,
+}: Pick<
+  AuthRoutesDeps,
+  'auth' | 'centralDb' | 'invitationAuth' | 'userDb' | 'startEmailVerification'
+>): AccountSignupDeps => ({
+  centralDb,
+  createToken: (username) => auth.createToken(username),
+  invitationAuth,
+  makeNewUserDb: (username, password) => makeNewUserDb(userDb, username, password),
+  notifyAdmins: (username) =>
+    void notifyAdminsOfSignup({
+      getAdmins: centralDb.getAdmins,
+      raiseBestEffort: notifier.raiseBestEffort,
+    })(username),
+  roleExists: async (username) => {
+    const existing = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [username])
+    return (existing.rowCount ?? 0) > 0
+  },
+  signupProfile: defaultSignupProfileDeps(centralDb, startEmailVerification),
+})
 
 export const registerAuthRoutes = ({
   httpd,
@@ -88,6 +92,8 @@ export const registerAuthRoutes = ({
   userExists,
   startEmailVerification,
 }: AuthRoutesDeps): void => {
+  const signupDeps = accountSignupDeps({ auth, centralDb, invitationAuth, startEmailVerification, userDb })
+
   httpd.get<Record<string, never>, VersionResponse>('/version', (_req, res) => {
     res.json({
       build_sha: process.env.BUILD_SHA ?? 'dev',
@@ -128,80 +134,21 @@ export const registerAuthRoutes = ({
     '/signup',
     validateBody(signupBodySchema),
     async (req, res, next) => {
-      const signupMode = await centralDb.getSignupMode()
-
-      if (signupMode === 'closed') {
-        res.status(403).json({ error: 'Signup is currently closed', success: false })
-        return
-      }
-
-      const { username: user, password, invitation: invite } = req.body
-
-      if (signupMode === 'invite_only') {
-        if (!invite) {
-          res.status(403).json({
-            error: 'An invitation is required to sign up',
-            success: false,
-          })
-          return
-        }
-        const validation = invitationAuth.validateInvitationToken(invite)
-        if (!validation.valid) {
-          const errorMsg = validation.expired ? 'Invitation has expired' : 'Invalid invitation'
-          res.status(403).json({ error: errorMsg, success: false })
-          return
-        }
-      }
-
-      if (!USERNAME_REGEX.test(user)) {
-        res.status(400).json({
-          error:
-            'Username must be 3-31 characters, start with a letter, and contain only lowercase letters, numbers, and underscores',
-          success: false,
-        })
-        return
-      }
-
-      if (RESERVED_USERNAMES.includes(user)) {
-        res.status(400).json({ error: 'This username is reserved', success: false })
-        return
-      }
-
-      const existingUser = await query(userDb, 'SELECT usename FROM pg_user WHERE usename=$1', [user])
-      if ((existingUser.rowCount && existingUser.rowCount > 0) || (await centralDb.isUsernameDeleted(user))) {
-        res.status(409).json({ error: 'Username already exists', success: false })
-        return
-      }
-
+      const { username, password, invitation, display_name, email } = req.body
       try {
-        await makeNewUserDb(userDb, user, password)
-        await recordNewAccount(centralDb, user).catch((e) =>
-          console.error(`⚠️ Failed to record account row for ${user}:`, e),
-        )
-        await saveSignupProfile(defaultSignupProfileDeps(centralDb, startEmailVerification), user, {
-          display_name: req.body.display_name,
-          email: req.body.email,
+        const result = await createAccount(signupDeps, {
+          display_name,
+          email,
+          invitation,
+          password,
+          username,
         })
-        const token = auth.createToken(user)
-
-        const adminCount = await centralDb.getAdminCount()
-        let isAdmin = false
-        if (adminCount === 0) {
-          await centralDb.addAdmin(user)
-          isAdmin = true
-          console.info(`First user ${user} automatically made admin`)
-        }
-        void notifyAdminsOfSignup({
-          getAdmins: centralDb.getAdmins,
-          raiseBestEffort: notifier.raiseBestEffort,
-        })(user)
-
-        res.json({ is_admin: isAdmin, success: true, token })
-      } catch (err) {
-        if ((err as { code?: string }).code === '42710') {
-          res.status(409).json({ error: 'Username already exists', success: false })
+        if (!result.ok) {
+          res.status(result.status).json({ error: result.error, success: false })
           return
         }
+        res.json({ is_admin: result.is_admin, success: true, token: result.token })
+      } catch (err) {
         console.error('Signup error:', err)
         next(err)
       }

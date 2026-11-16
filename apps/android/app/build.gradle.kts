@@ -188,6 +188,9 @@ dependencies {
   // embedded web screens (EmbeddedWebScreen)
   implementation("androidx.webkit:webkit:1.12.1")
 
+  // Custom Tabs for signing in through an OpenID Connect provider: Google refuses OAuth in a WebView
+  implementation("androidx.browser:browser:1.9.0")
+
   testImplementation(libs.junit)
   testImplementation("io.mockk:mockk:1.13.9")
   testImplementation("androidx.work:work-testing:2.9.0")

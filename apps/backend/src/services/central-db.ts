@@ -44,6 +44,16 @@ import {
   type SharedNutrientRecommendationsApi,
 } from './central-nutrient-recommendations.ts'
 import {
+  createOidcApi,
+  ALTER_OIDC_FLOWS_COLUMNS,
+  CREATE_OIDC_CODES_TABLE,
+  CREATE_OIDC_FLOWS_TABLE,
+  CREATE_OIDC_INDEXES,
+  CREATE_OIDC_LINKS_TABLE,
+  CREATE_OIDC_PROVIDERS_TABLE,
+  type OidcApi,
+} from './central-oidc.ts'
+import {
   createPublicTagsApi,
   CREATE_INSTANCE_TAG_FOLLOWS_TABLE,
   ADD_PUBLIC_TAG_POSTS_ANNOUNCE_ACTORS,
@@ -60,6 +70,7 @@ import {
   type RelaysApi,
 } from './central-relays.ts'
 import {
+  ALTER_USER_ACCOUNTS_LOGIN_COLUMNS,
   ALTER_USER_ACCOUNTS_PLAN_COLUMNS,
   ALTER_USER_ACCOUNTS_PROFILE_COLUMNS,
   createUserAccountsApi,
@@ -177,6 +188,7 @@ export interface CentralDb
     CentralImportJobsApi,
     DeletedUsernamesApi,
     FederationDeliveryFailuresApi,
+    OidcApi,
     PublicTagsApi,
     RelaysApi,
     SharedNutrientRecommendationsApi,
@@ -517,6 +529,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_USER_ACCOUNTS_TABLE)
       for (const stmt of ALTER_USER_ACCOUNTS_PLAN_COLUMNS) await client.query(stmt)
       for (const stmt of ALTER_USER_ACCOUNTS_PROFILE_COLUMNS) await client.query(stmt)
+      for (const stmt of ALTER_USER_ACCOUNTS_LOGIN_COLUMNS) await client.query(stmt)
       await client.query(CREATE_ACCOUNT_EMAIL_TOKENS_TABLE)
       for (const stmt of CREATE_ACCOUNT_EMAIL_TOKENS_INDEXES) await client.query(stmt)
       await client.query(CREATE_DELETED_USERNAMES_TABLE)
@@ -533,6 +546,13 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_PUBLIC_TAG_HIDDEN_TABLE)
       await client.query(CREATE_PUBLIC_TAG_BLOCKS_TABLE)
 
+      await client.query(CREATE_OIDC_PROVIDERS_TABLE)
+      await client.query(CREATE_OIDC_LINKS_TABLE)
+      await client.query(CREATE_OIDC_FLOWS_TABLE)
+      for (const stmt of ALTER_OIDC_FLOWS_COLUMNS) await client.query(stmt)
+      await client.query(CREATE_OIDC_CODES_TABLE)
+      for (const stmt of CREATE_OIDC_INDEXES) await client.query(stmt)
+
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
@@ -548,6 +568,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createCentralImportJobsApi(getClient),
     ...createDeletedUsernamesApi(getClient, deps.withTransaction),
     ...createFederationDeliveryFailuresApi(getClient),
+    ...createOidcApi(getClient, deps.withTransaction),
     ...createPublicTagsApi(getClient),
     ...createRelaysApi(getClient),
     ...createSharedNutrientRecommendationsApi(getClient),

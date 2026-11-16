@@ -14,6 +14,13 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import net.aurboda.api.models.LoginBody
 import net.aurboda.api.models.LoginResponse
+import net.aurboda.api.models.OidcClient
+import net.aurboda.api.models.OidcExchangeBody
+import net.aurboda.api.models.OidcLoginResponse
+import net.aurboda.api.models.OidcPublicProvider
+import net.aurboda.api.models.OidcPublicProvidersResponse
+import net.aurboda.api.models.OidcStartBody
+import net.aurboda.api.models.OidcStartResponse
 import net.aurboda.api.models.ServerStatusResponse
 
 private const val TAG = "AuthApi"
@@ -21,6 +28,16 @@ private const val TAG = "AuthApi"
 sealed class LoginResult {
     data class Success(val token: String) : LoginResult()
     data class Error(val message: String) : LoginResult()
+}
+
+sealed class OidcStartResult {
+    data class Success(val authorizationUrl: String, val verifier: String) : OidcStartResult()
+    data class Error(val message: String) : OidcStartResult()
+}
+
+sealed class OidcExchangeResult {
+    data class Success(val username: String, val token: String) : OidcExchangeResult()
+    data class Error(val message: String) : OidcExchangeResult()
 }
 
 class AuthApi(private val httpClient: HttpClient) {
@@ -52,6 +69,65 @@ class AuthApi(private val httpClient: HttpClient) {
         } catch (e: Exception) {
             Log.d(TAG, "Status check failed: ${e.message}")
             false
+        }
+    }
+
+    /** The server's enabled sign-in providers; empty on any error, or from a server without them. */
+    suspend fun oidcProviders(serverUrl: String): List<OidcPublicProvider> {
+        val url = "${serverUrl.trimEnd('/')}/api/auth/oidc/providers"
+        return try {
+            httpClient.get(url).body<OidcPublicProvidersResponse>().providers
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.d(TAG, "Sign-in providers unavailable: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /** Starts a sign-in the server will send back to the app's scheme rather than to the web. */
+    suspend fun oidcStart(serverUrl: String, providerId: String): OidcStartResult {
+        val url = "${serverUrl.trimEnd('/')}/api/auth/oidc/$providerId/start"
+        return try {
+            val response = httpClient.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(OidcStartBody(client = OidcClient.app))
+            }.body<OidcStartResponse>()
+            val authorizationUrl = response.authorizationUrl
+            val verifier = response.verifier
+            if (response.success && authorizationUrl != null && verifier != null) {
+                OidcStartResult.Success(authorizationUrl = authorizationUrl, verifier = verifier)
+            } else {
+                OidcStartResult.Error(response.error ?: "The sign-in could not be started")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Sign-in start failed: ${e.message}", e)
+            OidcStartResult.Error(e.message ?: "The sign-in could not be started")
+        }
+    }
+
+    /** Trades the code the browser brought back, with the verifier of its start, for a session. */
+    suspend fun oidcExchange(serverUrl: String, code: String, verifier: String): OidcExchangeResult {
+        val url = "${serverUrl.trimEnd('/')}/api/auth/oidc/exchange"
+        return try {
+            val response = httpClient.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(OidcExchangeBody(code = code, verifier = verifier))
+            }.body<OidcLoginResponse>()
+            val username = response.username
+            val token = response.token
+            if (response.success && username != null && token != null) {
+                OidcExchangeResult.Success(username = username, token = token)
+            } else {
+                OidcExchangeResult.Error(response.error ?: OIDC_NOT_STARTED_MESSAGE)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Sign-in exchange failed: ${e.message}", e)
+            OidcExchangeResult.Error(e.message ?: OIDC_NOT_STARTED_MESSAGE)
         }
     }
 

@@ -1,6 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useEffect, useState } from 'preact/hooks'
 
+import { OidcButtons } from '../../components/OidcButtons'
+import { fetchOidcProviders, startOidcLogin } from '../../state/api'
 import {
   auth,
   emailEnabled,
@@ -9,6 +12,7 @@ import {
   loginWithPasskey,
   signupAllowed,
 } from '../../state/auth'
+import { oidcErrorMessage } from '../../utils/oidc'
 import './style.css'
 
 export function Login() {
@@ -16,6 +20,12 @@ export function Login() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const { data: providers = [] } = useQuery({
+    queryFn: fetchOidcProviders,
+    queryKey: ['oidcProviders'],
+    retry: false,
+  })
+  const oidcError = oidcErrorMessage(typeof query.oidc_error === 'string' ? query.oidc_error : undefined)
 
   // Where to go after login. Only allow internal paths (no open redirect).
   const next =
@@ -66,6 +76,8 @@ export function Login() {
     <div class="login-page">
       <h1>Login</h1>
 
+      {oidcError && <p class="error oidc-error">{oidcError}</p>}
+
       <button type="button" class="primary" onClick={onPasskey} disabled={passkeyLoading || loading}>
         {passkeyLoading ? 'Waiting for passkey…' : 'Sign in with passkey'}
       </button>
@@ -87,6 +99,8 @@ export function Login() {
           {loading ? 'Logging in...' : 'Login'}
         </button>
       </form>
+
+      <OidcButtons providers={providers} start={(id) => startOidcLogin(id)} />
 
       {emailEnabled.value && (
         <p class="signup-link">

@@ -23,6 +23,7 @@ import {
   parseHandlesInput,
   parseUsernamesInput,
 } from '../../components/official-feed'
+import { OidcProvidersAdmin } from '../../components/OidcProvidersAdmin'
 import { blockKindLabel } from '../../components/public-tag-moderation'
 import {
   hasTagsPubRelay,
@@ -1517,6 +1518,8 @@ export function AdminSettings() {
       <BillingSection />
 
       <EmailSmtpSettings />
+
+      <OidcProvidersAdmin />
 
       <IntegrationsSection />
 
