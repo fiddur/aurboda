@@ -307,10 +307,18 @@ API:
   echoes `window_minutes`. Productivity rows carry
   `correlation_coefficients` (r per metric); the optional `context_metric`
   only picks which of them fills the legacy `correlation_coefficient`.
+  An activity type's row counts its own activities and those of every subtype
+  (a type whose `parent_type` chain reaches it, at any depth), merged into
+  sessions together, so the same session logged under parent and subtype is one
+  occurrence. A parent row exists even when only its subtypes were logged, and
+  then carries `includes_subtypes`: the contributing subtype names, sorted. Rows
+  that count only their own type omit it. Subtype rows are unchanged.
 - `GET /correlations/activity-impact/:activity?activity_type=activity_type&period_days=30&window_minutes=30&match=exact`
   and MCP `get_activity_impact` (`window_minutes`, `match`, `metrics`). `match` is
   `contains` (default: every name containing `activity`, case-insensitive) or
-  `exact` (the grouping key the context table uses). `timeline` is an ordered
+  `exact` (the grouping key the context table uses). For `activity_type` and
+  `tag`, an activity also matches when any ancestor of its type matches the same
+  rule, so the parent counts as many occurrences as its table row. `timeline` is an ordered
   array of buckets, `{ phase, start_offset_minutes, end_offset_minutes, hrv, hr,
 stress }`: the before buckets oldest first, then `during`, then the after
   buckets. Offsets of before buckets are relative to the session start
@@ -362,9 +370,15 @@ Dimensions:
   (`[end, end + W]`) by at least 5 minutes. Keys `none`, `before`, `after`,
   `both`. The analysed occurrences never count as sleep. Sleep is looked for
   from a day and a window before the period to a window after it.
+- **`type`**: the activity type of the session's occurrences, so a parent's
+  sessions split by subtype (and the parent itself). A merged session with two
+  types counts under each. Labels are the types' display names. Listed only for
+  `activity_type` and `tag`.
+- **`year`**: the four-digit calendar year the session starts in, in `tz`
+  (`2024`). Mostly useful with a long `period_days`.
 - For `activity_type=meal_sensitivity` (meals carrying a sensitivity flag, each
-  a point occurrence at the meal's time) only `time_of_day` and `sleep` are
-  listed; a meal has no length and no data fields.
+  a point occurrence at the meal's time) only `time_of_day`, `sleep` and `year`
+  are listed; a meal has no length and no data fields.
 - **`field:<path>`**: a data field of the activity type, a scalar
   (`field:session_name`) or an item of a list field (`field:sets.exercise`,
   grouped by normalized value as the sessions view groups them). The key is the
@@ -399,14 +413,16 @@ hrv_effect, stress_effect, metric_effects?, timeline }` over the kept
   field, `(none)` is kept and counts toward the 12); the rest are counted in
   `omitted_groups`.
 - `dimensions` (with `include_dimensions=true`): `duration`, `time_of_day`,
-  `sleep`, then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
+  `sleep`, `type` and `year` (these two only with at least two groups; a
+  request for them is still answered), then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
   scalar field and categorical list-item field. Each lists its groups with
   `occurrences` counted **before** filters, so the counts stay put while filters
   change: every bucket for duration and time of day, the non-empty groups
   otherwise, at most 50 (`omitted_groups` for the rest).
 
 Group order: duration and time buckets in limit order; sleep as none, before,
-after, both; field values by session count, then name, `(none)` last.
+after, both; types and field values by session count, then name, `(none)`
+last; years ascending.
 
 Caution: the more groups, the fewer sessions each holds, and among many small
 groups a few will show a "clear" change (p < 0.05) by chance alone. The adjusted

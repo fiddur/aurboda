@@ -39,6 +39,7 @@ const FULL: AnalyzeState = {
     { dimension: 'field:session_name', keys: ['Morning flow'] },
   ],
   hours: [6, 22],
+  impactDays: 1825,
   item: { name: 'breathwork', type: 'activity_type' },
   lengths: [10, 20, 45],
   metrics: ['hrv', 'stress'],
@@ -55,7 +56,7 @@ describe('parseAnalyzeState', () => {
 
   test('reads every param', () => {
     const search =
-      '?tab=explore&days=60&window=120&metrics=hrv,stress,body_battery&item=breathwork&item_type=activity_type' +
+      '?tab=explore&days=60&impact_days=1825&window=120&metrics=hrv,stress,body_battery&item=breathwork&item_type=activity_type' +
       '&mode=continuous&trigger=nutrition:carbs&outcome=metric:sleep_score&outcome_source=tag' +
       '&outcome_value=headache&lags=12h,24h&lag_days=2&gap=5&nutrition=complete_only&denominator=all' +
       '&start=2026-01-01&end=2026-06-30&explore_days=120&breakdown=field:session_name&lengths=10,20,45' +
@@ -66,7 +67,8 @@ describe('parseAnalyzeState', () => {
   test('falls back to defaults for invalid values', () => {
     const state = parseAnalyzeState(
       '?tab=hrv&days=45&window=7&metrics=Sleep,,&item_type=activity_type&mode=x&trigger=bogus:x' +
-        '&outcome=nutrition:sugar&gap=-1&lag_days=abc&nutrition=some&start=yesterday&explore_days=0',
+        '&outcome=nutrition:sugar&gap=-1&lag_days=abc&nutrition=some&start=yesterday&explore_days=0' +
+        '&impact_days=400',
     )
     expect(state).toEqual(DEFAULT_ANALYZE_STATE)
   })
@@ -113,6 +115,26 @@ describe('parseAnalyzeState', () => {
     expect(parseAnalyzeState('?breakdown_metric=Bad-Name').breakdownMetric).toBe('')
   })
 
+  test('impact_days is one of the long periods, else follows the table', () => {
+    expect(parseAnalyzeState('?impact_days=365').impactDays).toBe(365)
+    expect(parseAnalyzeState('?impact_days=3650').impactDays).toBe(3650)
+    expect(parseAnalyzeState('?impact_days=30').impactDays).toBeNull()
+    expect(parseAnalyzeState('?impact_days=abc').impactDays).toBeNull()
+    expect(parseAnalyzeState('').impactDays).toBeNull()
+  })
+
+  test('the type and year dimensions round-trip as breakdown and filter', () => {
+    const state = parseAnalyzeState('?breakdown=year&filter=type:trail_running;year:2024,2025')
+    expect(state.breakdown).toBe('year')
+    expect(state.filters).toEqual([
+      { dimension: 'type', keys: ['trail_running'] },
+      { dimension: 'year', keys: ['2024', '2025'] },
+    ])
+    expect(withAnalyzeState(BASE, state)).toBe(
+      '/correlations?breakdown=year&filter=type:trail_running;year:2024,2025',
+    )
+  })
+
   test('a malformed filter gives no filters', () => {
     expect(parseAnalyzeState('?filter=planet:mars').filters).toEqual([])
     expect(parseAnalyzeState('?filter=duration:').filters).toEqual([])
@@ -150,6 +172,13 @@ describe('withAnalyzeState', () => {
       lengths: [15, 30, 60],
     })
     expect(next).toBe('/correlations')
+  })
+
+  test('writes impact_days only when set', () => {
+    expect(withAnalyzeState(`${BASE}?impact_days=365`, DEFAULT_ANALYZE_STATE)).toBe('/correlations')
+    expect(withAnalyzeState(BASE, { ...DEFAULT_ANALYZE_STATE, impactDays: 730 })).toBe(
+      '/correlations?impact_days=730',
+    )
   })
 
   test('writes filters readably', () => {

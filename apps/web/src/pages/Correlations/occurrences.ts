@@ -20,3 +20,22 @@ export const describeImpactMeta = (
   const avg = formatAvgDuration(avgDurationMin)
   return avg ? `${count}, ${avg}` : count
 }
+
+/** "6 months", "1 year", "5 years" for an impact period of whole half-years or years. */
+export const impactPeriodLabel = (days: number): string => {
+  if (days < 365) return `${Math.round(days / 30)} months`
+  const years = Math.round(days / 365)
+  return years === 1 ? '1 year' : `${years} years`
+}
+
+/** The heading's meta, with the period when the impact has its own instead of the table's. */
+export const withImpactPeriod = (meta: string, impactDays: number | null): string =>
+  impactDays === null ? meta : `${meta} · last ${impactPeriodLabel(impactDays)}`
+
+/** " · incl. 2 subtypes" after a parent type's occurrences. */
+export const describeSubtypeCount = (count: number): string =>
+  count === 0 ? '' : ` · incl. ${count} ${count === 1 ? 'subtype' : 'subtypes'}`
+
+/** "Includes Trail running, Hot yoga" for a parent type's row, or undefined without subtypes. */
+export const subtypesTitle = (displayNames: readonly string[]): string | undefined =>
+  displayNames.length === 0 ? undefined : `Includes ${displayNames.join(', ')}`
