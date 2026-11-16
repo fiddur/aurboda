@@ -145,7 +145,6 @@ fun MoreScreen(
             BackHandler { onBack() }
             when (dest) {
                 is MoreDestination.Web ->
-                    // The embedded page loads its URL once, when its WebView is built.
                     key(dest.path, webPageLinks) {
                         webPage(embeddedPageUrl(credentials.serverUrl, dest.path), modifier)
                     }

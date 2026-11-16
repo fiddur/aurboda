@@ -282,6 +282,44 @@ describe('Inbound likes and boosts', () => {
       ])
     })
 
+    const TAG_RUNNING = 'https://tags.pub/user/running'
+    const tagBoost = (user: string, postId: string) =>
+      new Announce({
+        actor: new URL(TAG_RUNNING),
+        id: new URL(`${TAG_RUNNING}/announces/1`),
+        object: new URL(`${ORIGIN}/users/${user}/feed/${postId}`),
+      })
+    const withTagAccount = () => ({
+      ...fediverse(),
+      [TAG_RUNNING]: actorDocument(TAG_RUNNING, 'running', '#running'),
+    })
+
+    test('a tag account’s boost of my post is stored but raises nothing', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      await handleInboundAnnounce(inboxCtx(user, withTagAccount()), tagBoost(user, post.id), ORIGIN)
+      expect((await listFeedPostReactions(user, post.id, 100)).map((r) => [r.kind, r.actor_uri])).toEqual([
+        ['announce', TAG_RUNNING],
+      ])
+      expect(await notificationsOf(user)).toEqual([])
+    })
+
+    test('with another tag actor host configured, a tags.pub account boosting is a person', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      await handleInboundAnnounce(
+        inboxCtx(user, withTagAccount()),
+        tagBoost(user, post.id),
+        ORIGIN,
+        undefined,
+        undefined,
+        async () => 'tags.example',
+      )
+      expect(await notificationsOf(user)).toEqual([
+        { link: `/u/${user}/posts/${post.id}`, title: '#running boosted your post', type: 'feed_boost' },
+      ])
+    })
+
     test('a followee’s boost card raises one new-post naming booster and author', async () => {
       const user = getTestUser()
       await acceptFollow(user, ALICE, '@alice@mastodon.example')

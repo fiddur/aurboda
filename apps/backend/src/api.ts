@@ -703,6 +703,7 @@ const main = async () => {
 
   const federationQueueAbort = new AbortController()
   const queuedDelivery = await federationDelivery(boss, centralDb)
+  const tagActorHost = () => readTagActorHost(centralDb)
   // ActivityPub federation object (one instance, shared by the actor mount, the
   // MCP feed tools, and the REST feed router). `feedDeliver` fans a shared post
   // out to followers, fire-and-forget, so it's identical whether a post is
@@ -727,6 +728,7 @@ const main = async () => {
       tagFollows: createPublicTagInboxHooks(centralDb),
     },
     queuedDelivery ?? undefined,
+    tagActorHost,
   )
   if (queuedDelivery != null) {
     feedFederation
@@ -744,7 +746,7 @@ const main = async () => {
       publicTagPages: () => readPublicTagPages(centralDb),
       store: centralDb,
     }),
-    tagActorHost: () => readTagActorHost(centralDb),
+    tagActorHost,
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
   const publicTagModeration = createPublicTagModeration({
@@ -755,7 +757,7 @@ const main = async () => {
     federation: feedFederation,
     origin: webHost,
     store: centralDb,
-    tagActorHost: () => readTagActorHost(centralDb),
+    tagActorHost,
   })
   try {
     if (
@@ -1207,6 +1209,7 @@ const main = async () => {
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
       syncHomeAssistant,
+      tagActorHost,
       webHost,
     }),
   )
@@ -1397,6 +1400,7 @@ const main = async () => {
     reactionActions,
     retroEnrichTimeline,
     syncProvider,
+    tagActorHost,
     timelineHub,
     userDb,
     webAuthn,

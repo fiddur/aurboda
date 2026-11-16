@@ -104,7 +104,6 @@ class MoreNavigationUiTest {
                 onServerUrlChange = {},
                 onLogout = {},
                 webPageLinks = appState.morePageLinks,
-                // Like the real page, loads its URL once: when it enters the composition.
                 webPage = { url, _ ->
                     DisposableEffect(Unit) {
                         loaded += url

@@ -111,6 +111,7 @@ import {
   retagPost,
 } from '../services/post-tags.ts'
 import { getSettings } from '../services/settings.ts'
+import { DEFAULT_TAG_ACTOR_HOST } from '../services/tag-actor-host.ts'
 import { getThreadSnapshot, listOwnPostReplies, MAX_POST_REPLIES } from '../services/timeline-replies.ts'
 import { getTimelinePage, reactionTarget } from '../services/timeline.ts'
 import { withTimeout } from '../services/with-timeout.ts'
@@ -174,6 +175,8 @@ export const createFeedRouter = (
   reactions?: ReactionActions,
   /** The article preview, with the chart data it draws from; absent → that route answers 503. */
   previewArticle?: ArticlePreviewer,
+  /** Boosts by accounts on this host are hashtag feeds: left out of `boost_count` and the reactions list. */
+  tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -188,6 +191,7 @@ export const createFeedRouter = (
         includeStructured: true,
         origin: webHost,
         settings,
+        tagActorHost: await tagActorHost(),
       })
       res.json({ next_cursor, posts, success: true })
     },
@@ -441,7 +445,10 @@ export const createFeedRouter = (
       if ((await getFeedPostById(user, req.params.postId)) == null) {
         return res.status(404).json({ error: 'Feed post not found', reactions: [], success: false })
       }
-      res.json({ reactions: await listPostReactions(user, req.params.postId), success: true })
+      res.json({
+        reactions: await listPostReactions(user, req.params.postId, await tagActorHost()),
+        success: true,
+      })
     },
   )
 

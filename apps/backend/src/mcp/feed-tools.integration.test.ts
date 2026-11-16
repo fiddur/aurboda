@@ -31,6 +31,7 @@ const setup = (user: string) => {
   return {
     deleteFeedPost: tool('delete_feed_post'),
     deliver,
+    listFeed: tool('list_feed'),
     listFeedPostReactions: tool('list_feed_post_reactions'),
   }
 }
@@ -112,5 +113,29 @@ describe('list_feed_post_reactions', () => {
       ['quote', `${ALICE}/statuses/1`],
       ['like', undefined],
     ])
+  })
+
+  test('list_feed_post_reactions and list_feed leave a hashtag account’s boost out', async () => {
+    const user = getTestUser()
+    const post = await createFeedPost(user, {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      visibility: 'public',
+    })
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://tags.pub/user/running',
+      kind: 'announce',
+      post_id: post.id,
+    })
+    await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'announce', post_id: post.id })
+    const { listFeed, listFeedPostReactions } = setup(user)
+
+    const reactions = JSON.parse((await listFeedPostReactions({ id: post.id })).content[0].text)
+    expect(reactions.map((r: { actor_uri: string }) => r.actor_uri)).toEqual([ALICE])
+    const page = JSON.parse((await listFeed({ limit: 10 })).content[0].text)
+    expect(page.posts.map((p: { boost_count: number }) => p.boost_count)).toEqual([1])
   })
 })
