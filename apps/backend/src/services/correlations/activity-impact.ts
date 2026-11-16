@@ -9,7 +9,6 @@ import {
   type ImpactDimensionOption,
   type ImpactFilter,
   type ImpactGroup,
-  impactFieldPath,
   IMPACT_FIXED_DIMENSIONS,
   MAX_IMPACT_DIMENSION_GROUPS,
   MAX_IMPACT_GROUPS,
@@ -48,6 +47,7 @@ import {
   classify,
   type ClassifyContext,
   dimensionListing,
+  type DimensionListing,
   type GroupSelection,
   type Occurrence,
   passesFilters,
@@ -68,6 +68,7 @@ import {
   productivityCategoryKey,
   summarizeImpact,
 } from './impact.ts'
+import { ancestorsByType, type TypeAncestors, typeAndAncestors } from './type-family.ts'
 
 const MINUTE_MS = 60_000
 const DAY_MS = 86_400_000
@@ -102,10 +103,11 @@ const containsIgnoringCase = (value: string, pattern: string): boolean =>
 const isActivityKind = (activityType: ActivityImpactType): boolean =>
   activityType === 'tag' || activityType === 'activity_type'
 
-const activityMatcher =
-  (activity: string, match: ActivityImpactMatch) =>
-  (act: MergedActivity): boolean =>
-    match === 'exact' ? act.activity_type === activity : containsIgnoringCase(act.activity_type, activity)
+const activityMatcher = (activity: string, match: ActivityImpactMatch, ancestors: TypeAncestors) => {
+  const matchesName = (type: string): boolean =>
+    match === 'exact' ? type === activity : containsIgnoringCase(type, activity)
+  return (act: MergedActivity): boolean => typeAndAncestors(act.activity_type, ancestors).some(matchesName)
+}
 
 const atMealTime = (meal: MealFlags): Occurrence => ({ end: meal.time.getTime(), start: meal.time.getTime() })
 
@@ -161,6 +163,7 @@ const findOccurrences = async (
   match: ActivityImpactMatch,
   start: Date,
   end: Date,
+  ancestors: TypeAncestors,
   activities?: MergedActivity[],
   meals?: MealOccurrences,
 ): Promise<Occurrence[]> => {
@@ -189,13 +192,13 @@ const findOccurrences = async (
       )
       .map((visit) => ({ end: visit.end_time.getTime(), start: visit.start_time.getTime() }))
   }
-  const matches = activityMatcher(activity, match)
+  const matches = activityMatcher(activity, match, ancestors)
   const allActivities = activities ?? (await getEffectiveActivitiesInRange(user, start, end))
-  return allActivities
-    .filter(matches)
-    .map((act) =>
-      activityType === 'activity_type' ? { ...activityInterval(act), data: act.data } : activityInterval(act),
-    )
+  return allActivities.filter(matches).map((act) => ({
+    ...activityInterval(act),
+    ...(activityType === 'activity_type' ? { data: act.data } : {}),
+    type: act.activity_type,
+  }))
 }
 
 const wantsDimension = (slicing: ImpactSlicing, dimension: string): boolean =>
@@ -203,27 +206,32 @@ const wantsDimension = (slicing: ImpactSlicing, dimension: string): boolean =>
   slicing.breakdown === dimension ||
   (slicing.filters ?? []).some((f) => f.dimension === dimension)
 
-const needsDefinitions = (slicing: ImpactSlicing, activityType: ActivityImpactType): boolean =>
-  activityType === 'activity_type' &&
-  (slicing.includeDimensions === true ||
-    (slicing.breakdown !== undefined && impactFieldPath(slicing.breakdown) !== null))
-
-/** Point meals have no length worth splitting and no data fields. */
+/** Point meals have no length worth splitting and no data fields; only activities have a type. */
 export const listedDimensions = (
   activityType: ActivityImpactType,
   definition: ActivityTypeDefinition | undefined,
-): string[] =>
-  activityType === 'meal_sensitivity'
-    ? IMPACT_FIXED_DIMENSIONS.filter((d) => d !== 'duration')
-    : [...IMPACT_FIXED_DIMENSIONS, ...categoricalFieldDimensions(definition)]
+): string[] => {
+  const meal = activityType === 'meal_sensitivity'
+  const fixed = IMPACT_FIXED_DIMENSIONS.filter(
+    (d) => !(meal && d === 'duration') && (d !== 'type' || isActivityKind(activityType)),
+  )
+  return meal ? fixed : [...fixed, ...categoricalFieldDimensions(definition)]
+}
+
+const SPLIT_ONLY_WHEN_SEVERAL = new Set(['type', 'year'])
+
+const worthListing = (listing: DimensionListing): boolean =>
+  !SPLIT_ONLY_WHEN_SEVERAL.has(listing.dimension) || listing.groups.length > 1
 
 interface SliceSources {
   /** Activities starting in the analysed period, when the analysis reads activities. */
   activities?: MergedActivity[]
+  ancestors: TypeAncestors
   definition?: ActivityTypeDefinition
   listed: string[]
   meals?: MealSource
   sleeps: Interval[]
+  typeLabels: Map<string, string>
   tz: string
 }
 
@@ -255,23 +263,28 @@ const loadSliceSources = async (
         )
       : Promise.resolve([]),
     sleep ? expandActivityTypes(user, ['sleep', 'nap']) : Promise.resolve([]),
-    wantsDimension(slicing, 'time_of_day') ? (slicing.tz ?? getUserTimezone(user)) : 'UTC',
-    needsDefinitions(slicing, activityType) ? getActivityTypeDefinitions(user) : Promise.resolve([]),
+    wantsDimension(slicing, 'time_of_day') || wantsDimension(slicing, 'year')
+      ? (slicing.tz ?? getUserTimezone(user))
+      : 'UTC',
+    isActivityKind(activityType) ? getActivityTypeDefinitions(user) : Promise.resolve([]),
     activityType === 'meal_sensitivity'
       ? loadMealSource(user, activity, range, slicing.tz)
       : Promise.resolve(undefined),
   ])
-  const analysed = isActivityKind(activityType) ? activityMatcher(activity, match) : () => false
+  const ancestors = ancestorsByType(definitions)
+  const analysed = isActivityKind(activityType) ? activityMatcher(activity, match, ancestors) : () => false
   const sleeps = around
     .filter((act) => sleepTypes.includes(act.activity_type) && !analysed(act))
     .map(activityInterval)
   const definition = definitions.find((d) => d.name === activity)
   return {
     activities,
+    ancestors,
     definition,
     listed: listedDimensions(activityType, definition),
     meals,
     sleeps,
+    typeLabels: new Map(definitions.map((d) => [d.name, d.display_name])),
     tz,
   }
 }
@@ -356,6 +369,7 @@ const sliceSessions = (
     sessions,
     sleeps: sources.sleeps,
     timeLimits: slicing.timeBuckets ?? DEFAULT_IMPACT_TIME_BUCKETS,
+    typeLabels: sources.typeLabels,
     tz: sources.tz,
     windowMinutes,
   }
@@ -381,7 +395,9 @@ const sliceSessions = (
     ...(slicing.includeDimensions
       ? {
           dimensions: listed.flatMap((d) =>
-            classified(d).map((c) => dimensionListing(c, MAX_IMPACT_DIMENSION_GROUPS)),
+            classified(d)
+              .map((c) => dimensionListing(c, MAX_IMPACT_DIMENSION_GROUPS))
+              .filter(worthListing),
           ),
         }
       : {}),
@@ -439,7 +455,17 @@ export async function getActivityImpact(
   ])
 
   const found = withoutFlagged(
-    await findOccurrences(user, activity, activityType, match, start, end, sources.activities, sources.meals),
+    await findOccurrences(
+      user,
+      activity,
+      activityType,
+      match,
+      start,
+      end,
+      sources.ancestors,
+      sources.activities,
+      sources.meals,
+    ),
     (o) => o.start,
     flagged,
   )

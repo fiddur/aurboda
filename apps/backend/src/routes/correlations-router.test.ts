@@ -101,6 +101,20 @@ describe('GET /correlations/activity-impact/:activity', () => {
     })
   })
 
+  test('the type and year dimensions reach the service', async () => {
+    const res = await supertest(buildApp()).get(
+      '/correlations/activity-impact/running?activity_type=activity_type&breakdown=year&filters=type:trail_running;year:2024,2025',
+    )
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getActivityImpact).mock.calls[0][10]).toMatchObject({
+      breakdown: 'year',
+      filters: [
+        { dimension: 'type', keys: ['trail_running'] },
+        { dimension: 'year', keys: ['2024', '2025'] },
+      ],
+    })
+  })
+
   test('400 for bad bucket limits, malformed filters or an unknown breakdown', async () => {
     const app = buildApp()
     const base = '/correlations/activity-impact/yoga?activity_type=activity_type'

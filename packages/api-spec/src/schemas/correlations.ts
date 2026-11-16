@@ -121,7 +121,7 @@ export const impactExtraMetricsError = (metrics: string[]): string | null => {
   return null
 }
 
-export const IMPACT_FIXED_DIMENSIONS = ['duration', 'time_of_day', 'sleep'] as const
+export const IMPACT_FIXED_DIMENSIONS = ['duration', 'time_of_day', 'sleep', 'type', 'year'] as const
 export const IMPACT_FIELD_DIMENSION_PREFIX = 'field:'
 export const DEFAULT_IMPACT_DURATION_BUCKETS = [15, 30, 60]
 export const DEFAULT_IMPACT_TIME_BUCKETS = [0, 6, 12, 18]
@@ -173,11 +173,12 @@ export const impactTimeBucketsError = (limits: number[]): string | null =>
 export const impactDimensionSchema = z
   .string()
   .refine(isImpactDimension, {
-    message: 'dimension must be duration, time_of_day, sleep or field:<path> (e.g. field:session_name)',
+    message:
+      'dimension must be duration, time_of_day, sleep, type, year or field:<path> (e.g. field:session_name)',
   })
   .meta({
     description:
-      'What to break down or filter an activity by: duration (session length in minutes), time_of_day (local start hour), sleep (sleep in the window before/after), or field:<path> for a data field of the activity type, a scalar (field:session_name) or a list item (field:sets.exercise)',
+      'What to break down or filter an activity by: duration (session length in minutes), time_of_day (local start hour), sleep (sleep in the window before/after), type (the activity type of the session, a subtype when a parent type is analysed), year (local calendar year of the start), or field:<path> for a data field of the activity type, a scalar (field:session_name) or a list item (field:sets.exercise)',
     example: 'field:session_name',
   })
 
@@ -430,6 +431,10 @@ export const activityCorrelationSchema = hrvStatsWithDeltaSchema
       .number()
       .optional()
       .meta({ description: 'Average duration in minutes (undefined for point activities)' }),
+    includes_subtypes: z.array(z.string()).optional().meta({
+      description:
+        'The subtypes whose activities this row also counts, by name; absent when the row counts only its own type',
+    }),
     occurrences: z.number().int().meta({ description: 'Number of occurrences' }),
   })
   .meta({ id: 'ActivityCorrelation' })
@@ -529,7 +534,7 @@ export const activityImpactQuerySchema = z
     activity_type: activityImpactTypeSchema,
     breakdown: impactDimensionSchema.optional().meta({
       description:
-        'Also analyse the sessions per group of this dimension: duration, time_of_day, sleep or field:<path> (e.g. field:session_name)',
+        'Also analyse the sessions per group of this dimension: duration, time_of_day, sleep, type, year or field:<path> (e.g. field:session_name)',
       example: 'duration',
     }),
     duration_buckets: z
@@ -573,7 +578,7 @@ export const activityImpactQuerySchema = z
         example: '0,6,12,18',
       }),
     tz: ianaTimezoneSchema.optional().meta({
-      description: "Timezone for time_of_day; defaults to the user's device timezone",
+      description: "Timezone for time_of_day and year; defaults to the user's device timezone",
       example: 'Europe/Stockholm',
     }),
     window_minutes: z

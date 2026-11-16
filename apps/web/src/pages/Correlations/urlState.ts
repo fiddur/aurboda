@@ -49,6 +49,8 @@ export interface ExploreState {
 export interface AnalyzeState {
   tab: AnalyzeTab
   days: number
+  /** The selected row's impact period; null follows the table's. */
+  impactDays: number | null
   window: number
   metrics: ImpactMetric[]
   extras: string[]
@@ -64,6 +66,7 @@ export interface AnalyzeState {
 }
 
 export const PERIOD_DAY_OPTIONS = [14, 30, 60, 90] as const
+export const IMPACT_PERIOD_DAY_OPTIONS = [180, 365, 730, 1825, 3650] as const
 
 /** Presence-only metrics need the whole-regime denominator; tags are fully known. */
 export const defaultDenominator = (source: EventOutcomeSource): Denominator =>
@@ -93,6 +96,7 @@ export const DEFAULT_ANALYZE_STATE: AnalyzeState = {
   extras: [],
   filters: [],
   hours: [...DEFAULT_IMPACT_TIME_BUCKETS],
+  impactDays: null,
   item: null,
   lengths: [...DEFAULT_IMPACT_DURATION_BUCKETS],
   metrics: [...IMPACT_METRICS],
@@ -240,6 +244,7 @@ export const parseAnalyzeState = (search: string): AnalyzeState => {
   return {
     days: parseOneOf(params.get('days'), PERIOD_DAY_OPTIONS, d.days),
     explore: parseExplore(params),
+    impactDays: IMPACT_PERIOD_DAY_OPTIONS.find((days) => String(days) === params.get('impact_days')) ?? null,
     item: parseItem(params.get('item'), params.get('item_type')),
     ...parseMetrics(params.get('metrics')),
     tab: parseOneOf(params.get('tab'), ['context', 'explore'] as const, d.tab),
@@ -256,6 +261,7 @@ const paramValues = (state: AnalyzeState): [string, string, string][] => {
   return [
     ['tab', state.tab, d.tab],
     ['days', String(state.days), String(d.days)],
+    ['impact_days', state.impactDays === null ? '' : String(state.impactDays), ''],
     ['window', String(state.window), String(d.window)],
     ['metrics', [...state.metrics, ...state.extras].join(','), [...d.metrics, ...d.extras].join(',')],
     ['item', state.item?.name ?? '', ''],

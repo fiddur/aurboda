@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { DEFAULT_ANALYZE_STATE, urlShowsAnalyzeState, withAnalyzeState } from './urlState'
+import { DEFAULT_ANALYZE_STATE, withAnalyzeState } from './urlState'
 import { createUrlWatch } from './urlWatch'
 
 const ORIGIN = 'https://aurboda.example'
@@ -9,9 +9,7 @@ const PAGE = `${ORIGIN}/correlations`
 describe('createUrlWatch', () => {
   test('a state change the page has not written yet is not a navigation', () => {
     const watch = createUrlWatch(PAGE)
-    const changed = { ...DEFAULT_ANALYZE_STATE, breakdown: 'time_of_day' }
 
-    expect(urlShowsAnalyzeState(PAGE, changed)).toBe(false)
     expect(watch.changedElsewhere(PAGE)).toBe(false)
   })
 

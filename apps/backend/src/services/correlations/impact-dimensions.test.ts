@@ -35,6 +35,7 @@ const context = (occurrences: Occurrence[], overrides: Partial<ClassifyContext> 
     sessions,
     sleeps: [],
     timeLimits: [0, 6, 12, 18],
+    typeLabels: new Map(),
     tz: 'UTC',
     windowMinutes: 30,
     ...overrides,
@@ -184,6 +185,72 @@ describe('classify an item path', () => {
       { key: 'bench press', label: 'Bench Press' },
     ])
     expect(c.label).toBe('Exercise')
+  })
+})
+
+describe('classify type', () => {
+  const typed = (from: number, to: number, type: string): Occurrence => ({ ...span(from, to), type })
+
+  test('keys are the types of the members; a merged session counts under each', () => {
+    const ctx = context(
+      [
+        typed(0, 20, 'running'),
+        typed(25, 40, 'trail_running'),
+        typed(300, 320, 'trail_running'),
+        typed(600, 620, 'trail_running'),
+        typed(900, 920, 'hot_yoga'),
+      ],
+      { typeLabels: new Map([['trail_running', 'Trail run']]) },
+    )
+    const c = classify('type', ctx)
+    expect(c.label).toBe('Type')
+    expect(c.keys).toEqual([['running', 'trail_running'], ['trail_running'], ['trail_running'], ['hot_yoga']])
+    expect(c.groups).toEqual([
+      { key: 'trail_running', label: 'Trail run' },
+      { key: 'hot_yoga', label: 'Hot Yoga' },
+      { key: 'running', label: 'Running' },
+    ])
+  })
+
+  test('a breakdown orders type groups by count, then label', () => {
+    const c = classify(
+      'type',
+      context([typed(0, 20, 'running'), typed(300, 320, 'trail_running'), typed(600, 620, 'trail_running')]),
+    )
+    expect(breakdownGroups(c, [0, 1, 2], 12).groups.map((g) => [g.key, g.indices])).toEqual([
+      ['trail_running', [1, 2]],
+      ['running', [0]],
+    ])
+  })
+})
+
+describe('classify year', () => {
+  test('the local calendar year of the start, ascending, only years with sessions', () => {
+    const ctx = context(
+      [
+        { end: Date.parse('2025-06-01T10:30:00Z'), start: Date.parse('2025-06-01T10:00:00Z') },
+        { end: Date.parse('2023-12-31T23:59:00Z'), start: Date.parse('2023-12-31T23:30:00Z') },
+        { end: Date.parse('2022-03-01T10:30:00Z'), start: Date.parse('2022-03-01T10:00:00Z') },
+      ],
+      { tz: 'Europe/Stockholm' },
+    )
+    const c = classify('year', ctx)
+    expect(c.label).toBe('Year')
+    expect(c.keys).toEqual([['2022'], ['2024'], ['2025']])
+    expect(c.groups).toEqual([
+      { key: '2022', label: '2022' },
+      { key: '2024', label: '2024' },
+      { key: '2025', label: '2025' },
+    ])
+    expect(breakdownGroups(c, [0, 1, 2], 12).groups.map((g) => g.key)).toEqual(['2022', '2024', '2025'])
+  })
+
+  test('in UTC the same session stays in the old year', () => {
+    const c = classify(
+      'year',
+      context([{ end: Date.parse('2023-12-31T23:59:00Z'), start: Date.parse('2023-12-31T23:30:00Z') }]),
+    )
+    expect(c.keys).toEqual([['2023']])
   })
 })
 

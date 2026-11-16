@@ -1,3 +1,4 @@
+import { activityImpactInputSchema } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { McpServer } from './helpers.ts'
@@ -80,6 +81,24 @@ describe('get_activity_impact', () => {
       includeDimensions: true,
       timeBuckets: [6, 12, 22],
       tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('the type and year dimensions are valid tool input; an unknown one is not', async () => {
+    const base = { activity: 'running', activity_type: 'activity_type' }
+    expect(
+      activityImpactInputSchema.safeParse({
+        ...base,
+        breakdown: 'year',
+        filters: [{ dimension: 'type', keys: ['trail_running'] }],
+      }).success,
+    ).toBe(true)
+    expect(activityImpactInputSchema.safeParse({ ...base, breakdown: 'weather' }).success).toBe(false)
+
+    await impactTool()({ ...base, breakdown: 'type', filters: [{ dimension: 'year', keys: ['2024'] }] })
+    expect(vi.mocked(getActivityImpact).mock.calls[0][10]).toMatchObject({
+      breakdown: 'type',
+      filters: [{ dimension: 'year', keys: ['2024'] }],
     })
   })
 

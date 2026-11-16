@@ -18,6 +18,8 @@ describe('isImpactDimension and impactFieldPath', () => {
       'duration',
       'time_of_day',
       'sleep',
+      'type',
+      'year',
       'field:session_name',
       'field:sets.exercise',
     ]) {
@@ -81,6 +83,16 @@ describe('impact filter strings', () => {
     expect(raw).toBe(
       'duration:15-30,30-60;sleep:none;field:session_name:Morning%20flow,a%2Cb%3Bc%3Ad%25e,(none)',
     )
+    expect(parseImpactFilters(raw)).toEqual(filters)
+  })
+
+  test('the type and year dimensions round-trip', () => {
+    const filters = [
+      { dimension: 'year', keys: ['2024', '2025'] },
+      { dimension: 'type', keys: ['trail_running'] },
+    ]
+    const raw = formatImpactFilters(filters)
+    expect(raw).toBe('year:2024,2025;type:trail_running')
     expect(parseImpactFilters(raw)).toEqual(filters)
   })
 

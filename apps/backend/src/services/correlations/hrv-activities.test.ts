@@ -7,6 +7,7 @@ import { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 import { binSeries } from './impact.ts'
 
 vi.mock('../../db', () => ({
+  getActivityTypeDefinitions: vi.fn(),
   getBinnedTimeSeries: vi.fn(),
   getEffectiveActivitiesInRange: vi.fn(),
   getMealFlagsInRange: vi.fn(),
@@ -26,6 +27,7 @@ describe('getHrvActivitiesCorrelation', () => {
     vi.mocked(db.getMealFlagsInRange).mockResolvedValue([])
     vi.mocked(db.getMealLogCompletedInRange).mockResolvedValue([])
     vi.mocked(db.listSensitivityFlags).mockResolvedValue([])
+    vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([])
     vi.mocked(db.getBinnedTimeSeries).mockImplementation(async (user, metric, start, end, binMinutes) =>
       binSeries(await db.getTimeSeries(user, metric, start, end), binMinutes),
     )
@@ -387,6 +389,100 @@ describe('getHrvActivitiesCorrelation', () => {
     expect(row.hrv_effect).toEqual(impact.hrv_effect)
     expect(row.mean_stress).toBe(impact.stress_timeline.during.mean)
     expect(impact.stress_effect.paired_occurrences).toBeGreaterThan(0)
+  })
+
+  describe('parent types count their subtypes', () => {
+    const family = () =>
+      vi.mocked(db.getActivityTypeDefinitions).mockResolvedValue([
+        { display_name: 'Running', name: 'running' },
+        { display_name: 'Trail running', name: 'trail_running', parent_type: 'running' },
+        {
+          display_name: 'Mountain trail running',
+          name: 'mountain_trail_running',
+          parent_type: 'trail_running',
+        },
+        { display_name: 'Yoga', name: 'yoga' },
+      ] as Awaited<ReturnType<typeof db.getActivityTypeDefinitions>>)
+    const act = (type: string, base: Date, from: number, to: number) => ({
+      activity_type: type,
+      end_time: at(base, to),
+      source: 'manual' as const,
+      start_time: at(base, from),
+    })
+    const rows = async () => {
+      const result = await getHrvActivitiesCorrelation('testuser', 30)
+      return new Map(result.correlations.activities.map((row) => [row.activity_type, row]))
+    }
+
+    beforeEach(() => {
+      noContext()
+      vi.mocked(db.getTimeSeries).mockResolvedValue([])
+      family()
+    })
+
+    test('a parent row counts its own and its subtypes sessions, overlapping ones as one', async () => {
+      const base = alignedBase()
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        act('running', base, 0, 30),
+        act('trail_running', base, 5, 35),
+        act('trail_running', base, 300, 330),
+        act('yoga', base, 600, 630),
+      ])
+
+      const byType = await rows()
+
+      expect(byType.get('running')?.occurrences).toBe(2)
+      expect(byType.get('running')?.includes_subtypes).toEqual(['trail_running'])
+      expect(byType.get('trail_running')?.occurrences).toBe(2)
+      expect(byType.get('trail_running')).not.toHaveProperty('includes_subtypes')
+      expect(byType.get('yoga')).not.toHaveProperty('includes_subtypes')
+    })
+
+    test('a parent row appears when only subtype activities exist; a grandchild rolls up to both', async () => {
+      const base = alignedBase()
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        act('trail_running', base, 0, 30),
+        act('mountain_trail_running', base, 300, 330),
+      ])
+
+      const byType = await rows()
+
+      expect(byType.get('running')).toMatchObject({
+        includes_subtypes: ['mountain_trail_running', 'trail_running'],
+        occurrences: 2,
+      })
+      expect(byType.get('trail_running')).toMatchObject({
+        includes_subtypes: ['mountain_trail_running'],
+        occurrences: 2,
+      })
+      expect(byType.get('mountain_trail_running')?.occurrences).toBe(1)
+    })
+
+    test('the parent row and the exact impact of the parent agree', async () => {
+      const base = alignedBase()
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        act('running', base, 0, 30),
+        act('trail_running', base, 5, 35),
+        act('trail_running', base, 300, 330),
+        act('mountain_trail_running', base, 700, 730),
+      ])
+
+      const row = (await rows()).get('running')!
+      const impact = await getActivityImpact(
+        'testuser',
+        'running',
+        'activity_type',
+        30,
+        30,
+        undefined,
+        undefined,
+        undefined,
+        'exact',
+      )
+
+      expect(row.occurrences).toBe(3)
+      expect(impact.occurrences).toBe(row.occurrences)
+    })
   })
 
   test('a meal row per flag, agreeing with the meal_sensitivity impact', async () => {

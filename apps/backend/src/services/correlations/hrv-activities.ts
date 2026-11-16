@@ -20,6 +20,7 @@ import type {
 } from './types.ts'
 
 import {
+  getActivityTypeDefinitions,
   getEffectiveActivitiesInRange,
   getMealFlagsInRange,
   getProductivity,
@@ -51,6 +52,7 @@ import {
   summarizeImpact,
   valuesBetween,
 } from './impact.ts'
+import { ancestorsByType, type TypeAncestors, typeAndAncestors } from './type-family.ts'
 import { addBaselineDelta, calculateHrvStats, getDataInRange, mean, pearsonCorrelation } from './utils.ts'
 
 interface GroupContext {
@@ -220,16 +222,24 @@ const locationCorrelations = (visits: PlaceVisit[], ctx: GroupContext): Location
 }
 
 // Activity correlations are unified: they include what used to be tags.
-const activityCorrelations = (activities: Activity[], ctx: GroupContext): ActivityCorrelation[] => {
-  const byType = new Map<string, { intervals: Interval[]; hasDuration: boolean }>()
+const activityCorrelations = (
+  activities: Activity[],
+  ctx: GroupContext,
+  ancestors: TypeAncestors,
+): ActivityCorrelation[] => {
+  const byType = new Map<string, { intervals: Interval[]; hasDuration: boolean; subtypes: Set<string> }>()
 
   for (const activity of activities) {
-    const act = byType.getOrInsertComputed(activity.activity_type, () => ({
-      hasDuration: false,
-      intervals: [],
-    }))
-    if (activity.end_time) act.hasDuration = true
-    act.intervals.push(activityInterval(activity))
+    for (const type of typeAndAncestors(activity.activity_type, ancestors)) {
+      const act = byType.getOrInsertComputed(type, () => ({
+        hasDuration: false,
+        intervals: [],
+        subtypes: new Set(),
+      }))
+      if (activity.end_time) act.hasDuration = true
+      if (type !== activity.activity_type) act.subtypes.add(activity.activity_type)
+      act.intervals.push(activityInterval(activity))
+    }
   }
 
   const correlations: ActivityCorrelation[] = []
@@ -241,6 +251,7 @@ const activityCorrelations = (activities: Activity[], ctx: GroupContext): Activi
       ...groupStats(sessions, ctx, minutes),
       activity_type: type,
       ...(data.hasDuration ? { avg_duration_min: Math.round(minutes / sessions.length) } : {}),
+      ...(data.subtypes.size > 0 ? { includes_subtypes: [...data.subtypes].toSorted() } : {}),
       occurrences: sessions.length,
     })
   }
@@ -358,10 +369,11 @@ export async function getHrvActivitiesCorrelation(
   triggerCorrelationSyncs(sync, user)
 
   const { seriesEnd, seriesStart } = extendByWindow(start, end, window)
-  const [flagged, allMeals, flags, ...data] = await Promise.all([
+  const [flagged, allMeals, flags, definitions, ...data] = await Promise.all([
     loadFlaggedWindows(user, seriesStart, seriesEnd, options.excludeFlagged),
     getMealFlagsInRange(user, start, end),
     listSensitivityFlags(user),
+    getActivityTypeDefinitions(user),
     getTimeSeries(user, 'hrv_rmssd', seriesStart, seriesEnd),
     getTimeSeries(user, 'heart_rate', seriesStart, seriesEnd),
     getTimeSeries(user, 'stress_level', seriesStart, seriesEnd),
@@ -385,7 +397,7 @@ export async function getHrvActivitiesCorrelation(
   const metricBaselines = Object.fromEntries(extraMetrics.map((metric) => [metric, mean(inPeriod(metric))]))
   const ctx: GroupContext = { baseline, extraMetrics, metricBaselines, series, windowMinutes: window }
   const tables = {
-    activities: activityCorrelations(activities, ctx),
+    activities: activityCorrelations(activities, ctx, ancestorsByType(definitions)),
     locations: locationCorrelations(locations, ctx),
     meals: mealCorrelations(meals.kept, flags, ctx),
     productivity: productivityCorrelations(
