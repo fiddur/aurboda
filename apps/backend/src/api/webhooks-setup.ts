@@ -10,21 +10,35 @@ import type { GarminOAuthClient } from '../integrations/garmin/oauth-client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { OuraDataType } from '../integrations/oura/sync.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 
 import {
+  findActivityByGarminActivityId,
   insertRawRecords,
   insertTimeSeries,
+  markActivityDetailSynced,
+  queryRawRecords,
   softDeleteActivityByExternalId,
   updateOAuthTokenScopes,
   upsertOAuthToken,
   upsertSyncState,
 } from '../db/index.ts'
 import { GARMIN_OAUTH_PROVIDER } from '../integrations/garmin/oauth-status.ts'
-import { defaultGarminProcessDeps, processGarminData } from '../integrations/garmin/process.ts'
+import {
+  defaultGarminProcessDeps,
+  processActivityFit,
+  processGarminData,
+} from '../integrations/garmin/process.ts'
+import { downloadGarminFile, syncPushedActivityFile } from '../integrations/garmin/push-activity-file.ts'
 import { createGarminPushRouter } from '../integrations/garmin/push-router.ts'
-import { createSerialQueue, garminPushToken, receiveGarminPush } from '../integrations/garmin/push.ts'
+import {
+  createSerialQueue,
+  garminPushRecordType,
+  garminPushToken,
+  receiveGarminPush,
+} from '../integrations/garmin/push.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
 import { createStravaWebhookRouter } from '../integrations/strava/webhook-router.ts'
 import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
@@ -166,6 +180,9 @@ interface GarminPushSetupDeps {
   garminOAuth: GarminOAuthClient
   /** Pushes for a read-only account are acknowledged but not stored. */
   isReadOnly?: (user: string) => Promise<boolean>
+  onActivitySynced: ActivityNotifier
+  onActivityDetailSynced: (user: string, activityId: string) => void
+  onTrackWritten: (user: string, activityId: string) => void
 }
 
 /** The pull's raw records hold the pull's shapes: the push stores its own and never overwrites them. */
@@ -178,11 +195,35 @@ export const setupGarminPush = ({
   centralDb,
   garminOAuth,
   isReadOnly = async () => false,
+  onActivitySynced,
+  onActivityDetailSynced,
+  onTrackWritten,
 }: GarminPushSetupDeps): void => {
   const enqueue = createSerialQueue((error) => {
     console.error('Garmin push: processing failed:', error instanceof Error ? error.message : error)
   })
   const pushToken = garminPushToken(sessionSecret)
+  const fileDeps = {
+    auditError,
+    auditInfo,
+    auditWarn,
+    download: (url: string, accessToken: string) => downloadGarminFile(url, accessToken),
+    findActivityByGarminActivityId,
+    getAccessToken: (user: string) => garminOAuth.getAccessToken(user),
+    getFileNotice: async (user: string, garminActivityId: number) => {
+      const { rows } = await queryRawRecords(user, {
+        external_id: `file-${garminActivityId}-fit`,
+        limit: 1,
+        record_type: garminPushRecordType('activityFiles'),
+        source: 'garmin',
+      })
+      return rows[0]?.data ?? null
+    },
+    markActivityDetailSynced,
+    onDetailSynced: onActivityDetailSynced,
+    onTrackWritten,
+    processActivityFit,
+  }
 
   httpd.use(
     '/webhooks/garmin',
@@ -204,10 +245,13 @@ export const setupGarminPush = ({
             isReadOnly,
             logWarn: (message) => console.warn(message),
             now: () => new Date(),
+            onActivitySynced: (user, start, end) => onActivitySynced(user, '*', start, end),
             probeGrant: (user) => garminOAuth.probeGrant(user),
             processGarminData: (user, dataType, data) =>
               processGarminData(user, dataType, data, pushProcessDeps),
             pushToken,
+            syncActivityFile: (user, garminActivityId) =>
+              syncPushedActivityFile(fileDeps, user, garminActivityId),
             updateGrantScopes: (user, scopes) => updateOAuthTokenScopes(user, GARMIN_OAUTH_PROVIDER, scopes),
             upsertSyncState,
           },

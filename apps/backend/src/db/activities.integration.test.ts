@@ -10,6 +10,7 @@ import {
   deleteGarminActivityWithWrongType,
   fetchCategoryMap,
   findActivityByExternalId,
+  findActivityByGarminActivityId,
   findAdjacentActivity,
   findDeletedActivityByExternalId,
   getActivities,
@@ -1662,6 +1663,38 @@ describe('Activities Integration Tests', () => {
       expect(await findActivityByExternalId(user, 'garmin', 'gravl-workout-abc')).toBeNull()
       await deleteActivity(user, id!)
       expect(await findActivityByExternalId(user, 'gravl', 'gravl-workout-abc')).toBeNull()
+    })
+  })
+
+  describe('findActivityByGarminActivityId', () => {
+    test('finds the live row carrying the id, whatever its source, newest first', async () => {
+      const user = getTestUser()
+      const older = await insertActivity(user, {
+        activity_type: 'running',
+        data: { garmin_activity_id: 4242 },
+        external_id: 'garmin-activity-4242',
+        source: 'garmin',
+        start_time: new Date('2026-09-03T05:00:00Z'),
+      })
+      const merged = await insertActivity(user, {
+        activity_type: 'running',
+        data: { garmin_activity_id: 4242 },
+        source: 'health_connect',
+        start_time: new Date('2026-09-03T06:00:00Z'),
+      })
+      await insertActivity(user, {
+        activity_type: 'running',
+        data: { garmin_activity_id: 4243 },
+        source: 'garmin',
+        start_time: new Date('2026-09-03T07:00:00Z'),
+      })
+
+      expect((await findActivityByGarminActivityId(user, 4242))?.id).toBe(merged)
+      await deleteActivity(user, merged!)
+      expect((await findActivityByGarminActivityId(user, 4242))?.id).toBe(older)
+      await deleteActivity(user, older!)
+      expect(await findActivityByGarminActivityId(user, 4242)).toBeNull()
+      expect(await findActivityByGarminActivityId(user, 1)).toBeNull()
     })
   })
 

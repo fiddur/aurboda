@@ -133,7 +133,7 @@ const fmt = (d: Date): string => d.toISOString().slice(0, 10)
 const isRefusal = (status: number): boolean => status === 401 || status === 403
 
 /** The body, or null when it is over `max` bytes by its `content-length` or by what arrives. */
-const readCapped = async (res: Response, max: number): Promise<Uint8Array | null> => {
+export const readCapped = async (res: Response, max: number): Promise<Uint8Array | null> => {
   const declared = Number(res.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > max) {
     await res.body?.cancel()

@@ -159,6 +159,7 @@ export {
   type ActivityFieldValueRow,
   getActivityFieldValues,
   type DataFilter,
+  findActivityByGarminActivityId,
   findDeletedActivityByExternalId,
   findMergeableActivity,
   findMergedGroupForActivity,
