@@ -361,24 +361,95 @@ describe('Connect with Garmin routes', () => {
     expect(res.body.success).toBe(false)
   })
 
-  test('GET /auth/garmincb redirects to the Garmin page, connected or with an error code', async () => {
-    const { client, upsertOAuthToken } = makeGarminOAuth()
+  const stateFor = (user: string) =>
+    sealState({ iat: NOW.getTime(), user, verifier: 'fake-verifier' }, FAKE_SECRET)
+
+  test('GET /auth/garmincb hands the code and state to the page without linking anything', async () => {
+    const { client, http, upsertOAuthToken } = makeGarminOAuth()
     const app = buildApp({ garminOAuth: client })
-    const state = sealState({ iat: NOW.getTime(), user: 'alice', verifier: 'fake-verifier' }, FAKE_SECRET)
+    const state = stateFor('alice')
 
     const ok = await supertest(app).get('/auth/garmincb').query({ code: 'fake-code', state })
     expect(ok.status).toBe(302)
-    expect(ok.headers.location).toBe('/data-sources/garmin?connected=oauth')
-    expect(upsertOAuthToken).toHaveBeenCalledWith(
-      'alice',
-      expect.objectContaining({ provider: GARMIN_OAUTH_PROVIDER }),
-    )
+    const target = new URL(ok.headers.location, 'https://web.example.test')
+    expect(target.pathname).toBe('/data-sources/garmin')
+    expect(target.searchParams.get('garmin_code')).toBe('fake-code')
+    expect(target.searchParams.get('garmin_state')).toBe(state)
+    expect(http.post).not.toHaveBeenCalled()
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
 
     const bad = await supertest(app).get('/auth/garmincb').query({ code: 'fake-code', state: 'garbage' })
     expect(bad.headers.location).toBe('/data-sources/garmin?error=invalid_state')
 
     const denied = await supertest(app).get('/auth/garmincb').query({ error: 'access_denied' })
     expect(denied.headers.location).toBe('/data-sources/garmin?error=auth_failed')
+  })
+
+  test('POST /auth/garmin/oauth/complete links the Garmin account to the signed-in user', async () => {
+    const { client, upsertOAuthToken } = makeGarminOAuth()
+    const res = await supertest(buildApp({ garminOAuth: client }))
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code', state: stateFor('alice') })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ success: true })
+    expect(upsertOAuthToken).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ provider: GARMIN_OAUTH_PROVIDER }),
+    )
+  })
+
+  test('POST /auth/garmin/oauth/complete answers 403 for a sign-in started by another account', async () => {
+    const { client, http, upsertOAuthToken } = makeGarminOAuth()
+    const res = await supertest(buildApp({ garminOAuth: client }))
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code', state: stateFor('bob') })
+    expect(res.status).toBe(403)
+    expect(res.body).toEqual({
+      error:
+        'This Garmin sign-in was started from another Aurboda account. Start it again from this account.',
+      success: false,
+    })
+    expect(http.post).not.toHaveBeenCalled()
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
+  })
+
+  test('POST /auth/garmin/oauth/complete answers 400 for an expired state, no credentials or a failed exchange', async () => {
+    const expired = await supertest(buildApp({ garminOAuth: makeGarminOAuth().client }))
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code', state: 'garbage' })
+    expect(expired.status).toBe(400)
+    expect(expired.body).toEqual({ error: 'The Garmin sign-in expired. Start it again.', success: false })
+
+    const unconfigured = await supertest(
+      buildApp({ garminOAuth: makeGarminOAuth({ configured: false }).client }),
+    )
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code', state: stateFor('alice') })
+    expect(unconfigured.status).toBe(400)
+    expect(unconfigured.body).toEqual({
+      error: 'Garmin sign-in is not set up on this server.',
+      success: false,
+    })
+
+    const failing = makeGarminOAuth()
+    failing.http.post.mockRejectedValue(new Error(`exchange failed for fake-code ${FAKE_SECRET}`))
+    const failed = await supertest(buildApp({ garminOAuth: failing.client }))
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code', state: stateFor('alice') })
+    expect(failed.status).toBe(400)
+    expect(failed.body).toEqual({
+      error: 'Garmin did not complete the connection. Try again.',
+      success: false,
+    })
+  })
+
+  test('POST /auth/garmin/oauth/complete rejects a body without a state', async () => {
+    const complete = vi.fn()
+    const res = await supertest(buildApp({ garminOAuth: { complete } }))
+      .post('/auth/garmin/oauth/complete')
+      .send({ code: 'fake-code' })
+    expect(res.status).toBe(400)
+    expect(complete).not.toHaveBeenCalled()
   })
 
   test('POST /auth/garmin/oauth/disconnect deregisters and clears the grant', async () => {

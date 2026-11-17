@@ -5,11 +5,13 @@ import {
   connectErrorText,
   garminConnectionFlags,
   garminLastReceivedText,
+  garminOAuthReturn,
   garminPermissionLabel,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
   oauthErrorText,
+  withoutGarminOAuthReturn,
 } from './garminConnection'
 
 describe('expiry quick choices', () => {
@@ -165,5 +167,33 @@ describe('garminPermissionLabel', () => {
     expect(garminPermissionLabel('WORKOUT_IMPORT')).toBe('Sending workouts')
     expect(garminPermissionLabel('COURSE_IMPORT')).toBe('Sending courses')
     expect(garminPermissionLabel('NEW_THING')).toBe('NEW_THING')
+  })
+})
+
+describe('garminOAuthReturn', () => {
+  it('reads the code and state the callback hands over', () => {
+    expect(garminOAuthReturn('?garmin_code=fake-code&garmin_state=fake%2Bstate')).toEqual({
+      code: 'fake-code',
+      state: 'fake+state',
+    })
+  })
+
+  it('is null unless both are present and non-empty', () => {
+    expect(garminOAuthReturn('')).toBeNull()
+    expect(garminOAuthReturn('?garmin_code=fake-code')).toBeNull()
+    expect(garminOAuthReturn('?garmin_state=fake-state')).toBeNull()
+    expect(garminOAuthReturn('?garmin_code=&garmin_state=fake-state')).toBeNull()
+    expect(garminOAuthReturn('?error=auth_failed')).toBeNull()
+  })
+})
+
+describe('withoutGarminOAuthReturn', () => {
+  it('removes the code and state and keeps everything else', () => {
+    expect(withoutGarminOAuthReturn('?embed=1&garmin_code=fake-code&garmin_state=fake-state')).toBe(
+      '?embed=1',
+    )
+    expect(withoutGarminOAuthReturn('?garmin_code=fake-code&garmin_state=fake-state')).toBe('')
+    expect(withoutGarminOAuthReturn('')).toBe('')
+    expect(withoutGarminOAuthReturn('?embed=1')).toBe('?embed=1')
   })
 })

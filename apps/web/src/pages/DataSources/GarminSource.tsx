@@ -18,7 +18,7 @@ import {
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { garminConnectionFlags } from './garminConnection'
+import { garminConnectionFlags, garminOAuthReturn } from './garminConnection'
 import { GarminOAuth } from './GarminOAuth'
 import { GarminPersonalKey } from './GarminPersonalKey'
 import {
@@ -510,7 +510,19 @@ export function GarminSource() {
     }
   }, [queryClient])
 
-  if (!isLoggedIn) return <LoginRequired />
+  if (!isLoggedIn) {
+    const { pathname, search } = window.location
+    if (!garminOAuthReturn(search)) return <LoginRequired />
+    return (
+      <div class="data-sources-page">
+        <p>
+          <a href={`/login?next=${encodeURIComponent(pathname + search)}`}>
+            Log in to finish connecting Garmin
+          </a>
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div class="data-sources-page">

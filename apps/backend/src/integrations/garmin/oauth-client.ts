@@ -2,7 +2,7 @@
  * "Connect with Garmin": the Garmin Connect Developer Program's OAuth 2.0
  * authorization-code + PKCE flow. Unlike the login session and the Personal
  * API key, this connection cannot pull: Garmin pushes data to the server, keyed
- * by the Garmin user id, so the callback maps that id to the Aurboda user.
+ * by the Garmin user id, so completing the sign-in maps that id to the Aurboda user.
  *
  * Access tokens live 24 h and refresh tokens about three months, rotating on
  * every refresh. `keepFresh` runs from the scheduler so a user whose data only
@@ -60,6 +60,10 @@ export type GarminGrantProbe =
   | { status: 'alive'; garminUserId: string }
   | { status: 'gone' }
   | { status: 'unknown'; error: string }
+
+export type GarminOAuthCompletion =
+  | { ok: true }
+  | { ok: false; reason: 'not_configured' | 'invalid_state' | 'wrong_user' | 'auth_failed' }
 
 export interface GarminOAuthCredentials {
   clientId: string
@@ -397,6 +401,10 @@ export const garminOAuthClient = (
       res.json({ success: true, url: location.toString() })
     },
 
+    /**
+     * Garmin's redirect carries no Aurboda login, so it only hands the code and state to the
+     * signed-in page, which finishes through `complete`.
+     */
     async authCb(req: Request, res: Response) {
       const { code, state, error } = req.query as Record<string, string | undefined>
       if (error || !state || !code) return res.redirect(`${DATA_SOURCE_PAGE}?error=auth_failed`)
@@ -404,9 +412,24 @@ export const garminOAuthClient = (
       const credentials = await getCredentials()
       if (!credentials) return res.redirect(`${DATA_SOURCE_PAGE}?error=not_configured`)
 
+      if (!openState(state, credentials.clientSecret, deps.now())) {
+        return res.redirect(`${DATA_SOURCE_PAGE}?error=invalid_state`)
+      }
+      const params = new URLSearchParams({ garmin_code: code, garmin_state: state })
+      return res.redirect(`${DATA_SOURCE_PAGE}?${params.toString()}`)
+    },
+
+    /** Links the Garmin account to `user`, who must be the user that started the sign-in. */
+    async complete(user: string, code: string, state: string): Promise<GarminOAuthCompletion> {
+      const credentials = await getCredentials()
+      if (!credentials) return { ok: false, reason: 'not_configured' }
+
       const opened = openState(state, credentials.clientSecret, deps.now())
-      if (!opened) return res.redirect(`${DATA_SOURCE_PAGE}?error=invalid_state`)
-      const { user } = opened
+      if (!opened) return { ok: false, reason: 'invalid_state' }
+      if (opened.user !== user) {
+        await deps.auditWarn(user, 'auth', 'Garmin sign-in started by another account was refused')
+        return { ok: false, reason: 'wrong_user' }
+      }
 
       await deps.ensureUserSchema(user)
 
@@ -453,14 +476,14 @@ export const garminOAuthClient = (
           }
         }
         await deps.auditInfo(user, 'auth', 'Garmin connected through OAuth', { permissions })
-        return res.redirect(`${DATA_SOURCE_PAGE}?connected=oauth`)
+        return { ok: true }
       } catch (failure) {
         // A grant without its mapping would show as connected while no push could reach the user.
         if (grantStored) await clearGrant(user).catch(() => {})
         await deps.auditWarn(user, 'auth', 'Garmin OAuth connection failed', {
           error: redactAll(errorText(failure), [credentials.clientSecret, code, opened.verifier]),
         })
-        return res.redirect(`${DATA_SOURCE_PAGE}?error=auth_failed`)
+        return { ok: false, reason: 'auth_failed' }
       }
     },
 
