@@ -5,8 +5,10 @@ import {
   type ConnectGarminPersonalKeyBody,
   connectGarminPersonalKeyBodySchema,
   type GarminLoginResponse,
+  type OAuthConnectUrlResponse,
 } from '@aurboda/api-spec'
 
+import type { GarminOAuthClient } from '../integrations/garmin/oauth-client.ts'
 import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
@@ -29,6 +31,7 @@ interface OAuthRoutesDeps {
   authMiddleware: AnyMiddleware
   centralDb: CentralDb
   garmin: GarminClient
+  garminOAuth: GarminOAuthClient
   garminPersonal: GarminPersonalClient
   gravl: GravlClient
   oura: OuraClient
@@ -41,6 +44,7 @@ export const registerOAuthRoutes = ({
   authMiddleware,
   centralDb,
   garmin,
+  garminOAuth,
   garminPersonal,
   gravl,
   oura,
@@ -191,6 +195,28 @@ export const registerOAuthRoutes = ({
       try {
         await garminPersonal.disconnect(user)
         await clearGarminKeyReminders(user)
+        res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Disconnect failed'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  httpd.get<Record<string, never>, OAuthConnectUrlResponse>(
+    '/auth/garmin/oauth/connect',
+    authMiddleware,
+    (req, res) => garminOAuth.getAuthorizeUrl(req, res),
+  )
+  httpd.get('/auth/garmincb', garminOAuth.authCb)
+
+  httpd.post<Record<string, never>, AuthActionResponse>(
+    '/auth/garmin/oauth/disconnect',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        await garminOAuth.disconnect(user)
         res.json({ success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Disconnect failed'

@@ -221,6 +221,7 @@ describe('getSettingsResponse derived fields', () => {
     vi.mocked(db.getGoals).mockResolvedValue([])
     const tokens: Record<string, { access_token: string; provider: string } | null> = {
       garmin: { access_token: '', provider: 'garmin' },
+      garmin_oauth: null,
       gravl: { access_token: 'oauth-token', provider: 'gravl' },
       oura: { access_token: 'o', provider: 'oura' },
       strava: { access_token: 's', provider: 'strava' },
@@ -305,6 +306,49 @@ describe('getSettingsResponse derived fields', () => {
       garmin_connected: true,
       garmin_personal_key: { available: false, connected: true, expires_at: '2027-03-01', refused: true },
       garmin_session_connected: true,
+    })
+  })
+
+  test('reports Connect with Garmin with its permissions, and counts it as connected', async () => {
+    central.getServerSetting.mockImplementation(async (key: string) =>
+      key === 'garmin_client_id' || key === 'garmin_client_secret' ? 'fake-value' : null,
+    )
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_oauth'
+        ? ({ access_token: 'fake-access', provider, scopes: ['HEALTH_EXPORT', 'ACTIVITY_EXPORT'] } as never)
+        : null,
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result).toMatchObject({
+      garmin_connected: true,
+      garmin_oauth: {
+        available: true,
+        connected: true,
+        needs_reconnect: false,
+        permissions: ['HEALTH_EXPORT', 'ACTIVITY_EXPORT'],
+      },
+      garmin_session_connected: false,
+    })
+  })
+
+  test('reports a refused Connect with Garmin grant as needing a reconnect, unavailable without credentials', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockImplementation(async (_user, provider) =>
+      provider === 'garmin_oauth'
+        ? ({ access_token: 'fake-access', provider, refused_at: new Date(), scopes: [] } as never)
+        : null,
+    )
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(result.garmin_oauth).toEqual({
+      available: false,
+      connected: true,
+      needs_reconnect: true,
+      permissions: [],
     })
   })
 
@@ -646,6 +690,22 @@ describe('validateAndUpdateSettings', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBeDefined()
     expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('a rejected update still reports whether Connect with Garmin is available', async () => {
+    central.getServerSetting.mockImplementation(async (key: string) =>
+      key === 'garmin_client_id' || key === 'garmin_client_secret' ? 'fake-value' : null,
+    )
+    const result = await validateAndUpdateSettings('testuser', { birth_date: '15-03-1985' })
+
+    expect(result.success).toBe(false)
+    expect(result.garmin_oauth).toEqual({
+      available: true,
+      connected: false,
+      needs_reconnect: false,
+      permissions: [],
+    })
+    central.getServerSetting.mockImplementation(async () => null)
   })
 
   test('rejects invalid date', async () => {

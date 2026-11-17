@@ -149,6 +149,7 @@ describe('account deletion', () => {
       })
       await centralDb.upsertOuraUserMapping(`oura_${suffix}`, user)
       await centralDb.upsertStravaAthleteMapping(4242, user)
+      await centralDb.upsertGarminUserMapping(`garmin_${suffix}`, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
       await centralDb.setServerSetting('official_feed', {
         remote_authors: [],
@@ -194,6 +195,7 @@ describe('account deletion', () => {
         'webauthn_user_handles',
         'oura_user_mappings',
         'strava_athlete_mappings',
+        'garmin_user_mappings',
         'user_accounts',
         'user_usage_daily',
       ]) {
