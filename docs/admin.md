@@ -305,6 +305,15 @@ and enter its client ID and secret there (`garmin_client_id` / `garmin_client_se
 `garmin_client_secret_set`). Without both, the Garmin page does not offer Connect with Garmin; the Garmin
 Connect login and Personal API keys work either way.
 
+Garmin then pushes each user's data to the server, so the app also needs the **push URL**: copy it from
+the same block (**Copy**; `garmin_push_url` in `GET /admin/settings`,
+`<API_BASE_URL>/webhooks/garmin/<token>`) into every endpoint at
+[apis.garmin.com/tools/endpoints](https://apis.garmin.com/tools/endpoints) and choose "push". The token is
+derived from `SESSION_SECRET`, so the URL changes with it and must be pasted again. It is a secret: only
+this admin response carries it, and the bundled nginx does not log the path. The endpoint answers `404`
+until a client ID is set, and accepts bodies up to 50 MB. What arrives is described under
+[Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
+
 ## Garmin Personal API keys
 
 Users can connect Garmin with a key from Garmin's official Personal API next to, or instead of, the

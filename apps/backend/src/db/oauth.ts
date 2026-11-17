@@ -85,6 +85,20 @@ export const updateOAuthAccessToken = async (
   return (result.rowCount ?? 0) > 0
 }
 
+/** Replaces the scopes of an existing grant; answers false when the user has no row for the provider. */
+export const updateOAuthTokenScopes = async (
+  user: string,
+  provider: string,
+  scopes: string[],
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `UPDATE oauth_tokens SET scopes = $2, updated_at = NOW() WHERE provider = $1`,
+    [provider, scopes],
+  )
+  return (result.rowCount ?? 0) > 0
+}
+
 export const deleteOAuthToken = async (user: string, provider: string): Promise<boolean> => {
   const result = await query(user, `DELETE FROM oauth_tokens WHERE provider = $1`, [provider])
   return (result.rowCount ?? 0) > 0

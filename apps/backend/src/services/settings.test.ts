@@ -20,6 +20,7 @@ import {
 } from './settings.ts'
 
 vi.mock('../db', () => ({
+  getAllSyncStates: vi.fn().mockResolvedValue([]),
   getGoals: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn(),
   getUserSettings: vi.fn(),
@@ -327,6 +328,7 @@ describe('getSettingsResponse derived fields', () => {
       garmin_oauth: {
         available: true,
         connected: true,
+        last_received_at: null,
         needs_reconnect: false,
         permissions: ['HEALTH_EXPORT', 'ACTIVITY_EXPORT'],
       },
@@ -347,9 +349,26 @@ describe('getSettingsResponse derived fields', () => {
     expect(result.garmin_oauth).toEqual({
       available: false,
       connected: true,
+      last_received_at: null,
       needs_reconnect: true,
       permissions: [],
     })
+  })
+
+  test('reports when Garmin last pushed data, from the newest garmin_push sync state', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+    const provider = 'garmin_push'
+    vi.mocked(db.getAllSyncStates).mockResolvedValueOnce([
+      { data_type: 'dailies', last_sync_time: new Date('2026-11-16T08:00:00Z'), provider, status: 'idle' },
+      { data_type: 'sleeps', last_sync_time: new Date('2026-11-17T06:30:00Z'), provider, status: 'idle' },
+      { data_type: 'hrv', provider, status: 'idle' },
+    ])
+
+    const result = await getSettingsResponse('testuser')
+
+    expect(db.getAllSyncStates).toHaveBeenCalledWith('testuser', 'garmin_push')
+    expect(result.garmin_oauth.last_received_at).toBe('2026-11-17T06:30:00.000Z')
   })
 
   test('reports no Gravl connection without a grant or a pasted token', async () => {
@@ -702,6 +721,7 @@ describe('validateAndUpdateSettings', () => {
     expect(result.garmin_oauth).toEqual({
       available: true,
       connected: false,
+      last_received_at: null,
       needs_reconnect: false,
       permissions: [],
     })

@@ -9,6 +9,7 @@ import type { OAuthToken } from '../../db/types.ts'
 import { openState, sealState } from '../../services/oauth-state.ts'
 import {
   GARMIN_OAUTH_PROVIDER,
+  GARMIN_PUSH_PROVIDER,
   garminOAuthClient,
   GarminOAuthNotConnectedError,
   GarminOAuthRefusedError,
@@ -67,6 +68,7 @@ const makeClient = (
   const upsertOAuthToken = vi.fn()
   const deleteOAuthToken = vi.fn(async () => true)
   const markOAuthTokenRefused = vi.fn()
+  const resetSyncState = vi.fn(async () => {})
   const clock = { now: options.now ?? NOW }
   const upsertGarminUserMapping = vi.fn(async () => {
     if (options.mappingFails) throw new Error('central db down')
@@ -96,6 +98,7 @@ const makeClient = (
       http,
       markOAuthTokenRefused,
       now: () => clock.now,
+      resetSyncState,
       upsertGarminUserMapping,
       upsertOAuthToken,
     },
@@ -109,6 +112,7 @@ const makeClient = (
     deleteOAuthToken,
     http,
     markOAuthTokenRefused,
+    resetSyncState,
     upsertGarminUserMapping,
     upsertOAuthToken,
   }
@@ -519,6 +523,12 @@ describe('disconnect', () => {
     expect(auditInfo).toHaveBeenCalledWith('alice', 'auth', 'Garmin OAuth disconnected')
   })
 
+  it('resets the push sync states', async () => {
+    const { client, resetSyncState } = makeClient({ grant: liveGrant })
+    await client.disconnect('alice')
+    expect(resetSyncState).toHaveBeenCalledWith('alice', GARMIN_PUSH_PROVIDER)
+  })
+
   it('clears the row and the mapping also when the DELETE fails', async () => {
     const del = vi.fn().mockRejectedValue(axiosFailure(500))
     const { auditWarn, client, deleteGarminUserMappingByUsername, deleteOAuthToken } = makeClient({
@@ -540,5 +550,68 @@ describe('disconnect', () => {
     expect(http.delete).not.toHaveBeenCalled()
     expect(deleteOAuthToken).not.toHaveBeenCalled()
     expect(deleteGarminUserMappingByUsername).not.toHaveBeenCalled()
+  })
+})
+
+describe('forget', () => {
+  it('clears the grant, the mapping and the push sync states without calling Garmin', async () => {
+    const { client, deleteGarminUserMappingByUsername, deleteOAuthToken, http, resetSyncState } = makeClient({
+      grant: liveGrant,
+    })
+    await client.forget('alice')
+    expect(http.delete).not.toHaveBeenCalled()
+    expect(http.post).not.toHaveBeenCalled()
+    expect(deleteOAuthToken).toHaveBeenCalledWith('alice', GARMIN_OAUTH_PROVIDER)
+    expect(deleteGarminUserMappingByUsername).toHaveBeenCalledWith('alice')
+    expect(resetSyncState).toHaveBeenCalledWith('alice', GARMIN_PUSH_PROVIDER)
+  })
+})
+
+describe('probeGrant', () => {
+  it('answers the Garmin user id the live grant belongs to', async () => {
+    const { client } = makeClient({ grant: liveGrant })
+    await expect(client.probeGrant('alice')).resolves.toEqual({
+      garminUserId: GARMIN_USER_ID,
+      status: 'alive',
+    })
+  })
+
+  it('answers gone without a grant', async () => {
+    const { client } = makeClient()
+    await expect(client.probeGrant('alice')).resolves.toEqual({ status: 'gone' })
+  })
+
+  it('answers gone when Garmin refuses the refresh token', async () => {
+    const { client } = makeClient({
+      grant: dueGrant,
+      http: { post: vi.fn().mockRejectedValue(axiosFailure(400, { error: 'invalid_grant' })) },
+    })
+    await expect(client.probeGrant('alice')).resolves.toEqual({ status: 'gone' })
+  })
+
+  it.each([401, 403])('answers gone when the user id request is answered %i', async (status) => {
+    const { client } = makeClient({
+      grant: liveGrant,
+      http: { get: vi.fn().mockRejectedValue(axiosFailure(status)) as unknown as AxiosInstance['get'] },
+    })
+    await expect(client.probeGrant('alice')).resolves.toEqual({ status: 'gone' })
+  })
+
+  it('answers unknown on a server error, without the token in the message', async () => {
+    const { client } = makeClient({
+      grant: liveGrant,
+      http: { get: vi.fn().mockRejectedValue(axiosFailure(503)) as unknown as AxiosInstance['get'] },
+    })
+    const probe = await client.probeGrant('alice')
+    expect(probe.status).toBe('unknown')
+    expect(JSON.stringify(probe)).not.toContain('fake-access-live')
+  })
+
+  it('answers unknown when the refresh fails for another reason than a refused grant', async () => {
+    const { client } = makeClient({
+      grant: dueGrant,
+      http: { post: vi.fn().mockRejectedValue(axiosFailure(401, { error: 'invalid_client' })) },
+    })
+    await expect(client.probeGrant('alice')).resolves.toMatchObject({ status: 'unknown' })
   })
 })

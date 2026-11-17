@@ -22,15 +22,20 @@ import {
   getOAuthToken,
   initializeSchema,
   markOAuthTokenRefused,
+  resetSyncState,
   schemaInitialized,
   upsertOAuthToken,
 } from '../../db/index.ts'
 import { auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { createPkcePair, openState, sealState } from '../../services/oauth-state.ts'
 import { redactSecret } from './client.ts'
-import { GARMIN_OAUTH_PROVIDER, isGarminOAuthConnected as isConnected } from './oauth-status.ts'
+import {
+  GARMIN_OAUTH_PROVIDER,
+  GARMIN_PUSH_PROVIDER,
+  isGarminOAuthConnected as isConnected,
+} from './oauth-status.ts'
 
-export { GARMIN_OAUTH_PROVIDER, garminOAuthStatusFromToken } from './oauth-status.ts'
+export { GARMIN_OAUTH_PROVIDER, GARMIN_PUSH_PROVIDER, garminOAuthStatusFromToken } from './oauth-status.ts'
 
 const GARMIN_AUTH_URL = 'https://connect.garmin.com/oauth2Confirm'
 const GARMIN_TOKEN_URL = 'https://connectapi.garmin.com/di-oauth2-service/oauth/token'
@@ -47,6 +52,15 @@ const KEEP_FRESH_RETRY_SECONDS = 3600
 
 const DATA_SOURCE_PAGE = '/data-sources/garmin'
 
+/**
+ * What a check of the stored grant found: `alive` with the Garmin user id it answers for, `gone`
+ * when there is no grant or Garmin refuses it, `unknown` when Garmin could not be asked.
+ */
+export type GarminGrantProbe =
+  | { status: 'alive'; garminUserId: string }
+  | { status: 'gone' }
+  | { status: 'unknown'; error: string }
+
 export interface GarminOAuthCredentials {
   clientId: string
   clientSecret: string
@@ -60,6 +74,7 @@ export interface GarminOAuthClientDeps {
   upsertOAuthToken: (user: string, token: OAuthToken) => Promise<void>
   deleteOAuthToken: (user: string, provider: string) => Promise<unknown>
   markOAuthTokenRefused: (user: string, provider: string, refreshToken?: string) => Promise<void>
+  resetSyncState: (user: string, provider: string) => Promise<void>
   ensureUserSchema: (user: string) => Promise<void>
   upsertGarminUserMapping: (garminUserId: string, username: string) => Promise<string | null>
   getGarminUserIdByUsername: (username: string) => Promise<string | null>
@@ -164,6 +179,7 @@ const defaultDeps = (): Omit<GarminOAuthClientDeps, MappingDeps> => ({
   http: axios.create({ headers: { Accept: 'application/json' } }),
   markOAuthTokenRefused,
   now: () => new Date(),
+  resetSyncState: (user, provider) => resetSyncState(user, provider),
   upsertOAuthToken,
 })
 
@@ -270,6 +286,12 @@ export const garminOAuthClient = (
 
   const clearGrant = (user: string) => deps.deleteOAuthToken(user, GARMIN_OAUTH_PROVIDER)
 
+  const forget = async (user: string): Promise<void> => {
+    await clearGrant(user)
+    await deps.deleteGarminUserMappingByUsername(user)
+    await deps.resetSyncState(user, GARMIN_PUSH_PROVIDER)
+  }
+
   const deregister = async (accessToken: string): Promise<void> => {
     try {
       await deps.http.delete(REGISTRATION_URL, { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -302,6 +324,33 @@ export const garminOAuthClient = (
     },
 
     getAccessToken,
+
+    /** Asks Garmin which user the stored grant belongs to. Never throws. */
+    async probeGrant(user: string): Promise<GarminGrantProbe> {
+      let accessToken: string
+      try {
+        accessToken = await getAccessToken(user)
+      } catch (error) {
+        if (error instanceof GarminOAuthNotConnectedError || error instanceof GarminOAuthRefusedError) {
+          return { status: 'gone' }
+        }
+        return { error: errorText(error), status: 'unknown' }
+      }
+      try {
+        return { garminUserId: await fetchUserId(accessToken), status: 'alive' }
+      } catch (error) {
+        if (error instanceof GarminOAuthApiError && (error.status === 401 || error.status === 403)) {
+          return { status: 'gone' }
+        }
+        return { error: errorText(error), status: 'unknown' }
+      }
+    },
+
+    /**
+     * Drops the grant, the Garmin user id mapping and the push sync states without telling
+     * Garmin, for when Garmin has already removed the connection on its side.
+     */
+    forget,
 
     /** Refreshes a grant that is due, so the refresh token does not lapse. Never throws. */
     async keepFresh(user: string): Promise<void> {
@@ -428,8 +477,7 @@ export const garminOAuthClient = (
           })
         }
       }
-      await clearGrant(user)
-      await deps.deleteGarminUserMappingByUsername(user)
+      await forget(user)
       await deps.auditInfo(user, 'auth', 'Garmin OAuth disconnected')
     },
   }
