@@ -76,4 +76,25 @@ describe('GET /chart-data breakdown by an item path', () => {
     const res = await supertest(app).get(`${activity}&breakdown_fields=location`)
     expect(res.status).toBe(200)
   })
+
+  test('passes a muscle-group filter on with a summed measure', async () => {
+    const res = await supertest(app).get(
+      `${activity}&filter_field=sets.exercise.muscle_group&filter_value=chest&measure=set_count&breakdown_fields=sets.exercise`,
+    )
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getChartData).mock.calls[0]?.[1]).toMatchObject({
+      breakdown_fields: ['sets.exercise'],
+      filter_field: 'sets.exercise.muscle_group',
+      filter_value: 'chest',
+    })
+  })
+
+  test('rejects a muscle-group filter without a summed measure with 400 without querying', async () => {
+    const res = await supertest(app).get(
+      `${activity}&filter_field=sets.exercise.muscle_group&filter_value=chest&measure=e1rm`,
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('a muscle-group filter needs measure set_count, volume or total_reps')
+    expect(getChartData).not.toHaveBeenCalled()
+  })
 })

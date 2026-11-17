@@ -107,7 +107,7 @@ const useCatalogEntry = (exercise: string) =>
 export const useExerciseMuscles = (exercise: string): string | undefined => {
   const entry = useCatalogEntry(exercise)
   const primary = entry.data ? muscleTiers(entry.data).primary : []
-  return primary.length > 0 ? primary.join(', ') : undefined
+  return primary.length > 0 ? primary.map((m) => m.name).join(', ') : undefined
 }
 
 export interface ExerciseContext {

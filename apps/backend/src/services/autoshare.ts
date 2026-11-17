@@ -1,7 +1,7 @@
 /**
  * Auto-share rule evaluation: when activities in a mutation window have
- * SETTLED (every merge-group member ingested at least
- * {@link STABILISATION_SECONDS} ago and, for a Garmin-backed group, its detail
+ * SETTLED (every merge-group member arrived — ingested, or ended when that is
+ * later — at least {@link STABILISATION_SECONDS} ago and, for a Garmin-backed group, its detail
  * synced or {@link DETAIL_WAIT_SECONDS} passed; unsettled groups re-queue the
  * window), publish the ones matching an enabled rule to the federated feed —
  * exactly as a manual share with the rule's template would.
@@ -176,7 +176,7 @@ export type AutosharePreviewDeps<Member extends AutoshareCandidate = AutoshareCa
 >
 
 /**
- * How long after its newest member was ingested a merge group counts as
+ * How long after its newest member arrived a merge group counts as
  * settled. Health Connect pushes roughly once a minute, so a window delay alone
  * never ages anything: some job always matures within the next minute.
  */
@@ -194,18 +194,21 @@ interface GroupSettling {
   detailPending: boolean
 }
 
-const youngestIngest = (group: AutoshareCandidate[]): number =>
-  Math.max(...group.map((member) => member.created_at.getTime()))
+/** When a member arrived: its ingest, or its end when that is later (a session logged live is created at its start). */
+const memberArrivedAt = (member: AutoshareCandidate): number =>
+  Math.max(member.created_at.getTime(), member.end_time.getTime())
+
+const youngestArrival = (group: AutoshareCandidate[]): number => Math.max(...group.map(memberArrivedAt))
 
 const groupSettling = (
   group: AutoshareCandidate[],
   anchor: AutoshareCandidate,
   now: Date,
 ): GroupSettling | null => {
-  const settledAt = youngestIngest(group) + STABILISATION_SECONDS * 1000
+  const settledAt = youngestArrival(group) + STABILISATION_SECONDS * 1000
   if (settledAt > now.getTime()) return { detailPending: false, notBefore: new Date(settledAt) }
   const detailPending = group.some((member) => member.detail_pending)
-  if (detailPending && now.getTime() - anchor.created_at.getTime() < DETAIL_WAIT_SECONDS * 1000) {
+  if (detailPending && now.getTime() - memberArrivedAt(anchor) < DETAIL_WAIT_SECONDS * 1000) {
     return { detailPending: true, notBefore: new Date(now.getTime() + STABILISATION_SECONDS * 1000) }
   }
   return null
@@ -220,7 +223,7 @@ export const groupNotBefore = (
 
 /** When the rule's own wait (`delay_minutes` after the youngest member arrived) is over. */
 export const ruleReadyAt = (group: AutoshareCandidate[], rule: AutoshareRuleRecord): Date =>
-  new Date(youngestIngest(group) + rule.delay_minutes * 60_000)
+  new Date(youngestArrival(group) + rule.delay_minutes * 60_000)
 
 /** The longest a group sits between arriving and being shared: the rule's wait, or the Garmin detail wait and its last re-check. */
 const ruleWaitBudgetMs = (rule: AutoshareRuleRecord): number =>
@@ -232,7 +235,7 @@ const ruleWaitBudgetMs = (rule: AutoshareRuleRecord): number =>
  * was never enabled.
  *
  * The max age is measured from when the group arrived (`arrivedAt`, its
- * youngest member's ingest), not from the evaluation: the evaluation runs a
+ * youngest member's ingest or end, whichever is later), not from the evaluation: the evaluation runs a
  * rule's `delay_minutes` later, and measuring from it would let a long wait
  * eat the max age, so that an announced activity is never shared. An arrival
  * further back than any wait can explain is a group that only now started
@@ -289,9 +292,9 @@ const matchGroup = async <Member extends AutoshareCandidate>(
   // and within the rule's max age, so a history update that makes old
   // activities newly match never publishes them. A delayed sync of a workout
   // done after enabling still shares while it arrived within the max age.
-  const arrivedAt = new Date(youngestIngest(group))
+  const arrived = new Date(youngestArrival(group))
   const eligibleRules = ingestEligible.filter((rule) => {
-    const cutoff = ruleEndedAfter(rule, now, arrivedAt)
+    const cutoff = ruleEndedAfter(rule, now, arrived)
     return cutoff != null && windowEnd.getTime() >= cutoff.getTime()
   })
   if (eligibleRules.length === 0) return undefined

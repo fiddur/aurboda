@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
+import { chartFilterFieldSchema } from './chart-data.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
 import { mediaPlaySourceSchema } from './media.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
@@ -129,10 +130,14 @@ export const barChartConfigSchema = z
       .enum(['count', 'sum', 'mean', 'max'])
       .optional()
       .meta({ description: 'Aggregation method' }),
-    filter_field: dataFieldPathSchema
-      .optional()
-      .meta({ description: 'With measure: item path whose items are measured (sets.exercise)' }),
-    filter_value: z.string().optional().meta({ description: 'With filter_field: the item value to keep' }),
+    filter_field: chartFilterFieldSchema.optional().meta({
+      description:
+        'With measure: item path whose items are measured (sets.exercise), or a muscle-group path (sets.exercise.muscle_group) to measure the exercises training the muscle group in filter_value, weighted by recruitment (summed measures only)',
+    }),
+    filter_value: z.string().optional().meta({
+      description:
+        'With filter_field: the item value to keep, or a muscle group key (chest) with a muscle-group path',
+    }),
     measure: activityMeasureSchema.optional().meta({
       description: 'For activity_type sources: chart this list-item measure instead of duration or count',
     }),

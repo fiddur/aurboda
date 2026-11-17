@@ -32,6 +32,7 @@ const setup = (user: string) => {
   return {
     deleteFeedPost: tool('delete_feed_post'),
     deliver,
+    getFeedPost: tool('get_feed_post'),
     listFeed: tool('list_feed'),
     listFeedPostReactions: tool('list_feed_post_reactions'),
     setFollowedTagNotify: tool('set_followed_tag_notify'),
@@ -139,6 +140,42 @@ describe('list_feed_post_reactions', () => {
     expect(reactions.map((r: { actor_uri: string }) => r.actor_uri)).toEqual([ALICE])
     const page = JSON.parse((await listFeed({ limit: 10 })).content[0].text)
     expect(page.posts.map((p: { boost_count: number }) => p.boost_count)).toEqual([1])
+  })
+})
+
+describe('get_feed_post', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('returns a followers-only post as list_feed lists it; an unknown id is an error', async () => {
+    const user = getTestUser()
+    const post = await createFeedPost(user, {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      series_metrics: [],
+      visibility: 'followers',
+    })
+    await upsertFeedPostReaction(user, { actor_uri: ALICE, kind: 'like', post_id: post.id })
+    const { getFeedPost, listFeed } = setup(user)
+
+    const got = JSON.parse((await getFeedPost({ id: post.id })).content[0].text)
+    expect(got).toMatchObject({ id: post.id, like_count: 1, visibility: 'followers' })
+    const page = JSON.parse((await listFeed({ limit: 10 })).content[0].text)
+    expect(got).toEqual(page.posts[0])
+    expect((await getFeedPost({ id: '00000000-0000-4000-8000-000000000000' })).content[0].text).toBe(
+      'Feed post not found',
+    )
   })
 })
 

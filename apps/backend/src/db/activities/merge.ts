@@ -134,6 +134,12 @@ export const blendData = (under: ActivityData | undefined, over: ActivityData): 
   }
 }
 
+/** A merge group's data, earliest start first, by the rule of {@link blendData}. */
+export const blendGroupData = (members: Pick<Activity, 'data' | 'start_time'>[]): ActivityData =>
+  members
+    .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
+    .reduce<ActivityData>((acc, a) => (a.data ? blendData(acc, a.data) : acc), {})
+
 // eslint-disable-next-line complexity -- single-pass winner selection + field blending; splitting hurts readability
 export const mergeGroupByPriority = (members: Activity[]): MergedActivity => {
   // An aurboda override row referencing any group member must win regardless

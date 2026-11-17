@@ -12,6 +12,7 @@ vi.mock('../../db/index.ts', async () => ({
   getTimeSeriesMultiMetric: vi.fn(),
   pickOverrideWinner: (await vi.importActual<typeof MergeModule>('../../db/activities/merge.ts'))
     .pickOverrideWinner,
+  blendGroupData: (await vi.importActual<typeof MergeModule>('../../db/activities/merge.ts')).blendGroupData,
 }))
 vi.mock('../settings.ts', () => ({ computeHrZoneSecs: vi.fn(), getEffectiveHrZones: vi.fn() }))
 
@@ -139,6 +140,41 @@ describe('resolveActivityWindow', () => {
       end_time: new Date('2026-06-08T10:35:00Z'),
       start_time: new Date('2026-06-08T09:55:00Z'),
     })
+  })
+
+  test('sets logged in Aurboda win over the watch sets of a session started later (#1777)', async () => {
+    const loggedSets = [
+      { exercise: 'Bench Press', reps: 8, weight: 60 },
+      { exercise: 'Squat', reps: 5, weight: 100 },
+    ]
+    const logged: Activity = {
+      activity_type: 'strength_training',
+      data: { in_progress: false, sets: loggedSets },
+      end_time: new Date('2026-06-08T10:22:00Z'),
+      id: 'logged-id',
+      source: 'aurboda',
+      start_time: start,
+    }
+    const watch: Activity = {
+      activity_type: 'strength_training',
+      data: {
+        average_hr: 100,
+        garmin_activity_id: 1,
+        sets: [{ exercise: 'Unknown exercise', reps: 24 }],
+        sets_source: 'garmin',
+      },
+      end_time: new Date('2026-06-08T10:22:04Z'),
+      id: 'watch-id',
+      source: 'garmin',
+      start_time: new Date('2026-06-08T10:00:04Z'),
+    }
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([logged, watch])
+
+    const result = await resolveActivityWindow('u', logged, true)
+
+    expect(result.data?.sets).toEqual(loggedSets)
+    expect(result.data).not.toHaveProperty('sets_source')
+    expect(result.data).toMatchObject({ average_hr: 100, garmin_activity_id: 1 })
   })
 
   test('an aurboda override winner keeps its own window and data', async () => {

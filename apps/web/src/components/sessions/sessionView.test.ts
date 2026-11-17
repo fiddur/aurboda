@@ -17,6 +17,9 @@ import {
   isSameSession,
   itemPageHref,
   itemPath,
+  muscleGroupHref,
+  muscleGroupsHref,
+  muscleGroupsSectionId,
   listFields,
   PLACE_FIELD,
   scalarFields,
@@ -101,6 +104,13 @@ describe('schema helpers', () => {
     expect(itemPath(sets, exercise)).toBe('sets.exercise')
     expect(itemPageHref('strength_training', 'sets.exercise', 'Bench Press / 50%')).toBe(
       '/activity-type/strength_training/item/sets.exercise/Bench%20Press%20%2F%2050%25',
+    )
+    expect(muscleGroupsSectionId('sets.exercise')).toBe('muscle-groups-sets.exercise')
+    expect(muscleGroupsHref('strength training', 'sets.exercise')).toBe(
+      '/activity-type/strength%20training#muscle-groups-sets.exercise',
+    )
+    expect(muscleGroupHref('strength training', 'sets.exercise', 'middle_back')).toBe(
+      '/activity-type/strength%20training/muscle/sets.exercise/middle_back',
     )
   })
 })

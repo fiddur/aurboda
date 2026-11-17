@@ -606,6 +606,10 @@ window is then the override's own.
   of an existing account redirects — `public`, `unlisted`, `followers`-only, deleted or
   never-existing alike — so the redirect leaks nothing about the post; the page itself
   shows "Post not found" for anything that isn't public. An unknown account's id is a 404.
+  The one exception is the post's own author: signed in, they see any of their own posts on
+  that page, read through the authenticated `GET /api/feed/:postId` instead, so the links of
+  the notifications about a `followers` post and that post's card in their feed lead there.
+  For everyone else a `followers` post stays "Post not found" on the web.
   Machine clients are unaffected: a `followers`-only or unknown id is still a 404 and a
   deleted one the `410` Tombstone.
 
@@ -1582,6 +1586,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |
 | `POST /feed/timeline/:id/reply`                   | Reply 🗨 to a timeline post — publishes a `reply` post (`Create{Note inReplyTo}` + `Mention`); `visibility` defaults to `unlisted`                                                                           |
+| `GET /feed/:postId`                               | One of MY posts, at any visibility (`followers` too), exactly as an entry of `GET /feed` (structured payload and counts included); 404 for an unknown or non-UUID id                                         |
 | `GET /feed/:postId/reactions`                     | Who favourited, boosted or quoted one of MY posts (newest first, max 100); a quote has kind `quote` and the quoting post in `url`                                                                            |
 | `GET /feed/:postId/replies`                       | The comments received under one of MY posts (the latest 100, oldest first), as full timeline entries — no network fetch                                                                                      |
 
@@ -1645,7 +1650,7 @@ The public profile page (`/u/:username`, from
 `GET /public/:username/dashboards`'s `display_name`) shows it above `@username`. The account's
 email is never part of the actor or any public response.
 
-The owner-facing capability is also available over MCP as `list_feed`, `share_activity`,
+The owner-facing capability is also available over MCP as `list_feed`, `get_feed_post`, `share_activity`,
 `preview_activity_share`, `share_challenge`, `share_exercise`, `preview_exercise_share`, `share_dashboard_period`, `preview_dashboard_period_share`, `create_article`, `update_article`, `preview_article`, the [article draft](#article-drafts) tools, `export_article_markdown`, `update_feed_post`,
 `delete_feed_post`, `list_following`, `follow_actor`, `unfollow_actor`, `list_followed_tags`,
 `follow_tag`, `set_followed_tag_notify`, `unfollow_tag`, `list_followers`,
@@ -1653,7 +1658,7 @@ The owner-facing capability is also available over MCP as `list_feed`, `share_ac
 `unlike_timeline_post`, `boost_timeline_post`, `unboost_timeline_post`,
 `get_timeline_replies`, `reply_to_timeline_post`, `get_feed_post_replies`, and
 `list_feed_post_reactions` — all backed by the same services as
-the REST routes (`create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
+the REST routes (`get_feed_post` ↔ `GET /feed/:postId`; `create_article` / `update_article` ↔ `POST /feed/articles` / `PATCH
 /feed/articles/:postId`; `export_article_markdown` ↔ `GET /feed/articles/:postId/export`), so an
 article can be drafted conversationally by Claude via the same tools — as a private draft
 (`create_article_draft`) the user finishes in the web editor, or published directly. Manual follower approval is

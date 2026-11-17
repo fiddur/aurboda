@@ -51,7 +51,21 @@ export const muscleGroupName = ({
       ? NO_MUSCLE_GROUP_NAME
       : UNMAPPED_MUSCLE_GROUP_NAME
 
-const round2 = (v: number): number => Math.round(v * 100) / 100
+export const round2 = (v: number): number => Math.round(v * 100) / 100
+
+export const roundMeasures = (measures: ActivityMeasures): ActivityMeasures =>
+  Object.fromEntries(
+    Object.entries(measures).map(([measure, value]) => [measure, round2(value)]),
+  ) as ActivityMeasures
+
+const weightedSums = (measures: ActivityMeasures, weight: number): ActivityMeasures => {
+  const weighted: ActivityMeasures = {}
+  for (const measure of summedActivityMeasures) {
+    const value = measures[measure]
+    if (value !== undefined) weighted[measure] = value * weight
+  }
+  return weighted
+}
 
 type BucketKey = ExerciseMuscleGroup | 'no_muscle_group' | 'not_in_catalogue'
 
@@ -91,12 +105,7 @@ export const measuresByMuscleGroup = (
   }
   return [...totals]
     .toSorted(([a], [b]) => bucketOrder.indexOf(a) - bucketOrder.indexOf(b))
-    .map(([bucket, measures]) => ({
-      ...bucketOf(bucket),
-      measures: Object.fromEntries(
-        Object.entries(measures).map(([measure, value]) => [measure, round2(value)]),
-      ) as ActivityMeasures,
-    }))
+    .map(([bucket, measures]) => ({ ...bucketOf(bucket), measures: roundMeasures(measures) }))
 }
 
 /** `measuresByMuscleGroup` with display names, most sets first and the `null` groups last. */
@@ -112,3 +121,34 @@ export const muscleGroupSplit = (
         (b.measures.set_count ?? 0) - (a.measures.set_count ?? 0),
     )
     .map((g) => ({ ...g, name: muscleGroupName(g) }))
+
+export interface MuscleGroupContribution {
+  /** The exercise as logged, spelled as it first appears in the items. */
+  value: string
+  normalized: string
+  /** The exercise's recruitment weight for the group. */
+  weight: number
+  /** Only the summed measures, each times `weight`, unrounded. */
+  measures: ActivityMeasures
+}
+
+/**
+ * Per exercise among `items` that trains `group`: its summed measures times its recruitment weight.
+ * Exercises outside the catalogue, those that do not train the group and those without working sets
+ * are left out.
+ */
+export const muscleGroupContributions = (
+  items: Item[],
+  key: string,
+  resolveEntry: ExerciseEntryResolver,
+  group: ExerciseMuscleGroup,
+): MuscleGroupContribution[] =>
+  groupItemsByKey(items, key).flatMap((g) => {
+    const entry = resolveEntry(g.value)
+    const weight = entry ? muscleGroupWeights(entry)[group] : undefined
+    if (weight === undefined) return []
+    const measures = weightedSums(measureItems(g.items), weight)
+    return Object.keys(measures).length > 0
+      ? [{ measures, normalized: g.normalized, value: g.value, weight }]
+      : []
+  })

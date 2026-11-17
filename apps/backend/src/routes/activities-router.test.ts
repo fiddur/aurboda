@@ -17,6 +17,7 @@ vi.mock('../db/index.ts', async () => ({
   getRouteForActivity: vi.fn().mockResolvedValue(null),
   pickOverrideWinner: (await vi.importActual<typeof MergeModule>('../db/activities/merge.ts'))
     .pickOverrideWinner,
+  blendGroupData: (await vi.importActual<typeof MergeModule>('../db/activities/merge.ts')).blendGroupData,
 }))
 
 vi.mock('../services/queries/index.ts', () => ({
@@ -335,6 +336,42 @@ describe('GET /activities/merged:id with an aurboda override', () => {
     expect(res.body.data.title).toBe('Health Connect yoga')
     expect(res.body.data.merged_start_time).toBe('2026-06-08T09:55:00.000Z')
     expect(res.body.data.merged_end_time).toBe('2026-06-08T10:35:00.000Z')
+  })
+
+  test('shows the sets logged in Aurboda over the watch sets of a session started later (#1777)', async () => {
+    const loggedSets = [
+      { exercise: 'Bench Press', reps: 8, weight: 60 },
+      { exercise: 'Squat', reps: 5, weight: 100 },
+    ]
+    const logged = row({
+      activity_type: 'strength_training',
+      data: { in_progress: false, sets: loggedSets },
+      end_time: new Date('2026-06-08T10:22:00Z'),
+      id: OVERRIDE_ID,
+      source: 'aurboda',
+      start_time: new Date('2026-06-08T10:00:00Z'),
+    })
+    const watch = row({
+      activity_type: 'strength_training',
+      data: {
+        average_hr: 100,
+        garmin_activity_id: 1,
+        sets: [{ exercise: 'Unknown exercise', reps: 24 }],
+        sets_source: 'garmin',
+      },
+      end_time: new Date('2026-06-08T10:22:04Z'),
+      id: GARMIN_ID,
+      source: 'garmin',
+      start_time: new Date('2026-06-08T10:00:04Z'),
+    })
+    vi.mocked(db.getActivityById).mockResolvedValue(logged)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([logged, watch])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${OVERRIDE_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.data.sets).toEqual(loggedSets)
+    expect(res.body.data.data).not.toHaveProperty('sets_source')
   })
 })
 

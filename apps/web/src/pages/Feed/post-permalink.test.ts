@@ -17,6 +17,13 @@ describe('postPermalinkPath', () => {
     expect(postPermalinkPath('fredrik', { id: ID, visibility: 'followers' })).toBeNull()
   })
 
+  it('links a followers-only post for its author, whose page reads it signed in', () => {
+    expect(postPermalinkPath('fredrik', { id: ID, visibility: 'followers' }, true)).toBe(
+      `/u/fredrik/posts/${ID}`,
+    )
+    expect(postPermalinkPath('fredrik', { id: ID, visibility: 'followers' }, false)).toBeNull()
+  })
+
   it('encodes the username', () => {
     expect(postPermalinkPath('a b/c?', { id: ID, visibility: 'public' })).toBe(`/u/a%20b%2Fc%3F/posts/${ID}`)
   })

@@ -8,7 +8,8 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, isSummedActivityMeasure } from './activity-measures.ts'
-import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
+import { baseResponseSchema, timeWeightedAveragesNote } from './common.ts'
+import { type ExerciseMuscleGroup, exerciseMuscleGroups } from './exercise-catalog.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const chartDataSourceTypeSchema = z
@@ -47,23 +48,6 @@ const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
   example: 'Europe/Stockholm',
 })
 
-/**
- * For an activity type with list items (strength sets): chart a measure over its sessions instead of
- * their duration or count, optionally only the items of one value (one exercise).
- */
-const chartMeasureShape = {
-  filter_field: dataFieldPathSchema.optional().meta({
-    description: 'With measure: an item path (sets.exercise) whose items the measure is taken over',
-  }),
-  filter_value: z.string().optional().meta({
-    description: 'With filter_field: the item value to keep (compared trimmed, case-insensitively)',
-  }),
-  measure: activityMeasureSchema.optional().meta({
-    description:
-      "For activity_type sources: aggregate this measure of each session's list items per bucket instead of duration or count — e.g. measure=e1rm with aggregation=max for the highest estimated one-rep max per week",
-  }),
-}
-
 export const ITEM_BREAKDOWN_NEEDS_MEASURE = 'breaking down by an item path needs a measure'
 
 export const itemBreakdownWithoutMeasure = (
@@ -78,6 +62,48 @@ export const muscleGroupBreakdownPath = (field: string): string | undefined => {
   if (!field.endsWith(MUSCLE_GROUP_SUFFIX)) return undefined
   const segments = field.split('.')
   return segments.length === 3 && segments.every(Boolean) ? segments.slice(0, 2).join('.') : undefined
+}
+
+/**
+ * A data field or item path (`location`, `sets.exercise`), or a muscle-group path
+ * (`sets.exercise.muscle_group`) whose value is a muscle group key.
+ */
+export const chartFilterFieldSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$|^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.muscle_group$/)
+
+const isMuscleGroupKey = (value: unknown): value is ExerciseMuscleGroup =>
+  (exerciseMuscleGroups as readonly unknown[]).includes(value)
+
+/** `{ path: 'sets.exercise', group: 'chest' }` when the pair is a muscle-group filter. */
+export const muscleGroupFilter = (
+  field: string | undefined,
+  value: string | undefined,
+): { path: string; group: ExerciseMuscleGroup } | undefined => {
+  const path = field === undefined ? undefined : muscleGroupBreakdownPath(field)
+  return path !== undefined && isMuscleGroupKey(value) ? { group: value, path } : undefined
+}
+
+const isMuscleGroupFilterField = (field: string | undefined): boolean =>
+  field !== undefined && muscleGroupBreakdownPath(field) !== undefined
+
+/**
+ * For an activity type with list items (strength sets): chart a measure over its sessions instead of
+ * their duration or count, optionally only the items of one value (one exercise) or of one muscle group.
+ */
+const chartMeasureShape = {
+  filter_field: chartFilterFieldSchema.optional().meta({
+    description:
+      'With measure: an item path (sets.exercise) whose items the measure is taken over, or a muscle-group path (sets.exercise.muscle_group) to take a summed measure (set_count, volume, total_reps) over the exercises that train the muscle group in filter_value, each weighted by its recruitment of the group',
+  }),
+  filter_value: z.string().optional().meta({
+    description:
+      'With filter_field: the item value to keep (compared trimmed, case-insensitively), or with a muscle-group path a muscle group key such as chest',
+  }),
+  measure: activityMeasureSchema.optional().meta({
+    description:
+      "For activity_type sources: aggregate this measure of each session's list items per bucket instead of duration or count — e.g. measure=e1rm with aggregation=max for the highest estimated one-rep max per week",
+  }),
 }
 
 export const MUSCLE_GROUP_BREAKDOWN_NEEDS_SUMMED_MEASURE =
@@ -111,6 +137,67 @@ export const chartBreakdownError = (
     return MUSCLE_GROUP_BREAKDOWN_NEEDS_SUMMED_MEASURE
   }
   if (muscleGroupBreakdownWithItemPath(breakdownFields)) return MUSCLE_GROUP_BREAKDOWN_WITH_ITEM_PATH
+  return undefined
+}
+
+export const MUSCLE_GROUP_FILTER_NEEDS_GROUP = `a muscle-group filter_value must be one of ${exerciseMuscleGroups.join(', ')}`
+
+export const muscleGroupFilterWithoutGroup = (
+  filterField: string | undefined,
+  filterValue: string | undefined,
+): boolean => isMuscleGroupFilterField(filterField) && !isMuscleGroupKey(filterValue)
+
+export const MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE =
+  'a muscle-group filter needs measure set_count, volume or total_reps'
+
+export const muscleGroupFilterWithoutSummedMeasure = (
+  filterField: string | undefined,
+  measure: unknown,
+): boolean => isMuscleGroupFilterField(filterField) && !isSummedActivityMeasure(measure)
+
+export const MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN =
+  'a muscle-group filter cannot be combined with a muscle-group breakdown'
+
+export const muscleGroupFilterWithMuscleGroupBreakdown = (
+  filterField: string | undefined,
+  breakdownFields: string[] | undefined,
+): boolean =>
+  isMuscleGroupFilterField(filterField) &&
+  (breakdownFields ?? []).some((field) => muscleGroupBreakdownPath(field) !== undefined)
+
+export const MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH =
+  "with a muscle-group filter, an item-path breakdown must be the filter's own item path"
+
+export const muscleGroupFilterWithOtherItemPath = (
+  filterField: string | undefined,
+  breakdownFields: string[] | undefined,
+): boolean => {
+  const path = filterField === undefined ? undefined : muscleGroupBreakdownPath(filterField)
+  return (
+    path !== undefined &&
+    (breakdownFields ?? []).some(
+      (field) => field.includes('.') && muscleGroupBreakdownPath(field) === undefined && field !== path,
+    )
+  )
+}
+
+/** The first rule a chart query's muscle-group filter breaks, as its message. */
+export const chartFilterError = (
+  filterField: string | undefined,
+  filterValue: string | undefined,
+  breakdownFields: string[] | undefined,
+  measure: unknown,
+): string | undefined => {
+  if (muscleGroupFilterWithoutGroup(filterField, filterValue)) return MUSCLE_GROUP_FILTER_NEEDS_GROUP
+  if (muscleGroupFilterWithoutSummedMeasure(filterField, measure)) {
+    return MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE
+  }
+  if (muscleGroupFilterWithMuscleGroupBreakdown(filterField, breakdownFields)) {
+    return MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN
+  }
+  if (muscleGroupFilterWithOtherItemPath(filterField, breakdownFields)) {
+    return MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH
+  }
   return undefined
 }
 
@@ -155,6 +242,22 @@ export const chartDataQuerySchema = z
   })
   .refine((query) => !muscleGroupBreakdownWithItemPath(query.breakdown_fields), {
     message: MUSCLE_GROUP_BREAKDOWN_WITH_ITEM_PATH,
+    path: ['breakdown_fields'],
+  })
+  .refine((query) => !muscleGroupFilterWithoutGroup(query.filter_field, query.filter_value), {
+    message: MUSCLE_GROUP_FILTER_NEEDS_GROUP,
+    path: ['filter_value'],
+  })
+  .refine((query) => !muscleGroupFilterWithoutSummedMeasure(query.filter_field, query.measure), {
+    message: MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+    path: ['measure'],
+  })
+  .refine((query) => !muscleGroupFilterWithMuscleGroupBreakdown(query.filter_field, query.breakdown_fields), {
+    message: MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN,
+    path: ['breakdown_fields'],
+  })
+  .refine((query) => !muscleGroupFilterWithOtherItemPath(query.filter_field, query.breakdown_fields), {
+    message: MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH,
     path: ['breakdown_fields'],
   })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })

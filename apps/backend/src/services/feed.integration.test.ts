@@ -18,6 +18,7 @@ import {
   expandFeedActivityWindow,
   feedActivityHeadline,
   getFeedPage,
+  getOwnFeedPost,
   previewActivityShare,
   resolveFeedActivity,
   serializeFeedPost,
@@ -379,6 +380,33 @@ describe('feed service', () => {
       expect(
         boosts((await getFeedPage(user, 10, undefined, { tagActorHost: 'tags.example' })).posts),
       ).toEqual({ [both.id]: 2, [onlyTag.id]: 1 })
+    })
+  })
+
+  describe('getOwnFeedPost', () => {
+    test('null for a post the user does not have', async () => {
+      expect(await getOwnFeedPost(getTestUser(), '00000000-0000-4000-8000-000000000000')).toBeNull()
+    })
+
+    test('a followers post comes back exactly as its getFeedPage entry, counts included', async () => {
+      const user = getTestUser()
+      const post = await createFeedPost(user, postInput(null, { visibility: 'followers' }))
+      await upsertFeedPostReaction(user, {
+        actor_uri: 'https://mastodon.example/users/alice',
+        kind: 'like',
+        post_id: post.id,
+      })
+      await upsertFeedPostReaction(user, {
+        actor_uri: 'https://mastodon.example/users/alice',
+        kind: 'announce',
+        post_id: post.id,
+      })
+      const opts = { origin: 'https://aurboda.example' }
+
+      const own = await getOwnFeedPost(user, post.id, opts)
+      expect(own).toMatchObject({ boost_count: 1, like_count: 1, reply_count: 0, visibility: 'followers' })
+      const page = await getFeedPage(user, 10, undefined, opts)
+      expect(own).toEqual(page.posts.find((p) => p.id === post.id))
     })
   })
 

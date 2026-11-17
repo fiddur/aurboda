@@ -2,7 +2,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { sessionUrl, STRENGTH_TYPE } from './constants'
+import { muscleGroupsHref } from '../../components/sessions/sessionView'
+import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft, readLiveDraft } from './draftStorage'
 import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
 import { finishLiveSession } from './saveQueue'
@@ -165,7 +166,11 @@ export function Strength() {
           ))}
         </ul>
       </section>
-      <a href={`/activity-type/${STRENGTH_TYPE}`}>All strength sessions</a>
+      <p>
+        <a href={`/activity-type/${STRENGTH_TYPE}`}>All strength sessions</a>
+        {' · '}
+        <a href={muscleGroupsHref(STRENGTH_TYPE, SETS_PATH)}>Sets per muscle group</a>
+      </p>
     </div>
   )
 }

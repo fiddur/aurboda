@@ -1,9 +1,17 @@
 import {
+  barChartConfigSchema,
   chartBreakdownError,
+  chartDataHttpQuerySchema,
   chartDataQuerySchema,
+  chartFilterError,
+  combinedChartBarsLayerSchema,
   dataFieldDefinitionSchema,
   dataItemFieldDefinitionSchema,
   muscleGroupBreakdownPath,
+  muscleGroupFilter,
+  muscleGroupHistoryPeriod,
+  muscleGroupHistoryQuerySchema,
+  recordCardConfigSchema,
   storedActivityTypeCatalogEntrySchema,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
@@ -202,5 +210,156 @@ describe('chartBreakdownError', () => {
       'a muscle-group breakdown needs measure set_count, volume or total_reps',
     )
     expect(chartBreakdownError(['sets.exercise.muscle_group'], 'total_reps')).toBeUndefined()
+  })
+})
+
+describe('muscleGroupFilter', () => {
+  test('the item path and group of a muscle-group filter', () => {
+    expect(muscleGroupFilter('sets.exercise.muscle_group', 'chest')).toEqual({
+      group: 'chest',
+      path: 'sets.exercise',
+    })
+  })
+
+  test('undefined for an item or scalar filter, or a value that is not a muscle group key', () => {
+    expect(muscleGroupFilter('sets.exercise', 'Bench Press')).toBeUndefined()
+    expect(muscleGroupFilter('location', 'Gym')).toBeUndefined()
+    expect(muscleGroupFilter('sets.exercise.muscle_group', 'Chest')).toBeUndefined()
+    expect(muscleGroupFilter('sets.exercise.muscle_group', undefined)).toBeUndefined()
+    expect(muscleGroupFilter(undefined, 'chest')).toBeUndefined()
+  })
+})
+
+describe('chartDataQuerySchema with a muscle-group filter', () => {
+  const query = {
+    end: '2026-04-01T00:00:00Z',
+    filter_field: 'sets.exercise.muscle_group',
+    filter_value: 'chest',
+    measure: 'set_count' as const,
+    pattern: 'strength_training',
+    source_type: 'activity_type' as const,
+    start: '2026-03-01T00:00:00Z',
+  }
+  const messages = (input: Record<string, unknown>) =>
+    chartDataQuerySchema.safeParse(input).error?.issues.map((i) => i.message)
+
+  test('accepts a summed measure, alone, by its own item path or by a scalar field', () => {
+    expect(chartDataQuerySchema.safeParse(query).success).toBe(true)
+    expect(chartDataQuerySchema.safeParse({ ...query, breakdown_fields: ['sets.exercise'] }).success).toBe(
+      true,
+    )
+    expect(
+      chartDataQuerySchema.safeParse({ ...query, breakdown_fields: ['location'], measure: 'volume' }).success,
+    ).toBe(true)
+  })
+
+  test('the value must be a muscle group key', () => {
+    expect(messages({ ...query, filter_value: 'Chest' })).toEqual([
+      expect.stringContaining('a muscle-group filter_value must be one of chest, shoulders'),
+    ])
+    expect(messages({ ...query, filter_value: undefined })).toHaveLength(1)
+  })
+
+  test('needs a summed measure', () => {
+    expect(messages({ ...query, measure: 'e1rm' })).toEqual([
+      'a muscle-group filter needs measure set_count, volume or total_reps',
+    ])
+  })
+
+  test('cannot be combined with a muscle-group breakdown', () => {
+    expect(messages({ ...query, breakdown_fields: ['sets.exercise.muscle_group'] })).toEqual([
+      'a muscle-group filter cannot be combined with a muscle-group breakdown',
+    ])
+  })
+
+  test('an item-path breakdown must be the filter’s own item path', () => {
+    expect(messages({ ...query, breakdown_fields: ['sets.equipment'] })).toEqual([
+      "with a muscle-group filter, an item-path breakdown must be the filter's own item path",
+    ])
+  })
+
+  test('the field accepts the muscle-group form but no other three-segment path', () => {
+    expect(chartDataHttpQuerySchema.safeParse({ ...query }).success).toBe(true)
+    expect(chartDataQuerySchema.safeParse({ ...query, filter_field: 'sets.exercise.other' }).success).toBe(
+      false,
+    )
+  })
+})
+
+describe('chartFilterError', () => {
+  test('the message of the first rule broken', () => {
+    expect(chartFilterError('sets.exercise.muscle_group', 'nope', undefined, 'e1rm')).toMatch(
+      /^a muscle-group filter_value must be one of/,
+    )
+    expect(chartFilterError('sets.exercise.muscle_group', 'chest', undefined, 'e1rm')).toBe(
+      'a muscle-group filter needs measure set_count, volume or total_reps',
+    )
+    expect(
+      chartFilterError('sets.exercise.muscle_group', 'chest', ['sets.exercise'], 'volume'),
+    ).toBeUndefined()
+    expect(chartFilterError('sets.exercise', 'Bench Press', ['sets.other'], 'e1rm')).toBeUndefined()
+  })
+})
+
+describe('dashboard filters', () => {
+  const muscle = { filter_field: 'sets.exercise.muscle_group', filter_value: 'chest' }
+
+  test('a bar chart and the bars layer of a combined chart accept the muscle-group filter', () => {
+    expect(
+      barChartConfigSchema.safeParse({
+        ...muscle,
+        aggregation: 'sum',
+        bucket_size: '1w',
+        lookback_days: 90,
+        measure: 'set_count',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }).success,
+    ).toBe(true)
+    expect(
+      combinedChartBarsLayerSchema.safeParse({
+        ...muscle,
+        bucket_size: '1w',
+        kind: 'bars',
+        measure: 'set_count',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }).success,
+    ).toBe(true)
+  })
+
+  test('a record card still rejects it', () => {
+    expect(
+      recordCardConfigSchema.safeParse({
+        ...muscle,
+        measure: 'e1rm',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('muscleGroupHistoryQuerySchema', () => {
+  test('end defaults to now and start to 90 days before end', () => {
+    const now = new Date('2026-04-01T00:00:00Z')
+    expect(muscleGroupHistoryPeriod({}, now)).toEqual({ end: now, start: new Date('2026-01-01T00:00:00Z') })
+    expect(muscleGroupHistoryPeriod({ end: '2026-03-31T00:00:00Z' }, now)).toEqual({
+      end: new Date('2026-03-31T00:00:00Z'),
+      start: new Date('2025-12-31T00:00:00Z'),
+    })
+    expect(muscleGroupHistoryPeriod({ start: '2026-03-01T00:00:00Z' }, now).start).toEqual(
+      new Date('2026-03-01T00:00:00Z'),
+    )
+  })
+
+  test('start must be before end', () => {
+    expect(muscleGroupHistoryQuerySchema.safeParse({ field: 'sets.exercise' }).success).toBe(true)
+    const result = muscleGroupHistoryQuerySchema.safeParse({
+      end: '2026-03-01T00:00:00Z',
+      field: 'sets.exercise',
+      start: '2026-03-01T00:00:00Z',
+    })
+    expect(result.error?.issues.map((i) => i.message)).toEqual(['start must be before end'])
   })
 })

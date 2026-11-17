@@ -35,6 +35,7 @@ import type { ActivitySpan } from '../integrations/gps-precedence.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import {
+  blendGroupData,
   getActivityById,
   getActivityTrack,
   getAllActivityTypeNames,
@@ -142,10 +143,7 @@ const buildMergedResponse = async (
   const mergedTitle = overrideWinner
     ? overrideWinner.title
     : (sorted.find((a) => a.title)?.title ?? activity.title)
-  const blendedData = sorted.reduce<Record<string, unknown>>(
-    (acc, a) => (a.data ? { ...acc, ...a.data } : acc),
-    {},
-  )
+  const blendedData = blendGroupData(blended)
   const mergedData = overrideWinner
     ? overrideWinner.data
     : Object.keys(blendedData).length > 0

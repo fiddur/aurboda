@@ -20,6 +20,8 @@ vi.mock('../services/queries/index.ts', async () => {
     getActivityTypeSummary: vi.fn(),
     queryActivityFieldValues: vi.fn(),
     queryActivitySessions: vi.fn(),
+    queryMuscleGroupHistory: vi.fn(),
+    queryMuscleGroupOverview: vi.fn(),
     sessionsOptionsFromQuery,
   }
 })
@@ -199,6 +201,117 @@ describe('GET /activity-types/:name/field-values', () => {
     expect((await supertest(app).get('/activity-types/yoga/field-values')).status).toBe(400)
     expect((await supertest(app).get("/activity-types/yoga/field-values?field=a'b")).status).toBe(400)
     expect(queries.queryActivityFieldValues).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /activity-types/:name/muscle-groups', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  test('returns every group with when it was last trained', async () => {
+    const data = {
+      field: 'sets.exercise',
+      groups: [{ last_trained: '2026-10-01T07:00:00.000Z', muscle_group: 'chest' as const, name: 'Chest' }],
+    }
+    vi.mocked(queries.queryMuscleGroupOverview).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/muscle-groups?field=sets.exercise',
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.queryMuscleGroupOverview).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+    )
+  })
+
+  test('400s on a field that is not catalogue-backed, 404s on an unknown type', async () => {
+    const app = buildApp()
+    vi.mocked(queries.queryMuscleGroupOverview).mockResolvedValueOnce({
+      error: '"sets.note" is not a catalogue-backed item field of "strength_training"',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/strength_training/muscle-groups?field=sets.note')).status,
+    ).toBe(400)
+    vi.mocked(queries.queryMuscleGroupOverview).mockResolvedValueOnce({
+      error: 'Activity type "nope" not found',
+      success: false,
+    })
+    expect((await supertest(app).get('/activity-types/nope/muscle-groups?field=sets.exercise')).status).toBe(
+      404,
+    )
+  })
+})
+
+describe('GET /activity-types/:name/muscle-groups/:group', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const data = {
+    end: '2026-04-01T00:00:00.000Z',
+    exercises: [],
+    field: 'sets.exercise',
+    last_trained: null,
+    muscle_group: 'chest' as const,
+    name: 'Chest',
+    sessions: [],
+    start: '2026-03-01T00:00:00.000Z',
+    totals: {},
+  }
+
+  test('returns the group’s history over the period', async () => {
+    vi.mocked(queries.queryMuscleGroupHistory).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/muscle-groups/chest?field=sets.exercise&start=2026-03-01T00:00:00Z&end=2026-04-01T00:00:00Z',
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.queryMuscleGroupHistory).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      'chest',
+      { end: new Date('2026-04-01T00:00:00Z'), start: new Date('2026-03-01T00:00:00Z') },
+    )
+  })
+
+  test('400s on an unknown muscle group or start not before end without querying', async () => {
+    const app = buildApp()
+    expect(
+      (await supertest(app).get('/activity-types/strength_training/muscle-groups/wings?field=sets.exercise'))
+        .status,
+    ).toBe(400)
+    expect(
+      (
+        await supertest(app).get(
+          '/activity-types/strength_training/muscle-groups/chest?field=sets.exercise&start=2026-04-01T00:00:00Z&end=2026-03-01T00:00:00Z',
+        )
+      ).status,
+    ).toBe(400)
+    expect(queries.queryMuscleGroupHistory).not.toHaveBeenCalled()
+  })
+
+  test('400s on a field that is not catalogue-backed, 404s on an unknown type', async () => {
+    const app = buildApp()
+    vi.mocked(queries.queryMuscleGroupHistory).mockResolvedValueOnce({
+      error: '"sets.note" is not a catalogue-backed item field of "strength_training"',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/strength_training/muscle-groups/chest?field=sets.note'))
+        .status,
+    ).toBe(400)
+    vi.mocked(queries.queryMuscleGroupHistory).mockResolvedValueOnce({
+      error: 'Activity type "nope" not found',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/nope/muscle-groups/chest?field=sets.exercise')).status,
+    ).toBe(404)
   })
 })
 

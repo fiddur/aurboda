@@ -1031,6 +1031,70 @@ describe('Feed post reactions (integration)', () => {
   })
 })
 
+describe('One own post (GET /feed/:postId)', () => {
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp(undefined, undefined, 'https://aurboda.example')
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('answers the owner a followers-only post, as GET /feed lists it', async () => {
+    const user = getTestUser()
+    const created = await createFeedPost(user, {
+      activity_id: null,
+      include_chart: false,
+      include_map: false,
+      included_metrics: [],
+      message: 'For followers',
+      series_metrics: [],
+      visibility: 'followers',
+    })
+    await upsertFeedPostReaction(user, {
+      actor_uri: 'https://mastodon.example/users/alice',
+      kind: 'like',
+      post_id: created.id,
+    })
+
+    const res = await app.request.get(`/feed/${created.id}`)
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.post).toMatchObject({
+      id: created.id,
+      like_count: 1,
+      reply_count: 0,
+      visibility: 'followers',
+    })
+    const listing = await app.request.get('/feed')
+    expect(res.body.post).toEqual(listing.body.posts[0])
+  })
+
+  test('404s an unknown or non-UUID post id', async () => {
+    const unknown = await app.request.get('/feed/00000000-0000-4000-8000-000000000000')
+    expect(unknown.status).toBe(404)
+    expect(unknown.body).toEqual({ error: 'Feed post not found', success: false })
+    expect((await app.request.get('/feed/not-a-uuid')).status).toBe(404)
+  })
+
+  test('does not shadow GET /feed/timeline or /feed/article-drafts', async () => {
+    const timeline = await app.request.get('/feed/timeline')
+    expect(timeline.status).toBe(200)
+    expect(timeline.body.entries).toEqual([])
+    const drafts = await app.request.get('/feed/article-drafts')
+    expect(drafts.status).toBe(200)
+    expect(drafts.body.drafts).toEqual([])
+  })
+})
+
 describe('Own-post comments (GET /feed/:postId/replies + reply_count)', () => {
   const WEB_HOST = 'https://aurboda.example'
   let app: ReturnType<typeof startApp>
