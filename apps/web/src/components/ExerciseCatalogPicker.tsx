@@ -1,53 +1,97 @@
 import type { ExerciseCatalogEntry } from '@aurboda/api-spec'
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState } from 'preact/hooks'
 
-import { searchExerciseCatalog } from '../state/api'
 import './ExerciseCatalogPicker.css'
 import { catalogHint, stepActiveIndex } from './knownValueSuggestions'
 import { useDebounced } from './useDebounced'
+import { useExerciseCatalogPages } from './useExerciseCatalogPages'
 
 const STALE_TIME = 5 * 60 * 1000
 const CATALOG_DEBOUNCE_MS = 200
 const MIN_QUERY_LENGTH = 2
+const PAGE_SIZE = 10
 
-/** A search field over the exercise catalogue with its results listed under it, for choosing one entry. */
+const catalogSearch = (q: string, similarTo: string | undefined) => {
+  const similar = similarTo === undefined ? {} : { similar_to: similarTo }
+  if (q.length >= MIN_QUERY_LENGTH) return { q, ...similar }
+  return similarTo === undefined ? undefined : similar
+}
+
+const ShowMore = ({
+  shown,
+  total,
+  disabled,
+  onClick,
+}: {
+  shown: number
+  total: number
+  disabled: boolean
+  onClick: () => void
+}) => (
+  <div class="exercise-catalog-picker-more">
+    <span class="exercise-catalog-picker-count">
+      {shown} of {total}
+    </span>
+    <button type="button" class="btn-secondary" disabled={disabled} onClick={onClick}>
+      Show more
+    </button>
+  </div>
+)
+
+const useCatalogResults = (text: string, similarTo: string | undefined) => {
+  const similar = similarTo?.trim() || undefined
+  const typed = text.trim()
+  const q = useDebounced(typed, CATALOG_DEBOUNCE_MS)
+  const query = catalogSearch(q, similar)
+  const pages = useExerciseCatalogPages({
+    enabled: query !== undefined,
+    pageSize: PAGE_SIZE,
+    query: query ?? {},
+    staleTime: STALE_TIME,
+  })
+  const searching = typed.length >= MIN_QUERY_LENGTH
+  const closestOnly = !searching && similar !== undefined
+  const entries = searching || closestOnly ? pages.entries : []
+  const settled = searching && q === typed && !pages.isFetching && !pages.isPlaceholderData && pages.isLoaded
+  return {
+    caption: closestOnly && entries.length > 0,
+    entries,
+    noMatch: settled && entries.length === 0,
+    pages,
+    queryId: `${q}\n${similar ?? ''}`,
+    remaining: entries.length > 0 ? pages.remaining : 0,
+  }
+}
+
+/**
+ * A search field over the exercise catalogue with its results listed under it, for choosing one entry.
+ * With `similarTo` (a logged exercise name) it opens on the entries closest to that name and keeps
+ * them near the top while the user types.
+ */
 export const ExerciseCatalogPicker = ({
   onPick,
-  initialQuery = '',
+  similarTo,
   autoFocus = false,
   id,
   disabled = false,
 }: {
   onPick: (entry: ExerciseCatalogEntry) => void
-  initialQuery?: string
+  similarTo?: string
   autoFocus?: boolean
   id?: string
   disabled?: boolean
 }) => {
   const listId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [text, setText] = useState(initialQuery)
+  const [text, setText] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
 
-  const typed = text.trim()
-  const q = useDebounced(typed, CATALOG_DEBOUNCE_MS)
-  const { data, isFetching, isPlaceholderData } = useQuery({
-    enabled: q.length >= MIN_QUERY_LENGTH,
-    placeholderData: keepPreviousData,
-    queryFn: () => searchExerciseCatalog({ limit: 8, q }),
-    queryKey: ['exercise-catalog', 'search', q],
-    staleTime: STALE_TIME,
-  })
-  const searching = typed.length >= MIN_QUERY_LENGTH
-  const entries = searching ? (data?.entries ?? []) : []
-  const settled = searching && q === typed && !isFetching && !isPlaceholderData && data !== undefined
-  const noMatch = settled && entries.length === 0
+  const { caption, entries, noMatch, pages, queryId, remaining } = useCatalogResults(text, similarTo)
 
   useEffect(() => {
     setActiveIndex(0)
-  }, [data])
+  }, [queryId])
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus()
@@ -89,6 +133,7 @@ export const ExerciseCatalogPicker = ({
         onInput={(e) => setText((e.target as HTMLInputElement).value)}
         onKeyDown={onKeyDown}
       />
+      {caption && <p class="exercise-catalog-picker-caption">Closest matches</p>}
       <div id={listId} role="listbox" aria-label="Catalogue exercises" class="exercise-catalog-picker-list">
         {entries.map((entry, i) => {
           const hint = catalogHint(entry)
@@ -111,6 +156,14 @@ export const ExerciseCatalogPicker = ({
           )
         })}
       </div>
+      {remaining > 0 && (
+        <ShowMore
+          shown={entries.length}
+          total={pages.total}
+          disabled={disabled || pages.isLoadingMore}
+          onClick={pages.loadMore}
+        />
+      )}
       {noMatch && <p class="exercise-catalog-picker-empty">No match in the catalogue</p>}
     </div>
   )

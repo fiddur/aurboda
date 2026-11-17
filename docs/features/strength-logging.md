@@ -28,7 +28,8 @@ sets share a `superset_id` are labelled **Superset**; the pages do not create su
 
 **+ Add exercise** opens a picker: the exercises of the last three sessions, then the user's own
 names (most recently used first), then, while typing or with a muscle group or equipment filter,
-the [exercise catalogue](exercise-catalog.md). A catalogue pick sends its key as `exercise_key`
+the [exercise catalogue](exercise-catalog.md), 20 at a time ("Show more" loads the next). A
+catalogue pick sends its key as `exercise_key`
 with the block's sets until one save has carried it, which maps the name to the entry.
 
 ## Live sessions

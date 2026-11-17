@@ -252,6 +252,158 @@ describe('searchExercises', () => {
   })
 })
 
+describe('search word forms', () => {
+  const formsCatalog: StoredExerciseCatalog = {
+    ...catalog,
+    entries: [
+      entry({ key: 'squat', name: 'Squat', same_as: { fit: ['squat/squat'] } }),
+      entry({
+        equipment: ['barbell'],
+        key: 'barbell_squat',
+        name: 'Barbell Squat',
+        same_as: { bodybuild: 'barbell squat' },
+      }),
+      entry({ key: 'tricep_extension', name: 'Tricep Extension' }),
+      entry({ key: 'machine_triceps_extension', name: 'Machine Triceps Extension' }),
+      entry({ key: 'crunch', name: 'Crunch' }),
+      entry({ key: 'ab_crunch', name: 'Ab Crunch' }),
+      entry({ key: 'hip_abduction', name: 'Hip Abduction' }),
+      entry({ key: 'pull_up', name: 'Pull-Up' }),
+      entry({ key: 'deadlift', name: 'Deadlift' }),
+      entry({ key: 'lat_pulldown', name: 'Lat Pulldown' }),
+      entry({ key: 'lat_pull_down', name: 'Lat Pull-down' }),
+      entry({ equipment: ['dumbbell'], key: 'dumbbell_curl', name: 'Dumbbell Curl' }),
+      entry({ equipment: ['barbell'], key: 'barbell_curl', name: 'Barbell Curl' }),
+      entry({ equipment: ['kettlebell'], key: 'kettlebell_swing', name: 'Kettlebell Swing' }),
+      entry({ equipment: ['dumbbell'], key: 'one_arm_dumbbell_row', name: 'One-Arm Dumbbell Row' }),
+      entry({ equipment: ['cable'], key: 'single_arm_cable_row', name: 'Single-arm Cable Row' }),
+      entry({ equipment: ['dumbbell'], key: 'dumbbell_fly', name: 'Dumbbell Fly' }),
+    ],
+  }
+  const find = (q: string) => keys(searchExercises(formsCatalog, { q }))
+
+  test('a plural meets its singular', () => {
+    expect(find('squats')).toEqual(find('squat'))
+    expect(find('squats')).toEqual(['barbell_squat', 'squat'])
+    expect(find('triceps extension')).toEqual(['tricep_extension', 'machine_triceps_extension'])
+    expect(find('crunches')).toEqual(['crunch', 'ab_crunch'])
+  })
+
+  test('a plural meets its singular exactly, not as a prefix', () => {
+    expect(find('abs')).toEqual(['ab_crunch'])
+  })
+
+  test('words written together or apart meet', () => {
+    expect(find('pullup')).toEqual(['pull_up'])
+    expect(find('pullups')).toEqual(['pull_up'])
+    expect(find('pull up')).toEqual(['pull_up'])
+    expect(find('dead lift')).toEqual(['deadlift'])
+    expect(find('pull down').sort()).toEqual(['lat_pull_down', 'lat_pulldown'])
+    expect(find('pulldown').sort()).toEqual(['lat_pull_down', 'lat_pulldown'])
+  })
+
+  test('db, bb and kb stand for their weights, single means one, flye means fly', () => {
+    expect(find('db curl')).toEqual(['dumbbell_curl'])
+    expect(find('bb curl')).toEqual(['barbell_curl'])
+    expect(find('kb swing')).toEqual(['kettlebell_swing'])
+    expect(find('single arm row').sort()).toEqual(['one_arm_dumbbell_row', 'single_arm_cable_row'])
+    expect(find('flye')).toEqual(['dumbbell_fly'])
+    expect(find('flyes')).toEqual(['dumbbell_fly'])
+  })
+
+  test('an abbreviation of the whole name is an exact match', () => {
+    const withMore: StoredExerciseCatalog = {
+      ...formsCatalog,
+      entries: [
+        entry({
+          key: 'dumbbell_curl_hold',
+          name: 'Dumbbell Curl Hold',
+          same_as: { bodybuild: 'dumbbell curl hold' },
+        }),
+        ...formsCatalog.entries,
+      ],
+    }
+    expect(keys(searchExercises(withMore, { q: 'db curl' }))).toEqual(['dumbbell_curl', 'dumbbell_curl_hold'])
+  })
+})
+
+describe('similar_to', () => {
+  const similarCatalog: StoredExerciseCatalog = {
+    ...catalog,
+    entries: [
+      entry({
+        equipment: ['dumbbell'],
+        key: 'standing_dumbbell_bicep_curl',
+        name: 'Standing Dumbbell Bicep Curl',
+      }),
+      entry({ key: 'seated_dumbbell_bicep_curl', name: 'Seated Dumbbell Bicep Curl' }),
+      entry({ key: 'hammer_curls', name: 'Hammer Curls', search_terms: ['dumbbell'] }),
+      entry({ key: 'barbell_squat', name: 'Barbell Squat' }),
+      entry({ key: 'tricep_extension', name: 'Tricep Extension' }),
+      entry({ key: 'machine_triceps_extension', name: 'Machine Triceps Extension' }),
+      entry({ key: 'low_cable_triceps_extension', name: 'Low Cable Triceps Extension' }),
+      entry({
+        key: 'dumbbell_one_arm_triceps_extension',
+        name: 'Dumbbell One-Arm Triceps Extension',
+      }),
+    ],
+  }
+  const similar = (query: Parameters<typeof searchExercises>[1]) => searchExercises(similarCatalog, query)
+
+  test('alone, gives the entries close to the name, closest first', () => {
+    const result = similar({ similar_to: 'Dumbbell Bicep Curl' })
+    expect(keys(result)).toEqual([
+      'seated_dumbbell_bicep_curl',
+      'standing_dumbbell_bicep_curl',
+      'hammer_curls',
+    ])
+    expect(result.total).toBe(3)
+  })
+
+  test('alone, still applies the filters and pages', () => {
+    expect(keys(similar({ equipment: 'dumbbell', similar_to: 'Dumbbell Bicep Curl' }))).toEqual([
+      'standing_dumbbell_bicep_curl',
+    ])
+    const page = similar({ limit: 1, offset: 1, similar_to: 'Dumbbell Bicep Curl' })
+    expect(keys(page)).toEqual(['standing_dumbbell_bicep_curl'])
+    expect(page.total).toBe(3)
+  })
+
+  test('alone, a name with no relative gives nothing', () => {
+    expect(similar({ similar_to: 'Zercher Carry' })).toMatchObject({ entries: [], total: 0 })
+  })
+
+  test('with q, orders equally ranked matches by closeness', () => {
+    expect(keys(similar({ q: 'tricep extension' }))).toEqual([
+      'tricep_extension',
+      'machine_triceps_extension',
+      'low_cable_triceps_extension',
+      'dumbbell_one_arm_triceps_extension',
+    ])
+    expect(
+      keys(similar({ q: 'tricep extension', similar_to: 'Single Arm Dumbbell Tricep Extension' })),
+    ).toEqual([
+      'tricep_extension',
+      'dumbbell_one_arm_triceps_extension',
+      'machine_triceps_extension',
+      'low_cable_triceps_extension',
+    ])
+  })
+
+  test('is ignored with name or fit', () => {
+    expect(keys(search({ name: 'Bench Press', similar_to: 'Dumbbell Bench Press' }))).toEqual(['bench_press'])
+    expect(
+      keys(search({ fit: 'bench_press/weighted_bench_press', similar_to: 'Dumbbell Bench Press' })),
+    ).toEqual(['bench_press'])
+  })
+
+  test('suggestions read single as one', () => {
+    expect(suggestExercises(similarCatalog, 'Single Arm Dumbbell Tricep Extension')[0]?.key).toBe(
+      'dumbbell_one_arm_triceps_extension',
+    )
+  })
+})
+
 describe('suggestExercises', () => {
   const suggestionCatalog: StoredExerciseCatalog = {
     ...catalog,
@@ -338,6 +490,19 @@ describe('the built-in catalogue', () => {
     expect(names('squat')).toEqual(['Barbell Squat', 'Dumbbell Squat', 'Squat'])
     expect(names('bench press')).toEqual(['Barbell Bench Press', 'Dumbbell Bench Press', 'Bench Press'])
     expect(names('deadlift')).toEqual(['Deadlift', 'Dumbbell Deadlift', 'Kettlebell Deadlift'])
+  })
+
+  test('a logged name keeps its closest entry near the top of a search', () => {
+    const names = searchExercises(loadExerciseCatalog(), {
+      limit: 3,
+      q: 'tricep extension',
+      similar_to: 'Single Arm Dumbbell Tricep Extension',
+    }).entries.map((e) => e.name)
+    expect(names.slice(0, 2)).toContain('Dumbbell One-Arm Triceps Extension')
+  })
+
+  test.each(['hip thrusts', 'lateral raises', 'situp'])('finds %s', (q) => {
+    expect(searchExercises(loadExerciseCatalog(), { q }).total).toBeGreaterThan(0)
   })
 
   test('finds entries by Garmin FIT key', () => {
