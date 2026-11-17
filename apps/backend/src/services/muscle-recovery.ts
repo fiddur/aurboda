@@ -50,10 +50,8 @@ export const setEffort = (item: Record<string, unknown>): number => {
   return 1
 }
 
-/** The fatigue a session gave one muscle group. */
 export interface FatigueRecord {
   activity_type: string
-  /** The time the fatigue is counted from. */
   end_time: Date
   fatigue: number
   muscle_group: ExerciseMuscleGroup

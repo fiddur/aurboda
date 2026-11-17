@@ -23,6 +23,9 @@ estimated one-rep max of the last 90 days against a reference by sex and bodywei
 They also feed [muscle recovery](muscle-recovery.md): per muscle group how far the fatigue of
 the working sets of the last days has worn off.
 
+A workout can also be planned ahead: [strength plans](strength-plans.md) are named lists of
+planned sets, for a day or as a routine, which the user or an assistant over MCP writes.
+
 ## Exercise blocks
 
 The stored list is flat, in order. The pages group consecutive sets with the same exercise name

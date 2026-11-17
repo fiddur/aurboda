@@ -90,6 +90,18 @@ See [Activity types -- sessions overview](features/activity-types.md#sessions-ov
 | `get_muscle_recovery`         | [Muscle recovery](features/muscle-recovery.md) at `at` (default now, or later for the recovery to come): per muscle group 100 × (1 − fatigue), the fatigue of the working sets of the last 10 days by recruitment weight and effort, halving every 24 or 36 hours; 80 and above is ready, `ready_at` says when a group gets there, `sources` the sessions that still tire it                                                 |
 | `get_muscle_recovery_history` | Muscle recovery of every group at `end` (default now, may lie ahead) and every `step_hours` (default 6) before it down to `start` (default 14 days before `end`), oldest first; at most 500 points                                                                                                                                                                                                                           |
 
+### Strength plan tools
+
+See [Strength plans](features/strength-plans.md).
+
+| Tool                   | What it does                                                                                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_strength_plans`  | Planned strength workouts with their sets and the sessions started from them; `status` `open` (default: routines and plans with a day without a session) or `all`; days first, then routines by name                                          |
+| `get_strength_plan`    | One plan by `id`                                                                                                                                                                                                                              |
+| `create_strength_plan` | Plan a workout: `name`, `sets` in order (`exercise`, `exercise_key`, `reps` or `time`, `weight` in kg, `set_type`, `note`), `planned_for` for a day (left out for a routine), `note`; it shows on the strength start page with a Start button |
+| `update_strength_plan` | Change a plan: fields left out stay, an empty `planned_for` or `note` clears it, `sets` replaces the list                                                                                                                                     |
+| `delete_strength_plan` | Delete a plan; sessions started from it are kept                                                                                                                                                                                              |
+
 ### Activity track tools
 
 See [Routes and segments](features/routes-and-segments.md).
