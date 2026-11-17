@@ -14,7 +14,7 @@ import {
   measureGoalLabel,
   measureOptions,
   measureSet,
-  muscleGroupParts,
+  muscleGroupEntries,
   recordBadge,
   topSet,
   trendParts,
@@ -286,15 +286,19 @@ describe('formatSetCount', () => {
   })
 })
 
-describe('muscleGroupParts', () => {
-  test('each group with its set count, groups without one left out', () => {
+describe('muscleGroupEntries', () => {
+  test('each group with its set count and key, groups without a set count left out', () => {
     expect(
-      muscleGroupParts([
+      muscleGroupEntries([
         { measures: { set_count: 4, volume: 1200 }, muscle_group: 'chest', name: 'Chest' },
         { measures: { set_count: 2.5 }, muscle_group: 'triceps', name: 'Triceps' },
         { measures: { volume: 10 }, muscle_group: 'calves', name: 'Calves' },
         { measures: { set_count: 1 }, muscle_group: null, name: 'Not in the catalogue' },
       ]),
-    ).toEqual(['Chest 4', 'Triceps 2.5', 'Not in the catalogue 1'])
+    ).toEqual([
+      { label: 'Chest 4', muscle_group: 'chest' },
+      { label: 'Triceps 2.5', muscle_group: 'triceps' },
+      { label: 'Not in the catalogue 1', muscle_group: null },
+    ])
   })
 })

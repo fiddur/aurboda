@@ -1,0 +1,9 @@
+.muscle-group-idle td {
+  color: #9ca3af;
+}
+
+@media (prefers-color-scheme: dark) {
+  .muscle-group-idle td {
+    color: #6b7280;
+  }
+}

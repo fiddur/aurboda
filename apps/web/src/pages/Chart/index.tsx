@@ -16,6 +16,7 @@ import {
   type ChartDataAggregation,
   type DashboardConfig,
   type DashboardWidget,
+  muscleGroupFilter,
   type TrendMissingDays,
 } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -81,13 +82,19 @@ import {
   measureParams,
   itemBreakdownOptions,
   measurePatch,
+  muscleFilterOf,
+  muscleFilterPatch,
+  muscleFilterPath,
   parseAggregation,
   parseChartMode,
   parseMeasureQuery,
   sourceDefaultAggregation,
   toggleBreakdownField,
+  trendFilterPatch,
+  withMuscleFilterRules,
 } from './chartMeasures'
 import { mapLegacyCategorySource } from './legacySource'
+import { MuscleGroupSelect } from './MuscleGroupSelect'
 import { parseScatterQuery, scatterAllowed, scatterParams, type ScatterState } from './scatterState'
 import {
   boardReturnPath,
@@ -164,12 +171,18 @@ const parseSinceQuery = (value: string | undefined): string => {
 function parseQuery(query: Record<string, string>): ChartState {
   const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
   const scatter = scatterAllowed(query)
-  const measureState = parseMeasureQuery(scatter ? {} : query, source_type)
-  const { measure } = measureState
+  const parsedMeasure = parseMeasureQuery(scatter ? {} : query, source_type)
+  const { measure } = parsedMeasure
   const mode = parseChartMode(query, measure)
+  const measureState = withMuscleFilterRules(
+    {
+      ...parsedMeasure,
+      breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
+    },
+    mode.chart_type,
+  )
   return {
     aggregation: parseAggregation(query.aggregation, source_type, measure),
-    breakdown_fields: query.breakdown_fields ? query.breakdown_fields.split(',').filter(Boolean) : [],
     bucket_size: (query.bucket_size ?? '1d') as BucketSize,
     ...mode,
     chart_type: scatter ? 'scatter' : mode.chart_type,
@@ -238,6 +251,9 @@ function MeasureControls({
 }) {
   const filter = measureFilter(typeDef)
   const filterPath = filter?.path ?? ''
+  const muscle = muscleFilterOf(state)
+  const exerciseValue = muscle ? '' : state.filter_value
+  const musclePath = muscleFilterPath(typeDef.data_schema, state.measure)
   const { data: fieldValues } = useQuery({
     enabled: Boolean(state.measure && filterPath),
     queryFn: () => fetchActivityFieldValues(state.pattern, filterPath),
@@ -253,7 +269,11 @@ function MeasureControls({
           value={state.measure}
           onChange={(e) =>
             onUpdate(
-              measurePatch(state.breakdown_fields, (e.target as HTMLSelectElement).value as MeasureChoice),
+              measurePatch(
+                state.breakdown_fields,
+                (e.target as HTMLSelectElement).value as MeasureChoice,
+                state.filter_field,
+              ),
             )
           }
         >
@@ -269,12 +289,12 @@ function MeasureControls({
         <label>
           {filter.label}
           <select
-            value={state.filter_value}
+            value={exerciseValue}
             onChange={(e) => onUpdate(filterPatch(filter.path, (e.target as HTMLSelectElement).value))}
           >
             <option value="">All</option>
-            {state.filter_value && !fieldValues?.values.some((v) => v.value === state.filter_value) && (
-              <option value={state.filter_value}>{state.filter_value}</option>
+            {exerciseValue && !fieldValues?.values.some((v) => v.value === exerciseValue) && (
+              <option value={exerciseValue}>{exerciseValue}</option>
             )}
             {fieldValues?.values.map((v) => (
               <option key={v.value} value={v.value}>
@@ -284,6 +304,12 @@ function MeasureControls({
           </select>
         </label>
       )}
+      {musclePath && state.chart_type !== 'trend' && (
+        <MuscleGroupSelect
+          value={muscle?.group ?? ''}
+          onChange={(group) => onUpdate(muscleFilterPatch(state.breakdown_fields, musclePath, group))}
+        />
+      )}
     </>
   )
 }
@@ -291,13 +317,13 @@ function MeasureControls({
 /** Scalar categorical fields, plus the measure's item breakdowns (per exercise, per muscle group) when charting a measure. */
 const breakdownOptions = (
   typeDef: ActivityTypeDefinition | undefined,
-  measure: MeasureChoice,
+  state: ChartState,
 ): { label: string; name: string }[] => {
   const scalar = categoricalFields(typeDef?.data_schema).map((f) => ({
     label: f.label ?? f.name,
     name: f.name,
   }))
-  return [...scalar, ...itemBreakdownOptions(typeDef?.data_schema, measure)]
+  return [...scalar, ...itemBreakdownOptions(typeDef?.data_schema, state.measure, state)]
 }
 
 const useActivityTypeDef = (state: ChartState): ActivityTypeDefinition | undefined => {
@@ -321,7 +347,7 @@ function SourcePicker({
 }) {
   const typeDef = useActivityTypeDef(state)
   const scatter = state.chart_type === 'scatter'
-  const breakdownFields = typeDef && !scatter ? breakdownOptions(typeDef, state.measure) : []
+  const breakdownFields = typeDef && !scatter ? breakdownOptions(typeDef, state) : []
 
   return (
     <div class="chart-controls-row">
@@ -541,6 +567,7 @@ function ChartControls({
                         chart_type: 'trend',
                         half_life_days:
                           state.half_life_days >= 30 ? state.half_life_days : MEASURE_HALF_LIFE_DEFAULT,
+                        ...trendFilterPatch(state),
                       }
                     : { chart_type: 'trend' },
                 )
@@ -836,6 +863,7 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
           rangeEnd={params.end}
           getBarHref={getBarHref}
           multiSeries={multiSeries}
+          stacked={muscleGroupFilter(params.filter_field, params.filter_value) !== undefined}
         />
       </div>
     )
@@ -1018,7 +1046,7 @@ function buildWidgetFromState(
 
 /** The Goals page prefilled with a goal on this chart: its trend, or its measure for a measure's bars. */
 function chartGoalHref(state: ChartState): string | undefined {
-  if (!state.pattern) return undefined
+  if (!state.pattern || muscleFilterOf(state)) return undefined
   if (state.chart_type === 'trend') {
     return goalsHref({
       ...(state.measure

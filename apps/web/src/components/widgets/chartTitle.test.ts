@@ -14,6 +14,18 @@ describe('measureChartTitle', () => {
     ).toBe('Dumbbell Bench Press · Best e1RM')
   })
 
+  test('names the muscle group by its display name for a muscle filter', () => {
+    expect(
+      measureChartTitle({
+        filter_field: 'sets.exercise.muscle_group',
+        filter_value: 'middle_back',
+        measure: 'set_count',
+        pattern: 'strength_training',
+        source_type: 'activity_type',
+      }),
+    ).toBe('Middle back · Sets')
+  })
+
   test('falls back to the activity type name without an item filter', () => {
     expect(
       measureChartTitle({ measure: 'volume', pattern: 'strength_training', source_type: 'activity_type' }),

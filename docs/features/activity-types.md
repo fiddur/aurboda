@@ -422,11 +422,27 @@ muscle group of the catalogue with its sets this week, its average sets per week
 (the period's sets divided by its days over seven) and a bar for that average, most sets first; the
 groups without sets follow, muted, so a neglected group shows as a zero rather than not at all, and
 No muscle group and Not in the catalogue come last, the latter linking to the page's review list of
-unmatched names. The weekly bar chart, one bar per group per week, opens under the list on
-**Show weekly chart**. An activity's exercises section ends with a **Sets per muscle group** block of
-its own, set apart from the last exercise, that lists the session's sets per group; its heading links
-to this section of the type page. The Chart Explorer offers a **Muscle group** breakdown when a
-summed measure is chosen.
+unmatched names. A **Last trained** column says when each group last got sets ("Today",
+"Yesterday", "12 days ago", "Never"; "12 d ago" on a phone, where the bar is left out). The weekly
+bar chart, one bar per group per week, opens under the list on **Show weekly chart**. An activity's
+exercises section ends with a **Sets per muscle group** block of its own, set apart from the last
+exercise, that lists the session's sets per group; its heading links to this section of the type
+page. The Strength page links to it too.
+
+Each muscle group has a page of its own at
+`/activity-type/<type>/muscle/<item path>/<group>` (`/activity-type/strength_training/muscle/sets.exercise/chest`):
+over 90 days, a year or two years, its sets this week, average sets per week and when it was last
+trained; its weighted sets, volume or reps per week (per month over two years) stacked by exercise,
+with Chart Explorer and dashboard entries in its ⋮ menu; the exercises that train it, with their
+recruitment, sets and sessions in the period and when each was last done; and the period's sessions
+that trained it. A group's name links to its page from the type page's list, the session's **Sets
+per muscle group** block and the muscles of an exercise page's catalogue entry.
+
+The Chart Explorer offers a **Muscle group** breakdown when a summed measure is chosen, and a
+**Muscle group** filter next to the exercise filter: picking a group charts only its weighted sets
+(one filter at a time, so it replaces an exercise and an exercise replaces it), drops the Muscle
+group breakdown and keeps the per-exercise one, which is drawn stacked there and in a dashboard bar
+chart. A trend takes no muscle filter, so switching to the trend drops it.
 
 ## Sessions Overview
 

@@ -1,4 +1,4 @@
-import type { ChartDataAggregation } from '@aurboda/api-spec'
+import type { ChartDataAggregation, ExerciseMuscleGroup } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, endOfWeek, startOfDay, subDays } from 'date-fns'
@@ -7,10 +7,11 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { BarChart } from '../../components/charts/BarChart'
 import { breakdownBarSeries, BreakdownLegend } from '../../components/charts/breakdown'
 import { ChartMenu } from '../../components/charts/ChartMenu'
-import { muscleGroupsSectionId } from '../../components/sessions/sessionView'
-import { fetchChartData } from '../../state/api'
+import { muscleGroupHref, muscleGroupsSectionId } from '../../components/sessions/sessionView'
+import { fetchChartData, fetchMuscleGroups } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { newWidgetId } from '../../utils/widget-id'
+import { lastTrainedLabel } from '../MuscleGroup/muscleGroupView'
 import { muscleGroupSummary, type MuscleGroupSummaryRow } from './muscleGroupSummary'
 import { unmappedSectionId } from './UnmappedItemValuesSection'
 import '../../components/sessions/sessions.css'
@@ -24,20 +25,67 @@ const NO_BUCKETS: { bucket_start: string; value: number }[] = []
 
 const sets = (value: number): string => String(Math.round(value * 10) / 10)
 
-const SummaryRow = ({ path, row }: { path: string; row: MuscleGroupSummaryRow }) => (
+type LastTrained = Partial<Record<ExerciseMuscleGroup, string | null>>
+
+const RowName = ({ name, path, row }: { name: string; path: string; row: MuscleGroupSummaryRow }) => {
+  if (row.kind === 'not_in_catalogue') return <a href={`#${unmappedSectionId(path)}`}>{row.name}</a>
+  if (row.muscle_group) return <a href={muscleGroupHref(name, path, row.muscle_group)}>{row.name}</a>
+  return <>{row.name}</>
+}
+
+const LastTrainedCell = ({ lastTrained, row }: { lastTrained?: LastTrained; row: MuscleGroupSummaryRow }) => {
+  const known = lastTrained && row.muscle_group && row.muscle_group in lastTrained
+  if (!known || !row.muscle_group) return <span class="activity-type-meta-muscle-summary-value" />
+  const iso = lastTrained[row.muscle_group] ?? null
+  const now = new Date()
+  return (
+    <span class="activity-type-meta-muscle-summary-value activity-type-meta-muscle-summary-last">
+      <span class="activity-type-meta-muscle-summary-long">{lastTrainedLabel(iso, now)}</span>
+      <span class="activity-type-meta-muscle-summary-short">{lastTrainedLabel(iso, now, 'short')}</span>
+    </span>
+  )
+}
+
+const SummaryRow = ({
+  lastTrained,
+  name,
+  path,
+  row,
+}: {
+  lastTrained?: LastTrained
+  name: string
+  path: string
+  row: MuscleGroupSummaryRow
+}) => (
   <li
     class={`activity-type-meta-muscle-summary-row${row.trained ? '' : ' activity-type-meta-muscle-summary-untrained'}`}
   >
     <span class="activity-type-meta-muscle-summary-name">
-      {row.kind === 'not_in_catalogue' ? <a href={`#${unmappedSectionId(path)}`}>{row.name}</a> : row.name}
+      <RowName name={name} path={path} row={row} />
     </span>
-    <span class="activity-type-meta-muscle-summary-bar" aria-hidden="true">
+    <span
+      class="activity-type-meta-muscle-summary-bar activity-type-meta-muscle-summary-bar-slot"
+      aria-hidden="true"
+    >
       <span style={{ width: `${row.bar * 100}%` }} />
     </span>
     <span class="activity-type-meta-muscle-summary-value">{sets(row.this_week)}</span>
     <span class="activity-type-meta-muscle-summary-value">{sets(row.per_week)}</span>
+    <LastTrainedCell lastTrained={lastTrained} row={row} />
   </li>
 )
+
+const useLastTrained = (name: string, path: string): LastTrained | undefined => {
+  const { data } = useQuery({
+    queryFn: () => fetchMuscleGroups(name, path),
+    queryKey: ['muscle-groups', name, path],
+    staleTime: 5 * 60 * 1000,
+  })
+  return useMemo(
+    () => (data ? Object.fromEntries(data.groups.map((g) => [g.muscle_group, g.last_trained])) : undefined),
+    [data],
+  )
+}
 
 /**
  * Working sets of a catalogue-backed item field per muscle group, each set weighted by recruitment:
@@ -76,6 +124,8 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
     () => (buckets ? muscleGroupSummary({ buckets, now: new Date(), period_days: lookback }) : []),
     [buckets, lookback],
   )
+
+  const lastTrained = useLastTrained(name, path)
 
   const sectionId = muscleGroupsSectionId(path)
   const scrolled = useRef(false)
@@ -121,12 +171,13 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
             <ul class="activity-type-meta-muscle-summary" aria-label="Sets per muscle group">
               <li class="activity-type-meta-muscle-summary-row activity-type-meta-muscle-summary-head">
                 <span class="activity-type-meta-muscle-summary-name">Muscle group</span>
-                <span />
+                <span class="activity-type-meta-muscle-summary-bar-slot" />
                 <span class="activity-type-meta-muscle-summary-value">This week</span>
                 <span class="activity-type-meta-muscle-summary-value">Avg / week</span>
+                <span class="activity-type-meta-muscle-summary-value">Last trained</span>
               </li>
               {summary.map((row) => (
-                <SummaryRow key={row.name} path={path} row={row} />
+                <SummaryRow key={row.name} lastTrained={lastTrained} name={name} path={path} row={row} />
               ))}
             </ul>
             <button

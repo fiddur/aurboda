@@ -40,6 +40,9 @@ export const itemPath = (list: ListFieldDefinition, item: DataItemFieldDefinitio
 export const itemPageHref = (activityType: string, path: string, value: string): string =>
   `/activity-type/${encodeURIComponent(activityType)}/item/${encodeURIComponent(path)}/${encodeURIComponent(value)}`
 
+export const muscleGroupHref = (activityType: string, path: string, group: string): string =>
+  `/activity-type/${encodeURIComponent(activityType)}/muscle/${encodeURIComponent(path)}/${encodeURIComponent(group)}`
+
 export const muscleGroupsSectionId = (path: string): string => `muscle-groups-${path}`
 
 export const muscleGroupsHref = (activityType: string, path: string): string =>

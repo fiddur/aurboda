@@ -6,6 +6,8 @@ import { type DashboardConfig, type DashboardWidget, measureGoalTitle } from '@a
 
 import type { ChartOrigin } from '../../utils/chart-url'
 
+import { filterSubject } from '../../components/widgets/chartTitle'
+
 /** Read the origin of a board chart from the chart page's query params. */
 export function parseChartOrigin(query: Record<string, string>): ChartOrigin | null {
   const { board_id, section_id, widget_id } = query
@@ -29,8 +31,11 @@ export function boardReturnPath(
 /** Display title of a chart widget, if any (used to pre-fill the update form); a measure trend has a default. */
 export function chartWidgetTitle(widget: DashboardWidget): string | undefined {
   if (widget.type === 'trend_chart') {
-    const { filter_value, measure, pattern, title } = widget.config
-    return title ?? (measure ? measureGoalTitle(measure, filter_value, pattern) : undefined)
+    const { filter_field, filter_value, measure, pattern, title } = widget.config
+    return (
+      title ??
+      (measure ? measureGoalTitle(measure, filterSubject(filter_field, filter_value), pattern) : undefined)
+    )
   }
   if (widget.type === 'bar_chart') return widget.config.title
   return undefined

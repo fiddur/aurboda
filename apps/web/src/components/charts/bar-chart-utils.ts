@@ -60,3 +60,43 @@ export const clipBarSpan = (
   const to = Math.min(left + width, plotWidth)
   return to > from ? { width: to - from, x: from } : null
 }
+
+export interface StackSegment {
+  name: string
+  value: number
+  base: number
+  top: number
+}
+
+export interface StackedBucket {
+  bucket_start: string
+  segments: StackSegment[]
+  total: number
+}
+
+/**
+ * Series stacked per bucket, bottom-up in series order, leaving out values of 0 or less; buckets in
+ * time order. `max_total` is the largest bucket total, 1 when nothing is drawn, as the y domain.
+ */
+export const stackBuckets = (
+  series: { name: string; data: { bucket_start: string; value: number }[] }[],
+): { buckets: StackedBucket[]; max_total: number } => {
+  const starts = [...new Set(series.flatMap((s) => s.data.map((d) => d.bucket_start)))].sort()
+  const values = series.map((s) => ({
+    byBucket: new Map(s.data.map((d) => [d.bucket_start, d.value])),
+    name: s.name,
+  }))
+  const buckets = starts.map((bucket_start) => {
+    let total = 0
+    const segments: StackSegment[] = []
+    for (const { byBucket, name } of values) {
+      const value = byBucket.get(bucket_start) ?? 0
+      if (value <= 0) continue
+      segments.push({ base: total, name, top: total + value, value })
+      total += value
+    }
+    return { bucket_start, segments, total }
+  })
+  const max_total = Math.max(0, ...buckets.map((b) => b.total))
+  return { buckets, max_total: max_total > 0 ? max_total : 1 }
+}

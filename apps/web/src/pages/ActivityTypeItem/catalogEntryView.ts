@@ -4,9 +4,15 @@ import { listFields } from '../../components/sessions/sessionView'
 
 const PRIMARY_WEIGHT = 0.75
 
-export const muscleTiers = (entry: ExerciseCatalogEntry): { primary: string[]; secondary: string[] } => ({
-  primary: entry.muscles.filter((m) => m.weight >= PRIMARY_WEIGHT).map((m) => m.name),
-  secondary: entry.muscles.filter((m) => m.weight < PRIMARY_WEIGHT).map((m) => m.name),
+export type TierMuscle = Pick<ExerciseCatalogEntry['muscles'][number], 'group' | 'name'>
+
+const tierMuscle = ({ group, name }: TierMuscle): TierMuscle => ({ group, name })
+
+export const muscleTiers = (
+  entry: ExerciseCatalogEntry,
+): { primary: TierMuscle[]; secondary: TierMuscle[] } => ({
+  primary: entry.muscles.filter((m) => m.weight >= PRIMARY_WEIGHT).map(tierMuscle),
+  secondary: entry.muscles.filter((m) => m.weight < PRIMARY_WEIGHT).map(tierMuscle),
 })
 
 export const itemFieldCatalog = (

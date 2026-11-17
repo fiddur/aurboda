@@ -1,5 +1,6 @@
 import {
   type ChartDataBreakdownBucket,
+  type ExerciseMuscleGroup,
   exerciseMuscleGroups,
   exerciseMuscleInfo,
   NO_MUSCLE_GROUP_NAME,
@@ -12,6 +13,8 @@ export interface MuscleGroupSummaryRow {
   /** The weekly average as a share of the largest weekly average, 0 to 1. */
   bar: number
   kind: MuscleGroupSummaryKind
+  /** The group's key, for `kind: 'group'`. */
+  muscle_group?: ExerciseMuscleGroup
   name: string
   per_week: number
   this_week: number
@@ -59,7 +62,10 @@ export const muscleGroupSummary = ({
       trained: (sums?.total ?? 0) > 0,
     }
   }
-  const groups = exerciseMuscleGroups.map((group) => rowOf(exerciseMuscleInfo[group].name, 'group'))
+  const groups = exerciseMuscleGroups.map((group) => ({
+    ...rowOf(exerciseMuscleInfo[group].name, 'group'),
+    muscle_group: group,
+  }))
   const outside = [
     rowOf(NO_MUSCLE_GROUP_NAME, 'no_muscle_group'),
     rowOf(UNMAPPED_MUSCLE_GROUP_NAME, 'not_in_catalogue'),
