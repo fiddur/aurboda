@@ -38,6 +38,9 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/segments/123')).toBe('Segments')
     expect(pageTitleForPath('/data-sources/unknown')).toBe('Data Sources')
     expect(pageTitleForPath('/admin/users/maja')).toBe('Admin')
+    expect(pageTitleForPath('/strength/live')).toBe('Strength session')
+    expect(pageTitleForPath('/strength/plan/new')).toBe('Strength plan')
+    expect(pageTitleForPath('/strength/plan/abc')).toBe('Strength plan')
   })
 
   test('falls back to Aurboda for unknown routes', () => {

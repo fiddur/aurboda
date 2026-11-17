@@ -116,6 +116,7 @@ const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
 const Strength = lazyPage(() => import('./pages/Strength/index.jsx'), 'Strength')
 const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthLog')
 const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
+const StrengthPlanEditor = lazyPage(() => import('./pages/Strength/PlanEditor.jsx'), 'StrengthPlanEditor')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
 const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
 const TrainingLoad = lazyPage(() => import('./pages/TrainingLoad/index.jsx'), 'TrainingLoad')
@@ -184,6 +185,8 @@ function AppShell() {
             <Route path="/strength/session/:id" component={StrengthSession} />
             <Route path="/strength/live" component={StrengthSession} />
             <Route path="/strength/log" component={StrengthLog} />
+            <Route path="/strength/plan/new" component={StrengthPlanEditor} />
+            <Route path="/strength/plan/:id" component={StrengthPlanEditor} />
             <Route path="/strength" component={Strength} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/training-load" component={TrainingLoad} />

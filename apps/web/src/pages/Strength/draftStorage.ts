@@ -42,6 +42,7 @@ const isLiveDraft = (v: unknown): v is SessionDraft =>
   typeof v.saved_rev === 'number' &&
   optionalString(v.id) &&
   optionalString(v.last_set_at) &&
+  optionalString(v.plan_id) &&
   optionalString(v.current_block_id)
 
 const isPastDraft = (v: unknown): v is PastDraft =>

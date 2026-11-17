@@ -5,123 +5,10 @@ import { useEffect, useState } from 'preact/hooks'
 import { addActivity, updateActivity } from '../../state/api'
 import { detailUrl, STRENGTH_TYPE } from './constants'
 import { clearLogDraft, readLogDraft, writeLogDraft } from './draftStorage'
-import { ExerciseBlockCard } from './ExerciseBlockCard'
-import { ExercisePicker } from './ExercisePicker'
-import {
-  DEFAULT_WEIGHT_STEP,
-  defaultTimes,
-  parseNumber,
-  sessionInterval,
-  type SessionTimes,
-} from './formModel'
-import { invalidateStrengthQueries, useExerciseMuscles } from './queries'
-import {
-  addBlock,
-  appendSets,
-  deleteSet,
-  type ExerciseBlock,
-  expandQuickEntry,
-  isTimedBlock,
-  loggedSetCount,
-  moveBlock,
-  removeBlock,
-  supersetBlockIds,
-  updateSet,
-  withExerciseKeys,
-} from './sessionModel'
-
-const MAX_QUICK_SETS = 50
-
-const QuickEntry = ({
-  blockId,
-  onAdd,
-}: {
-  blockId: string
-  onAdd: (count: number, reps?: number, weight?: number) => void
-}) => {
-  const [sets, setSets] = useState('3')
-  const [reps, setReps] = useState('')
-  const [weight, setWeight] = useState('')
-  const count = parseNumber(sets) ?? 0
-  const countValid = Number.isInteger(count) && count > 0 && count <= MAX_QUICK_SETS
-  const valid = countValid && parseNumber(reps) !== undefined
-  const field = (id: string, label: string, value: string, set: (v: string) => void, decimal = false) => (
-    <label class="strength-quick-field" for={`${blockId}-${id}`}>
-      <span class="strength-field-label">{label}</span>
-      <input
-        id={`${blockId}-${id}`}
-        type="text"
-        inputMode={decimal ? 'decimal' : 'numeric'}
-        autocomplete="off"
-        value={value}
-        onInput={(e) => set((e.target as HTMLInputElement).value)}
-      />
-    </label>
-  )
-  return (
-    <form
-      class="strength-quick-entry"
-      onSubmit={(e) => {
-        e.preventDefault()
-        if (!valid) return
-        onAdd(count, parseNumber(reps), parseNumber(weight))
-        setReps('')
-      }}
-    >
-      <div class="strength-quick-row">
-        {field('sets', 'Sets', sets, setSets)}
-        <span class="strength-quick-sep" aria-hidden="true">
-          ×
-        </span>
-        {field('reps', 'Reps', reps, setReps)}
-        <span class="strength-quick-sep" aria-hidden="true">
-          at
-        </span>
-        {field('weight', 'Weight (kg)', weight, setWeight, true)}
-      </div>
-      <button type="submit" class="btn-secondary strength-wide-btn" disabled={!valid}>
-        {countValid ? `Add ${count} ${count === 1 ? 'set' : 'sets'}` : 'Add sets'}
-      </button>
-      <p class="strength-muted strength-hint">The sets become rows you can edit one by one.</p>
-    </form>
-  )
-}
-
-const PastBlock = ({
-  block,
-  blocks,
-  superset,
-  onChange,
-}: {
-  block: ExerciseBlock
-  blocks: ExerciseBlock[]
-  superset: boolean
-  onChange: (fn: (blocks: ExerciseBlock[]) => ExerciseBlock[]) => void
-}) => {
-  const muscles = useExerciseMuscles(block.exercise)
-  return (
-    <ExerciseBlockCard
-      block={block}
-      position={blocks.findIndex((b) => b.id === block.id)}
-      count={blocks.length}
-      muscles={muscles}
-      superset={superset}
-      timed={isTimedBlock(block)}
-      weightStep={DEFAULT_WEIGHT_STEP}
-      onUpdateSet={(i, set) => onChange((bs) => updateSet(bs, block.id, i, set))}
-      onDeleteSet={(i) => onChange((bs) => deleteSet(bs, block.id, i))}
-      onRemove={() => onChange((bs) => removeBlock(bs, block.id))}
-      onMove={(delta) => onChange((bs) => moveBlock(bs, block.id, delta))}
-    >
-      <QuickEntry
-        blockId={block.id}
-        onAdd={(count, reps, weight) =>
-          onChange((bs) => appendSets(bs, block.id, expandQuickEntry(count, reps, weight)))
-        }
-      />
-    </ExerciseBlockCard>
-  )
-}
+import { defaultTimes, sessionInterval, type SessionTimes } from './formModel'
+import { invalidateStrengthQueries } from './queries'
+import { BlocksEditor } from './SessionBlocks'
+import { type ExerciseBlock, loggedSetCount, withExerciseKeys } from './sessionModel'
 
 export interface EditTarget {
   id: string
@@ -135,7 +22,6 @@ export const PastSession = ({ edit }: { edit?: EditTarget }) => {
   const [initial] = useState(() => (edit ? undefined : readLogDraft()))
   const [times, setTimes] = useState<SessionTimes>(() => edit?.times ?? initial ?? defaultTimes(new Date()))
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => edit?.blocks ?? initial?.blocks ?? [])
-  const [picking, setPicking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
@@ -182,7 +68,6 @@ export const PastSession = ({ edit }: { edit?: EditTarget }) => {
     }
   }
 
-  const supersets = supersetBlockIds(blocks)
   const canSave = !saving && (edit !== undefined || loggedSetCount(blocks) > 0)
 
   return (
@@ -199,28 +84,7 @@ export const PastSession = ({ edit }: { edit?: EditTarget }) => {
         {timeField('time', 'Start time', 'time')}
         {timeField('minutes', 'Minutes', 'text')}
       </div>
-      {blocks.map((block) => (
-        <PastBlock
-          key={block.id}
-          block={block}
-          blocks={blocks}
-          superset={supersets.has(block.id)}
-          onChange={(fn) => setBlocks(fn)}
-        />
-      ))}
-      <button type="button" class="btn-secondary strength-wide-btn" onClick={() => setPicking(true)}>
-        + Add exercise
-      </button>
-      {picking && (
-        <ExercisePicker
-          sessionId={edit?.id}
-          onClose={() => setPicking(false)}
-          onPick={(exercise, key) => {
-            setPicking(false)
-            setBlocks((bs) => addBlock(bs, exercise, key))
-          }}
-        />
-      )}
+      <BlocksEditor blocks={blocks} onChange={(fn) => setBlocks(fn)} sessionId={edit?.id} />
     </div>
   )
 }
