@@ -403,9 +403,10 @@ muscle group of the catalogue with its sets this week, its average sets per week
 groups without sets follow, muted, so a neglected group shows as a zero rather than not at all, and
 No muscle group and Not in the catalogue come last, the latter linking to the page's review list of
 unmatched names. The weekly bar chart, one bar per group per week, opens under the list on
-**Show weekly chart**. An activity's exercises section lists the session's sets per muscle group under the
-exercises, and the Chart Explorer offers a **Muscle group** breakdown when a summed measure is
-chosen.
+**Show weekly chart**. An activity's exercises section ends with a **Sets per muscle group** block of
+its own, set apart from the last exercise, that lists the session's sets per group; its heading links
+to this section of the type page. The Chart Explorer offers a **Muscle group** breakdown when a
+summed measure is chosen.
 
 ## Sessions Overview
 

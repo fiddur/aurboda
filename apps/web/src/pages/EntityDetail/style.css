@@ -493,6 +493,17 @@ details.list-field-detail:not([open]) > summary h3 {
   margin: 0 0 0.5rem;
 }
 
+.item-history-muscles {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.item-history-muscles h4 {
+  font-size: 0.9rem;
+  margin: 0 0 0.25rem;
+}
+
 .item-history-totals {
   font-size: 0.85rem;
   font-weight: 400;
@@ -970,7 +981,8 @@ a.btn-secondary {
   }
 
   .list-field-table thead th,
-  .list-field-table td {
+  .list-field-table td,
+  .item-history-muscles {
     border-color: #374151;
   }
 

@@ -2,11 +2,12 @@ import type { ChartDataAggregation } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { endOfDay, endOfWeek, startOfDay, subDays } from 'date-fns'
-import { useMemo, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { BarChart } from '../../components/charts/BarChart'
 import { breakdownBarSeries, BreakdownLegend } from '../../components/charts/breakdown'
 import { ChartMenu } from '../../components/charts/ChartMenu'
+import { muscleGroupsSectionId } from '../../components/sessions/sessionView'
 import { fetchChartData } from '../../state/api'
 import { buildChartUrl } from '../../utils/chart-url'
 import { newWidgetId } from '../../utils/widget-id'
@@ -76,8 +77,17 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
     [buckets, lookback],
   )
 
+  const sectionId = muscleGroupsSectionId(path)
+  const scrolled = useRef(false)
+  const loaded = query.data !== undefined
+  useEffect(() => {
+    if (scrolled.current || !loaded || window.location.hash !== `#${sectionId}`) return
+    scrolled.current = true
+    document.getElementById(sectionId)?.scrollIntoView({ block: 'start' })
+  }, [loaded, sectionId])
+
   return (
-    <section class="activity-type-meta-section">
+    <section id={sectionId} class="activity-type-meta-section">
       <div class="activity-type-meta-section-header sessions-header">
         <h2>Sets per muscle group</h2>
         <div class="sessions-controls">
