@@ -333,6 +333,7 @@ describe('Connect with Garmin routes', () => {
         deleteGarminUserMappingByUsername,
         deleteOAuthToken,
         ensureUserSchema: vi.fn(),
+        getGarminUserIdByUsername: vi.fn().mockResolvedValue(null),
         getOAuthToken: async () => grant as never,
         http: http as never,
         markOAuthTokenRefused: vi.fn(),

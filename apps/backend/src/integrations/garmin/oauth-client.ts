@@ -62,6 +62,7 @@ export interface GarminOAuthClientDeps {
   markOAuthTokenRefused: (user: string, provider: string, refreshToken?: string) => Promise<void>
   ensureUserSchema: (user: string) => Promise<void>
   upsertGarminUserMapping: (garminUserId: string, username: string) => Promise<string | null>
+  getGarminUserIdByUsername: (username: string) => Promise<string | null>
   deleteGarminUserMappingByUsername: (username: string) => Promise<boolean>
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
@@ -147,10 +148,12 @@ export const parseGarminPermissions = (data: unknown): string[] => {
 /** The OAuth callback URL — also the redirect URI the admin registers with Garmin. */
 export const garminOAuthRedirectUri = (apiBaseUrl: string): string => `${apiBaseUrl}/auth/garmincb`
 
-const defaultDeps = (): Omit<
-  GarminOAuthClientDeps,
-  'upsertGarminUserMapping' | 'deleteGarminUserMappingByUsername'
-> => ({
+type MappingDeps =
+  | 'upsertGarminUserMapping'
+  | 'getGarminUserIdByUsername'
+  | 'deleteGarminUserMappingByUsername'
+
+const defaultDeps = (): Omit<GarminOAuthClientDeps, MappingDeps> => ({
   auditInfo,
   auditWarn,
   deleteOAuthToken,
@@ -167,8 +170,7 @@ const defaultDeps = (): Omit<
 export const garminOAuthClient = (
   getCredentials: GarminOAuthCredentialGetter,
   apiBaseUrl: string,
-  overrides: Pick<GarminOAuthClientDeps, 'upsertGarminUserMapping' | 'deleteGarminUserMappingByUsername'> &
-    Partial<GarminOAuthClientDeps>,
+  overrides: Pick<GarminOAuthClientDeps, MappingDeps> & Partial<GarminOAuthClientDeps>,
 ) => {
   const deps: GarminOAuthClientDeps = { ...defaultDeps(), ...overrides }
   const redirectUri = garminOAuthRedirectUri(apiBaseUrl)
@@ -268,6 +270,30 @@ export const garminOAuthClient = (
 
   const clearGrant = (user: string) => deps.deleteOAuthToken(user, GARMIN_OAUTH_PROVIDER)
 
+  const deregister = async (accessToken: string): Promise<void> => {
+    try {
+      await deps.http.delete(REGISTRATION_URL, { headers: { Authorization: `Bearer ${accessToken}` } })
+    } catch (error) {
+      throw toGarminOAuthError(error, 'deregistration', [accessToken])
+    }
+  }
+
+  /**
+   * A user who connects a second Garmin account leaves the first one registered at Garmin, which
+   * would keep pushing for a user id nothing maps any more. Must run before the new grant
+   * replaces the old one's tokens.
+   */
+  const deregisterOtherGarminAccount = async (user: string, garminUserId: string): Promise<void> => {
+    try {
+      const mapped = await deps.getGarminUserIdByUsername(user)
+      if (mapped === null || mapped === garminUserId) return
+      await deregister(await getAccessToken(user))
+    } catch (error) {
+      if (error instanceof GarminOAuthNotConnectedError || error instanceof GarminOAuthRefusedError) return
+      await deps.auditWarn(user, 'auth', 'Garmin OAuth deregistration failed', { error: errorText(error) })
+    }
+  }
+
   return {
     redirectUri,
 
@@ -275,11 +301,6 @@ export const garminOAuthClient = (
       return (await getCredentials()) !== null
     },
 
-    /**
-     * A bearer token for the Wellness API, refreshed when within 600 s of expiry.
-     * Throws `GarminOAuthNotConnectedError` without a grant and `GarminOAuthRefusedError`
-     * when Garmin refused the refresh token (now or earlier).
-     */
     getAccessToken,
 
     /** Refreshes a grant that is due, so the refresh token does not lapse. Never throws. */
@@ -340,6 +361,7 @@ export const garminOAuthClient = (
 
       await deps.ensureUserSchema(user)
 
+      let grantStored = false
       try {
         const token = await tokenRequest(
           {
@@ -354,6 +376,7 @@ export const garminOAuthClient = (
         )
         const garminUserId = await fetchUserId(token.access_token)
         const permissions = await fetchPermissions(token.access_token).catch(() => [])
+        await deregisterOtherGarminAccount(user, garminUserId)
         await deps.upsertOAuthToken(user, {
           access_token: token.access_token,
           expires_at: addSeconds(deps.now(), token.expires_in),
@@ -361,7 +384,9 @@ export const garminOAuthClient = (
           refresh_token: token.refresh_token,
           scopes: permissions,
         })
+        grantStored = true
         const previous = await deps.upsertGarminUserMapping(garminUserId, user)
+        grantStored = false
         if (previous) {
           try {
             await clearGrant(previous)
@@ -381,6 +406,8 @@ export const garminOAuthClient = (
         await deps.auditInfo(user, 'auth', 'Garmin connected through OAuth', { permissions })
         return res.redirect(`${DATA_SOURCE_PAGE}?connected=oauth`)
       } catch (failure) {
+        // A grant without its mapping would show as connected while no push could reach the user.
+        if (grantStored) await clearGrant(user).catch(() => {})
         await deps.auditWarn(user, 'auth', 'Garmin OAuth connection failed', {
           error: redactAll(errorText(failure), [credentials.clientSecret, code, opened.verifier]),
         })
@@ -388,21 +415,13 @@ export const garminOAuthClient = (
       }
     },
 
-    /**
-     * Deregisters at Garmin (best effort) and drops the grant and the Garmin user id mapping.
-     * A no-op without a grant.
-     */
+    /** The deregistration at Garmin is best effort: the grant and the mapping go either way. */
     async disconnect(user: string): Promise<void> {
       const grant = await deps.getOAuthToken(user, GARMIN_OAUTH_PROVIDER)
       if (!isConnected(grant)) return
       if (grant.refused_at === undefined && (await getCredentials())) {
         try {
-          const accessToken = await getAccessToken(user)
-          try {
-            await deps.http.delete(REGISTRATION_URL, { headers: { Authorization: `Bearer ${accessToken}` } })
-          } catch (error) {
-            throw toGarminOAuthError(error, 'deregistration', [accessToken])
-          }
+          await deregister(await getAccessToken(user))
         } catch (error) {
           await deps.auditWarn(user, 'auth', 'Garmin OAuth deregistration failed', {
             error: errorText(error),

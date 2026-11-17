@@ -58,6 +58,8 @@ const makeClient = (
     configured?: boolean
     grant?: OAuthToken | null
     previousOwner?: string | null
+    mappedGarminUserId?: string | null
+    mappingFails?: boolean
     http?: Partial<AxiosInstance>
     now?: Date
   } = {},
@@ -66,7 +68,11 @@ const makeClient = (
   const deleteOAuthToken = vi.fn(async () => true)
   const markOAuthTokenRefused = vi.fn()
   const clock = { now: options.now ?? NOW }
-  const upsertGarminUserMapping = vi.fn(async () => options.previousOwner ?? null)
+  const upsertGarminUserMapping = vi.fn(async () => {
+    if (options.mappingFails) throw new Error('central db down')
+    return options.previousOwner ?? null
+  })
+  const getGarminUserIdByUsername = vi.fn(async () => options.mappedGarminUserId ?? null)
   const deleteGarminUserMappingByUsername = vi.fn(async () => true)
   const auditInfo = vi.fn(async () => {})
   const auditWarn = vi.fn(async () => {})
@@ -85,6 +91,7 @@ const makeClient = (
       deleteGarminUserMappingByUsername,
       deleteOAuthToken,
       ensureUserSchema: vi.fn(),
+      getGarminUserIdByUsername,
       getOAuthToken: async () => options.grant ?? null,
       http,
       markOAuthTokenRefused,
@@ -118,6 +125,16 @@ const sealedFor = (user: string, secret = SECRET, iat = NOW.getTime()) =>
 
 const everythingSaid = (mocks: ReturnType<typeof vi.fn>[]) =>
   JSON.stringify(mocks.flatMap((m) => m.mock.calls))
+
+const liveGrant: OAuthToken = {
+  access_token: 'fake-access-live',
+  expires_at: new Date('2026-11-10T12:00:00Z'),
+  provider: GARMIN_OAUTH_PROVIDER,
+  refresh_token: 'fake-refresh-old',
+  scopes: ['HEALTH_EXPORT'],
+}
+
+const dueGrant: OAuthToken = { ...liveGrant, expires_at: new Date('2026-11-10T10:05:00Z') }
 
 describe('getAuthorizeUrl', () => {
   it('builds the Garmin consent URL with PKCE and a sealed state, without a scope', async () => {
@@ -287,6 +304,39 @@ describe('authCb', () => {
     )
     expect(http.delete).not.toHaveBeenCalled()
   })
+
+  it('removes the grant again when the mapping cannot be written', async () => {
+    const { auditWarn, client, deleteOAuthToken, upsertOAuthToken } = makeClient({ mappingFails: true })
+    expect(await callback(client, { code: 'fake-code', state: sealedFor('alice') })).toBe(
+      '/data-sources/garmin?error=auth_failed',
+    )
+    expect(upsertOAuthToken).toHaveBeenCalledTimes(1)
+    expect(deleteOAuthToken).toHaveBeenCalledWith('alice', GARMIN_OAUTH_PROVIDER)
+    expect(auditWarn).toHaveBeenCalledWith('alice', 'auth', 'Garmin OAuth connection failed', {
+      error: 'central db down',
+    })
+  })
+
+  it('deregisters the Garmin account the user had connected before, with the old token', async () => {
+    const { client, http, upsertOAuthToken } = makeClient({
+      grant: liveGrant,
+      mappedGarminUserId: 'another-garmin-user',
+    })
+    expect(await callback(client, { code: 'fake-code', state: sealedFor('alice') })).toBe(
+      '/data-sources/garmin?connected=oauth',
+    )
+    expect(http.delete).toHaveBeenCalledWith('https://apis.garmin.com/wellness-api/rest/user/registration', {
+      headers: { Authorization: 'Bearer fake-access-live' },
+    })
+    const deleteOrder = (http.delete as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(deleteOrder).toBeLessThan(upsertOAuthToken.mock.invocationCallOrder[0])
+  })
+
+  it('does not deregister when the same Garmin account reconnects', async () => {
+    const { client, http } = makeClient({ grant: liveGrant, mappedGarminUserId: GARMIN_USER_ID })
+    await callback(client, { code: 'fake-code', state: sealedFor('alice') })
+    expect(http.delete).not.toHaveBeenCalled()
+  })
 })
 
 describe('parseGarminPermissions', () => {
@@ -324,16 +374,6 @@ describe('garminOAuthStatusFromToken', () => {
     ).toEqual({ connected: true, needs_reconnect: true, permissions: [] })
   })
 })
-
-const liveGrant: OAuthToken = {
-  access_token: 'fake-access-live',
-  expires_at: new Date('2026-11-10T12:00:00Z'),
-  provider: GARMIN_OAUTH_PROVIDER,
-  refresh_token: 'fake-refresh-old',
-  scopes: ['HEALTH_EXPORT'],
-}
-
-const dueGrant: OAuthToken = { ...liveGrant, expires_at: new Date('2026-11-10T10:05:00Z') }
 
 describe('getAccessToken', () => {
   it('answers the stored token while it is valid beyond the 600 s buffer', async () => {

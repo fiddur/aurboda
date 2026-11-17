@@ -419,6 +419,7 @@ const main = async () => {
   }
   const garminOAuth = garminOAuthClient(getGarminOAuthCredentials, apiBaseUrl, {
     deleteGarminUserMappingByUsername: (username) => centralDb.deleteGarminUserMappingByUsername(username),
+    getGarminUserIdByUsername: (username) => centralDb.getGarminUserIdByUsername(username),
     upsertGarminUserMapping: (garminUserId, username) =>
       centralDb.upsertGarminUserMapping(garminUserId, username),
   })
