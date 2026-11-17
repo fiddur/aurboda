@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useMemo, useState } from 'preact/hooks'
 
+import { readyLabel, recoveryOf } from '../../components/muscleRecovery/recoveryView'
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
 import { formatDay } from '../../components/RecordCard'
 import { muscleGroupsHref, strengthScoreHref } from '../../components/sessions/sessionView'
 import { fetchActivityTypeDefinitions, fetchMuscleGroupHistory } from '../../state/api'
@@ -20,6 +22,7 @@ import {
   muscleGroupPeriod,
   setsThisWeek,
 } from './muscleGroupView'
+import { RecoverySection } from './RecoverySection'
 import '../ActivityTypeItem/style.css'
 import './style.css'
 
@@ -64,6 +67,28 @@ const ScoreCard = ({ field, group, name }: { field: string; group: ExerciseMuscl
   )
 }
 
+const RecoveryCard = ({
+  field,
+  group,
+  name,
+}: {
+  field: string
+  group: ExerciseMuscleGroup
+  name: string
+}) => {
+  const { data } = useMuscleRecovery(name, field)
+  const recovery = recoveryOf(data, group)
+  if (!recovery) return null
+  const settled = recovery.recovery >= 100 && recovery.sources.length === 0
+  return (
+    <Card
+      label="Recovery"
+      value={`${recovery.recovery} %`}
+      detail={settled ? undefined : readyLabel(recovery.ready_at, new Date())}
+    />
+  )
+}
+
 const Cards = ({
   field,
   group,
@@ -90,6 +115,7 @@ const Cards = ({
         value={lastTrainedLabel(history.last_trained, now)}
         detail={history.last_trained === null ? undefined : formatDay(history.last_trained)}
       />
+      <RecoveryCard field={field} group={group} name={name} />
       <ScoreCard field={field} group={group} name={name} />
     </div>
   )
@@ -120,6 +146,7 @@ const History = ({
   return (
     <>
       <Cards field={field} group={group} history={history} name={name} periodDays={periodDays} />
+      <RecoverySection field={field} group={group} name={name} />
       <MuscleGroupChart
         field={field}
         group={group}

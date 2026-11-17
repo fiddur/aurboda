@@ -1,8 +1,12 @@
-import type { ActivityFieldValue, ExerciseCatalogEntry } from '@aurboda/api-spec'
-
+import {
+  type ActivityFieldValue,
+  type ExerciseCatalogEntry,
+  exerciseMuscleGroups,
+  type MuscleRecovery,
+} from '@aurboda/api-spec'
 import { describe, expect, it } from 'vitest'
 
-import { buildPickerSections, recentExercises } from './picker'
+import { buildPickerSections, muscleFilterLabel, muscleFilterOptions, recentExercises } from './picker'
 
 const own: ActivityFieldValue[] = [
   {
@@ -103,5 +107,50 @@ describe('buildPickerSections', () => {
     expect(buildPickerSections({ catalog: [], own, recent: [], text: 'squat jump' })).toEqual([
       { items: [{ kind: 'new', value: 'squat jump' }] },
     ])
+  })
+})
+
+describe('muscle filter with recovery', () => {
+  const recovery: MuscleRecovery = {
+    at: '2026-11-17T12:00:00.000Z',
+    field: 'sets.exercise',
+    groups: [
+      {
+        fatigue: 0.36,
+        half_life_hours: 24,
+        muscle_group: 'chest',
+        name: 'Chest',
+        ready_at: '2026-11-18T02:00:00.000Z',
+        recovery: 64,
+        sources: [],
+      },
+      {
+        fatigue: 0,
+        half_life_hours: 36,
+        muscle_group: 'quadriceps',
+        name: 'Quadriceps',
+        ready_at: null,
+        recovery: 100,
+        sources: [],
+      },
+    ],
+    ready_percent: 80,
+    window_days: 10,
+  }
+
+  it('keeps the options and their order, adding recovery below 100', () => {
+    const options = muscleFilterOptions(recovery)
+    expect(options.map((o) => o.value)).toEqual([...exerciseMuscleGroups])
+    expect(options.find((o) => o.value === 'chest')?.label).toBe('Chest · 64 %')
+    expect(options.find((o) => o.value === 'quadriceps')?.label).toBe('Quadriceps')
+  })
+
+  it('gives the plain names without recovery', () => {
+    expect(muscleFilterOptions(undefined).find((o) => o.value === 'chest')?.label).toBe('Chest')
+  })
+
+  it('labels the chosen filter the same way', () => {
+    expect(muscleFilterLabel('chest', recovery)).toBe('Chest · 64 %')
+    expect(muscleFilterLabel('chest', null)).toBe('Chest')
   })
 })
