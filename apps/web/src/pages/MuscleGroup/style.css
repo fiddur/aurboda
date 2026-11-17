@@ -17,3 +17,10 @@
 .muscle-group-card-link:hover {
   border-color: var(--color-accent);
 }
+
+.muscle-group-recovery-sources {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}

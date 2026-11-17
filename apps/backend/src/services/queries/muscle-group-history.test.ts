@@ -8,6 +8,7 @@ import {
   muscleGroupHistory,
   muscleGroupOverview,
   type ResolverOf,
+  sessionEnd,
 } from './muscle-group-history.ts'
 
 const entry = (key: string, name: string, muscles: StoredExerciseCatalogEntry['muscles']) =>
@@ -174,5 +175,27 @@ describe('muscleGroupHistory', () => {
     const titled = { ...s2, title: 'Push' }
     const history = muscleGroupHistory('sets.exercise', 'exercise', 'chest', [titled], resolverOf, period)
     expect(history.sessions[0].title).toBe('Push')
+  })
+})
+
+describe('sessionEnd', () => {
+  const end = new Date('2026-06-01T13:00:00Z')
+
+  test('the end of the activity', () => {
+    expect(sessionEnd({ data: { last_set_at: '2026-06-01T12:30:00Z' }, end_time: end })).toEqual({
+      end_time: end,
+    })
+  })
+
+  test('the last set of an unfinished session', () => {
+    expect(sessionEnd({ data: { last_set_at: '2026-06-01T12:30:00Z' } })).toEqual({
+      end_time: new Date('2026-06-01T12:30:00Z'),
+    })
+  })
+
+  test('nothing without either or with an invalid last set', () => {
+    expect(sessionEnd({})).toEqual({})
+    expect(sessionEnd({ data: { last_set_at: 'soon' } })).toEqual({})
+    expect(sessionEnd({ data: { last_set_at: 12 } })).toEqual({})
   })
 })

@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks'
 import { muscleGroupsHref, strengthScoreHref } from '../../components/sessions/sessionView'
 import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft, readLiveDraft } from './draftStorage'
+import { MuscleRecoveryCard } from './MuscleRecoveryCard'
 import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
 import { finishLiveSession } from './saveQueue'
 import { liveDraftFromServer, loggedSetCount, type SessionDraft, sessionSummary } from './sessionModel'
@@ -143,6 +144,7 @@ export function Strength() {
         </div>
       )}
       <StrengthScoreCard />
+      <MuscleRecoveryCard />
       <section class="strength-section">
         <h2>Repeat a session</h2>
         {sessions.isLoading && <p class="loading">Loading…</p>}

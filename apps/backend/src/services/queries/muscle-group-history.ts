@@ -30,6 +30,8 @@ import { sessionId } from './activity-sessions.ts'
 
 export interface ExerciseSession {
   activity_type: string
+  /** When the session ended: the activity's end, else its last set while it is unfinished. */
+  end_time?: Date
   id: string
   items: Record<string, unknown>[]
   start_time: Date
@@ -180,6 +182,20 @@ export const muscleGroupHistory = (
   }
 }
 
+const validDate = (v: unknown): Date | undefined => {
+  if (typeof v !== 'string') return undefined
+  const date = new Date(v)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+export const sessionEnd = (activity: {
+  data?: Record<string, unknown>
+  end_time?: Date
+}): { end_time?: Date } => {
+  const end = activity.end_time ?? validDate(activity.data?.last_set_at)
+  return end === undefined ? {} : { end_time: end }
+}
+
 interface LoadedSessions {
   key: string
   resolverOf: ResolverOf
@@ -219,6 +235,7 @@ export const loadSessions = async (
       : [
           {
             activity_type: a.activity_type,
+            ...sessionEnd(a),
             id: sessionId(a),
             items: listItems(a.data, field),
             start_time: a.start_time,

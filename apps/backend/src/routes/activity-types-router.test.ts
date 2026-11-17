@@ -1,3 +1,4 @@
+import { type ExerciseMuscleGroup, exerciseMuscleGroups } from '@aurboda/api-spec'
 import express from 'express'
 import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -22,6 +23,8 @@ vi.mock('../services/queries/index.ts', async () => {
     queryActivitySessions: vi.fn(),
     queryMuscleGroupHistory: vi.fn(),
     queryMuscleGroupOverview: vi.fn(),
+    queryMuscleRecovery: vi.fn(),
+    queryMuscleRecoveryHistory: vi.fn(),
     queryStrengthScore: vi.fn(),
     queryStrengthScoreHistory: vi.fn(),
     sessionsOptionsFromQuery,
@@ -313,6 +316,151 @@ describe('GET /activity-types/:name/muscle-groups/:group', () => {
     })
     expect(
       (await supertest(app).get('/activity-types/nope/muscle-groups/chest?field=sets.exercise')).status,
+    ).toBe(404)
+  })
+})
+
+describe('GET /activity-types/:name/muscle-groups/recovery', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const data = {
+    at: '2026-06-01T12:00:00.000Z',
+    field: 'sets.exercise',
+    groups: [],
+    ready_percent: 80,
+    window_days: 10,
+  }
+
+  test('returns the recovery at the given moment, not a muscle group named recovery', async () => {
+    vi.mocked(queries.queryMuscleRecovery).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/muscle-groups/recovery?field=sets.exercise&at=2026-06-01T12:00:00Z',
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.queryMuscleRecovery).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      new Date('2026-06-01T12:00:00Z'),
+    )
+    expect(queries.queryMuscleGroupHistory).not.toHaveBeenCalled()
+  })
+
+  test('gives the recovery now without `at`', async () => {
+    vi.mocked(queries.queryMuscleRecovery).mockResolvedValue({ data, success: true })
+    const before = Date.now()
+
+    await supertest(buildApp()).get(
+      '/activity-types/strength_training/muscle-groups/recovery?field=sets.exercise',
+    )
+
+    const at = vi.mocked(queries.queryMuscleRecovery).mock.calls[0]?.[3]
+    expect(at?.getTime()).toBeGreaterThanOrEqual(before)
+    expect(at?.getTime()).toBeLessThanOrEqual(Date.now())
+  })
+
+  test('400s on a field that is not catalogue-backed, 404s on an unknown type', async () => {
+    const app = buildApp()
+    vi.mocked(queries.queryMuscleRecovery).mockResolvedValueOnce({
+      error: '"sets.note" is not a catalogue-backed item field of "strength_training"',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/strength_training/muscle-groups/recovery?field=sets.note'))
+        .status,
+    ).toBe(400)
+    vi.mocked(queries.queryMuscleRecovery).mockResolvedValueOnce({
+      error: 'Activity type "nope" not found',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/nope/muscle-groups/recovery?field=sets.exercise')).status,
+    ).toBe(404)
+  })
+})
+
+describe('GET /activity-types/:name/muscle-groups/recovery/history', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const data = {
+    end: '2026-06-01T00:00:00.000Z',
+    field: 'sets.exercise',
+    points: [
+      {
+        at: '2026-06-01T00:00:00.000Z',
+        recovery: { ...Object.fromEntries(exerciseMuscleGroups.map((g) => [g, 100])), chest: 50 } as Record<
+          ExerciseMuscleGroup,
+          number
+        >,
+      },
+    ],
+    start: '2026-05-31T00:00:00.000Z',
+    step_hours: 12,
+  }
+
+  test('returns the history over the period', async () => {
+    vi.mocked(queries.queryMuscleRecoveryHistory).mockResolvedValue({ data, success: true })
+
+    const res = await supertest(buildApp()).get(
+      '/activity-types/strength_training/muscle-groups/recovery/history?field=sets.exercise&start=2026-05-31T00:00:00Z&end=2026-06-01T00:00:00Z&step_hours=12',
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data, success: true })
+    expect(queries.queryMuscleRecoveryHistory).toHaveBeenCalledWith(
+      'tester',
+      'strength_training',
+      'sets.exercise',
+      {
+        end: new Date('2026-06-01T00:00:00Z'),
+        start: new Date('2026-05-31T00:00:00Z'),
+        step_hours: 12,
+      },
+    )
+  })
+
+  test('400s on start after end or a period of too many points without querying', async () => {
+    const app = buildApp()
+    expect(
+      (
+        await supertest(app).get(
+          '/activity-types/strength_training/muscle-groups/recovery/history?field=sets.exercise&start=2026-06-01T00:00:00Z&end=2026-05-01T00:00:00Z',
+        )
+      ).status,
+    ).toBe(400)
+    expect(
+      (
+        await supertest(app).get(
+          '/activity-types/strength_training/muscle-groups/recovery/history?field=sets.exercise&start=2026-01-01T00:00:00Z&end=2026-06-01T00:00:00Z&step_hours=1',
+        )
+      ).status,
+    ).toBe(400)
+    expect(queries.queryMuscleRecoveryHistory).not.toHaveBeenCalled()
+  })
+
+  test('400s on a field that is not catalogue-backed, 404s on an unknown type', async () => {
+    const app = buildApp()
+    vi.mocked(queries.queryMuscleRecoveryHistory).mockResolvedValueOnce({
+      error: '"sets.note" is not a catalogue-backed item field of "strength_training"',
+      success: false,
+    })
+    expect(
+      (
+        await supertest(app).get(
+          '/activity-types/strength_training/muscle-groups/recovery/history?field=sets.note',
+        )
+      ).status,
+    ).toBe(400)
+    vi.mocked(queries.queryMuscleRecoveryHistory).mockResolvedValueOnce({
+      error: 'Activity type "nope" not found',
+      success: false,
+    })
+    expect(
+      (await supertest(app).get('/activity-types/nope/muscle-groups/recovery/history?field=sets.exercise'))
+        .status,
     ).toBe(404)
   })
 })

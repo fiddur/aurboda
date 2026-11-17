@@ -1,6 +1,14 @@
-import type { ActivityFieldValue, ExerciseCatalogEntry } from '@aurboda/api-spec'
+import {
+  type ActivityFieldValue,
+  type ExerciseCatalogEntry,
+  type ExerciseMuscle,
+  exerciseMuscleGroups,
+  exerciseMuscleInfo,
+  type MuscleRecovery,
+} from '@aurboda/api-spec'
 
 import { catalogHint, isSameName } from '../../components/knownValueSuggestions'
+import { filterOptionLabel, recoveryOf } from '../../components/muscleRecovery/recoveryView'
 import { exerciseNames, type SetRow } from './sessionModel'
 
 export type PickerItem =
@@ -76,3 +84,17 @@ export const buildPickerSections = ({
     { items: newRow },
   ])
 }
+
+export const muscleFilterLabel = (
+  muscle: ExerciseMuscle,
+  recovery: MuscleRecovery | null | undefined,
+): string => {
+  const info = exerciseMuscleInfo[muscle]
+  const percent = info.group === muscle ? recoveryOf(recovery, info.group)?.recovery : undefined
+  return filterOptionLabel(info.name, percent)
+}
+
+export const muscleFilterOptions = (
+  recovery: MuscleRecovery | null | undefined,
+): { label: string; value: ExerciseMuscle }[] =>
+  exerciseMuscleGroups.map((m) => ({ label: muscleFilterLabel(m, recovery), value: m }))

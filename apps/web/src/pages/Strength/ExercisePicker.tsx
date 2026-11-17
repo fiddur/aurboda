@@ -5,13 +5,13 @@ import {
   exerciseEquipment,
   exerciseEquipmentInfo,
   type ExerciseMuscle,
-  exerciseMuscleGroups,
-  exerciseMuscleInfo,
+  type MuscleRecovery,
 } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
 import { useDebounced } from '../../components/useDebounced'
 import { useExerciseCatalogPages } from '../../components/useExerciseCatalogPages'
 import { fetchActivityFieldValues } from '../../state/api'
@@ -19,6 +19,8 @@ import { SETS_PATH, STRENGTH_TYPE } from './constants'
 import {
   buildPickerSections,
   CATALOG_SECTION_TITLE,
+  muscleFilterLabel,
+  muscleFilterOptions,
   type PickerItem,
   type PickerSection,
   recentExercises,
@@ -28,7 +30,6 @@ import { recentSessionSets } from './startModel'
 
 type Filter = { kind: 'muscle'; value: ExerciseMuscle } | { kind: 'equipment'; value: ExerciseEquipment }
 
-const MUSCLE_OPTIONS = exerciseMuscleGroups.map((m) => ({ label: exerciseMuscleInfo[m].name, value: m }))
 const EQUIPMENT_OPTIONS = exerciseEquipment
   .map((e) => ({ label: exerciseEquipmentInfo[e].name, value: e }))
   .sort((a, b) => a.label.localeCompare(b.label))
@@ -46,8 +47,10 @@ const itemMeta = (item: PickerItem): string | undefined => {
   return undefined
 }
 
-const filterLabel = (filter: Filter): string =>
-  filter.kind === 'muscle' ? exerciseMuscleInfo[filter.value].name : exerciseEquipmentInfo[filter.value].name
+const filterLabel = (filter: Filter, recovery: MuscleRecovery | null | undefined): string =>
+  filter.kind === 'muscle'
+    ? muscleFilterLabel(filter.value, recovery)
+    : exerciseEquipmentInfo[filter.value].name
 
 const catalogQueryFor = (typed: string, filter: Filter | undefined) => ({
   ...(typed ? { q: typed } : {}),
@@ -58,11 +61,13 @@ const catalogQueryFor = (typed: string, filter: Filter | undefined) => ({
 const FilterChips = ({
   filter,
   choosing,
+  recovery,
   onAll,
   onChoose,
 }: {
   filter: Filter | undefined
   choosing: Filter['kind'] | undefined
+  recovery: MuscleRecovery | null | undefined
   onAll: () => void
   onChoose: (kind: Filter['kind']) => void
 }) => (
@@ -77,15 +82,27 @@ const FilterChips = ({
         class={`strength-chip${filter?.kind === kind || choosing === kind ? ' active' : ''}`}
         onClick={() => onChoose(kind)}
       >
-        {filter?.kind === kind ? filterLabel(filter) : kind === 'muscle' ? 'Muscle group' : 'Equipment'}
+        {filter?.kind === kind
+          ? filterLabel(filter, recovery)
+          : kind === 'muscle'
+            ? 'Muscle group'
+            : 'Equipment'}
       </button>
     ))}
   </div>
 )
 
-const FilterValues = ({ kind, onPick }: { kind: Filter['kind']; onPick: (filter: Filter) => void }) => (
+const FilterValues = ({
+  kind,
+  recovery,
+  onPick,
+}: {
+  kind: Filter['kind']
+  recovery: MuscleRecovery | null | undefined
+  onPick: (filter: Filter) => void
+}) => (
   <ul class="strength-picker-list strength-filter-values">
-    {(kind === 'muscle' ? MUSCLE_OPTIONS : EQUIPMENT_OPTIONS).map((o) => (
+    {(kind === 'muscle' ? muscleFilterOptions(recovery) : EQUIPMENT_OPTIONS).map((o) => (
       <li key={o.value}>
         <button
           type="button"
@@ -161,6 +178,7 @@ export const ExercisePicker = ({
     staleTime: 5 * 60 * 1000,
   })
   const recent = useRecentStrengthSessions()
+  const recovery = useMuscleRecovery(STRENGTH_TYPE, SETS_PATH).data
 
   const catalogQuery = catalogQueryFor(typed, filter)
   const catalogShown = typed !== '' || filter !== undefined
@@ -199,6 +217,7 @@ export const ExercisePicker = ({
       <FilterChips
         filter={filter}
         choosing={choosing}
+        recovery={recovery}
         onAll={() => {
           setFilter(undefined)
           setChoosing(undefined)
@@ -208,6 +227,7 @@ export const ExercisePicker = ({
       {choosing && (
         <FilterValues
           kind={choosing}
+          recovery={recovery}
           onPick={(f) => {
             setFilter(f)
             setChoosing(undefined)

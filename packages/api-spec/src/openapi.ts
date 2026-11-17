@@ -119,6 +119,12 @@ import {
   muscleGroupsResponseSchema,
 } from './schemas/muscle-groups.ts'
 import {
+  muscleRecoveryHistoryQuerySchema,
+  muscleRecoveryHistoryResponseSchema,
+  muscleRecoveryQuerySchema,
+  muscleRecoveryResponseSchema,
+} from './schemas/muscle-recovery.ts'
+import {
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
   notificationsQuerySchema,
@@ -797,6 +803,55 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List muscle groups',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/muscle-groups/recovery': {
+      get: {
+        description:
+          'Muscle recovery at a moment (default now; a later moment shows the recovery to come if nothing more is trained): per muscle group the share of the fatigue of the last 10 days that has worn off. Each working set of an exercise matched to the exercise catalogue adds 0.1 × its recruitment weight for the group × its effort (1.2 near failure, 0.7 easy, else 1), halving every 36 hours for large groups and 24 for the others from the end of the session; recovery is 100 × (1 − fatigue). 80 and above is ready; `ready_at` says when a group gets there.',
+        requestParams: { path: activityTypeNamePathSchema, query: muscleRecoveryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleRecoveryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get muscle recovery',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/muscle-groups/recovery/history': {
+      get: {
+        description:
+          'Muscle recovery over a period (default the 14 days up to end, which defaults to now and may lie ahead): the recovery of every muscle group at end and every step_hours (default 6) before it down to start, oldest first.',
+        requestParams: { path: activityTypeNamePathSchema, query: muscleRecoveryHistoryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleRecoveryHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Start not before end, more than 500 points, or the field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get muscle recovery history',
         tags: ['Activities'],
       },
     },

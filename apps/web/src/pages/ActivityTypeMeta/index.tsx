@@ -27,6 +27,7 @@ import { suggestEmoji } from '../../utils/emojiLookup'
 import { BuiltInMatchSection } from './BuiltInMatchSection'
 import { ItemGroupsSection } from './ItemGroupsSection'
 import { MuscleGroupSection } from './MuscleGroupSection'
+import { MuscleRecoverySection } from './MuscleRecoverySection'
 import {
   addItemField,
   removeItemField,
@@ -798,6 +799,7 @@ export function ActivityTypeMeta() {
           {item.catalog === 'exercises' && (
             <>
               <StrengthScoreSection name={name} path={itemPath(list, item)} />
+              <MuscleRecoverySection name={name} path={itemPath(list, item)} />
               <MuscleGroupSection name={name} path={itemPath(list, item)} />
               <UnmappedItemValuesSection name={name} path={itemPath(list, item)} />
             </>
