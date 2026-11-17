@@ -1326,6 +1326,31 @@ describe('updateActivity', () => {
     })
   })
 
+  test('an edit that sends only the sets keeps the plan the session was started from', async () => {
+    const activity = {
+      activity_type: 'exercise',
+      end_time: new Date('2024-03-15T11:00:00Z'),
+      id: 'activity-123',
+      source: 'aurboda' as const,
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    }
+    const kept = { last_set_at: '2024-03-15T10:50:00.000Z', plan_id: 'plan-1' }
+    vi.mocked(db.getActivityById).mockResolvedValue({
+      ...activity,
+      data: { ...kept, sets: [{ exercise: 'Squat', reps: 5, weight: 80 }] },
+    })
+    vi.mocked(db.updateActivity).mockResolvedValue(activity)
+
+    const sets = [{ exercise: 'Squat', reps: 5, weight: 82.5 }]
+    await updateActivity('testuser', 'activity-123', { data: { sets } })
+
+    expect(db.updateActivity).toHaveBeenCalledWith(
+      'testuser',
+      'activity-123',
+      expect.objectContaining({ data: { ...kept, sets } }),
+    )
+  })
+
   test('sets data on activity with no existing data', async () => {
     vi.mocked(db.getActivityById).mockResolvedValue({
       activity_type: 'exercise',

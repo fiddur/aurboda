@@ -50,7 +50,7 @@ export const registerStrengthPlanTools = (
 ) => {
   server.tool(
     'list_strength_plans',
-    'List planned strength workouts (see create_strength_plan), each with its sets and the `sessions` started from it, newest first. `status`: `open` (default) gives the routines and the plans with a day that no session has been started from; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
+    'List planned strength workouts (see create_strength_plan), each with its sets and the `sessions` started from it (newest session first). `status`: `open` (default) gives the routines and the plans with a day that no session has been started from; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
     { ...strengthPlansQuerySchema.shape },
     async ({ status }) => jsonResponse({ plans: await service.list(user, status) }),
   )

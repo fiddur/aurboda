@@ -102,7 +102,7 @@ export const selectStrengthPlans = (
 export const strengthPlanPatch = (body: UpdateStrengthPlanBody): StrengthPlanPatch | null => {
   const patch: StrengthPlanPatch = {}
   if (body.name !== undefined) patch.name = body.name
-  if (body.note !== undefined) patch.note = body.note
+  if (body.note !== undefined) patch.note = body.note || null
   if (body.planned_for !== undefined) patch.planned_for = body.planned_for
   if (body.sets !== undefined) patch.sets = body.sets
   return Object.keys(patch).length === 0 ? null : patch
@@ -137,7 +137,7 @@ export const createStrengthPlansService = (
     if (unknownKey) return { error: unknownKey, status: 400, success: false }
     const record = await store.create(user, {
       name: body.name,
-      note: body.note ?? null,
+      note: body.note || null,
       planned_for: body.planned_for ?? null,
       sets: body.sets,
     })

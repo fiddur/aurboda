@@ -121,6 +121,7 @@ describe('strengthPlanPatch', () => {
   test('keeps only the given fields, null included', () => {
     expect(strengthPlanPatch({ name: 'X', note: null })).toEqual({ name: 'X', note: null })
     expect(strengthPlanPatch({ planned_for: null })).toEqual({ planned_for: null })
+    expect(strengthPlanPatch({ note: '' })).toEqual({ note: null })
   })
 
   test('an empty body is nothing to update', () => {
