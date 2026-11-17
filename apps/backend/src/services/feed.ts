@@ -32,6 +32,7 @@ import {
   countFeedPostReactions,
   countTimelineRepliesTo,
   getActivityById,
+  getFeedPostById,
   listFeedPosts,
 } from '../db/index.ts'
 import { renderDashboardShareHtml } from './activitypub/dashboard-object.ts'
@@ -431,8 +432,23 @@ export const getFeedPage = async (
   const hasMore = rows.length > limit
   const page = hasMore ? rows.slice(0, limit) : rows
   const last = page[page.length - 1]
+  return {
+    next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
+    posts: await serializeCountedFeedPosts(user, page, opts, fetchReactionCounts, fetchReplyCounts),
+  }
+}
+
+const serializeCountedFeedPosts = async (
+  user: string,
+  records: FeedPostRecord[],
+  opts: FeedPageOpts,
+  fetchReactionCounts: FeedReactionCountsFetcher,
+  fetchReplyCounts: FeedReplyCountsFetcher,
+): Promise<FeedPost[]> => {
   const posts = await Promise.all(
-    page.map((record) => serializeFeedPost(user, record, { ...opts, webHost: opts.webHost ?? opts.origin })),
+    records.map((record) =>
+      serializeFeedPost(user, record, { ...opts, webHost: opts.webHost ?? opts.origin }),
+    ),
   )
   const counted = await withReactionCounts(
     user,
@@ -440,11 +456,22 @@ export const getFeedPage = async (
     fetchReactionCounts,
     opts.tagActorHost ?? DEFAULT_TAG_ACTOR_HOST,
   )
-  return {
-    next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
-    posts:
-      opts.origin == null ? counted : await withReplyCounts(user, opts.origin, counted, fetchReplyCounts),
-  }
+  return opts.origin == null ? counted : withReplyCounts(user, opts.origin, counted, fetchReplyCounts)
+}
+
+/** One of the user's own posts, at any visibility, as `getFeedPage` lists it; null when there is none. */
+export const getOwnFeedPost = async (
+  user: string,
+  postId: string,
+  opts: FeedPageOpts = {},
+  fetchPost: (user: string, postId: string) => Promise<FeedPostRecord | null> = getFeedPostById,
+  fetchReactionCounts: FeedReactionCountsFetcher = countFeedPostReactions,
+  fetchReplyCounts: FeedReplyCountsFetcher = countTimelineRepliesTo,
+): Promise<FeedPost | null> => {
+  const record = await fetchPost(user, postId)
+  if (record == null) return null
+  const [post] = await serializeCountedFeedPosts(user, [record], opts, fetchReactionCounts, fetchReplyCounts)
+  return post ?? null
 }
 
 /**

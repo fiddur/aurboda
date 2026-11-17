@@ -583,11 +583,11 @@ export const feedPostSchema = z
     autoshare_rule_id: z.string().uuid().optional().meta({
       description: 'The auto-share rule that created this post (#903), absent for manual posts',
     }),
-    // Attached by the feed LISTING only (one batched count query per page);
-    // single-post responses (share / update) leave both absent.
+    // Attached by the owner's feed listing and its single-post read (one batched count
+    // query); share, update and public single-post responses leave them absent.
     boost_count: z.number().int().optional().meta({
       description:
-        'How many remote actors boosted (`Announce`d) this post, not counting hashtag accounts on the tag actor host; absent on single-post responses',
+        'How many remote actors boosted (`Announce`d) this post, not counting hashtag accounts on the tag actor host; absent on share, update and public single-post responses',
     }),
     challenge: challengeShareSchema
       .optional()
@@ -631,11 +631,12 @@ export const feedPostSchema = z
       description: 'Post kind: `activity`, `article`, `challenge`, `exercise`, `dashboard` or `reply`',
     }),
     like_count: z.number().int().optional().meta({
-      description: 'How many remote actors favourited (`Like`d) this post; absent on single-post responses',
+      description:
+        'How many remote actors favourited (`Like`d) this post; absent on share, update and public single-post responses',
     }),
     quote_count: z.number().int().optional().meta({
       description:
-        'How many remote posts quote this post under an approval we granted (FEP-044f); absent on single-post responses',
+        'How many remote posts quote this post under an approval we granted (FEP-044f); absent on share, update and public single-post responses',
     }),
     message: z
       .string()
@@ -649,10 +650,10 @@ export const feedPostSchema = z
       .array(feedStructuredMetricSchema)
       .optional()
       .meta({ description: 'Resolved typed scalar values for the shared metrics (activity posts)' }),
-    // Attached by the feed LISTING only, like the reaction counts above.
+    // Attached where the reaction counts above are.
     reply_count: z.number().int().optional().meta({
       description:
-        'How many replies (comments) this instance holds for this post; absent on single-post responses',
+        'How many replies (comments) this instance holds for this post; absent on share, update and public single-post responses',
     }),
     series_metrics: z.array(z.string()).meta({ description: 'Explicitly-shared series metrics' }),
     structured: feedStructuredPostSchema.optional().meta({
