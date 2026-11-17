@@ -1,7 +1,20 @@
+import type { Request, Response } from 'express'
+
 import axios from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { deleteOAuthToken, getOAuthToken } from '../../db/index.ts'
+import {
+  deleteOAuthToken,
+  getOAuthToken,
+  initializeSchema,
+  schemaInitialized,
+  upsertOAuthToken,
+} from '../../db/index.ts'
+import {
+  SIGNED_STATE_MAX_AGE_MS,
+  signOAuthState,
+  verifyOAuthState,
+} from '../../services/signed-oauth-state.ts'
 import { ouraClient } from './client.ts'
 
 vi.mock('axios')
@@ -111,5 +124,116 @@ describe('ouraClient.getTags', () => {
     })
     expect(byId.neither).toMatchObject({ tag: 'unknown' })
     expect(byId.neither).not.toHaveProperty('tag_from_code')
+  })
+})
+
+describe('ouraClient OAuth state', () => {
+  const now = new Date('2026-11-17T12:00:00Z')
+  const onUserAuthenticated = vi.fn()
+  const authClient = ouraClient(
+    async () => ({ clientId: 'client-id', clientSecret: 'client-secret' }),
+    'https://example.com/api',
+    { now: () => now, onUserAuthenticated },
+  )
+
+  const fakeRes = () => {
+    const res = {
+      end: vi.fn(),
+      json: vi.fn(),
+      status: vi.fn(),
+      statusCode: 200,
+    }
+    res.status.mockReturnValue(res)
+    res.json.mockReturnValue(res)
+    return res
+  }
+
+  const callback = async (query: Record<string, string>) => {
+    const res = fakeRes()
+    await authClient.authCb({ query } as unknown as Request, res as unknown as Response)
+    return res
+  }
+
+  const expectNothingTouched = () => {
+    expect(schemaInitialized).not.toHaveBeenCalled()
+    expect(initializeSchema).not.toHaveBeenCalled()
+    expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', expires_in: 3600, refresh_token: 'refresh' },
+    })
+    mockedAxios.get = vi.fn().mockResolvedValue({ data: { id: 'oura-user-1' } })
+  })
+
+  test('getAuthorizeUrl sends a state that verifies to the requesting user', async () => {
+    const res = fakeRes()
+    await authClient.getAuthorizeUrl({ user: 'alice' } as unknown as Request, res as unknown as Response)
+
+    const { url } = res.json.mock.calls[0][0] as { url: string }
+    const state = new URL(url).searchParams.get('state') ?? ''
+    expect(verifyOAuthState(state, { provider: 'oura' }, 'client-secret', now)).toBe('alice')
+  })
+
+  test('getAuthorizeUrl answers 401 without a user', async () => {
+    const res = fakeRes()
+    await authClient.getAuthorizeUrl({} as unknown as Request, res as unknown as Response)
+
+    expect(res.status).toHaveBeenCalledWith(401)
+  })
+
+  test.each([
+    ['a bare username', 'alice'],
+    ['another secret', signOAuthState({ provider: 'oura', user: 'alice' }, 'other-secret', now)],
+    [
+      'an expired state',
+      signOAuthState(
+        { provider: 'oura', user: 'alice' },
+        'client-secret',
+        new Date(now.getTime() - SIGNED_STATE_MAX_AGE_MS - 1),
+      ),
+    ],
+    ['a Strava state', signOAuthState({ provider: 'strava', user: 'alice' }, 'client-secret', now)],
+  ])('authCb rejects %s as invalid_state and touches nothing', async (_, state) => {
+    const res = await callback({ code: 'the-code', state })
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_state', success: false })
+    expectNothingTouched()
+  })
+
+  test.each([
+    ['code', { state: signOAuthState({ provider: 'oura', user: 'alice' }, 'client-secret', now) }],
+    ['state', { code: 'the-code' }],
+  ])('authCb rejects a missing %s as invalid_request and touches nothing', async (_, query) => {
+    const res = await callback(query)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_request', success: false })
+    expectNothingTouched()
+  })
+
+  test('authCb with a valid state stores the token and the Oura user mapping for the signed user', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(false)
+    const state = signOAuthState({ provider: 'oura', user: 'alice' }, 'client-secret', now)
+
+    const res = await callback({ code: 'the-code', state })
+
+    expect(initializeSchema).toHaveBeenCalledWith('alice')
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    const tokenUrl = new URL(vi.mocked(mockedAxios.post).mock.calls[0][0] as string)
+    expect(tokenUrl.origin + tokenUrl.pathname).toBe('https://cloud.ouraring.com/oauth/token')
+    expect(tokenUrl.searchParams.get('code')).toBe('the-code')
+    expect(upsertOAuthToken).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ access_token: 'access', provider: 'oura', refresh_token: 'refresh' }),
+    )
+    expect(onUserAuthenticated).toHaveBeenCalledWith('oura-user-1', 'alice')
+    expect(res.status).not.toHaveBeenCalled()
+    expect(res.end).toHaveBeenCalled()
   })
 })
