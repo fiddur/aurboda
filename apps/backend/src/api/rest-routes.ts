@@ -56,6 +56,7 @@ import {
   listUserNames,
   markActivityDetailSynced,
 } from '../db/index.ts'
+import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
@@ -115,6 +116,7 @@ import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createSharedExercisesRouter } from '../routes/shared-exercises-router.ts'
+import { createStrengthPlansRouter } from '../routes/strength-plans-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
@@ -171,6 +173,8 @@ interface RestRoutesDeps {
   webHost: string
   webIndexPath: string | undefined
   apiBaseUrl: string
+  /** The secret-bearing Garmin push URL, shown to the admin only. */
+  garminPushUrl: string
   /** Open challenges from followed peers (`GET /challenges/discover`). */
   discoverChallenges: DiscoverChallenges
   garmin: GarminClient
@@ -253,6 +257,7 @@ export const mountRestRouters = ({
   webHost,
   webIndexPath,
   apiBaseUrl,
+  garminPushUrl,
   discoverChallenges,
   garmin,
   homeAssistant,
@@ -354,6 +359,7 @@ export const mountRestRouters = ({
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))
   httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
+  httpd.use('/strength-plans', createStrengthPlansRouter(authMiddleware))
   httpd.use('/metric-catalog', createMetricCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,
@@ -474,7 +480,11 @@ export const mountRestRouters = ({
       adminUsers,
       invitationAuth,
       webHost,
-      gravlRedirectUri(apiBaseUrl),
+      {
+        garmin: garminOAuthRedirectUri(apiBaseUrl),
+        garminPush: garminPushUrl,
+        gravl: gravlRedirectUri(apiBaseUrl),
+      },
       async (username) => (await listUserNames(userDb)).includes(username),
       ouraWebhookManager,
       accountDeleter,

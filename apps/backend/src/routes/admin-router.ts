@@ -77,7 +77,7 @@ export const createAdminRouter = (
   adminUsers: AdminUsers,
   invitationAuth: InvitationAuth,
   webHost: string,
-  gravlRedirectUri: string,
+  redirectUris: { garmin: string; garminPush: string; gravl: string },
   userExists: (username: string) => Promise<boolean>,
   ouraWebhookManager?: OuraWebhookManager | null,
   deleteAccount?: AccountDeleter,
@@ -104,6 +104,8 @@ export const createAdminRouter = (
       sentryDsn,
       gravlClientId,
       gravlClientSecret,
+      garminClientId,
+      garminClientSecret,
       officialFeed,
       billing,
       tagActorHost,
@@ -127,6 +129,8 @@ export const createAdminRouter = (
       centralDb.getServerSetting('sentry_dsn'),
       centralDb.getServerSetting('gravl_client_id'),
       centralDb.getServerSetting('gravl_client_secret'),
+      centralDb.getServerSetting('garmin_client_id'),
+      centralDb.getServerSetting('garmin_client_secret'),
       readOfficialFeedSetting(centralDb),
       readBillingSettings(centralDb),
       readTagActorHost(centralDb),
@@ -144,11 +148,15 @@ export const createAdminRouter = (
       contact_fediverse: contacts.contact_fediverse,
       contact_reddit: contacts.contact_reddit,
       email_enabled: isSmtpConfigured(smtp),
+      garmin_client_id_set: !!garminClientId,
+      garmin_client_secret_set: !!garminClientSecret,
       garmin_personal_key_enabled: garminPersonalKeyEnabled,
+      garmin_push_url: redirectUris.garminPush,
+      garmin_redirect_uri: redirectUris.garmin,
       grace_days: billing.grace_days,
       gravl_client_id_set: !!gravlClientId,
       gravl_client_secret_set: !!gravlClientSecret,
-      gravl_redirect_uri: gravlRedirectUri,
+      gravl_redirect_uri: redirectUris.gravl,
       lastfm_api_key_set: !!lastFmApiKey,
       oura_client_id_set: !!ouraClientId,
       oura_client_secret_set: !!ouraClientSecret,
@@ -200,6 +208,8 @@ export const createAdminRouter = (
         blog_username,
         contact_fediverse,
         contact_reddit,
+        garmin_client_id,
+        garmin_client_secret,
         garmin_personal_key_enabled,
         grace_days,
         gravl_client_id,
@@ -281,6 +291,12 @@ export const createAdminRouter = (
       }
       if (sentry_dsn !== undefined) {
         await centralDb.setServerSetting('sentry_dsn', sentry_dsn ?? '')
+      }
+      if (garmin_client_id !== undefined) {
+        await centralDb.setServerSetting('garmin_client_id', garmin_client_id ?? '')
+      }
+      if (garmin_client_secret !== undefined) {
+        await centralDb.setServerSetting('garmin_client_secret', garmin_client_secret ?? '')
       }
       if (gravl_client_id !== undefined) {
         await centralDb.setServerSetting('gravl_client_id', gravl_client_id ?? '')

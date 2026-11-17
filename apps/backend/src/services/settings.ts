@@ -14,6 +14,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  getAllSyncStates,
   getGoals,
   getOAuthToken,
   getUserSettings,
@@ -22,6 +23,12 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
+import {
+  GARMIN_OAUTH_PROVIDER,
+  GARMIN_PUSH_PROVIDER,
+  garminOAuthStatusFromToken,
+  garminPushLastReceivedAt,
+} from '../integrations/garmin/oauth-status.ts'
 import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
@@ -238,6 +245,10 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     gravlClientSecret,
     garminPersonalKeyEnabled,
     goals,
+    garminOAuthToken,
+    garminClientId,
+    garminClientSecret,
+    garminPushStates,
   ] = await Promise.all([
     getSettings(user),
     getOAuthToken(user, 'oura'),
@@ -253,6 +264,10 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     centralDb.getServerSetting('gravl_client_secret'),
     readGarminPersonalKeyEnabled(centralDb),
     getEffectiveGoals(user),
+    getOAuthToken(user, GARMIN_OAUTH_PROVIDER),
+    centralDb.getServerSetting('garmin_client_id'),
+    centralDb.getServerSetting('garmin_client_secret'),
+    getAllSyncStates(user, GARMIN_PUSH_PROVIDER),
   ])
   const { zones, source } = hrZonesFromSettings(settings)
   // Mirrors the client's credential order: an OAuth grant wins over a pasted token.
@@ -262,10 +277,16 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
       : settings.gravl_api_token
         ? 'token'
         : null
+  const garminOAuth = {
+    available: !!garminClientId && !!garminClientSecret,
+    ...garminOAuthStatusFromToken(garminOAuthToken),
+    last_received_at: garminPushLastReceivedAt(garminPushStates),
+  }
 
   return {
     ...withDefaults(settings),
-    garmin_connected: garmin.session || garmin.personal_key.connected,
+    garmin_connected: garmin.session || garmin.personal_key.connected || garminOAuth.connected,
+    garmin_oauth: garminOAuth,
     garmin_personal_key: {
       available: garminPersonalKeyEnabled,
       connected: garmin.personal_key.connected,
@@ -290,11 +311,20 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
 
 const buildErrorSettingsResponse = async (errorMessage: string): Promise<SettingsResponse> => {
   const centralDb = getCentralDb()
-  const [lastFmApiKey, ouraClientId, ouraClientSecret, garminPersonalKeyEnabled] = await Promise.all([
+  const [
+    lastFmApiKey,
+    ouraClientId,
+    ouraClientSecret,
+    garminPersonalKeyEnabled,
+    garminClientId,
+    garminClientSecret,
+  ] = await Promise.all([
     centralDb.getLastFmApiKey(),
     centralDb.getServerSetting('oura_client_id'),
     centralDb.getServerSetting('oura_client_secret'),
     readGarminPersonalKeyEnabled(centralDb),
+    centralDb.getServerSetting('garmin_client_id'),
+    centralDb.getServerSetting('garmin_client_secret'),
   ])
   return {
     ...settingsWithDefaultsSchema.parse({}),
@@ -308,6 +338,13 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     lastfm_configured: !!lastFmApiKey,
     oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
+    garmin_oauth: {
+      available: !!garminClientId && !!garminClientSecret,
+      connected: false,
+      last_received_at: null,
+      needs_reconnect: false,
+      permissions: [],
+    },
     garmin_personal_key: {
       available: garminPersonalKeyEnabled,
       connected: false,

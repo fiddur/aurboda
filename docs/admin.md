@@ -1,7 +1,7 @@
 # Server administration
 
 The first user to sign up becomes an admin. Admins manage server-wide settings (signup mode,
-integration credentials, email (SMTP), Garmin Personal API keys, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
+integration credentials, email (SMTP), the Garmin Connect Developer Program, Garmin Personal API keys, Sentry, plans and billing, support contacts, federation) from the web app's Admin Settings page. Those
 settings, the admin list and the records below live in the central database (`CENTRAL_DB`, default
 `aurboda`), not in any user's own database.
 
@@ -174,7 +174,8 @@ Deleting an account, in order:
 
 1. Sends a `Delete` of the actor to the user's followers on other servers, so they drop the follow
    and the cached profile.
-2. Revokes the Oura, Strava and Gravl grants upstream and removes the Oura and Strava user mappings.
+2. Revokes the Oura, Strava and Gravl grants upstream, deregisters Connect with Garmin, and removes
+   the Oura, Strava and Garmin user mappings.
 3. Reserves the username in the central `deleted_usernames` table (with who deleted it and when).
    Signup refuses a reserved name as taken, for good: other ActivityPub servers cache an actor and
    its key by URL, so a new account under the old name would inherit its followers and trust. Until
@@ -292,10 +293,33 @@ grace, read-only) to sort by end date. REST: `PATCH /admin/users/:username/plan`
 `paid_until`, `trial_ends_at` and `plan_note` (`null` clears a date or the note); MCP: the admin-only
 `set_user_plan`.
 
+## Garmin Connect Developer Program
+
+Users can connect Garmin by signing in at Garmin ("Connect with Garmin", see
+[Garmin](./garmin.md#connect-with-garmin)) when the server has an app in the
+[Garmin Connect Developer Program](https://developerportal.garmin.com). Register the redirect URL
+shown under **Garmin Connect Developer Program** on the Admin Settings page
+(`<API_BASE_URL>/auth/garmincb`, also `garmin_redirect_uri` in `GET /admin/settings`) with the app,
+and enter its client ID and secret there (`garmin_client_id` / `garmin_client_secret` in `PATCH
+/admin/settings`, `null` clears; `GET` answers only `garmin_client_id_set` and
+`garmin_client_secret_set`). Without both, the Garmin page does not offer Connect with Garmin; the Garmin
+Connect login and Personal API keys work either way.
+
+Garmin then pushes each user's data to the server, so the app also needs the **push URL**: copy it from
+the same block (**Copy**; `garmin_push_url` in `GET /admin/settings`,
+`<API_BASE_URL>/webhooks/garmin/<token>`) into every endpoint at
+[apis.garmin.com/tools/endpoints](https://apis.garmin.com/tools/endpoints) and choose "push". The token is
+derived from `SESSION_SECRET`, so the URL changes with it and must be pasted again. It is a secret: only
+this admin response carries it, and the bundled nginx does not log the path. The endpoint answers `404`
+until a client ID is set, and accepts bodies up to 50 MB. A push carrying a `garmin-client-id` header
+that differs from the configured client ID is refused, but one without the header is accepted: the URL's
+token is the gate. What arrives is described under
+[Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
+
 ## Garmin Personal API keys
 
 Users can connect Garmin with a key from Garmin's official Personal API next to, or instead of, the
-Garmin Connect login (see [Garmin](./garmin.md#two-ways-to-connect)). **Garmin Personal API keys**
+Garmin Connect login (see [Garmin](./garmin.md#the-two-pull-connections)). **Garmin Personal API keys**
 under **Integrations** on the Admin Settings page (`garmin_personal_key_enabled`, REST `GET`/`PATCH
 /admin/settings`) turns that on or off; it is on until an admin turns it off. Garmin's terms restrict
 a Personal API key to tools its owner operates for their own use, so a server run for other people

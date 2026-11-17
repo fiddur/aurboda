@@ -1,0 +1,91 @@
+.muscle-recovery {
+  --muscle-recovery-ready: var(--color-success, #10b981);
+  --muscle-recovery-recovering: #f57c00;
+  --muscle-recovery-fatigued: var(--color-error, #e53e3e);
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.muscle-recovery-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.muscle-recovery-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 3rem minmax(4rem, 1fr) auto;
+  grid-template-areas: 'name percent bar when';
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.muscle-recovery-name {
+  grid-area: name;
+  overflow-wrap: anywhere;
+}
+
+.muscle-recovery-percent {
+  grid-area: percent;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.muscle-recovery-bar {
+  grid-area: bar;
+  display: block;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.muscle-recovery-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.muscle-recovery-ready .muscle-recovery-fill {
+  background: var(--muscle-recovery-ready);
+}
+
+.muscle-recovery-recovering .muscle-recovery-fill {
+  background: var(--muscle-recovery-recovering);
+}
+
+.muscle-recovery-fatigued .muscle-recovery-fill {
+  background: var(--muscle-recovery-fatigued);
+}
+
+.muscle-recovery-when,
+.muscle-recovery-muted {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.muscle-recovery-when {
+  grid-area: when;
+  white-space: nowrap;
+}
+
+.muscle-recovery-muted {
+  margin: 0;
+}
+
+@media (max-width: 36em) {
+  .muscle-recovery-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name percent'
+      'bar when';
+  }
+}

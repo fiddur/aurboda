@@ -3,11 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
 import { useMemo, useState } from 'preact/hooks'
 
+import { readyLabel, recoveryOf } from '../../components/muscleRecovery/recoveryView'
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
 import { formatDay } from '../../components/RecordCard'
-import { muscleGroupsHref } from '../../components/sessions/sessionView'
+import { muscleGroupsHref, strengthScoreHref } from '../../components/sessions/sessionView'
 import { fetchActivityTypeDefinitions, fetchMuscleGroupHistory } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { formatSetCount } from '../../utils/measures'
+import { useStrengthScore } from '../StrengthScore/queries'
+import { scoreGroupOf } from '../StrengthScore/strengthScoreView'
 import { MuscleGroupChart } from './MuscleGroupChart'
 import { ExercisesTable, SessionsTable } from './MuscleGroupTables'
 import {
@@ -18,18 +22,86 @@ import {
   muscleGroupPeriod,
   setsThisWeek,
 } from './muscleGroupView'
+import { RecoverySection } from './RecoverySection'
 import '../ActivityTypeItem/style.css'
 import './style.css'
 
-const Card = ({ detail, label, value }: { detail?: string; label: string; value: string }) => (
-  <div class="activity-type-item-card">
-    <div class="activity-type-item-card-label">{label}</div>
-    <div class="activity-type-item-card-value">{value}</div>
-    {detail && <div class="activity-type-item-card-detail">{detail}</div>}
-  </div>
-)
+const Card = ({
+  detail,
+  href,
+  label,
+  value,
+}: {
+  detail?: string
+  href?: string
+  label: string
+  value: string
+}) => {
+  const body = (
+    <>
+      <div class="activity-type-item-card-label">{label}</div>
+      <div class="activity-type-item-card-value">{value}</div>
+      {detail && <div class="activity-type-item-card-detail">{detail}</div>}
+    </>
+  )
+  return href ? (
+    <a class="activity-type-item-card muscle-group-card-link" href={href}>
+      {body}
+    </a>
+  ) : (
+    <div class="activity-type-item-card">{body}</div>
+  )
+}
 
-const Cards = ({ history, periodDays }: { history: MuscleGroupHistory; periodDays: number }) => {
+const ScoreCard = ({ field, group, name }: { field: string; group: ExerciseMuscleGroup; name: string }) => {
+  const { data } = useStrengthScore(name, field)
+  const scoreGroup = scoreGroupOf(group, data)
+  if (!scoreGroup || scoreGroup.score === null) return null
+  return (
+    <Card
+      label="Strength score"
+      value={String(scoreGroup.score)}
+      detail={scoreGroup.name === exerciseMuscleInfo[group].name ? undefined : scoreGroup.name}
+      href={strengthScoreHref(name, field)}
+    />
+  )
+}
+
+const RecoveryCard = ({
+  field,
+  group,
+  name,
+}: {
+  field: string
+  group: ExerciseMuscleGroup
+  name: string
+}) => {
+  const { data } = useMuscleRecovery(name, field)
+  const recovery = recoveryOf(data, group)
+  if (!recovery) return null
+  const settled = recovery.recovery >= 100 && recovery.sources.length === 0
+  return (
+    <Card
+      label="Recovery"
+      value={`${recovery.recovery} %`}
+      detail={settled ? undefined : readyLabel(recovery.ready_at, new Date())}
+    />
+  )
+}
+
+const Cards = ({
+  field,
+  group,
+  history,
+  name,
+  periodDays,
+}: {
+  field: string
+  group: ExerciseMuscleGroup
+  history: MuscleGroupHistory
+  name: string
+  periodDays: number
+}) => {
   const now = new Date()
   return (
     <div class="activity-type-item-cards">
@@ -43,6 +115,8 @@ const Cards = ({ history, periodDays }: { history: MuscleGroupHistory; periodDay
         value={lastTrainedLabel(history.last_trained, now)}
         detail={history.last_trained === null ? undefined : formatDay(history.last_trained)}
       />
+      <RecoveryCard field={field} group={group} name={name} />
+      <ScoreCard field={field} group={group} name={name} />
     </div>
   )
 }
@@ -71,7 +145,8 @@ const History = ({
   if (query.isError || !history) return <p class="error">Failed to load the muscle group</p>
   return (
     <>
-      <Cards history={history} periodDays={periodDays} />
+      <Cards field={field} group={group} history={history} name={name} periodDays={periodDays} />
+      <RecoverySection field={field} group={group} name={name} />
       <MuscleGroupChart
         field={field}
         group={group}

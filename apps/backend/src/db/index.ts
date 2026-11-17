@@ -65,6 +65,7 @@ export {
   getAllScrobbles,
   getScrobbles,
   insertRawRecord,
+  insertRawRecords,
   queryRawRecords,
   type QueryRawRecordsParams,
   type RawRecordRow,
@@ -158,6 +159,7 @@ export {
   type ActivityFieldValueRow,
   getActivityFieldValues,
   type DataFilter,
+  findActivityByGarminActivityId,
   findDeletedActivityByExternalId,
   findMergeableActivity,
   findMergedGroupForActivity,
@@ -635,6 +637,7 @@ export {
   getOAuthToken,
   markOAuthTokenRefused,
   updateOAuthAccessToken,
+  updateOAuthTokenScopes,
   upsertOAuthToken,
 } from './oauth.ts'
 
@@ -867,3 +870,16 @@ export {
   moveItemValueIdentity,
   upsertItemValueIdentity,
 } from './item-value-identities.ts'
+
+export {
+  createStrengthPlan,
+  deleteStrengthPlan,
+  getStrengthPlan,
+  listStrengthPlans,
+  listStrengthPlanSessions,
+  type StrengthPlanInput,
+  type StrengthPlanPatch,
+  type StrengthPlanRecord,
+  type StrengthPlanSessionRecord,
+  updateStrengthPlan,
+} from './strength-plans.ts'

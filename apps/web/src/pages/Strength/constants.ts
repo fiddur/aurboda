@@ -21,4 +21,6 @@ export const STRENGTH_QUERY_KEYS = [
   'data-activities',
   'entity-detail',
   'strength-start',
+  'strength-plans',
+  'strength-plan',
 ]

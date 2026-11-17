@@ -177,6 +177,137 @@ function GravlApiSection() {
 }
 
 // eslint-disable-next-line complexity -- simple form with save/clear handlers
+function GarminApiSection() {
+  const queryClient = useQueryClient()
+  const { data: settings } = useQuery({
+    queryFn: fetchAdminSettings,
+    queryKey: ['adminSettings'],
+  })
+
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>({ status: 'idle' })
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+
+  const idSet = settings?.garmin_client_id_set ?? false
+  const secretSet = settings?.garmin_client_secret_set ?? false
+  const redirectUri = settings?.garmin_redirect_uri
+  const pushUrl = settings?.garmin_push_url
+  const [pushUrlCopied, setPushUrlCopied] = useState(false)
+
+  const handleCopyPushUrl = useCallback(async () => {
+    if (!pushUrl) return
+    try {
+      await navigator.clipboard.writeText(pushUrl)
+      setPushUrlCopied(true)
+      setTimeout(() => setPushUrlCopied(false), 3000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }, [pushUrl])
+
+  const saveGarmin = useCallback(
+    async (params: { garmin_client_id?: string | null; garmin_client_secret?: string | null }) => {
+      setSaveStatus({ status: 'saving' })
+      try {
+        const result = await updateAdminSettings(params)
+        queryClient.setQueryData(['adminSettings'], result)
+        setClientId('')
+        setClientSecret('')
+        setSaveStatus({ status: 'saved', time: new Date() })
+      } catch (err) {
+        setSaveStatus({ error: getErrorMessage(err), status: 'error' })
+      }
+    },
+    [queryClient],
+  )
+
+  const handleSave = useCallback(() => {
+    if (!clientId && !clientSecret) return
+    saveGarmin({
+      ...(clientId ? { garmin_client_id: clientId } : {}),
+      ...(clientSecret ? { garmin_client_secret: clientSecret } : {}),
+    })
+  }, [clientId, clientSecret, saveGarmin])
+
+  const handleClear = useCallback(
+    () => saveGarmin({ garmin_client_id: null, garmin_client_secret: null }),
+    [saveGarmin],
+  )
+
+  return (
+    <div class="form-field">
+      <div class="section-header-row">
+        <label>Garmin Connect Developer Program</label>
+        <SaveStatusIndicator state={saveStatus} />
+      </div>
+      {(idSet || secretSet) && (
+        <p class={`connected-status${idSet && secretSet ? '' : ' warning'}`}>
+          {idSet && secretSet ? 'Configured' : 'Partially configured'}
+        </p>
+      )}
+      <p class="field-description">
+        Redirect URL: <code>{redirectUri ?? '…'}</code>
+      </p>
+      <div class="api-key-input-row">
+        <input
+          type="text"
+          value={clientId}
+          onInput={(e) => setClientId((e.target as HTMLInputElement).value)}
+          placeholder={idSet ? 'Enter new client ID to update' : 'Client ID'}
+        />
+      </div>
+      <div class="api-key-input-row">
+        <input
+          type="password"
+          value={clientSecret}
+          onInput={(e) => setClientSecret((e.target as HTMLInputElement).value)}
+          placeholder={secretSet ? 'Enter new client secret to update' : 'Client Secret'}
+        />
+        {(idSet || secretSet) && (
+          <button type="button" class="clear-button" onClick={handleClear}>
+            Clear
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        class="generate-button"
+        onClick={handleSave}
+        disabled={!clientId && !clientSecret}
+      >
+        Save Garmin Credentials
+      </button>
+      <p class="field-description">
+        Lets users connect Garmin by signing in at Garmin. Needs an app in the Garmin Connect Developer
+        Program (
+        <a href="https://developerportal.garmin.com" target="_blank" rel="noopener noreferrer">
+          developerportal.garmin.com
+        </a>
+        ); register the redirect URL above with it.
+      </p>
+      {pushUrl && (
+        <>
+          <p class="field-description">Push URL (keep it private):</p>
+          <div class="invitation-url">
+            <input type="text" value={pushUrl} readOnly />
+            <button type="button" class="copy-button" onClick={handleCopyPushUrl}>
+              {pushUrlCopied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p class="field-description">
+            Paste it into every endpoint at{' '}
+            <a href="https://apis.garmin.com/tools/endpoints" target="_blank" rel="noopener noreferrer">
+              apis.garmin.com/tools/endpoints
+            </a>{' '}
+            and choose &quot;push&quot;.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// eslint-disable-next-line complexity -- simple form with save/clear handlers
 function StravaApiSection() {
   const queryClient = useQueryClient()
   const { data: settings } = useQuery({
@@ -515,6 +646,8 @@ function IntegrationsSection() {
       <StravaApiSection />
 
       <GravlApiSection />
+
+      <GarminApiSection />
 
       <GarminPersonalKeySwitch />
     </section>

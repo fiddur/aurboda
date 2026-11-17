@@ -20,7 +20,7 @@ import {
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
-import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
+import { setupGarminPush, setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
@@ -70,8 +70,11 @@ import {
 import { errorResponseBody, httpError, isHttpError } from './http-error.ts'
 import { garminClient } from './integrations/garmin/client.ts'
 import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/garmin/key-reminder.ts'
+import { garminOAuthClient } from './integrations/garmin/oauth-client.ts'
 import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
+import { garminPushBodyParser } from './integrations/garmin/push-router.ts'
+import { garminPushToken, garminPushUrl } from './integrations/garmin/push.ts'
 import {
   chooseGarminSource,
   garminRoutedClient,
@@ -410,6 +413,18 @@ const main = async () => {
     return clientId && clientSecret ? { clientId, clientSecret } : null
   }
   const gravl = gravlClient(getGravlCredentials, apiBaseUrl)
+
+  const getGarminOAuthCredentials = async () => {
+    const clientId = await centralDb.getServerSetting('garmin_client_id')
+    const clientSecret = await centralDb.getServerSetting('garmin_client_secret')
+    return clientId && clientSecret ? { clientId, clientSecret } : null
+  }
+  const garminOAuth = garminOAuthClient(getGarminOAuthCredentials, apiBaseUrl, {
+    deleteGarminUserMappingByUsername: (username) => centralDb.deleteGarminUserMappingByUsername(username),
+    getGarminUserIdByUsername: (username) => centralDb.getGarminUserIdByUsername(username),
+    upsertGarminUserMapping: (garminUserId, username) =>
+      centralDb.upsertGarminUserMapping(garminUserId, username),
+  })
 
   // Deduction queue is assigned once pg-boss is up (below). The notifier closes
   // over the variable, so it starts enqueuing as soon as the queue exists.
@@ -792,6 +807,7 @@ const main = async () => {
       { disconnect: (user) => oura.disconnect(user), name: 'Oura' },
       { disconnect: (user) => strava.deauthorize(user), name: 'Strava' },
       { disconnect: (user) => gravl.disconnect(user), name: 'Gravl' },
+      { disconnect: (user) => garminOAuth.disconnect(user), name: 'Garmin' },
     ],
     listUsers: () => listUserNames(userDb),
     onDeleted: (user) => deletedUsers.add(user),
@@ -1064,6 +1080,7 @@ const main = async () => {
     try {
       await createSyncScheduler(boss, {
         garminDataTypes,
+        keepGarminOAuthFresh: (user) => garminOAuth.keepFresh(user),
         listUsers: () => listUserNames(userDb),
         remindGarminKey: remindGarminKey(defaultGarminKeyReminderDeps(notifier.raiseBestEffort)),
         sync: syncProvider,
@@ -1246,6 +1263,8 @@ const main = async () => {
     }),
   )
 
+  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large.
+  httpd.use('/webhooks/garmin', garminPushBodyParser(garminPushToken(sessionSecret)))
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
@@ -1288,6 +1307,7 @@ const main = async () => {
     authMiddleware,
     centralDb,
     garmin,
+    garminOAuth,
     garminPersonal,
     gravl,
     oura,
@@ -1306,6 +1326,17 @@ const main = async () => {
     })
     postListenCallbacks.push(ensureStravaWebhook)
   }
+
+  setupGarminPush({
+    centralDb,
+    garminOAuth,
+    httpd,
+    isReadOnly,
+    onActivityDetailSynced,
+    onActivitySynced: activityNotifier,
+    onTrackWritten,
+    sessionSecret,
+  })
 
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,
@@ -1373,6 +1404,7 @@ const main = async () => {
     dataExport,
     adminUsers,
     apiBaseUrl,
+    garminPushUrl: garminPushUrl(apiBaseUrl, sessionSecret),
     auth,
     authMiddleware,
     centralDb,

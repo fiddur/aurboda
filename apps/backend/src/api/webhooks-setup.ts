@@ -1,22 +1,49 @@
 /**
- * Webhook integrations: Strava push (always-on when stravaQueue available) and
- * Oura push (admin-configurable). Returns post-listen callbacks that need to
+ * Webhook integrations: Strava push (always-on when stravaQueue available),
+ * Oura push (admin-configurable) and the Garmin Developer Program push. Returns post-listen callbacks that need to
  * run after `httpd.listen()` so the server is reachable when external
  * verification requests arrive.
  */
 import type { Express } from 'express'
 
+import type { GarminOAuthClient } from '../integrations/garmin/oauth-client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { OuraDataType } from '../integrations/oura/sync.ts'
 import type { CentralDb } from '../services/central-db.ts'
+import type { ActivityNotifier } from '../services/deduction-queue.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 
-import { softDeleteActivityByExternalId, upsertOAuthToken } from '../db/index.ts'
+import {
+  findActivityByGarminActivityId,
+  insertRawRecords,
+  insertTimeSeries,
+  markActivityDetailSynced,
+  queryRawRecords,
+  softDeleteActivityByExternalId,
+  updateOAuthTokenScopes,
+  upsertOAuthToken,
+  upsertSyncState,
+} from '../db/index.ts'
+import { GARMIN_OAUTH_PROVIDER } from '../integrations/garmin/oauth-status.ts'
+import {
+  defaultGarminProcessDeps,
+  processActivityFit,
+  processGarminData,
+} from '../integrations/garmin/process.ts'
+import { downloadGarminFile, syncPushedActivityFile } from '../integrations/garmin/push-activity-file.ts'
+import { createGarminPushRouter } from '../integrations/garmin/push-router.ts'
+import {
+  createSerialQueue,
+  garminPushRecordType,
+  garminPushToken,
+  receiveGarminPush,
+} from '../integrations/garmin/push.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
 import { createStravaWebhookRouter } from '../integrations/strava/webhook-router.ts'
-import { auditInfo } from '../services/audit-log.ts'
+import { auditError, auditInfo, auditWarn } from '../services/audit-log.ts'
 import { createOuraWebhookManager } from '../services/oura-webhook-manager.ts'
+import { getSettings } from '../services/settings.ts'
 import { createStravaWebhookManager } from '../services/strava-webhook-manager.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
@@ -144,4 +171,92 @@ export const setupOuraWebhook = async ({
   }
 
   return ouraWebhookManager
+}
+
+interface GarminPushSetupDeps {
+  httpd: Express
+  sessionSecret: string
+  centralDb: CentralDb
+  garminOAuth: GarminOAuthClient
+  /** Pushes for a read-only account are acknowledged but not stored. */
+  isReadOnly?: (user: string) => Promise<boolean>
+  onActivitySynced: ActivityNotifier
+  onActivityDetailSynced: (user: string, activityId: string) => void
+  onTrackWritten: (user: string, activityId: string) => void
+}
+
+/** The pull's raw records hold the pull's shapes: the push stores its own and never overwrites them. */
+const pushProcessDeps = { ...defaultGarminProcessDeps, insertRawRecord: async () => {} }
+
+/** Mounts the endpoint Garmin pushes every summary type to (`garminPushUrl`). */
+export const setupGarminPush = ({
+  httpd,
+  sessionSecret,
+  centralDb,
+  garminOAuth,
+  isReadOnly = async () => false,
+  onActivitySynced,
+  onActivityDetailSynced,
+  onTrackWritten,
+}: GarminPushSetupDeps): void => {
+  const enqueue = createSerialQueue((error) => {
+    console.error('Garmin push: processing failed:', error instanceof Error ? error.message : error)
+  })
+  const pushToken = garminPushToken(sessionSecret)
+  const fileDeps = {
+    auditError,
+    auditInfo,
+    auditWarn,
+    download: (url: string, accessToken: string) => downloadGarminFile(url, accessToken),
+    findActivityByGarminActivityId,
+    getAccessToken: (user: string) => garminOAuth.getAccessToken(user),
+    getFileNotice: async (user: string, garminActivityId: number) => {
+      const { rows } = await queryRawRecords(user, {
+        external_id: `file-${garminActivityId}-fit`,
+        limit: 1,
+        record_type: garminPushRecordType('activityFiles'),
+        source: 'garmin',
+      })
+      return rows[0]?.data ?? null
+    },
+    markActivityDetailSynced,
+    onDetailSynced: onActivityDetailSynced,
+    onTrackWritten,
+    processActivityFit,
+  }
+
+  httpd.use(
+    '/webhooks/garmin',
+    createGarminPushRouter({
+      enqueue,
+      logError: (message) => console.error(message),
+      receive: (request) =>
+        receiveGarminPush(
+          {
+            auditError,
+            auditInfo,
+            auditWarn,
+            forgetGrant: (user) => garminOAuth.forget(user),
+            getClientId: () => centralDb.getServerSetting('garmin_client_id'),
+            getDisabledDataTypes: async (user) => (await getSettings(user)).garmin_disabled_data_types ?? [],
+            getUsernameByGarminUserId: (garminUserId) => centralDb.getUsernameByGarminUserId(garminUserId),
+            insertRawRecords,
+            insertTimeSeries,
+            isReadOnly,
+            logWarn: (message) => console.warn(message),
+            now: () => new Date(),
+            onActivitySynced: (user, start, end) => onActivitySynced(user, '*', start, end),
+            probeGrant: (user) => garminOAuth.probeGrant(user),
+            processGarminData: (user, dataType, data) =>
+              processGarminData(user, dataType, data, pushProcessDeps),
+            pushToken,
+            syncActivityFile: (user, garminActivityId) =>
+              syncPushedActivityFile(fileDeps, user, garminActivityId),
+            updateGrantScopes: (user, scopes) => updateOAuthTokenScopes(user, GARMIN_OAUTH_PROVIDER, scopes),
+            upsertSyncState,
+          },
+          request,
+        ),
+    }),
+  )
 }

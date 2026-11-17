@@ -20,6 +20,7 @@ import './style.css'
 const ActivityTypeItem = lazyPage(() => import('./pages/ActivityTypeItem/index.jsx'), 'ActivityTypeItem')
 const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.jsx'), 'ActivityTypeMeta')
 const MuscleGroup = lazyPage(() => import('./pages/MuscleGroup/index.jsx'), 'MuscleGroup')
+const StrengthScore = lazyPage(() => import('./pages/StrengthScore/index.jsx'), 'StrengthScore')
 const ActivityTypes = lazyPage(() => import('./pages/ActivityTypes/index.jsx'), 'ActivityTypes')
 const AddData = lazyPage(() => import('./pages/AddData/index.jsx'), 'AddData')
 const AdminSettings = lazyPage(() => import('./pages/AdminSettings/index.jsx'), 'AdminSettings')
@@ -115,6 +116,7 @@ const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
 const Strength = lazyPage(() => import('./pages/Strength/index.jsx'), 'Strength')
 const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthLog')
 const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
+const StrengthPlanEditor = lazyPage(() => import('./pages/Strength/PlanEditor.jsx'), 'StrengthPlanEditor')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
 const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
 const TrainingLoad = lazyPage(() => import('./pages/TrainingLoad/index.jsx'), 'TrainingLoad')
@@ -177,11 +179,14 @@ function AppShell() {
             <Route path="/feed" component={Feed} />
             <Route path="/activity-type/:name/item/:field/:value" component={ActivityTypeItem} />
             <Route path="/activity-type/:name/muscle/:field/:group" component={MuscleGroup} />
+            <Route path="/activity-type/:name/strength-score/:field" component={StrengthScore} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/strength/session/:id" component={StrengthSession} />
             <Route path="/strength/live" component={StrengthSession} />
             <Route path="/strength/log" component={StrengthLog} />
+            <Route path="/strength/plan/new" component={StrengthPlanEditor} />
+            <Route path="/strength/plan/:id" component={StrengthPlanEditor} />
             <Route path="/strength" component={Strength} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/training-load" component={TrainingLoad} />

@@ -342,6 +342,28 @@ export const garminPersonalKeyStatusSchema = z
 
 export type GarminPersonalKeyStatus = z.infer<typeof garminPersonalKeyStatusSchema>
 
+export const garminOAuthStatusSchema = z
+  .object({
+    available: z.boolean().meta({
+      description:
+        'Whether this server has Garmin Connect Developer Program credentials (Connect with Garmin)',
+    }),
+    connected: z.boolean().meta({ description: 'Whether Garmin is connected through Connect with Garmin' }),
+    last_received_at: iso8601DateTimeSchema.nullable().meta({
+      description: 'When Garmin last pushed data for this user, or null when nothing has arrived yet',
+    }),
+    needs_reconnect: z.boolean().meta({
+      description: 'Whether Garmin refused to renew the connection, so the user has to connect again',
+    }),
+    permissions: z.array(z.string()).meta({
+      description:
+        'What the user shares with Aurboda, as Garmin reports it (HEALTH_EXPORT, ACTIVITY_EXPORT, ...)',
+    }),
+  })
+  .meta({ description: 'Status of the Connect with Garmin (OAuth) connection', id: 'GarminOAuthStatus' })
+
+export type GarminOAuthStatus = z.infer<typeof garminOAuthStatusSchema>
+
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
@@ -365,10 +387,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     food_sensitivity_map: foodSensitivityMapSchema
       .default({})
       .meta({ description: 'Food-to-sensitivity mapping' }),
-    garmin_connected: z
-      .boolean()
-      .default(false)
-      .meta({ description: 'Whether Garmin is connected, by login session or Personal API key' }),
+    garmin_connected: z.boolean().default(false).meta({
+      description: 'Whether Garmin is connected, by login session, Personal API key or Connect with Garmin',
+    }),
     garmin_session_connected: z
       .boolean()
       .default(false)
@@ -378,6 +399,13 @@ export const userSettingsResponseSchema = baseResponseSchema
       connected: false,
       expires_at: null,
       refused: false,
+    }),
+    garmin_oauth: garminOAuthStatusSchema.default({
+      available: false,
+      connected: false,
+      last_received_at: null,
+      needs_reconnect: false,
+      permissions: [],
     }),
     garmin_disabled_data_types: z
       .array(garminDataTypeSchema)

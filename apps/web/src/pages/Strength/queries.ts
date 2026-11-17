@@ -26,6 +26,10 @@ export const invalidateStrengthQueries = (queryClient: QueryClient): Promise<unk
   Promise.all([
     ...STRENGTH_QUERY_KEYS.map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
     queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('timeline-') }),
+    queryClient.invalidateQueries({ queryKey: ['strength-score'] }),
+    queryClient.invalidateQueries({ queryKey: ['strength-score-history'] }),
+    queryClient.invalidateQueries({ queryKey: ['muscle-recovery'] }),
+    queryClient.invalidateQueries({ queryKey: ['muscle-recovery-history'] }),
   ])
 
 const findOpen = async (startTime: string): Promise<string | undefined> => {

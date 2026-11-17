@@ -19,6 +19,7 @@ export interface AccountDeletionDeps {
   centralDb: Pick<
     CentralDb,
     | 'deleteAllCentralUserData'
+    | 'deleteGarminUserMappingByUsername'
     | 'deleteOuraUserMappingsByUsername'
     | 'deleteStravaAthleteMappingByUsername'
     | 'getAdmins'
@@ -155,6 +156,9 @@ export const createAccountDeleter = (deps: AccountDeletionDeps): AccountDeleter 
     )
     await bestEffort('Strava mapping removal', username, () =>
       centralDb.deleteStravaAthleteMappingByUsername(username),
+    )
+    await bestEffort('Garmin mapping removal', username, () =>
+      centralDb.deleteGarminUserMappingByUsername(username),
     )
 
     await centralDb.reserveDeletedUsername(username, actor)

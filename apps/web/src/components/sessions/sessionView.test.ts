@@ -27,6 +27,7 @@ import {
   sessionLabel,
   sortGroups,
   sortSessions,
+  strengthScoreHref,
 } from './sessionView'
 
 const zones = (z3: number, z5 = 0) => ({ 0: 60, 1: 60, 2: 60, 3: z3, 4: 0, 5: z5 })
@@ -111,6 +112,14 @@ describe('schema helpers', () => {
     )
     expect(muscleGroupHref('strength training', 'sets.exercise', 'middle_back')).toBe(
       '/activity-type/strength%20training/muscle/sets.exercise/middle_back',
+    )
+  })
+})
+
+describe('strengthScoreHref', () => {
+  test('links the strength score page of a type and path', () => {
+    expect(strengthScoreHref('strength training', 'sets.exercise')).toBe(
+      '/activity-type/strength%20training/strength-score/sets.exercise',
     )
   })
 })

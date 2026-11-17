@@ -7,3 +7,20 @@
     color: #6b7280;
   }
 }
+
+.muscle-group-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.muscle-group-card-link:hover {
+  border-color: var(--color-accent);
+}
+
+.muscle-group-recovery-sources {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}

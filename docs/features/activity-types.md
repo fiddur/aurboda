@@ -429,6 +429,16 @@ exercises section ends with a **Sets per muscle group** block of its own, set ap
 exercise, that lists the session's sets per group; its heading links to this section of the type
 page. The Strength page links to it too.
 
+The [strength score](strength-score.md) builds on the same catalogue matching: per reference lift
+the best estimated one-rep max of the last 90 days against a reference by sex and bodyweight,
+averaged per muscle group and overall (`GET /activity-types/:name/strength-score`, MCP
+`get_strength_score` and `get_strength_score_history`).
+
+[Muscle recovery](muscle-recovery.md) uses the same recruitment weights over the last 10 days:
+per group how far the fatigue of its working sets has worn off, halving every 24 or 36 hours
+(`GET /activity-types/:name/muscle-groups/recovery`, MCP `get_muscle_recovery` and
+`get_muscle_recovery_history`).
+
 Each muscle group has a page of its own at
 `/activity-type/<type>/muscle/<item path>/<group>` (`/activity-type/strength_training/muscle/sets.exercise/chest`):
 over 90 days, a year or two years, its sets this week, average sets per week and when it was last

@@ -2,7 +2,7 @@ import { Encoder, Profile } from '@garmin/fitsdk'
 import { zipSync } from 'fflate'
 import { describe, expect, test } from 'vitest'
 
-import { type FitActivity, fitToDetail, parseActivityFit } from './fit.ts'
+import { type FitActivity, fitToDetail, parseActivityFile, parseActivityFit } from './fit.ts'
 
 const semicircles = (degrees: number): number => Math.round((degrees * 2 ** 31) / 180)
 
@@ -220,6 +220,35 @@ describe('parseActivityFit', () => {
     const { points } = fitToDetail(fit, start)
 
     expect(points.map((p) => p.metric)).toEqual(['power'])
+  })
+})
+
+describe('parseActivityFile', () => {
+  test('reads a bare FIT file as parseActivityFit reads it zipped', () => {
+    const fit = encodeFit({
+      records: [
+        record(2, { heartRate: 130 }),
+        record(1, { heartRate: 120, positionLat: semicircles(57.65), positionLong: semicircles(12.62) }),
+      ],
+    })
+
+    const bare = parseActivityFile(fit)
+    expect(bare).not.toBeNull()
+    expect(bare).toEqual(parseActivityFit(zip({ 'a.fit': fit })))
+    expect(fitToDetail(bare!, start)).toEqual(fitToDetail(parseActivityFit(zip({ 'a.fit': fit }))!, start))
+  })
+
+  test('reads a download ZIP', () => {
+    const fit = encodeFit({ records: [record(1, { heartRate: 120 })] })
+
+    expect(parseActivityFile(zip({ 'a.fit': fit }))).toEqual(parseActivityFit(zip({ 'a.fit': fit })))
+  })
+
+  test('bytes that are neither are no file', () => {
+    expect(parseActivityFile(new Uint8Array([1, 2, 3, 4]))).toBeNull()
+    expect(parseActivityFile(new Uint8Array(0))).toBeNull()
+    expect(parseActivityFile(new TextEncoder().encode('<gpx></gpx>'))).toBeNull()
+    expect(parseActivityFile(encodeFit({ records: [record(1, { heartRate: 120 })] }).slice(0, 20))).toBeNull()
   })
 })
 

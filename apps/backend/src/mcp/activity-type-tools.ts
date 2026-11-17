@@ -10,7 +10,15 @@ import {
   muscleGroupHistoryPeriod,
   muscleGroupHistoryQuerySchema,
   muscleGroupsQuerySchema,
+  muscleRecoveryHistoryPeriod,
+  muscleRecoveryHistoryPeriodError,
+  muscleRecoveryHistoryQuerySchema,
+  muscleRecoveryQuerySchema,
   setItemValueIdentityBodySchema,
+  strengthScoreHistoryPeriod,
+  strengthScoreHistoryPeriodError,
+  strengthScoreHistoryQuerySchema,
+  strengthScoreQuerySchema,
   unmappedItemValuesQuerySchema,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -33,7 +41,14 @@ import {
   listUnmappedItemValues,
   setItemValueIdentity,
 } from '../services/item-value-identities.ts'
-import { queryMuscleGroupHistory, queryMuscleGroupOverview } from '../services/queries/index.ts'
+import {
+  queryMuscleGroupHistory,
+  queryMuscleGroupOverview,
+  queryMuscleRecovery,
+  queryMuscleRecoveryHistory,
+  queryStrengthScore,
+  queryStrengthScoreHistory,
+} from '../services/queries/index.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
@@ -256,6 +271,78 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
         return errorResponse(MUSCLE_GROUP_HISTORY_START_AFTER_END)
       }
       const result = await queryMuscleGroupHistory(user, activity_type, field, muscle_group, period)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_muscle_recovery',
+    "Get how recovered each muscle group is at a moment (at, ISO 8601; defaults to now), to plan the next workout: recovery 100 is fully recovered, 80 and above is ready to train, lower means the group is still tired from recent sessions. It is a model, not a measurement: every working set (warm-ups excluded) of an exercise of the catalogue-backed item path (sets.exercise) matched to the exercise catalogue, in sessions of the activity type (or its subtypes) started in the 10 days up to `at`, adds 0.1 × the exercise's recruitment weight for the group × an effort factor (1.2 at failure, RPE 9+ or RIR 1 or less; 0.7 at RPE 6 or less or RIR 4+; else 1), and that fatigue halves every half_life_hours (36 for chest, back, quadriceps, hamstrings and glutes, 24 for the rest) from the end of the session; recovery is 100 × (1 − fatigue). `ready_at` says when a group will reach 80 if nothing more is trained (null when it already has), and `sources` lists the sessions that still tire it. A later `at` (for instance tomorrow morning) gives the recovery expected then. It only knows the strength sets logged, not running or other training, sleep or soreness. Use search_exercise_catalog with `muscle` to find exercises for the groups that are ready.",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...muscleRecoveryQuerySchema.shape,
+    },
+    async ({ activity_type, at, field }) => {
+      const result = await queryMuscleRecovery(
+        user,
+        activity_type,
+        field,
+        at === undefined ? new Date() : new Date(at),
+      )
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_muscle_recovery_history',
+    'Get muscle recovery (see get_muscle_recovery) over a period: the recovery of every muscle group at end and every step_hours (1 to 24, default 6) before it down to start, oldest first; end defaults to now and may lie ahead to show the recovery to come, start defaults to 14 days before end, at most 500 points.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...muscleRecoveryHistoryQuerySchema.shape,
+    },
+    async ({ activity_type, end, field, start, step_hours }) => {
+      const period = muscleRecoveryHistoryPeriod({ end, start, step_hours })
+      const error = muscleRecoveryHistoryPeriodError(period)
+      if (error !== undefined) return errorResponse(error)
+      const result = await queryMuscleRecoveryHistory(user, activity_type, field, period)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_strength_score',
+    "Get the strength score of the activity type (or its subtypes) at a moment (at, ISO 8601; defaults to now). For every reference lift (barbell bench press, back squat, dumbbell curl, ...) the best estimated one-rep max (Epley: weight × (1 + reps / 30)) of its working sets of 1 to 12 reps in the 90 days up to `at` is scored against a reference that depends on sex and bodyweight: 100 points is a solid recreational lifter. Dumbbell lifts count the weight of one dumbbell, as logged. A muscle group's score (chest, shoulders, back, biceps, triceps, quadriceps, hamstrings, glutes) is the mean of its best 3 lift scores, the overall score the mean of the group scores. Only exercises of the catalogue-backed item path (sets.exercise) matched to the exercise catalogue count. Each lift gives its best set and when it leaves the window (expires_at). `missing` lists what the user has not given (`sex` in the user settings, `bodyweight` as any value of the weight metric); every score is then null but the best sets are still listed.",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...strengthScoreQuerySchema.shape,
+    },
+    async ({ activity_type, at, field }) => {
+      const result = await queryStrengthScore(
+        user,
+        activity_type,
+        field,
+        at === undefined ? new Date() : new Date(at),
+      )
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_strength_score_history',
+    "Get the strength score (see get_strength_score) over a period: the overall score and each muscle group's at end and every step_days (1 to 31, default 7) before it down to start, oldest first; end defaults to now, start to 365 days before end, at most 500 points. Each point looks back over its own 90 days, so a lift's best set counts for 90 days and then drops out. No points when sex or bodyweight is missing (see `missing`).",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...strengthScoreHistoryQuerySchema.shape,
+    },
+    async ({ activity_type, end, field, start, step_days }) => {
+      const period = strengthScoreHistoryPeriod({ end, start, step_days })
+      const error = strengthScoreHistoryPeriodError(period)
+      if (error !== undefined) return errorResponse(error)
+      const result = await queryStrengthScoreHistory(user, activity_type, field, period)
       if (!result.success) return errorResponse(result.error)
       return jsonResponse(result.data)
     },

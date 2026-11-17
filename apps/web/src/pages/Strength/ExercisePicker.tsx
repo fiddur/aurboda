@@ -1,25 +1,35 @@
+import type { ComponentChildren } from 'preact'
+
 import {
   type ExerciseEquipment,
   exerciseEquipment,
   exerciseEquipmentInfo,
   type ExerciseMuscle,
-  exerciseMuscleGroups,
-  exerciseMuscleInfo,
+  type MuscleRecovery,
 } from '@aurboda/api-spec'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
 import { useDebounced } from '../../components/useDebounced'
-import { fetchActivityFieldValues, searchExerciseCatalog } from '../../state/api'
+import { useExerciseCatalogPages } from '../../components/useExerciseCatalogPages'
+import { fetchActivityFieldValues } from '../../state/api'
 import { SETS_PATH, STRENGTH_TYPE } from './constants'
-import { buildPickerSections, type PickerItem, type PickerSection, recentExercises } from './picker'
+import {
+  buildPickerSections,
+  CATALOG_SECTION_TITLE,
+  muscleFilterLabel,
+  muscleFilterOptions,
+  type PickerItem,
+  type PickerSection,
+  recentExercises,
+} from './picker'
 import { useRecentStrengthSessions } from './queries'
 import { recentSessionSets } from './startModel'
 
 type Filter = { kind: 'muscle'; value: ExerciseMuscle } | { kind: 'equipment'; value: ExerciseEquipment }
 
-const MUSCLE_OPTIONS = exerciseMuscleGroups.map((m) => ({ label: exerciseMuscleInfo[m].name, value: m }))
 const EQUIPMENT_OPTIONS = exerciseEquipment
   .map((e) => ({ label: exerciseEquipmentInfo[e].name, value: e }))
   .sort((a, b) => a.label.localeCompare(b.label))
@@ -37,11 +47,12 @@ const itemMeta = (item: PickerItem): string | undefined => {
   return undefined
 }
 
-const filterLabel = (filter: Filter): string =>
-  filter.kind === 'muscle' ? exerciseMuscleInfo[filter.value].name : exerciseEquipmentInfo[filter.value].name
+const filterLabel = (filter: Filter, recovery: MuscleRecovery | null | undefined): string =>
+  filter.kind === 'muscle'
+    ? muscleFilterLabel(filter.value, recovery)
+    : exerciseEquipmentInfo[filter.value].name
 
 const catalogQueryFor = (typed: string, filter: Filter | undefined) => ({
-  limit: CATALOG_LIMIT,
   ...(typed ? { q: typed } : {}),
   ...(filter?.kind === 'muscle' ? { muscle: filter.value } : {}),
   ...(filter?.kind === 'equipment' ? { equipment: filter.value } : {}),
@@ -50,11 +61,13 @@ const catalogQueryFor = (typed: string, filter: Filter | undefined) => ({
 const FilterChips = ({
   filter,
   choosing,
+  recovery,
   onAll,
   onChoose,
 }: {
   filter: Filter | undefined
   choosing: Filter['kind'] | undefined
+  recovery: MuscleRecovery | null | undefined
   onAll: () => void
   onChoose: (kind: Filter['kind']) => void
 }) => (
@@ -69,15 +82,27 @@ const FilterChips = ({
         class={`strength-chip${filter?.kind === kind || choosing === kind ? ' active' : ''}`}
         onClick={() => onChoose(kind)}
       >
-        {filter?.kind === kind ? filterLabel(filter) : kind === 'muscle' ? 'Muscle group' : 'Equipment'}
+        {filter?.kind === kind
+          ? filterLabel(filter, recovery)
+          : kind === 'muscle'
+            ? 'Muscle group'
+            : 'Equipment'}
       </button>
     ))}
   </div>
 )
 
-const FilterValues = ({ kind, onPick }: { kind: Filter['kind']; onPick: (filter: Filter) => void }) => (
+const FilterValues = ({
+  kind,
+  recovery,
+  onPick,
+}: {
+  kind: Filter['kind']
+  recovery: MuscleRecovery | null | undefined
+  onPick: (filter: Filter) => void
+}) => (
   <ul class="strength-picker-list strength-filter-values">
-    {(kind === 'muscle' ? MUSCLE_OPTIONS : EQUIPMENT_OPTIONS).map((o) => (
+    {(kind === 'muscle' ? muscleFilterOptions(recovery) : EQUIPMENT_OPTIONS).map((o) => (
       <li key={o.value}>
         <button
           type="button"
@@ -93,9 +118,11 @@ const FilterValues = ({ kind, onPick }: { kind: Filter['kind']; onPick: (filter:
 
 const Sections = ({
   sections,
+  catalogMore,
   onPick,
 }: {
   sections: PickerSection[]
+  catalogMore?: ComponentChildren
   onPick: (item: PickerItem) => void
 }) => (
   <>
@@ -114,8 +141,10 @@ const Sections = ({
             </li>
           ))}
         </ul>
+        {section.title === CATALOG_SECTION_TITLE && catalogMore}
       </section>
     ))}
+    {!sections.some((section) => section.title === CATALOG_SECTION_TITLE) && catalogMore}
   </>
 )
 
@@ -149,18 +178,20 @@ export const ExercisePicker = ({
     staleTime: 5 * 60 * 1000,
   })
   const recent = useRecentStrengthSessions()
+  const recovery = useMuscleRecovery(STRENGTH_TYPE, SETS_PATH).data
 
   const catalogQuery = catalogQueryFor(typed, filter)
-  const catalog = useQuery({
-    enabled: typed !== '' || filter !== undefined,
-    placeholderData: keepPreviousData,
-    queryFn: () => searchExerciseCatalog(catalogQuery),
-    queryKey: ['exercise-catalog', 'strength-picker', catalogQuery],
+  const catalogShown = typed !== '' || filter !== undefined
+  const catalog = useExerciseCatalogPages({
+    enabled: catalogShown,
+    pageSize: CATALOG_LIMIT,
+    query: catalogQuery,
     staleTime: 30 * 60 * 1000,
   })
+  const catalogRemaining = catalogShown ? catalog.remaining : 0
 
   const sections = buildPickerSections({
-    catalog: typed !== '' || filter ? (catalog.data?.entries ?? []) : [],
+    catalog: catalogShown ? catalog.entries : [],
     own: own.data?.values ?? [],
     recent: recentExercises(recentSessionSets(recent.data ?? [], sessionId)),
     text,
@@ -186,6 +217,7 @@ export const ExercisePicker = ({
       <FilterChips
         filter={filter}
         choosing={choosing}
+        recovery={recovery}
         onAll={() => {
           setFilter(undefined)
           setChoosing(undefined)
@@ -195,6 +227,7 @@ export const ExercisePicker = ({
       {choosing && (
         <FilterValues
           kind={choosing}
+          recovery={recovery}
           onPick={(f) => {
             setFilter(f)
             setChoosing(undefined)
@@ -204,6 +237,18 @@ export const ExercisePicker = ({
       {!choosing && (
         <Sections
           sections={sections}
+          catalogMore={
+            catalogRemaining > 0 && (
+              <button
+                type="button"
+                class="btn-secondary strength-picker-more"
+                disabled={catalog.isLoadingMore}
+                onClick={catalog.loadMore}
+              >
+                Show more ({catalogRemaining})
+              </button>
+            )
+          }
           onPick={(item) => onPick(item.value, item.kind === 'catalog' ? item.key : undefined)}
         />
       )}

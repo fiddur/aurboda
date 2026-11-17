@@ -2,9 +2,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { muscleGroupsHref } from '../../components/sessions/sessionView'
+import { muscleGroupsHref, strengthScoreHref } from '../../components/sessions/sessionView'
 import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft, readLiveDraft } from './draftStorage'
+import { MuscleRecoveryCard } from './MuscleRecoveryCard'
+import { PlannedWorkouts } from './PlannedWorkouts'
 import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
 import { finishLiveSession } from './saveQueue'
 import { liveDraftFromServer, loggedSetCount, type SessionDraft, sessionSummary } from './sessionModel'
@@ -17,6 +19,7 @@ import {
   type StrengthActivity,
   unfinishedOnServer,
 } from './startModel'
+import { StrengthScoreCard } from './StrengthScoreCard'
 import './style.css'
 
 const unfinishedDraft = (
@@ -141,6 +144,9 @@ export function Strength() {
           </a>
         </div>
       )}
+      <StrengthScoreCard />
+      <MuscleRecoveryCard />
+      <PlannedWorkouts onStart={start} />
       <section class="strength-section">
         <h2>Repeat a session</h2>
         {sessions.isLoading && <p class="loading">Loading…</p>}
@@ -170,6 +176,8 @@ export function Strength() {
         <a href={`/activity-type/${STRENGTH_TYPE}`}>All strength sessions</a>
         {' · '}
         <a href={muscleGroupsHref(STRENGTH_TYPE, SETS_PATH)}>Sets per muscle group</a>
+        {' · '}
+        <a href={strengthScoreHref(STRENGTH_TYPE, SETS_PATH)}>Strength score</a>
       </p>
     </div>
   )

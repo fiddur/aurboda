@@ -119,6 +119,12 @@ import {
   muscleGroupsResponseSchema,
 } from './schemas/muscle-groups.ts'
 import {
+  muscleRecoveryHistoryQuerySchema,
+  muscleRecoveryHistoryResponseSchema,
+  muscleRecoveryQuerySchema,
+  muscleRecoveryResponseSchema,
+} from './schemas/muscle-recovery.ts'
+import {
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
   notificationsQuerySchema,
@@ -192,6 +198,19 @@ import {
 } from './schemas/segments.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
+import {
+  createStrengthPlanBodySchema,
+  strengthPlanResponseSchema,
+  strengthPlansQuerySchema,
+  strengthPlansResponseSchema,
+  updateStrengthPlanBodySchema,
+} from './schemas/strength-plans.ts'
+import {
+  strengthScoreHistoryQuerySchema,
+  strengthScoreHistoryResponseSchema,
+  strengthScoreQuerySchema,
+  strengthScoreResponseSchema,
+} from './schemas/strength-score.ts'
 import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
@@ -677,6 +696,109 @@ const openApiDocument = createDocument({
         tags: ['Activities'],
       },
     },
+    '/strength-plans': {
+      get: {
+        description:
+          'List planned strength workouts. A plan is a named list of planned sets, for a day (`planned_for`) or, without one, a routine to start whenever. `sessions` are the strength activities started from it (their `data.plan_id` is its id), newest first. `status=open` (default) gives routines and the plans with a day that have no session yet; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
+        requestParams: { query: strengthPlansQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlansResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List strength plans',
+        tags: ['Activities'],
+      },
+      post: {
+        description:
+          'Plan a strength workout: a name, the sets in the order to do them, and `planned_for` for a workout on a day (left out for a routine). A set with an `exercise_key` that is not a key of the exercise catalogue is refused.',
+        requestBody: { content: { 'application/json': { schema: createStrengthPlanBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Plan created',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or an unknown exercise_key',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create strength plan',
+        tags: ['Activities'],
+      },
+    },
+    '/strength-plans/{id}': {
+      delete: {
+        description: 'Delete a strength plan. Sessions started from it keep their `data.plan_id`.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Plan deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete strength plan',
+        tags: ['Activities'],
+      },
+      get: {
+        description: 'One strength plan with its sets and the sessions started from it.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength plan',
+        tags: ['Activities'],
+      },
+      patch: {
+        description:
+          'Change a strength plan: a field left out stays, `planned_for: null` and `note: null` clear, `sets` replaces the whole list. An empty body is refused.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        requestBody: { content: { 'application/json': { schema: updateStrengthPlanBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid or empty body, or an unknown exercise_key',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update strength plan',
+        tags: ['Activities'],
+      },
+    },
     '/activity-types/{name}/item-values/identity': {
       delete: {
         description:
@@ -794,6 +916,55 @@ const openApiDocument = createDocument({
         tags: ['Activities'],
       },
     },
+    '/activity-types/{name}/muscle-groups/recovery': {
+      get: {
+        description:
+          'Muscle recovery at a moment (default now; a later moment shows the recovery to come if nothing more is trained): per muscle group the share of the fatigue of the last 10 days that has worn off. Each working set of an exercise matched to the exercise catalogue adds 0.1 × its recruitment weight for the group × its effort (1.2 near failure, 0.7 easy, else 1), halving every 36 hours for large groups and 24 for the others from the end of the session; recovery is 100 × (1 − fatigue). 80 and above is ready; `ready_at` says when a group gets there.',
+        requestParams: { path: activityTypeNamePathSchema, query: muscleRecoveryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleRecoveryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get muscle recovery',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/muscle-groups/recovery/history': {
+      get: {
+        description:
+          'Muscle recovery over a period (default the 14 days up to end, which defaults to now and may lie ahead): the recovery of every muscle group at end and every step_hours (default 6) before it down to start, oldest first.',
+        requestParams: { path: activityTypeNamePathSchema, query: muscleRecoveryHistoryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleRecoveryHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Start not before end, more than 500 points, or the field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get muscle recovery history',
+        tags: ['Activities'],
+      },
+    },
     '/activity-types/{name}/muscle-groups/{group}': {
       get: {
         description:
@@ -819,6 +990,55 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get muscle group history',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/strength-score': {
+      get: {
+        description:
+          'Strength score at a moment (default now): per reference lift the best estimated one-rep max (Epley) of the working sets of 1 to 12 reps in the last 90 days, against a reference by sex and bodyweight (100 points: a solid recreational lifter); per muscle group the mean of its best 3 lifts, overall the mean of the groups. Only exercises matched to the exercise catalogue count. `missing` lists what the user has not given (sex in the settings, a weight); every score is then null.',
+        requestParams: { path: activityTypeNamePathSchema, query: strengthScoreQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthScoreResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength score',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/strength-score/history': {
+      get: {
+        description:
+          'The strength score over a period (default the last 365 days), one point every step_days (default 7) back from end, oldest first; each point looks back over its own 90 days. No points when sex or bodyweight is missing.',
+        requestParams: { path: activityTypeNamePathSchema, query: strengthScoreHistoryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthScoreHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Start not before end, more than 500 points, or the field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength score history',
         tags: ['Activities'],
       },
     },

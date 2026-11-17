@@ -111,6 +111,8 @@ export const tableCreationOrder = [
   'item_value_aliases_indexes',
   'item_value_identities',
   'item_value_identities_indexes',
+  'strength_plans',
+  'strength_plans_indexes',
   'meals',
   'meals_indexes',
   'meal_log_completed',

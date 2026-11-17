@@ -18,6 +18,14 @@ Entry points: **Log a session** on the strength training type page, a line above
 the Add page, **Continue** on the detail page of a session in progress and **Edit sets** on a
 finished one logged in Aurboda.
 
+The logged sets feed the [strength score](strength-score.md): per reference lift the best
+estimated one-rep max of the last 90 days against a reference by sex and bodyweight.
+They also feed [muscle recovery](muscle-recovery.md): per muscle group how far the fatigue of
+the working sets of the last days has worn off.
+
+A workout can also be planned ahead: [strength plans](strength-plans.md) are named lists of
+planned sets, for a day or as a routine, which the user or an assistant over MCP writes.
+
 ## Exercise blocks
 
 The stored list is flat, in order. The pages group consecutive sets with the same exercise name
@@ -28,7 +36,8 @@ sets share a `superset_id` are labelled **Superset**; the pages do not create su
 
 **+ Add exercise** opens a picker: the exercises of the last three sessions, then the user's own
 names (most recently used first), then, while typing or with a muscle group or equipment filter,
-the [exercise catalogue](exercise-catalog.md). A catalogue pick sends its key as `exercise_key`
+the [exercise catalogue](exercise-catalog.md), 20 at a time ("Show more" loads the next). A
+catalogue pick sends its key as `exercise_key`
 with the block's sets until one save has carried it, which maps the name to the entry.
 
 ## Live sessions

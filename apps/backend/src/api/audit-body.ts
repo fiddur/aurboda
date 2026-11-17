@@ -1,7 +1,13 @@
 const FULL_DETAIL_MAX_CHARS = 4096
 const SUMMARY_STRING_MAX_CHARS = 200
 
-const SECRET_KEYS = new Set(['api_key', 'new_password', 'password', 'smtp_password'])
+/** `code` and `state` are an OAuth sign-in's, which finish through an authenticated POST. */
+const SECRET_KEYS = new Set(['code', 'state'])
+
+/** By suffix, so a credential added to a settings form later is redacted without a change here. */
+const SECRET_KEY_PATTERN = /(^|_)(api_key|password|secret|token)$/
+
+const isSecretKey = (key: string): boolean => SECRET_KEYS.has(key) || SECRET_KEY_PATTERN.test(key)
 
 const summarizeValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return { count: value.length }
@@ -35,7 +41,7 @@ export const summarizeAuditBody = (body: unknown): Record<string, unknown> | und
 
   const redacted = Object.fromEntries(
     Object.entries(body as Record<string, unknown>).map(([k, v]) =>
-      SECRET_KEYS.has(k) ? [k, '[REDACTED]'] : [k, v],
+      isSecretKey(k) ? [k, '[REDACTED]'] : [k, v],
     ),
   )
   if (
