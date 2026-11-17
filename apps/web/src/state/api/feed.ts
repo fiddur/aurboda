@@ -71,6 +71,14 @@ export const fetchFeed = async (cursor?: string): Promise<FeedPostsResponse> => 
   return response.data
 }
 
+/** One of the signed-in user's own posts, at any visibility. */
+export const fetchOwnFeedPost = async (postId: string): Promise<FeedPostResponse> => {
+  const response = await axios.get<FeedPostResponse>(`${API_URL}/feed/${encodeURIComponent(postId)}`, {
+    headers: authHeaders(),
+  })
+  return response.data
+}
+
 /**
  * Preview what sharing `activityId` with this selection would federate:
  * the exact post HTML + resolved metric values. Creates nothing.

@@ -98,6 +98,7 @@ import {
 import { listPostReactions } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
+  getOwnFeedPost,
   normalizeFeedMessage,
   previewActivityShare,
   serializeFeedPost,
@@ -755,6 +756,21 @@ export const createFeedRouter = (
       res.json({ markdown, success: true })
     },
   )
+
+  // Registered after every other one-segment GET so it shadows none of them.
+  router.get<{ postId: string }, FeedPostResponse>('/:postId', authMiddleware, async (req, res) => {
+    const user = req.user!
+    const notFound = { error: 'Feed post not found', success: false }
+    if (!UUID_RE.test(req.params.postId)) return res.status(404).json(notFound)
+    const post = await getOwnFeedPost(user, req.params.postId, {
+      includeStructured: true,
+      origin: webHost,
+      settings: await getSettings(user).catch(() => null),
+      tagActorHost: await tagActorHost(),
+    })
+    if (post == null) return res.status(404).json(notFound)
+    res.json({ post, success: true })
+  })
 
   router.patch<{ postId: string }, FeedPostResponse, UpdateFeedPostBody>(
     '/:postId',

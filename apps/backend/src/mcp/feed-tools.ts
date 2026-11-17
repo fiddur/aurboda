@@ -80,6 +80,7 @@ import {
 import { listPostReactions } from '../services/feed-reactions.ts'
 import {
   getFeedPage,
+  getOwnFeedPost,
   normalizeFeedMessage,
   previewActivityShare,
   serializeFeedPost,
@@ -159,6 +160,20 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
           tagActorHost: await tagActorHost(),
         }),
       )
+    },
+  )
+
+  server.tool(
+    'get_feed_post',
+    'Get one of the posts you published to your feed, by its id, at any visibility (also a followers-only one, which has no public page): the same shape as an entry of `list_feed`.',
+    { id: z.string().uuid().describe('Feed post ID') },
+    async ({ id }) => {
+      const post = await getOwnFeedPost(user, id, {
+        origin: webHost,
+        settings: await getSettings(user).catch(() => null),
+        tagActorHost: await tagActorHost(),
+      })
+      return post == null ? errorResponse('Feed post not found') : jsonResponse(post)
     },
   )
 
