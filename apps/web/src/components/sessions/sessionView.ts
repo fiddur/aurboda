@@ -43,6 +43,9 @@ export const itemPageHref = (activityType: string, path: string, value: string):
 export const muscleGroupHref = (activityType: string, path: string, group: string): string =>
   `/activity-type/${encodeURIComponent(activityType)}/muscle/${encodeURIComponent(path)}/${encodeURIComponent(group)}`
 
+export const strengthScoreHref = (activityType: string, path: string): string =>
+  `/activity-type/${encodeURIComponent(activityType)}/strength-score/${encodeURIComponent(path)}`
+
 export const muscleGroupsSectionId = (path: string): string => `muscle-groups-${path}`
 
 export const muscleGroupsHref = (activityType: string, path: string): string =>

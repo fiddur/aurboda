@@ -558,3 +558,20 @@ button.strength-set-row:hover {
     color: #fca5a5;
   }
 }
+
+.strength-score-card {
+  color: var(--color-text);
+  text-decoration: none;
+  gap: 0.125rem;
+}
+
+.strength-score-card:hover {
+  border-color: var(--color-accent);
+}
+
+.strength-score-card-value {
+  font-size: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}

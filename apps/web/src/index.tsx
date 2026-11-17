@@ -20,6 +20,7 @@ import './style.css'
 const ActivityTypeItem = lazyPage(() => import('./pages/ActivityTypeItem/index.jsx'), 'ActivityTypeItem')
 const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.jsx'), 'ActivityTypeMeta')
 const MuscleGroup = lazyPage(() => import('./pages/MuscleGroup/index.jsx'), 'MuscleGroup')
+const StrengthScore = lazyPage(() => import('./pages/StrengthScore/index.jsx'), 'StrengthScore')
 const ActivityTypes = lazyPage(() => import('./pages/ActivityTypes/index.jsx'), 'ActivityTypes')
 const AddData = lazyPage(() => import('./pages/AddData/index.jsx'), 'AddData')
 const AdminSettings = lazyPage(() => import('./pages/AdminSettings/index.jsx'), 'AdminSettings')
@@ -177,6 +178,7 @@ function AppShell() {
             <Route path="/feed" component={Feed} />
             <Route path="/activity-type/:name/item/:field/:value" component={ActivityTypeItem} />
             <Route path="/activity-type/:name/muscle/:field/:group" component={MuscleGroup} />
+            <Route path="/activity-type/:name/strength-score/:field" component={StrengthScore} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
             <Route path="/strength/session/:id" component={StrengthSession} />
