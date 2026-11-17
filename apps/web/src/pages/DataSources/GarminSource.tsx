@@ -1,4 +1,9 @@
-import type { GarminDataType, GarminPersonalKeyStatus, ProviderSyncStatus } from '@aurboda/api-spec'
+import type {
+  GarminDataType,
+  GarminOAuthStatus,
+  GarminPersonalKeyStatus,
+  ProviderSyncStatus,
+} from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
@@ -14,6 +19,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { garminConnectionFlags } from './garminConnection'
+import { GarminOAuth } from './GarminOAuth'
 import { GarminPersonalKey } from './GarminPersonalKey'
 import {
   type DataTypeItem,
@@ -305,6 +311,8 @@ function GarminDataTypesSection({
 
 function GarminConnectionSection({
   isConnected,
+  canPull,
+  oauth,
   sessionConnected,
   personalKey,
   onPersonalKeyChanged,
@@ -321,6 +329,8 @@ function GarminConnectionSection({
   handleFullResync,
 }: {
   isConnected: boolean
+  canPull: boolean
+  oauth: GarminOAuthStatus
   sessionConnected: boolean
   personalKey: GarminPersonalKeyStatus | undefined
   onPersonalKeyChanged: () => Promise<void>
@@ -343,7 +353,7 @@ function GarminConnectionSection({
         label={isConnected ? 'Garmin is connected' : 'Garmin not connected'}
       />
 
-      {isConnected && (
+      {canPull && (
         <SyncStatusBar
           states={syncStatusData?.states}
           isLoading={syncStatusLoading}
@@ -362,7 +372,7 @@ function GarminConnectionSection({
         </a>
       </div>
 
-      {isConnected && (
+      {canPull && (
         <section class="settings-section">
           <div class="garmin-button-row">
             <button
@@ -377,6 +387,8 @@ function GarminConnectionSection({
           {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
         </section>
       )}
+
+      <GarminOAuth status={oauth} onChanged={onPersonalKeyChanged} />
 
       <section class="settings-section">
         <h2>Garmin Connect login</h2>
@@ -404,7 +416,7 @@ function GarminConnectionSection({
 
       {personalKey && <GarminPersonalKey status={personalKey} onChanged={onPersonalKeyChanged} />}
 
-      <SyncIntervalField provider="garmin" />
+      {canPull && <SyncIntervalField provider="garmin" />}
     </>
   )
 }
@@ -419,7 +431,8 @@ export function GarminSource() {
     queryKey: ['userSettings'],
   })
 
-  const { isConnected, keyOnly, personalKey, sessionConnected } = garminConnectionFlags(userSettings)
+  const { canPull, isConnected, keyOnly, oauth, personalKey, sessionConnected } =
+    garminConnectionFlags(userSettings)
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
@@ -427,7 +440,7 @@ export function GarminSource() {
   const shouldPoll = syncStatus === 'syncing'
 
   const { data: syncStatusData, isLoading: syncStatusLoading } = useQuery({
-    enabled: !!isLoggedIn && isConnected,
+    enabled: !!isLoggedIn && canPull,
     queryFn: fetchGarminSyncStatus,
     queryKey: ['garminSyncStatus'],
     refetchInterval: shouldPoll ? 3000 : false,
@@ -511,9 +524,11 @@ export function GarminSource() {
             Garmin Connect
           </a>{' '}
           provides fitness and health data from Garmin wearable devices. Aurboda connects to your Garmin
-          account in two ways, alone or together: the Garmin Connect login (your credentials are used only for
-          the initial login and are never stored — only session tokens are persisted), and a Personal API key
-          from Garmin's official Personal API.
+          account in three ways, alone or together: Connect with Garmin, where you sign in at Garmin and
+          Garmin sends new data as your device syncs; the Garmin Connect login (your credentials are used only
+          for the initial login and are never stored — only session tokens are persisted), which fetches your
+          history and what Garmin's official APIs leave out; and a Personal API key from Garmin's official
+          Personal API.
         </p>
 
         <GarminDataTypesSection
@@ -528,6 +543,8 @@ export function GarminSource() {
         ) : (
           <GarminConnectionSection
             isConnected={isConnected}
+            canPull={canPull}
+            oauth={oauth}
             sessionConnected={sessionConnected}
             personalKey={personalKey}
             onPersonalKeyChanged={handlePersonalKeyChanged}

@@ -180,6 +180,15 @@ export const adminSettingsResponseSchema = baseResponseSchema
       description:
         'Whether users may connect Garmin with a Personal API key (keys already stored keep syncing when off)',
     }),
+    garmin_client_id_set: z.boolean().meta({
+      description: 'Whether a Garmin Connect Developer Program OAuth client ID is configured',
+    }),
+    garmin_client_secret_set: z.boolean().meta({
+      description: 'Whether a Garmin Connect Developer Program OAuth client secret is configured',
+    }),
+    garmin_redirect_uri: z.string().meta({
+      description: 'Absolute OAuth redirect URI to register with Garmin (derived from API_BASE_URL)',
+    }),
     gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
     gravl_client_secret_set: z
       .boolean()
@@ -306,6 +315,16 @@ export const updateAdminSettingsBodySchema = z
       description:
         'Allow or stop new Garmin Personal API key connections (default on); keys already stored keep syncing',
     }),
+    garmin_client_id: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Garmin Connect Developer Program OAuth client ID (set to null to clear)' }),
+    garmin_client_secret: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Garmin Connect Developer Program OAuth client secret (set to null to clear)' }),
     gravl_client_id: z
       .string()
       .nullable()

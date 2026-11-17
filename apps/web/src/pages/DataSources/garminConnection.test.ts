@@ -4,9 +4,11 @@ import {
   addDaysToIsoDate,
   connectErrorText,
   garminConnectionFlags,
+  garminPermissionLabel,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
+  oauthErrorText,
 } from './garminConnection'
 
 describe('expiry quick choices', () => {
@@ -66,7 +68,14 @@ describe('garminConnectionFlags', () => {
         garmin_personal_key: key,
         garmin_session_connected: false,
       }),
-    ).toEqual({ isConnected: true, keyOnly: true, personalKey: key, sessionConnected: false })
+    ).toEqual({
+      canPull: true,
+      isConnected: true,
+      keyOnly: true,
+      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
+      personalKey: key,
+      sessionConnected: false,
+    })
   })
 
   it('is not key-only with the login too, or with nothing', () => {
@@ -78,10 +87,49 @@ describe('garminConnectionFlags', () => {
       }).keyOnly,
     ).toBe(false)
     expect(garminConnectionFlags(undefined)).toEqual({
+      canPull: false,
       isConnected: false,
       keyOnly: false,
+      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
       personalKey: undefined,
       sessionConnected: false,
     })
+  })
+
+  it('is connected but cannot pull with Connect with Garmin alone', () => {
+    const oauth = { available: true, connected: true, needs_reconnect: false, permissions: ['HEALTH_EXPORT'] }
+    const flags = garminConnectionFlags({
+      garmin_connected: true,
+      garmin_oauth: oauth,
+      garmin_personal_key: { ...key, connected: false, expires_at: null },
+      garmin_session_connected: false,
+    })
+    expect(flags).toMatchObject({ canPull: false, isConnected: true, keyOnly: false, oauth })
+  })
+
+  it('can pull with the login or a key', () => {
+    expect(garminConnectionFlags({ garmin_session_connected: true }).canPull).toBe(true)
+    expect(garminConnectionFlags({ garmin_personal_key: key }).canPull).toBe(true)
+  })
+})
+
+describe('oauthErrorText', () => {
+  it('explains each callback error code, and an unknown one as a failed connection', () => {
+    expect(oauthErrorText('auth_failed')).toBe('Garmin did not complete the connection. Try again.')
+    expect(oauthErrorText('not_configured')).toBe('This server has not set up Garmin sign-in.')
+    expect(oauthErrorText('invalid_state')).toBe('The connection attempt expired. Try again.')
+    expect(oauthErrorText('something_else')).toBe('Garmin did not complete the connection. Try again.')
+    expect(oauthErrorText(null)).toBeNull()
+  })
+})
+
+describe('garminPermissionLabel', () => {
+  it('names the known permissions and passes others through', () => {
+    expect(garminPermissionLabel('HEALTH_EXPORT')).toBe('Health data')
+    expect(garminPermissionLabel('ACTIVITY_EXPORT')).toBe('Activities')
+    expect(garminPermissionLabel('MCT_EXPORT')).toBe('Cycle tracking')
+    expect(garminPermissionLabel('WORKOUT_IMPORT')).toBe('Sending workouts')
+    expect(garminPermissionLabel('COURSE_IMPORT')).toBe('Sending courses')
+    expect(garminPermissionLabel('NEW_THING')).toBe('NEW_THING')
   })
 })

@@ -94,6 +94,8 @@ export interface ServerSettings {
   contact_fediverse: string
   contact_reddit: string
   default_relays_seeded: boolean
+  garmin_client_id: string
+  garmin_client_secret: string
   garmin_personal_key_enabled: boolean
   grace_days: number
   gravl_client_id: string
@@ -224,6 +226,14 @@ export interface CentralDb
   getUsernameByStravaAthleteId: (stravaAthleteId: number) => Promise<string | null>
   deleteStravaAthleteMapping: (stravaAthleteId: number) => Promise<boolean>
   deleteStravaAthleteMappingByUsername: (username: string) => Promise<boolean>
+  /**
+   * Map a Garmin user id to an Aurboda user, dropping any other mapping of that user.
+   * Answers the previous owner of the Garmin user id when it was a different user.
+   */
+  upsertGarminUserMapping: (garminUserId: string, username: string) => Promise<string | null>
+  getUsernameByGarminUserId: (garminUserId: string) => Promise<string | null>
+  getGarminUserIdByUsername: (username: string) => Promise<string | null>
+  deleteGarminUserMappingByUsername: (username: string) => Promise<boolean>
   createOAuthClient: (client: Omit<OAuthClient, 'created_at'>) => Promise<void>
   getOAuthClient: (clientId: string) => Promise<OAuthClient | null>
   saveAuthorizationCode: (code: Omit<OAuthAuthorizationCode, 'used'>) => Promise<void>
@@ -329,6 +339,15 @@ const CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE = `
 const CREATE_STRAVA_ATHLETE_MAPPINGS_TABLE = `
   CREATE TABLE IF NOT EXISTS strava_athlete_mappings (
     strava_athlete_id BIGINT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )
+`
+
+const CREATE_GARMIN_USER_MAPPINGS_TABLE = `
+  CREATE TABLE IF NOT EXISTS garmin_user_mappings (
+    garmin_user_id VARCHAR(255) PRIMARY KEY,
     username VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -496,6 +515,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_OURA_USER_MAPPINGS_TABLE)
       await client.query(CREATE_OURA_WEBHOOK_SUBSCRIPTIONS_TABLE)
       await client.query(CREATE_STRAVA_ATHLETE_MAPPINGS_TABLE)
+      await client.query(CREATE_GARMIN_USER_MAPPINGS_TABLE)
       await client.query(CREATE_OAUTH_CLIENTS_TABLE)
       await client.query(CREATE_OAUTH_AUTHORIZATION_CODES_TABLE)
       await client.query(CREATE_OAUTH_TOKENS_TABLE)
@@ -685,6 +705,50 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     deleteStravaAthleteMappingByUsername: async (username: string): Promise<boolean> => {
       const client = await getClient()
       const result = await client.query('DELETE FROM strava_athlete_mappings WHERE username = $1', [username])
+      return (result.rowCount ?? 0) > 0
+    },
+
+    upsertGarminUserMapping: async (garminUserId: string, username: string): Promise<string | null> =>
+      deps.withTransaction(async (tx) => {
+        const current = await tx.query<{ username: string }>(
+          'SELECT username FROM garmin_user_mappings WHERE garmin_user_id = $1 FOR UPDATE',
+          [garminUserId],
+        )
+        const previous = current.rows[0]?.username ?? null
+        await tx.query('DELETE FROM garmin_user_mappings WHERE username = $1 AND garmin_user_id <> $2', [
+          username,
+          garminUserId,
+        ])
+        await tx.query(
+          `INSERT INTO garmin_user_mappings (garmin_user_id, username, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (garmin_user_id) DO UPDATE SET username = $2, updated_at = NOW()`,
+          [garminUserId, username],
+        )
+        return previous !== null && previous !== username ? previous : null
+      }),
+
+    getUsernameByGarminUserId: async (garminUserId: string): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query<{ username: string }>(
+        'SELECT username FROM garmin_user_mappings WHERE garmin_user_id = $1',
+        [garminUserId],
+      )
+      return result.rows[0]?.username ?? null
+    },
+
+    getGarminUserIdByUsername: async (username: string): Promise<string | null> => {
+      const client = await getClient()
+      const result = await client.query<{ garmin_user_id: string }>(
+        'SELECT garmin_user_id FROM garmin_user_mappings WHERE username = $1',
+        [username],
+      )
+      return result.rows[0]?.garmin_user_id ?? null
+    },
+
+    deleteGarminUserMappingByUsername: async (username: string): Promise<boolean> => {
+      const client = await getClient()
+      const result = await client.query('DELETE FROM garmin_user_mappings WHERE username = $1', [username])
       return (result.rowCount ?? 0) > 0
     },
 
