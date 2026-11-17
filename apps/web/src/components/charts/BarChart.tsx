@@ -12,6 +12,9 @@ import {
   barChartYMax,
   clipBarSpan,
   overlayLines,
+  type StackedBucket,
+  type StackSegment,
+  stackBuckets,
 } from './bar-chart-utils'
 import { SERIES_COLORS } from './breakdown'
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
@@ -41,6 +44,8 @@ export interface BarChartProps {
   getBarHref?: (info: BarClickInfo) => string
   /** Lines drawn over the bars on the same scales, in order; ignored with `multiSeries`. */
   lines?: BarChartLine[]
+  /** With `multiSeries`: one bar per bucket with the series stacked, instead of side by side. */
+  stacked?: boolean
 }
 
 const NO_LINES: BarChartLine[] = []
@@ -273,6 +278,105 @@ function renderMultiSeriesBars(
   }
 }
 
+const highlightBucket = (g: d3.Selection<SVGGElement, unknown, null, undefined>, bucketIso: string | null) =>
+  g.selectAll<SVGRectElement, unknown>('[data-bucket]').attr('fill-opacity', function () {
+    if (bucketIso === null) return 1
+    return this.getAttribute('data-bucket') === bucketIso ? 0.8 : 0.3
+  })
+
+const stackedTooltipHtml = (
+  dateLabel: string,
+  bucket: StackedBucket,
+  colors: Map<string, string>,
+): string => {
+  const lines = bucket.segments.map(
+    (s) => `<span style="color:${colors.get(s.name) ?? ''}">&#9679;</span> ${s.name}: ${s.value.toFixed(1)}`,
+  )
+  return `<strong>${dateLabel}</strong><br/>${[...lines, `Total: ${bucket.total.toFixed(1)}`].join('<br/>')}`
+}
+
+interface StackedBarsContext {
+  g: d3.Selection<SVGGElement, unknown, null, undefined>
+  y: d3.ScaleLinear<number, number>
+  colors: Map<string, string>
+  tooltip: HTMLDivElement
+  container: HTMLDivElement
+  margin: { left: number; top: number }
+  getBarHref?: (info: BarClickInfo) => string
+  show: (bucket: StackedBucket, bucketIso: string) => void
+  hide: () => void
+}
+
+function appendStackSegment(
+  ctx: StackedBarsContext,
+  bucket: StackedBucket,
+  bucketIso: string,
+  segment: StackSegment,
+  span: { x: number; width: number },
+) {
+  const href = ctx.getBarHref?.({ bucket_start: bucketIso, series_name: segment.name })
+  createBarWrapper(ctx.g, href)
+    .append('rect')
+    .attr('data-bucket', bucketIso)
+    .attr('x', span.x)
+    .attr('y', ctx.y(segment.top))
+    .attr('width', span.width)
+    .attr('height', Math.max(ctx.y(segment.base) - ctx.y(segment.top), 0))
+    .attr('fill', ctx.colors.get(segment.name) ?? CHART_PRIMARY)
+    .style('cursor', ctx.getBarHref ? 'pointer' : 'default')
+    .on('mouseenter', () => ctx.show(bucket, bucketIso))
+    .on('mousemove', (event: MouseEvent) => positionTooltip(event, ctx.container, ctx.tooltip, ctx.margin))
+    .on('mouseleave', () => ctx.hide())
+}
+
+function renderStackedBars(
+  g: d3.Selection<SVGGElement, unknown, null, undefined>,
+  multiSeries: BarSeriesData[],
+  _allBuckets: Date[],
+  x: d3.ScaleTime<number, number>,
+  y: d3.ScaleLinear<number, number>,
+  _innerHeight: number,
+  barWidth: number,
+  tooltip: HTMLDivElement,
+  container: HTMLDivElement,
+  margin: { left: number; top: number },
+  dateFormat: (date: Date) => string,
+  getBarHref?: (info: BarClickInfo) => string,
+) {
+  const plotWidth = x.range()[1]
+  const colors = new Map(multiSeries.map((s) => [s.name, s.color]))
+  const ctx: StackedBarsContext = {
+    colors,
+    container,
+    g,
+    getBarHref,
+    hide: () => {
+      highlightBucket(g, null)
+      tooltip.style.display = 'none'
+    },
+    margin,
+    show: (bucket, bucketIso) => {
+      highlightBucket(g, bucketIso)
+      tooltip.innerHTML = stackedTooltipHtml(dateFormat(new Date(bucketIso)), bucket, colors)
+      tooltip.style.display = 'block'
+    },
+    tooltip,
+    y,
+  }
+  for (const bucket of stackBuckets(multiSeries).buckets) {
+    const date = new Date(bucket.bucket_start)
+    const span = clipBarSpan(x(date), Math.max(barWidth, 1), plotWidth)
+    if (!span) continue
+    const bucketIso = date.toISOString()
+    for (const segment of bucket.segments) appendStackSegment(ctx, bucket, bucketIso, segment, span)
+  }
+}
+
+const multiSeriesYMax = (multiSeries: BarSeriesData[], stacked: boolean): number =>
+  stacked
+    ? stackBuckets(multiSeries).max_total
+    : (d3.max(multiSeries, (s) => d3.max(s.data, (d) => d.value)) ?? 1)
+
 export function BarChart({
   data,
   color = CHART_PRIMARY,
@@ -283,6 +387,7 @@ export function BarChart({
   multiSeries,
   getBarHref,
   lines = NO_LINES,
+  stacked = false,
 }: BarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -319,7 +424,7 @@ export function BarChart({
       const x = d3.scaleTime().domain([xMin, xMax]).range([0, innerWidth])
 
       const barWidth = Math.max(x(new Date(xMin.getTime() + bMs)) - x(xMin) - 2, 2)
-      const yMax = d3.max(multiSeries, (s) => d3.max(s.data, (d) => d.value)) ?? 1
+      const yMax = multiSeriesYMax(multiSeries, stacked)
       const y = d3
         .scaleLinear()
         .domain([0, yMax * 1.1])
@@ -331,8 +436,9 @@ export function BarChart({
       renderYearBreaks(g, x, innerHeight, axis)
       renderTimeAxes(g, x, y, innerHeight, axis)
 
+      const renderSeries = stacked ? renderStackedBars : renderMultiSeriesBars
       if (tooltipRef.current) {
-        renderMultiSeriesBars(
+        renderSeries(
           g,
           multiSeries,
           allBuckets,
@@ -392,7 +498,7 @@ export function BarChart({
       }
       for (const overlay of overlays) renderOverlayLine(g, overlay, x, y)
     }
-  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, lines])
+  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, lines, stacked])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>

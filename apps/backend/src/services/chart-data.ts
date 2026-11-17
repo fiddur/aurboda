@@ -5,16 +5,23 @@ import {
   type ChartDataBreakdownBucket,
   type ChartDataBucket,
   type ChartDataSourceType,
+  type ExerciseMuscleGroup,
   isTimeWeightedMetric,
   muscleGroupBreakdownPath,
+  muscleGroupFilter,
 } from '@aurboda/api-spec'
 
 import { buildBucketExpr } from '../db/bucket-expr.ts'
 import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
 import { sampleRowsSql } from '../db/time-weighted.ts'
-import { parseFieldPath } from './activity-measures.ts'
-import { loadExerciseEntryResolver } from './item-value-identities.ts'
-import { type ExerciseEntryResolver, muscleGroupName } from './muscle-group-measures.ts'
+import { combineMeasures, listItems, parseFieldPath } from './activity-measures.ts'
+import {
+  type ExerciseEntryResolver,
+  muscleGroupContributions,
+  muscleGroupName,
+  round2,
+} from './muscle-group-measures.ts'
+import { loadMuscleGroupResolvers } from './muscle-group-resolvers.ts'
 import {
   type MeasuredActivity,
   type MeasureFilter,
@@ -34,7 +41,10 @@ export interface ChartDataInput {
   breakdown_fields?: string[]
   bucket_size: '1m' | '5m' | '15m' | '1M' | '1d' | '1h' | '1w'
   end: string
-  /** An item path and value whose items the measure is taken over (or a scalar field filtering sessions). */
+  /**
+   * An item path and value whose items the measure is taken over (or a scalar field filtering
+   * sessions), or a muscle-group path and a muscle group key.
+   */
   filter_field?: string
   filter_value?: string
   /** With an activity_type source: aggregate this list-item measure per bucket instead of duration or count. */
@@ -345,6 +355,30 @@ interface SeriesPart {
   measures?: ActivityMeasures
 }
 
+const scalarPart = (m: MeasuredActivity, field: string): SeriesPart => {
+  const name = String(m.activity.data?.[field] ?? '(none)')
+  return { key: `field:${name}`, name }
+}
+
+/** The cross product of the fields' parts, each valued by its last part with measures, else `fallback`. */
+const comboValues = (
+  partsPerField: SeriesPart[][],
+  fallback: ActivityMeasures,
+  measure: ActivityMeasure,
+): SeriesValue[] => {
+  const combos = partsPerField.reduce<SeriesPart[][]>(
+    (acc, parts) => acc.flatMap((combo) => parts.map((p) => [...combo, p])),
+    [[]],
+  )
+  return combos.flatMap((combo) => {
+    const value = (combo.findLast((p) => p.measures)?.measures ?? fallback)[measure]
+    if (value === undefined) return []
+    return [
+      { key: combo.map((p) => p.key).join('\u0000'), name: combo.map((p) => p.name).join(' / '), value },
+    ]
+  })
+}
+
 /** One activity's contributions per breakdown series: the cross product of its fields' values. */
 const seriesValues = (
   m: MeasuredActivity,
@@ -362,53 +396,71 @@ const seriesValues = (
         name: muscleGroupName(g),
       }))
     }
-    if (parseFieldPath(field).key === undefined) {
-      const name = String(m.activity.data?.[field] ?? '(none)')
-      return [{ key: `field:${name}`, name }]
-    }
+    if (parseFieldPath(field).key === undefined) return [scalarPart(m, field)]
     return measuresByItemValue(m.activity, field, filter).map((g) => ({
       key: `item:${g.normalized}`,
       measures: g.measures,
       name: g.value,
     }))
   })
-  const combos = partsPerField.reduce<SeriesPart[][]>(
-    (acc, parts) => acc.flatMap((combo) => parts.map((p) => [...combo, p])),
-    [[]],
-  )
-  return combos.flatMap((combo) => {
-    const value = (combo.findLast((p) => p.measures)?.measures ?? m.measures)[measure]
-    if (value === undefined) return []
-    return [
-      { key: combo.map((p) => p.key).join('\u0000'), name: combo.map((p) => p.name).join(' / '), value },
-    ]
-  })
+  return comboValues(partsPerField, m.measures, measure)
+}
+
+interface MuscleFilter {
+  group: ExerciseMuscleGroup
+  path: string
 }
 
 /**
- * Per activity type and muscle-group item path, the exercise resolver of that type's own definition,
- * else of the charted pattern's: a chart over a parent type (or several types) resolves each
- * session's sets by the catalogue field of the type it was logged as.
+ * One activity's values under a muscle-group filter: only the exercises training the group count,
+ * each weighted by its recruitment. Its own item path breaks down per exercise; other fields are
+ * scalar. Nothing when no exercise of the session trains the group.
  */
-const loadMuscleGroupResolvers = async (
-  user: string,
-  pattern: string,
-  activityTypes: string[],
-  paths: string[],
-): Promise<(activityType: string, path: string) => ExerciseEntryResolver> => {
-  const keyOf = (activityType: string, path: string) => `${activityType}\u0000${path}`
-  const loaded = new Map(
-    await Promise.all(
-      [...new Set([pattern, ...activityTypes])].flatMap((activityType) =>
-        paths.map(
-          async (path) =>
-            [keyOf(activityType, path), await loadExerciseEntryResolver(user, activityType, path)] as const,
-        ),
-      ),
-    ),
+const muscleFilterValues = (
+  m: MeasuredActivity,
+  muscle: MuscleFilter,
+  fields: string[] | undefined,
+  measure: ActivityMeasure,
+  resolveEntry: ExerciseEntryResolver,
+): SeriesValue[] => {
+  const { field, key } = parseFieldPath(muscle.path)
+  if (key === undefined) return []
+  const contributions = muscleGroupContributions(
+    listItems(m.activity.data, field),
+    key,
+    resolveEntry,
+    muscle.group,
   )
-  return (activityType, path) =>
-    loaded.get(keyOf(activityType, path)) ?? loaded.get(keyOf(pattern, path)) ?? (() => undefined)
+  if (contributions.length === 0) return []
+  const total = combineMeasures(contributions.map((c) => c.measures))
+  if (!fields) {
+    const value = total[measure]
+    return value === undefined ? [] : [{ key: '', name: '', value }]
+  }
+  const partsPerField = fields.map((f): SeriesPart[] =>
+    f === muscle.path
+      ? contributions.map((c) => ({ key: `item:${c.normalized}`, measures: c.measures, name: c.value }))
+      : [scalarPart(m, f)],
+  )
+  return comboValues(partsPerField, total, measure)
+}
+
+interface MeasureChartContext {
+  fields: string[] | undefined
+  filter: MeasureFilter | undefined
+  measure: ActivityMeasure
+  muscle: MuscleFilter | undefined
+  resolverOf: (activityType: string, path: string) => ExerciseEntryResolver
+}
+
+const sessionValues = (m: MeasuredActivity, ctx: MeasureChartContext): SeriesValue[] => {
+  const resolverFor = (path: string) => ctx.resolverOf(m.activity.activity_type, path)
+  if (ctx.muscle) {
+    return muscleFilterValues(m, ctx.muscle, ctx.fields, ctx.measure, resolverFor(ctx.muscle.path))
+  }
+  if (ctx.fields) return seriesValues(m, ctx.fields, ctx.measure, ctx.filter, resolverFor)
+  const value = m.measures[ctx.measure]
+  return value === undefined ? [] : [{ key: '', name: '', value }]
 }
 
 /**
@@ -416,7 +468,8 @@ const loadMuscleGroupResolvers = async (
  * filtered items when filtered) aggregated per bucket, buckets bucketed by the same SQL as the other
  * sources. With breakdown fields, an item path gives one series per item value (spelled as in the
  * latest session), a muscle-group path (`sets.exercise.muscle_group`) one per muscle group the
- * exercises train, and a scalar field one per field value.
+ * exercises train, and a scalar field one per field value. A muscle-group filter takes a summed
+ * measure over the exercises training one group, weighted by their recruitment of it.
  */
 const queryMeasureChart = async (
   user: string,
@@ -424,7 +477,8 @@ const queryMeasureChart = async (
   tz: string,
 ): Promise<{ buckets: (ChartDataBucket | ChartDataBreakdownBucket)[]; series?: string[] }> => {
   const { aggregation, measure } = input
-  const filter = measureFilter(input.filter_field, input.filter_value)
+  const muscle = muscleGroupFilter(input.filter_field, input.filter_value)
+  const filter = muscle ? undefined : measureFilter(input.filter_field, input.filter_value)
   const fields = input.breakdown_fields?.length ? input.breakdown_fields : undefined
   const measured = await queryMeasuredActivities(
     user,
@@ -433,7 +487,12 @@ const queryMeasureChart = async (
     new Date(input.end),
     filter,
   )
-  const musclePaths = [...new Set((fields ?? []).flatMap((f) => muscleGroupBreakdownPath(f) ?? []))]
+  const musclePaths = [
+    ...new Set([
+      ...(fields ?? []).flatMap((f) => muscleGroupBreakdownPath(f) ?? []),
+      ...(muscle ? [muscle.path] : []),
+    ]),
+  ]
   const resolverOf = await loadMuscleGroupResolvers(
     user,
     input.pattern,
@@ -447,16 +506,13 @@ const queryMeasureChart = async (
     tz,
   )
 
+  const ctx: MeasureChartContext = { fields, filter, measure, muscle, resolverOf }
   const names = new Map<string, string>()
   const byBucket = new Map<number, Map<string, number[]>>()
   for (const m of measured) {
     const bucketStart = m.activity.id === undefined ? undefined : bucketStarts.get(m.activity.id)
     if (!bucketStart) continue
-    const contributions = fields
-      ? seriesValues(m, fields, measure, filter, (path) => resolverOf(m.activity.activity_type, path))
-      : m.measures[measure] === undefined
-        ? []
-        : [{ key: '', name: '', value: m.measures[measure] }]
+    const contributions = sessionValues(m, ctx)
     if (contributions.length === 0) continue
     const series = byBucket.getOrInsertComputed(bucketStart.getTime(), () => new Map<string, number[]>())
     for (const { key, name, value } of contributions) {
@@ -465,21 +521,23 @@ const queryMeasureChart = async (
     }
   }
 
+  const finish = (values: number[]): number => {
+    const value = aggregateValues(values, aggregation)
+    return muscle ? round2(value) : value
+  }
   const ordered = [...byBucket.entries()].toSorted(([a], [b]) => a - b)
   if (!fields) {
     return {
       buckets: ordered.map(([time, series]) => ({
         bucket_start: new Date(time).toISOString(),
-        value: aggregateValues(series.get('') ?? [], aggregation),
+        value: finish(series.get('') ?? []),
       })),
     }
   }
   return {
     buckets: ordered.map(([time, series]) => ({
       bucket_start: new Date(time).toISOString(),
-      series: Object.fromEntries(
-        [...series].map(([key, values]) => [names.get(key) ?? key, aggregateValues(values, aggregation)]),
-      ),
+      series: Object.fromEntries([...series].map(([key, values]) => [names.get(key) ?? key, finish(values)])),
     })),
     series: [...new Set(names.values())].toSorted(),
   }

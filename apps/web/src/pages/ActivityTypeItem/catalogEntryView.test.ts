@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 import { itemFieldCatalog, muscleTiers } from './catalogEntryView'
 
-const muscle = (name: string, weight: number) => ({
-  group: 'chest' as const,
+const muscle = (name: string, weight: number, group: 'chest' | 'shoulders' | 'triceps' = 'chest') => ({
+  group,
   key: 'chest' as const,
   name,
   weight,
@@ -18,8 +18,8 @@ const entry: ExerciseCatalogEntry = {
   key: 'barbell_bench_press',
   muscles: [
     muscle('Lower pecs', 1),
-    muscle('Front delts', 0.75),
-    muscle('Triceps', 0.5),
+    muscle('Front delts', 0.75, 'shoulders'),
+    muscle('Triceps', 0.5, 'triceps'),
     muscle('Upper pecs', 0.25),
   ],
   name: 'Barbell Bench Press',
@@ -27,10 +27,16 @@ const entry: ExerciseCatalogEntry = {
 }
 
 describe('muscleTiers', () => {
-  it('splits at a weight of 0.75, keeping the entry order', () => {
+  it("splits at a weight of 0.75, keeping the entry order and each muscle's group", () => {
     expect(muscleTiers(entry)).toEqual({
-      primary: ['Lower pecs', 'Front delts'],
-      secondary: ['Triceps', 'Upper pecs'],
+      primary: [
+        { group: 'chest', name: 'Lower pecs' },
+        { group: 'shoulders', name: 'Front delts' },
+      ],
+      secondary: [
+        { group: 'triceps', name: 'Triceps' },
+        { group: 'chest', name: 'Upper pecs' },
+      ],
     })
   })
 

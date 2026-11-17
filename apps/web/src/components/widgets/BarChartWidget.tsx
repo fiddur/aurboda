@@ -3,8 +3,7 @@
  * links to the full chart page only when an `href` is supplied (home dashboard).
  */
 
-import type { BarChartConfig, BarChartData } from '@aurboda/api-spec'
-
+import { type BarChartConfig, type BarChartData, muscleGroupFilter } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
@@ -44,10 +43,21 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
       {breakdownSeries && multiSeries ? (
         <>
           <BreakdownLegend series={breakdownSeries} />
-          <BarChart data={NO_BUCKETS} height={200} multiSeries={multiSeries} />
+          <BarChart
+            data={NO_BUCKETS}
+            height={200}
+            bucketSize={bucket_size}
+            multiSeries={multiSeries}
+            stacked={muscleGroupFilter(config.filter_field, config.filter_value) !== undefined}
+          />
         </>
       ) : (
-        <BarChart data={data?.buckets ?? NO_BUCKETS} color={CHART_PRIMARY} height={200} />
+        <BarChart
+          data={data?.buckets ?? NO_BUCKETS}
+          color={CHART_PRIMARY}
+          height={200}
+          bucketSize={bucket_size}
+        />
       )}
     </>
   )

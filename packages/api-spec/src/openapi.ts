@@ -55,6 +55,7 @@ import {
   exerciseCatalogEntryResponseSchema,
   exerciseCatalogQuerySchema,
   exerciseCatalogSearchResponseSchema,
+  exerciseMuscleGroupSchema,
 } from './schemas/exercise-catalog.ts'
 import { exportDumpLinkResponseSchema, exportDumpQuerySchema } from './schemas/export.ts'
 import {
@@ -111,6 +112,12 @@ import {
   addMetricResponseSchema,
   queryMetricsResponseSchema,
 } from './schemas/metrics.ts'
+import {
+  muscleGroupHistoryQuerySchema,
+  muscleGroupHistoryResponseSchema,
+  muscleGroupsQuerySchema,
+  muscleGroupsResponseSchema,
+} from './schemas/muscle-groups.ts'
 import {
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
@@ -760,6 +767,58 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List unmapped item values',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/muscle-groups': {
+      get: {
+        description:
+          "Every muscle group of the exercise catalogue with when it was last trained: the start of the latest session of the type (or its subtypes) in which an exercise of the catalogue-backed item path trained it. For a group's sets over time, chart data takes filter_field=sets.exercise.muscle_group with the group as filter_value.",
+        requestParams: { path: activityTypeNamePathSchema, query: muscleGroupsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleGroupsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List muscle groups',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/muscle-groups/{group}': {
+      get: {
+        description:
+          "One muscle group's history over a period (default the last 90 days): its totals, every exercise logged for the type that trains it, and the sessions that did, newest first. Each set counts by the exercise's recruitment weight for the group (a bench press is 1 set for the chest, 0.5 for the shoulders).",
+        requestParams: {
+          path: activityTypeNamePathSchema.extend({ group: exerciseMuscleGroupSchema }),
+          query: muscleGroupHistoryQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: muscleGroupHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Unknown muscle group, start not before end, or the field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get muscle group history',
         tags: ['Activities'],
       },
     },

@@ -5,6 +5,7 @@ import {
   chartDataHttpQuerySchema,
   type ChartDataResponse,
   chartBreakdownError,
+  chartFilterError,
 } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
@@ -46,8 +47,10 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
           .status(400)
           .json({ error: 'Either pattern or tag_definition_id is required', success: false })
       }
-      const breakdownError = chartBreakdownError(breakdown_fields, measure)
-      if (breakdownError) return res.status(400).json({ error: breakdownError, success: false })
+      const queryError =
+        chartBreakdownError(breakdown_fields, measure) ??
+        chartFilterError(filter_field, filter_value, breakdown_fields, measure)
+      if (queryError) return res.status(400).json({ error: queryError, success: false })
 
       const result = await getChartData(user, {
         aggregation: aggregation ?? 'count',

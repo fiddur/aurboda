@@ -17,6 +17,7 @@ import {
   isSameSession,
   itemPageHref,
   itemPath,
+  muscleGroupHref,
   muscleGroupsHref,
   muscleGroupsSectionId,
   listFields,
@@ -107,6 +108,9 @@ describe('schema helpers', () => {
     expect(muscleGroupsSectionId('sets.exercise')).toBe('muscle-groups-sets.exercise')
     expect(muscleGroupsHref('strength training', 'sets.exercise')).toBe(
       '/activity-type/strength%20training#muscle-groups-sets.exercise',
+    )
+    expect(muscleGroupHref('strength training', 'sets.exercise', 'middle_back')).toBe(
+      '/activity-type/strength%20training/muscle/sets.exercise/middle_back',
     )
   })
 })

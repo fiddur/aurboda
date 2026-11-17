@@ -56,7 +56,9 @@ const IdentityBody = ({
   return (
     <>
       <p class="activity-type-item-identity-line">{view.line}</p>
-      {view.showsEntry && identity.entry && <CatalogEntry entry={identity.entry} value={value} />}
+      {view.showsEntry && identity.entry && (
+        <CatalogEntry entry={identity.entry} muscleLink={{ field, name }} value={value} />
+      )}
       {identity.other_values.length > 0 && (
         <p class="activity-type-item-identity-others">
           Also logged as{' '}

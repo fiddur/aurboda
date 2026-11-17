@@ -391,6 +391,26 @@ to two decimals.
   Weekly sets per muscle group:
   `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&breakdown_fields=sets.exercise.muscle_group`.
   `query_chart_data` and the dashboard's bar chart take the same field.
+- `GET /chart-data` also takes one muscle group as a filter: `filter_field=sets.exercise.muscle_group`
+  with a muscle group key (`chest`, `shoulders`, `lats`, …) as `filter_value`. Only the exercises
+  that train the group count, each exercise's sets, volume and reps times its recruitment weight
+  for it, and a session with none of them adds no value. It needs `set_count`, `volume` or
+  `total_reps`, does not combine with a muscle-group breakdown, and of item paths breaks down only
+  by its own (`sets.exercise`, one series per exercise); scalar breakdown fields combine. Weekly
+  chest sets per exercise:
+  `source_type=activity_type&pattern=strength_training&measure=set_count&aggregation=sum&bucket_size=1w&filter_field=sets.exercise.muscle_group&filter_value=chest&breakdown_fields=sets.exercise`.
+  `query_chart_data`, the dashboard's bar chart and a combined chart's bars take the same filter.
+- `GET /activity-types/:name/muscle-groups?field=sets.exercise` lists every muscle group of the
+  catalogue, in catalogue order, with its `name` and `last_trained`: the start of the latest session
+  of the type or its subtypes in which the group got weighted sets, `null` when never.
+- `GET /activity-types/:name/muscle-groups/:group?field=sets.exercise&start=&end=` is one group's
+  history over a period (`end` defaults to now, `start` to 90 days before it): `last_trained` (all
+  time), the weighted `totals` of the period, `exercises` (every exercise ever logged for the type
+  that trains the group, with its catalogue entry, recruitment `weight`, weighted `measures` and
+  `session_count` in the period and `last_time`; most sets in the period first, then the most
+  recently done) and `sessions` (those of the period that trained the group, newest first, with the
+  group's measures and the exercises that trained it). An unknown group or a `start` not before
+  `end` is a 400. MCP: `list_muscle_groups` and `get_muscle_group_history`.
 - `GET /activities/:id/item-history?field=sets.exercise` carries `muscle_groups` for a
   catalogue-backed field: per group its `muscle_group`, `name` and weighted `measures`, most sets
   first and the two `null` groups last; on those, `in_catalogue` is `true` for No muscle group and
@@ -402,11 +422,27 @@ muscle group of the catalogue with its sets this week, its average sets per week
 (the period's sets divided by its days over seven) and a bar for that average, most sets first; the
 groups without sets follow, muted, so a neglected group shows as a zero rather than not at all, and
 No muscle group and Not in the catalogue come last, the latter linking to the page's review list of
-unmatched names. The weekly bar chart, one bar per group per week, opens under the list on
-**Show weekly chart**. An activity's exercises section ends with a **Sets per muscle group** block of
-its own, set apart from the last exercise, that lists the session's sets per group; its heading links
-to this section of the type page. The Chart Explorer offers a **Muscle group** breakdown when a
-summed measure is chosen.
+unmatched names. A **Last trained** column says when each group last got sets ("Today",
+"Yesterday", "12 days ago", "Never"; "12 d ago" on a phone, where the bar is left out). The weekly
+bar chart, one bar per group per week, opens under the list on **Show weekly chart**. An activity's
+exercises section ends with a **Sets per muscle group** block of its own, set apart from the last
+exercise, that lists the session's sets per group; its heading links to this section of the type
+page. The Strength page links to it too.
+
+Each muscle group has a page of its own at
+`/activity-type/<type>/muscle/<item path>/<group>` (`/activity-type/strength_training/muscle/sets.exercise/chest`):
+over 90 days, a year or two years, its sets this week, average sets per week and when it was last
+trained; its weighted sets, volume or reps per week (per month over two years) stacked by exercise,
+with Chart Explorer and dashboard entries in its ⋮ menu; the exercises that train it, with their
+recruitment, sets and sessions in the period and when each was last done; and the period's sessions
+that trained it. A group's name links to its page from the type page's list, the session's **Sets
+per muscle group** block and the muscles of an exercise page's catalogue entry.
+
+The Chart Explorer offers a **Muscle group** breakdown when a summed measure is chosen, and a
+**Muscle group** filter next to the exercise filter: picking a group charts only its weighted sets
+(one filter at a time, so it replaces an exercise and an exercise replaces it), drops the Muscle
+group breakdown and keeps the per-exercise one, which is drawn stacked there and in a dashboard bar
+chart. A trend takes no muscle filter, so switching to the trend drops it.
 
 ## Sessions Overview
 
@@ -510,8 +546,12 @@ types in the `exercise` display category.
 - `DELETE /activity-types/:name/item-values/identity?field=&value=` -- Clear the decision for a name
 - `GET /activity-types/:name/item-values/unmapped?field=<item path>&limit=&offset=` -- Logged names
   matching no catalogue entry, with suggestions, a page at a time with the `total`
+- `GET /activity-types/:name/muscle-groups?field=<item path>` -- Every muscle group with when it
+  was last trained (see [Muscle groups](#muscle-groups))
+- `GET /activity-types/:name/muscle-groups/:group?field=<item path>&start=&end=` -- One muscle
+  group's totals, exercises and sessions over a period
 
-MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`.
+MCP tools: `list_activity_types`, `list_activity_type_catalog`, `add_activity_type`, `add_activity_type_catalog_fields`, `update_activity_type`, `delete_activity_type`, `merge_activity_type`, `query_activity_sessions`, `get_activity_records`, `get_activity_type_summary`, `list_activity_field_values`, `get_activity_neighbors`, `get_activity_item_history`, `merge_item_values`, `list_item_value_aliases`, `delete_item_value_alias`, `get_item_value_identity`, `set_item_value_identity`, `clear_item_value_identity`, `list_unmapped_item_values`, `list_muscle_groups`, `get_muscle_group_history`.
 
 ## Garmin Meditation Recognition
 

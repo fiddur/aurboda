@@ -21,6 +21,7 @@ describe('muscleGroupSummary', () => {
     })
     expect(rows[0]).toMatchObject({
       kind: 'group',
+      muscle_group: 'chest',
       name: 'Chest',
       per_week: 3.5,
       this_week: 4,
@@ -51,6 +52,7 @@ describe('muscleGroupSummary', () => {
     expect(rows[0].name).toBe('Chest')
     expect(rows.slice(1).every((r) => !r.trained && r.per_week === 0 && r.this_week === 0)).toBe(true)
     expect(rows[1].name).toBe('Shoulders')
+    expect(rows.map((r) => r.muscle_group)).toEqual(expect.arrayContaining([...exerciseMuscleGroups]))
   })
 
   test('puts the groups outside the catalogue last, "Not in the catalogue" at the very end', () => {
@@ -67,6 +69,8 @@ describe('muscleGroupSummary', () => {
     expect(rows[0].name).toBe('Chest')
     expect(rows.at(-2)).toMatchObject({ kind: 'no_muscle_group', per_week: 9, trained: true })
     expect(rows.at(-1)).toMatchObject({ kind: 'not_in_catalogue', per_week: 12, trained: true })
+    expect(rows.at(-2)?.muscle_group).toBeUndefined()
+    expect(rows.at(-1)?.muscle_group).toBeUndefined()
   })
 
   test('leaves out the rows outside the catalogue when they have no sets', () => {
