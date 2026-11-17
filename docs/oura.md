@@ -117,6 +117,7 @@ sync jobs simply skip when credentials are missing — the backend will not cras
 4. You'll be redirected back. Settings will show "Connected" when successful.
 
 This uses a standard OAuth 2.0 flow. The access token is stored per-user and automatically refreshed when it expires.
+The `state` parameter is signed with the Oura client secret and expires after ten minutes, so a connect started more than ten minutes ago must be restarted.
 
 ## Pull-Based Sync
 

@@ -54,6 +54,7 @@ If these are not set, the "Connect Strava" button will be disabled with a messag
 4. You'll be redirected back. The page will show "Connected" when successful.
 
 This uses a standard OAuth 2.0 authorization code flow. Access tokens (6-hour expiry) are automatically refreshed using the stored refresh token.
+The `state` parameter is signed with the Strava client secret and expires after ten minutes, so a connect started more than ten minutes ago must be restarted.
 
 ## Sync
 

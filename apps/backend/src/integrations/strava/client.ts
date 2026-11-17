@@ -7,7 +7,6 @@ import type { Request, Response } from 'express'
 
 import axios, { type AxiosResponse } from 'axios'
 import { addSeconds, isFuture } from 'date-fns'
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 import type {
   StravaAthleteProfile,
@@ -19,6 +18,7 @@ import type {
 } from './types.ts'
 
 import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import { signOAuthState, verifyOAuthState } from '../../services/signed-oauth-state.ts'
 import { parseRateLimitHeaders } from './types.ts'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
@@ -32,38 +32,6 @@ export interface StravaClientOptions {
 }
 
 export type StravaCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
-
-// HMAC-signed OAuth state parameter to prevent CSRF.
-// Format: base64url(nonce.username.hmac) — the HMAC covers nonce+username
-// so an attacker cannot forge or modify the state to link their Strava
-// account to a different user.
-const createSignedState = (username: string, secret: string): string => {
-  const nonce = randomBytes(16).toString('hex')
-  const payload = `${nonce}.${username}`
-  const hmac = createHmac('sha256', secret).update(payload).digest('hex')
-  return Buffer.from(`${payload}.${hmac}`).toString('base64url')
-}
-
-const verifySignedState = (state: string, secret: string): string | null => {
-  try {
-    const decoded = Buffer.from(state, 'base64url').toString()
-    const lastDot = decoded.lastIndexOf('.')
-    if (lastDot === -1) return null
-
-    const payload = decoded.slice(0, lastDot)
-    const receivedHmac = decoded.slice(lastDot + 1)
-
-    const expectedHmac = createHmac('sha256', secret).update(payload).digest('hex')
-    if (!timingSafeEqual(Buffer.from(receivedHmac), Buffer.from(expectedHmac))) return null
-
-    // payload is "nonce.username" — extract username after first dot
-    const firstDot = payload.indexOf('.')
-    if (firstDot === -1) return null
-    return payload.slice(firstDot + 1)
-  } catch {
-    return null
-  }
-}
 
 export interface StravaApiResponse<T> {
   data: T
@@ -132,7 +100,7 @@ export const stravaClient = (
         return res.redirect('/data-sources/strava?error=not_configured')
       }
 
-      const user = verifySignedState(state, clientSecret)
+      const user = verifyOAuthState(state, { provider: 'strava' }, clientSecret, new Date())
       if (!user) {
         return res.redirect('/data-sources/strava?error=invalid_state')
       }
@@ -216,7 +184,7 @@ export const stravaClient = (
         return
       }
 
-      const state = createSignedState(user, clientSecret)
+      const state = signOAuthState({ provider: 'strava', user }, clientSecret, new Date())
 
       const location = new URL(STRAVA_AUTH_URL)
       location.searchParams.append('client_id', clientId)
