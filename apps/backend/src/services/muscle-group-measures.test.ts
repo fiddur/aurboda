@@ -2,7 +2,12 @@ import type { StoredExerciseCatalogEntry } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { measuresByMuscleGroup, muscleGroupSplit, muscleGroupWeights } from './muscle-group-measures.ts'
+import {
+  measuresByMuscleGroup,
+  muscleGroupContributions,
+  muscleGroupSplit,
+  muscleGroupWeights,
+} from './muscle-group-measures.ts'
 
 const entry = (key: string, muscles: StoredExerciseCatalogEntry['muscles']): StoredExerciseCatalogEntry => ({
   aliases: [],
@@ -121,5 +126,53 @@ describe('muscleGroupSplit', () => {
       ['Not in the catalogue', 3],
       ['No muscle group', 1],
     ])
+  })
+})
+
+describe('muscleGroupContributions', () => {
+  test('each exercise training the group, its summed measures times its weight', () => {
+    const items = [set('Bench Press', 80, 5), set('Dip', 10, 8), set('Bench Press', 40, 10, 'warmup')]
+    expect(muscleGroupContributions(items, 'exercise', resolve, 'triceps')).toEqual([
+      {
+        measures: { set_count: 0.5, total_reps: 2.5, volume: 200 },
+        normalized: 'bench press',
+        value: 'Bench Press',
+        weight: 0.5,
+      },
+      { measures: { set_count: 1, total_reps: 8, volume: 80 }, normalized: 'dip', value: 'Dip', weight: 1 },
+    ])
+  })
+
+  test('leaves out exercises that do not train the group and those not in the catalogue', () => {
+    const items = [set('Bench Press', 80, 5), set('Plank', 0, 1), set('Squat', 100, 5)]
+    expect(muscleGroupContributions(items, 'exercise', resolve, 'calves')).toEqual([])
+    expect(muscleGroupContributions(items, 'exercise', resolve, 'chest').map((c) => c.value)).toEqual([
+      'Bench Press',
+    ])
+  })
+
+  test('two spellings of one exercise are one contribution, spelled as first logged', () => {
+    const items = [set('bench press', 80, 5), set('Bench Press ', 80, 5)]
+    expect(muscleGroupContributions(items, 'exercise', resolve, 'shoulders')).toEqual([
+      {
+        measures: { set_count: 1, total_reps: 5, volume: 400 },
+        normalized: 'bench press',
+        value: 'bench press',
+        weight: 0.5,
+      },
+    ])
+  })
+
+  test('only the summed measures, unrounded', () => {
+    const third = entry('third', { calves: 1 / 3 })
+    const [contribution] = muscleGroupContributions([set('Third', 10, 1)], 'exercise', () => third, 'calves')
+    expect(Object.keys(contribution.measures).toSorted()).toEqual(['set_count', 'total_reps', 'volume'])
+    expect(contribution.measures.set_count).toBe(1 / 3)
+  })
+
+  test('an exercise with only warmups gives nothing', () => {
+    expect(muscleGroupContributions([set('Dip', 10, 8, 'warmup')], 'exercise', resolve, 'triceps')).toEqual(
+      [],
+    )
   })
 })

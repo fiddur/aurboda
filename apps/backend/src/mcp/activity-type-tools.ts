@@ -1,10 +1,15 @@
 import {
   activityTypeCatalogQuerySchema,
   addActivityTypeDefinitionBodySchema,
+  exerciseMuscleGroupSchema,
   itemValueAliasesQuerySchema,
   itemValueIdentityQuerySchema,
   mergeActivityTypeBodySchema,
   mergeItemValuesBodySchema,
+  MUSCLE_GROUP_HISTORY_START_AFTER_END,
+  muscleGroupHistoryPeriod,
+  muscleGroupHistoryQuerySchema,
+  muscleGroupsQuerySchema,
   setItemValueIdentityBodySchema,
   unmappedItemValuesQuerySchema,
   updateActivityTypeDefinitionBodySchema,
@@ -28,6 +33,7 @@ import {
   listUnmappedItemValues,
   setItemValueIdentity,
 } from '../services/item-value-identities.ts'
+import { queryMuscleGroupHistory, queryMuscleGroupOverview } from '../services/queries/index.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
@@ -217,6 +223,39 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
     },
     async ({ activity_type, field, limit, offset }) => {
       const result = await listUnmappedItemValues(user, activity_type, field, { limit, offset })
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'list_muscle_groups',
+    'List every muscle group of the exercise catalogue with when it was last trained: the start of the latest session of the activity type (or its subtypes) in which an exercise of the catalogue-backed item path (sets.exercise) trained it, null when never. An exercise trains a group when its catalogue entry recruits a muscle in it; each set counts by that recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders). For a group\'s sets over time use query_chart_data with filter_field="sets.exercise.muscle_group" and the group as filter_value.',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...muscleGroupsQuerySchema.shape,
+    },
+    async ({ activity_type, field }) => {
+      const result = await queryMuscleGroupOverview(user, activity_type, field)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_muscle_group_history',
+    'Get one muscle group\'s history over a period (start and end ISO 8601; end defaults to now, start to 90 days before end): its totals (set_count, volume, total_reps), every exercise ever logged for the activity type that trains it (with its catalogue entry, recruitment weight, measures and session count in the period, and when last done; most sets in the period first) and the sessions in the period that trained it, newest first. Each set counts by the exercise\'s recruitment weight for the group (bench press: 1 set for the chest, 0.5 for the shoulders). For the group\'s sets per week use query_chart_data with filter_field="sets.exercise.muscle_group", filter_value set to the group, measure="set_count", aggregation="sum", bucket_size="1w".',
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      muscle_group: exerciseMuscleGroupSchema,
+      ...muscleGroupHistoryQuerySchema.shape,
+    },
+    async ({ activity_type, end, field, muscle_group, start }) => {
+      const period = muscleGroupHistoryPeriod({ end, start })
+      if (period.start.getTime() >= period.end.getTime()) {
+        return errorResponse(MUSCLE_GROUP_HISTORY_START_AFTER_END)
+      }
+      const result = await queryMuscleGroupHistory(user, activity_type, field, muscle_group, period)
       if (!result.success) return errorResponse(result.error)
       return jsonResponse(result.data)
     },

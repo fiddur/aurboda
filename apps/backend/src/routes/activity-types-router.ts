@@ -33,6 +33,14 @@ import {
   type RenameActivityTypeResponse,
   type SetItemValueIdentityBody,
   setItemValueIdentityBodySchema,
+  exerciseMuscleGroupSchema,
+  type MuscleGroupHistoryQuery,
+  muscleGroupHistoryPeriod,
+  muscleGroupHistoryQuerySchema,
+  type MuscleGroupHistoryResponse,
+  type MuscleGroupsQuery,
+  muscleGroupsQuerySchema,
+  type MuscleGroupsResponse,
   type UnmappedItemValuesQuery,
   unmappedItemValuesQuerySchema,
   type UnmappedItemValuesResponse,
@@ -61,6 +69,8 @@ import {
   getActivityTypeSummary,
   queryActivityFieldValues,
   queryActivitySessions,
+  queryMuscleGroupHistory,
+  queryMuscleGroupOverview,
   sessionsOptionsFromQuery,
 } from '../services/queries/index.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -215,6 +225,44 @@ export const createActivityTypesRouter = (authMiddleware: AnyMiddleware): TypedR
     async (req, res) => {
       const { field, limit, offset } = req.query
       const result = await listUnmappedItemValues(req.user!, req.params.name, field, { limit, offset })
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<{ name: string }, MuscleGroupsResponse, unknown, MuscleGroupsQuery>(
+    '/:name/muscle-groups',
+    authMiddleware,
+    validateQuery(muscleGroupsQuerySchema),
+    async (req, res) => {
+      const result = await queryMuscleGroupOverview(req.user!, req.params.name, req.query.field)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<{ group: string; name: string }, MuscleGroupHistoryResponse, unknown, MuscleGroupHistoryQuery>(
+    '/:name/muscle-groups/:group',
+    authMiddleware,
+    validateQuery(muscleGroupHistoryQuerySchema),
+    async (req, res) => {
+      const group = exerciseMuscleGroupSchema.safeParse(req.params.group)
+      if (!group.success) {
+        return res.status(400).json({ error: `Unknown muscle group "${req.params.group}"`, success: false })
+      }
+      const result = await queryMuscleGroupHistory(
+        req.user!,
+        req.params.name,
+        req.query.field,
+        group.data,
+        muscleGroupHistoryPeriod(req.query),
+      )
       if (!result.success) {
         const status = result.error.includes('not found') ? 404 : 400
         return res.status(status).json({ error: result.error, success: false })

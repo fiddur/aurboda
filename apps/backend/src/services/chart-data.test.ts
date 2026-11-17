@@ -866,6 +866,61 @@ describe('getChartData', () => {
         })
       })
 
+      describe('filtered to one muscle group', () => {
+        const chest = { filter_field: 'sets.exercise.muscle_group', filter_value: 'chest' }
+
+        test('sums the weighted measure of the exercises training it, rounded', async () => {
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'sum',
+            filter_field: 'sets.exercise.muscle_group',
+            filter_value: 'forearms',
+            measure: 'volume',
+          })
+
+          expect(db.getActivities).toHaveBeenCalledTimes(1)
+          expect(result).toEqual({ buckets: [{ bucket_start: w1.toISOString(), value: 122.5 }] })
+        })
+
+        test('a session that trains nothing of the group adds no value', async () => {
+          const result = await getChartData('u', {
+            ...base,
+            aggregation: 'mean',
+            filter_field: 'sets.exercise.muscle_group',
+            filter_value: 'abdominals',
+            measure: 'set_count',
+          })
+
+          expect(result.buckets).toEqual([{ bucket_start: w2.toISOString(), value: 1 }])
+        })
+
+        test('broken down by its item path, one series per exercise, spelled as in the latest session', async () => {
+          const result = await getChartData('u', {
+            ...base,
+            ...chest,
+            aggregation: 'sum',
+            breakdown_fields: ['sets.exercise'],
+            measure: 'set_count',
+          })
+
+          expect(result.breakdown_series).toEqual(['bench press'])
+          expect(result.buckets).toEqual([{ bucket_start: w1.toISOString(), series: { 'bench press': 2 } }])
+        })
+
+        test('broken down by a scalar field, the weighted session total per value', async () => {
+          const result = await getChartData('u', {
+            ...base,
+            ...chest,
+            aggregation: 'sum',
+            breakdown_fields: ['location'],
+            measure: 'volume',
+          })
+
+          expect(result.breakdown_series).toEqual(['Gym', 'Home'])
+          expect(result.buckets).toEqual([{ bucket_start: w1.toISOString(), series: { Gym: 400, Home: 90 } }])
+        })
+      })
+
       test('a field that is not catalogue-backed puts everything under not in the catalogue', async () => {
         vi.mocked(db.getActivityTypeDefinition).mockResolvedValue(strengthDef)
         const result = await getChartData('u', {
