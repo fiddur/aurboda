@@ -2,14 +2,23 @@
  * A pushed day and night must land as the same rows the pull writes for them, so an
  * account with both connections gets one copy, not two.
  */
+import { Encoder, Profile } from '@garmin/fitsdk'
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { query } from '../../db/connection.ts'
-import { insertRawRecords, insertTimeSeries, upsertSyncState } from '../../db/index.ts'
+import {
+  findActivityByGarminActivityId,
+  insertRawRecords,
+  insertTimeSeries,
+  markActivityDetailSynced,
+  queryRawRecords,
+  upsertSyncState,
+} from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { defaultGarminProcessDeps, processGarminData } from './process.ts'
-import { garminPushToken, receiveGarminPush } from './push.ts'
+import { defaultGarminProcessDeps, processActivityFit, processGarminData } from './process.ts'
+import { syncPushedActivityFile } from './push-activity-file.ts'
+import { garminPushRecordType, garminPushToken, receiveGarminPush } from './push.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const TOKEN = garminPushToken('fake-session-secret')
@@ -120,7 +129,18 @@ const activityRows = async (user: string) =>
     )
   ).rows
 
-const pushOnce = async (user: string) => {
+const pushBody = async (
+  user: string,
+  body: Record<string, unknown>,
+  download: (
+    url: string,
+    token: string,
+  ) => Promise<{ status: number; bytes: Uint8Array | null }> = async () => ({
+    bytes: null,
+    status: 404,
+  }),
+) => {
+  const onActivitySynced = vi.fn()
   const result = await receiveGarminPush(
     {
       auditError,
@@ -135,6 +155,7 @@ const pushOnce = async (user: string) => {
       isReadOnly: async () => false,
       logWarn: vi.fn(),
       now: () => new Date('2026-11-17T10:00:00Z'),
+      onActivitySynced,
       probeGrant: vi.fn(),
       processGarminData: (u, dataType, data) =>
         processGarminData(u, dataType, data, {
@@ -142,14 +163,41 @@ const pushOnce = async (user: string) => {
           insertRawRecord: async () => {},
         }),
       pushToken: TOKEN,
+      syncActivityFile: (u, garminActivityId) =>
+        syncPushedActivityFile(
+          {
+            auditError,
+            auditInfo,
+            auditWarn,
+            download,
+            findActivityByGarminActivityId,
+            getAccessToken: async () => 'fake-access-token',
+            getFileNotice: async (owner, id) =>
+              (
+                await queryRawRecords(owner, {
+                  external_id: `file-${id}-fit`,
+                  limit: 1,
+                  record_type: garminPushRecordType('activityFiles'),
+                  source: 'garmin',
+                })
+              ).rows[0]?.data ?? null,
+            markActivityDetailSynced,
+            processActivityFit,
+          },
+          u,
+          garminActivityId,
+        ),
       updateGrantScopes: vi.fn(),
       upsertSyncState,
     },
-    { body: { dailies: [pushDaily], sleeps: [pushSleep] }, clientIdHeader: undefined, token: TOKEN },
+    { body, clientIdHeader: undefined, token: TOKEN },
   )
   expect(result.status).toBe(200)
   await result.process!()
+  return { onActivitySynced }
 }
+
+const pushOnce = (user: string) => pushBody(user, { dailies: [pushDaily], sleeps: [pushSleep] })
 
 describe('Garmin push against the pull (integration)', () => {
   beforeAll(async () => {
@@ -221,5 +269,111 @@ describe('Garmin push against the pull (integration)', () => {
       { data_type: 'dailies', status: 'idle' },
       { data_type: 'sleeps', status: 'idle' },
     ])
+  })
+
+  describe('activities and their FIT files', () => {
+    const ACTIVITY_ID = 4242
+    const RUN_START = DAY_START + 7 * 3600
+    const at = (seconds: number) => new Date((RUN_START + seconds) * 1000)
+    const semicircles = (degrees: number) => Math.round((degrees * 2 ** 31) / 180)
+
+    const fitBytes = (): Uint8Array => {
+      const encoder = new Encoder()
+      encoder.onMesg(Profile.MesgNum.FILE_ID, {
+        manufacturer: 'development',
+        product: 1,
+        timeCreated: at(0),
+        type: 'activity',
+      } as never)
+      for (const second of [1, 2, 3]) {
+        encoder.onMesg(Profile.MesgNum.RECORD, {
+          heartRate: 120 + second,
+          positionLat: semicircles(57.65 + second / 10_000),
+          positionLong: semicircles(12.62),
+          timestamp: at(second),
+        } as never)
+      }
+      encoder.onMesg(Profile.MesgNum.SESSION, {
+        sport: 'running',
+        startTime: at(0),
+        timestamp: at(1800),
+        totalElapsedTime: 1800,
+      } as never)
+      return encoder.close()
+    }
+
+    const activities = {
+      activities: [
+        {
+          activeKilocalories: 410,
+          activityId: ACTIVITY_ID,
+          activityName: 'Morning run',
+          activityType: 'RUNNING',
+          durationInSeconds: 1800,
+          startTimeInSeconds: RUN_START,
+          summaryId: 'a-1',
+          userId: 'garmin-user-1',
+        },
+      ],
+    }
+    const files = {
+      activityFiles: [
+        {
+          activityId: ACTIVITY_ID,
+          callbackURL:
+            'https://apis.garmin.com/wellness-api/rest/activityFile?id=1&token=fake-callback-token',
+          fileType: 'FIT',
+          summaryId: 'f-1',
+          userId: 'garmin-user-1',
+        },
+      ],
+    }
+
+    const expectDetailWritten = async (user: string) => {
+      const [activity] = await activityRows(user)
+      expect(activity).toMatchObject({
+        activity_type: 'running',
+        external_id: `garmin-activity-${ACTIVITY_ID}`,
+        source: 'garmin',
+        start_time: at(0),
+      })
+      expect(activity!.data).toMatchObject({
+        calories: 410,
+        detail_synced: true,
+        garmin_activity_id: ACTIVITY_ID,
+      })
+      const heartRate = (await timeSeriesRows(user)).filter((row) => row.metric === 'heart_rate')
+      expect(heartRate.map((row) => row.value)).toEqual([121, 122, 123])
+      const tracks = await query(user, `SELECT source FROM activity_tracks`, [])
+      expect(tracks.rows).toEqual([{ source: 'garmin' }])
+    }
+
+    test('an activity push then its file notice', async () => {
+      const user = getTestUser()
+      const download = vi.fn(async () => ({ bytes: fitBytes(), status: 200 }))
+      await pushBody(user, activities, download)
+      expect(download).not.toHaveBeenCalled()
+      expect((await activityRows(user))[0]!.data.detail_synced).toBeUndefined()
+
+      const { onActivitySynced } = await pushBody(user, files, download)
+      expect(download).toHaveBeenCalledTimes(1)
+      expect(onActivitySynced).not.toHaveBeenCalled()
+      await expectDetailWritten(user)
+    })
+
+    test('a file notice then its activity', async () => {
+      const user = getTestUser()
+      const download = vi.fn(async () => ({ bytes: fitBytes(), status: 200 }))
+      await pushBody(user, files, download)
+      expect(download).not.toHaveBeenCalled()
+
+      const { onActivitySynced } = await pushBody(user, activities, download)
+      expect(download).toHaveBeenCalledTimes(1)
+      expect(onActivitySynced).toHaveBeenCalledWith(user, at(0), at(1800))
+      await expectDetailWritten(user)
+
+      await pushBody(user, { ...activities, ...files }, download)
+      expect(download).toHaveBeenCalledTimes(1)
+    })
   })
 })

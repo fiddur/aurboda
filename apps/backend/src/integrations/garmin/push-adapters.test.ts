@@ -3,7 +3,13 @@ import { describe, expect, test, vi } from 'vitest'
 import type { GarminProcessDeps } from './process.ts'
 
 import { processGarminData } from './process.ts'
-import { adaptGarminPushItem, garminPushFeeds, offsetSamples, pushCalendarDate } from './push-adapters.ts'
+import {
+  adaptGarminPushItem,
+  garminPushFeeds,
+  offsetSamples,
+  pushCalendarDate,
+  pushedGarminActivityId,
+} from './push-adapters.ts'
 
 // 2025-01-15T00:00:00Z
 const DAY_START = 1736899200
@@ -80,6 +86,17 @@ describe('garminPushFeeds', () => {
     expect(garminPushFeeds('epochs')).toEqual([])
     expect(garminPushFeeds('somethingNew')).toEqual([])
     expect(garminPushFeeds('constructor')).toEqual([])
+  })
+
+  test.each(['activities', 'manuallyUpdatedActivities', 'activityFiles', 'activityDetails'])(
+    '%s fills activities',
+    (type) => {
+      expect(garminPushFeeds(type)).toEqual(['activities'])
+    },
+  )
+
+  test('moveIQActivities stays raw only', () => {
+    expect(garminPushFeeds('moveIQActivities')).toEqual([])
   })
 })
 
@@ -423,4 +440,100 @@ describe('direct points', () => {
       for (const item of garbled) expect(adaptGarminPushItem(type, item)).toEqual({ garmin: [], points: [] })
     },
   )
+})
+
+describe('activities', () => {
+  const pushed = {
+    activeKilocalories: 410,
+    activityId: 4242,
+    activityName: 'Morning run',
+    activityType: 'TREADMILL_RUNNING',
+    averageHeartRateInBeatsPerMinute: 148,
+    deviceName: 'forerunner',
+    distanceInMeters: 5012.5,
+    durationInSeconds: 1800,
+    manual: false,
+    maxHeartRateInBeatsPerMinute: 171,
+    startTimeInSeconds: DAY_START,
+    startTimeOffsetInSeconds: 3600,
+    steps: 5400,
+    summaryId: 'a-1',
+    totalElevationGainInMeters: 31,
+    userId: 'garmin-user-1',
+  }
+
+  test.each(['activities', 'manuallyUpdatedActivities'])('%s becomes the activity the pull reads', (type) => {
+    expect(adaptGarminPushItem(type, pushed)).toEqual({
+      garmin: [
+        {
+          data: [
+            {
+              activityId: 4242,
+              activityName: 'Morning run',
+              activityType: { typeKey: 'treadmill_running' },
+              averageHR: 148,
+              beginTimestamp: DAY_START * 1000,
+              calories: 410,
+              distance: 5012.5,
+              duration: 1800,
+              elevationGain: 31,
+              maxHR: 171,
+              steps: 5400,
+            },
+          ],
+          dataType: 'activities',
+        },
+      ],
+      points: [],
+    })
+  })
+
+  test('leaves absent and non-numeric figures out and falls back to an unknown type', () => {
+    const { garmin } = adaptGarminPushItem('activities', {
+      activityId: '4242',
+      activityName: '',
+      averageHeartRateInBeatsPerMinute: 'high',
+      startTimeInSeconds: DAY_START,
+    })
+    expect(garmin).toEqual([
+      {
+        data: [{ activityId: 4242, activityType: { typeKey: 'unknown' }, beginTimestamp: DAY_START * 1000 }],
+        dataType: 'activities',
+      },
+    ])
+  })
+
+  test('answers nothing without an id or a start', () => {
+    const nothing = { garmin: [], points: [] }
+    expect(adaptGarminPushItem('activities', { ...pushed, activityId: undefined })).toEqual(nothing)
+    expect(adaptGarminPushItem('activities', { ...pushed, activityId: 0 })).toEqual(nothing)
+    expect(adaptGarminPushItem('activities', { ...pushed, activityId: '42a' })).toEqual(nothing)
+    expect(adaptGarminPushItem('activities', { ...pushed, startTimeInSeconds: undefined })).toEqual(nothing)
+    for (const item of garbled) expect(adaptGarminPushItem('activities', item)).toEqual(nothing)
+  })
+
+  test('pushedGarminActivityId reads a positive whole number or a string of digits', () => {
+    expect(pushedGarminActivityId({ activityId: 7 })).toBe(7)
+    expect(pushedGarminActivityId({ activityId: '8' })).toBe(8)
+    expect(pushedGarminActivityId({ activityId: -1 })).toBeUndefined()
+    expect(pushedGarminActivityId({ activityId: Infinity })).toBeUndefined()
+    expect(pushedGarminActivityId({ activityId: 7.5 })).toBeUndefined()
+    expect(pushedGarminActivityId({ activityId: ' 8' })).toBeUndefined()
+    expect(pushedGarminActivityId({})).toBeUndefined()
+  })
+
+  test('is written by the pull processor under the pull external id', async () => {
+    const { activities } = await runThroughProcessors('activities', pushed)
+    expect(activities).toEqual([
+      expect.objectContaining({
+        activity_type: 'running_treadmill',
+        data: expect.objectContaining({ calories: 410, distance: 5012.5, garmin_activity_id: 4242 }),
+        end_time: new Date((DAY_START + 1800) * 1000),
+        external_id: 'garmin-activity-4242',
+        source: 'garmin',
+        start_time: new Date(DAY_START * 1000),
+        title: 'Morning run',
+      }),
+    ])
+  })
 })

@@ -5,6 +5,8 @@
  * answers "nothing" for a missing or differently typed field and never throws.
  */
 
+import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
+
 import { metricUnits, type MetricType } from '@aurboda/api-spec'
 
 import type { TimeSeriesPoint } from '../../db/types.ts'
@@ -17,10 +19,12 @@ export interface GarminPushTypeInfo {
 
 const rawOnly: GarminPushTypeInfo = { feeds: [] }
 
+const activityFeed: GarminPushTypeInfo = { feeds: ['activities'] }
+
 export const garminPushTypes: Record<string, GarminPushTypeInfo> = {
-  activities: rawOnly,
-  activityDetails: rawOnly,
-  activityFiles: rawOnly,
+  activities: activityFeed,
+  activityDetails: activityFeed,
+  activityFiles: activityFeed,
   allDayRespiration: { feeds: ['respiration'] },
   bloodPressures: rawOnly,
   bodyComps: rawOnly,
@@ -28,7 +32,7 @@ export const garminPushTypes: Record<string, GarminPushTypeInfo> = {
   epochs: rawOnly,
   healthSnapshot: rawOnly,
   hrv: { feeds: ['hrv'] },
-  manuallyUpdatedActivities: rawOnly,
+  manuallyUpdatedActivities: activityFeed,
   mct: rawOnly,
   menstrualCycleTracking: rawOnly,
   moveIQActivities: rawOnly,
@@ -328,11 +332,64 @@ const adaptBodyComps = (item: Item): GarminPushAdapted => {
   }
 }
 
+/** The Garmin Connect activity id an activity or activity-file item names, the same id the pull uses. */
+export const pushedGarminActivityId = (item: Item): number | undefined => {
+  const value = item.activityId
+  const id =
+    typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined
+}
+
+type PushedActivity = Pick<IActivity, 'activityId' | 'beginTimestamp'> &
+  Partial<
+    Pick<
+      IActivity,
+      | 'activityName'
+      | 'averageHR'
+      | 'calories'
+      | 'distance'
+      | 'duration'
+      | 'elevationGain'
+      | 'maxHR'
+      | 'steps'
+    >
+  > & { activityType: { typeKey: string } }
+
+/** Absent figures are left out, not zeroed: the activity upsert merges `data`, keeping what the pull wrote. */
+const adaptActivity = (item: Item): GarminPushAdapted => {
+  const activityId = pushedGarminActivityId(item)
+  const start = num(item.startTimeInSeconds)
+  if (activityId === undefined || start === undefined) return NOTHING
+  const figures = {
+    averageHR: num(item.averageHeartRateInBeatsPerMinute),
+    calories: num(item.activeKilocalories),
+    distance: num(item.distanceInMeters),
+    duration: num(item.durationInSeconds),
+    elevationGain: num(item.totalElevationGainInMeters),
+    maxHR: num(item.maxHeartRateInBeatsPerMinute),
+    steps: num(item.steps),
+  }
+  const activity: PushedActivity = {
+    activityId,
+    activityType: {
+      typeKey: typeof item.activityType === 'string' ? item.activityType.toLowerCase() : 'unknown',
+    },
+    beginTimestamp: start * 1000,
+    ...(typeof item.activityName === 'string' && item.activityName !== ''
+      ? { activityName: item.activityName }
+      : {}),
+    ...Object.fromEntries(Object.entries(figures).filter(([, value]) => value !== undefined)),
+  }
+  return { garmin: [{ data: [activity as IActivity], dataType: 'activities' }], points: [] }
+}
+
 const adapters: Record<string, (item: Item) => GarminPushAdapted> = {
+  activities: adaptActivity,
   allDayRespiration: adaptAllDayRespiration,
   bodyComps: adaptBodyComps,
   dailies: adaptDailies,
   hrv: adaptHrv,
+  manuallyUpdatedActivities: adaptActivity,
   pulseox: adaptPulseOx,
   sleeps: adaptSleeps,
   stressDetails: adaptStressDetails,

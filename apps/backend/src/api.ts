@@ -1327,7 +1327,16 @@ const main = async () => {
     postListenCallbacks.push(ensureStravaWebhook)
   }
 
-  setupGarminPush({ centralDb, garminOAuth, httpd, isReadOnly, sessionSecret })
+  setupGarminPush({
+    centralDb,
+    garminOAuth,
+    httpd,
+    isReadOnly,
+    onActivityDetailSynced,
+    onActivitySynced: activityNotifier,
+    onTrackWritten,
+    sessionSecret,
+  })
 
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,

@@ -44,6 +44,7 @@ export {
   type ActivityFieldValueRow,
   getActivityFieldValues,
   findActivityByExternalId,
+  findActivityByGarminActivityId,
   findDeletedActivityByExternalId,
   findMergeableActivity,
   getActivities,

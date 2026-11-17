@@ -45,9 +45,11 @@ const makeDeps = (
     isReadOnly: vi.fn(async (user: string) => (options.readOnly ?? []).includes(user)),
     logWarn: vi.fn(),
     now: () => NOW,
+    onActivitySynced: vi.fn((_user: string, _start: Date, _end: Date) => {}),
     probeGrant: vi.fn(async () => options.probe ?? { garminUserId: GARMIN_USER, status: 'alive' as const }),
     processGarminData: vi.fn(async (_user: string, _dataType: GarminDataType, _data: unknown) => 1),
     pushToken: TOKEN,
+    syncActivityFile: vi.fn(async (_user: string, _garminActivityId: number) => {}),
     updateGrantScopes: vi.fn(async () => true),
     upsertSyncState: vi.fn(async (_user: string, _state: SyncState) => {}),
   }
@@ -118,6 +120,15 @@ describe('record naming', () => {
     expect(garminPushExternalId('bodyComps', { measurementTimeInSeconds: 200 })).toBe('bodyComps-200')
     expect(garminPushExternalId('mct', { calendarDate: '2026-11-16' })).toBe('mct-2026-11-16')
     expect(garminPushExternalId('mct', {})).toBeUndefined()
+  })
+
+  test('an activity file notice is keyed by its activity and file type', () => {
+    expect(garminPushExternalId('activityFiles', { activityId: 7, fileType: 'FIT', summaryId: 's' })).toBe(
+      'file-7-fit',
+    )
+    expect(garminPushExternalId('activityFiles', { activityId: '8', fileType: 'GPX' })).toBe('file-8-gpx')
+    expect(garminPushExternalId('activityFiles', { activityId: 9 })).toBe('file-9-unknown')
+    expect(garminPushExternalId('activityFiles', { activityId: 'x', summaryId: 's' })).toBe('s')
   })
 })
 
@@ -346,6 +357,163 @@ describe('processing', () => {
       'alice',
       expect.objectContaining({ error_message: 'boom', status: 'error' }),
     )
+  })
+})
+
+describe('activities and their files', () => {
+  const START = 1795305600
+  const activity = (overrides: Record<string, unknown> = {}) => ({
+    activityId: 4242,
+    activityType: 'RUNNING',
+    durationInSeconds: 1800,
+    startTimeInSeconds: START,
+    summaryId: 'a-1',
+    userId: GARMIN_USER,
+    ...overrides,
+  })
+  const fileNotice = (overrides: Record<string, unknown> = {}) => ({
+    activityId: 4242,
+    callbackURL: 'https://apis.garmin.com/wellness-api/rest/activityFile?id=1&token=fake-callback-token',
+    fileType: 'FIT',
+    summaryId: 'f-1',
+    userId: GARMIN_USER,
+    ...overrides,
+  })
+
+  test('activity files are handled after activities, whatever the envelope order', async () => {
+    const deps = makeDeps()
+    const order: string[] = []
+    deps.processGarminData.mockImplementation(async () => {
+      order.push('activity')
+      return 1
+    })
+    deps.syncActivityFile.mockImplementation(async () => {
+      order.push('file')
+    })
+    const result = await receive(deps, { activityFiles: [fileNotice()], activities: [activity()] })
+    await result.process!()
+    expect(order).toEqual(['activity', 'file', 'file'])
+    expect(deps.upsertSyncState.mock.calls.map((call) => call[1].data_type)).toEqual([
+      'activities',
+      'activityFiles',
+    ])
+  })
+
+  test('an activity is processed as the pull reads it', async () => {
+    const deps = makeDeps()
+    const result = await receive(deps, { manuallyUpdatedActivities: [activity()] })
+    await result.process!()
+    expect(deps.processGarminData).toHaveBeenCalledWith('alice', 'activities', [
+      expect.objectContaining({ activityId: 4242, activityType: { typeKey: 'running' } }),
+    ])
+  })
+
+  test('the file is asked for once per activity item and per FIT notice, not for a TCX one', async () => {
+    const deps = makeDeps()
+    const result = await receive(deps, {
+      activities: [activity(), activity({ activityId: '4243', summaryId: 'a-2' })],
+      activityFiles: [
+        fileNotice(),
+        fileNotice({ activityId: 4244, fileType: 'fit' }),
+        fileNotice({ activityId: 4245, fileType: 'TCX' }),
+      ],
+      manuallyUpdatedActivities: [activity({ activityId: 4246, summaryId: 'm-1' })],
+    })
+    await result.process!()
+    expect(deps.syncActivityFile.mock.calls).toEqual([
+      ['alice', 4242],
+      ['alice', 4243],
+      ['alice', 4246],
+      ['alice', 4242],
+      ['alice', 4244],
+    ])
+  })
+
+  test('nothing is stored or asked for when activities are turned off', async () => {
+    const deps = makeDeps({ disabled: ['activities'] })
+    const result = await receive(deps, {
+      activities: [activity()],
+      activityDetails: [activity({ summaryId: 'd-1' })],
+      activityFiles: [fileNotice()],
+      manuallyUpdatedActivities: [activity({ summaryId: 'm-1' })],
+    })
+    expect(storedRecords(deps)).toEqual([])
+    expect(result.process).toBeUndefined()
+    expect(deps.syncActivityFile).not.toHaveBeenCalled()
+  })
+
+  test('activity details are kept raw only', async () => {
+    const deps = makeDeps()
+    const result = await receive(deps, { activityDetails: [activity({ summaryId: 'd-1' })] })
+    expect(storedRecords(deps)).toHaveLength(1)
+    await result.process!()
+    expect(deps.processGarminData).not.toHaveBeenCalled()
+    expect(deps.syncActivityFile).not.toHaveBeenCalled()
+    expect(deps.onActivitySynced).not.toHaveBeenCalled()
+  })
+
+  test('a failing file sync is audited under its type', async () => {
+    const deps = makeDeps()
+    deps.syncActivityFile.mockRejectedValueOnce(new Error('boom'))
+    const result = await receive(deps, { activityFiles: [fileNotice()] })
+    await expect(result.process!()).resolves.toBeUndefined()
+    expect(deps.auditError).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      'Garmin: processing pushed activityFiles failed',
+      {
+        error: 'boom',
+      },
+    )
+  })
+
+  test('tells the activity notifier the span of pushed sleeps and activities, not of dailies', async () => {
+    const deps = makeDeps()
+    const result = await receive(deps, {
+      activities: [
+        activity(),
+        activity({
+          activityId: 4243,
+          durationInSeconds: 600,
+          startTimeInSeconds: START + 7200,
+          summaryId: 'a-2',
+        }),
+      ],
+      dailies: [daily()],
+      sleeps: [
+        {
+          durationInSeconds: 28800,
+          startTimeInSeconds: START - 28800,
+          summaryId: 's-1',
+          userId: GARMIN_USER,
+        },
+      ],
+    })
+    await result.process!()
+    expect(deps.onActivitySynced.mock.calls).toEqual(
+      expect.arrayContaining([
+        ['alice', new Date(START * 1000), new Date((START + 7800) * 1000)],
+        ['alice', new Date((START - 28800) * 1000), new Date(START * 1000)],
+      ]),
+    )
+    expect(deps.onActivitySynced).toHaveBeenCalledTimes(2)
+  })
+
+  test('without a usable time the notifier gets the last day', async () => {
+    const deps = makeDeps()
+    const result = await receive(deps, {
+      sleeps: [{ calendarDate: '2026-11-16', summaryId: 's-1', userId: GARMIN_USER }],
+    })
+    await result.process!()
+    expect(deps.onActivitySynced).toHaveBeenCalledWith('alice', new Date(NOW.getTime() - 86_400_000), NOW)
+  })
+
+  test('the notifier is not told about a type that failed', async () => {
+    const deps = makeDeps()
+    deps.processGarminData.mockRejectedValueOnce(new Error('boom'))
+    const result = await receive(deps, { activities: [activity()] })
+    await result.process!()
+    expect(deps.onActivitySynced).not.toHaveBeenCalled()
   })
 })
 

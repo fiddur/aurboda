@@ -311,7 +311,9 @@ the same block (**Copy**; `garmin_push_url` in `GET /admin/settings`,
 [apis.garmin.com/tools/endpoints](https://apis.garmin.com/tools/endpoints) and choose "push". The token is
 derived from `SESSION_SECRET`, so the URL changes with it and must be pasted again. It is a secret: only
 this admin response carries it, and the bundled nginx does not log the path. The endpoint answers `404`
-until a client ID is set, and accepts bodies up to 50 MB. What arrives is described under
+until a client ID is set, and accepts bodies up to 50 MB. A push carrying a `garmin-client-id` header
+that differs from the configured client ID is refused, but one without the header is accepted: the URL's
+token is the gate. What arrives is described under
 [Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
 
 ## Garmin Personal API keys
