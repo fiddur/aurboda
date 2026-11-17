@@ -56,6 +56,7 @@ import {
   listUserNames,
   markActivityDetailSynced,
 } from '../db/index.ts'
+import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
 import { processActivityDetail } from '../integrations/garmin/process.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
@@ -474,7 +475,7 @@ export const mountRestRouters = ({
       adminUsers,
       invitationAuth,
       webHost,
-      gravlRedirectUri(apiBaseUrl),
+      { garmin: garminOAuthRedirectUri(apiBaseUrl), gravl: gravlRedirectUri(apiBaseUrl) },
       async (username) => (await listUserNames(userDb)).includes(username),
       ouraWebhookManager,
       accountDeleter,

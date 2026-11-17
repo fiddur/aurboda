@@ -11,9 +11,15 @@ import type { InvitationAuth } from '../services/invitation.ts'
 import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { RelayActions } from '../services/relays.ts'
 
+import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createTokenBucketLimiter } from '../services/rate-limit.ts'
 import { createAdminRouter } from './admin-router.ts'
+
+const redirectUris = {
+  garmin: garminOAuthRedirectUri('https://api.example.test/api'),
+  gravl: gravlRedirectUri('https://api.example.test/api'),
+}
 
 const centralDb = {
   getAdminCount: vi.fn().mockResolvedValue(1),
@@ -194,7 +200,7 @@ const buildApp = (adminMiddleware: RequestHandler = pass) => {
       adminUsers,
       {} as InvitationAuth,
       'https://web.example.test',
-      gravlRedirectUri('https://api.example.test/api'),
+      redirectUris,
       async (username) => username === 'fiddur' || username === 'alice',
       null,
       deleteAccount,
@@ -219,6 +225,40 @@ describe('admin settings', () => {
     const res = await supertest(buildApp()).patch('/admin/settings').send({ gravl_client_id: 'abc' })
     expect(res.status).toBe(200)
     expect(res.body.gravl_redirect_uri).toBe('https://api.example.test/api/auth/gravlcb')
+  })
+
+  test('GET returns the Garmin redirect URI and whether the Garmin credentials are set', async () => {
+    vi.mocked(centralDb.getServerSetting).mockImplementation(async (key) =>
+      key === 'garmin_client_id' ? 'fake-garmin-client-id' : null,
+    )
+    try {
+      const res = await supertest(buildApp()).get('/admin/settings')
+      expect(res.body.garmin_redirect_uri).toBe('https://api.example.test/api/auth/garmincb')
+      expect(res.body.garmin_client_id_set).toBe(true)
+      expect(res.body.garmin_client_secret_set).toBe(false)
+      expect(JSON.stringify(res.body)).not.toContain('fake-garmin-client-id')
+    } finally {
+      vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
+    }
+  })
+
+  test('PATCH stores the Garmin credentials and clears them with null', async () => {
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    const set = await supertest(buildApp())
+      .patch('/admin/settings')
+      .send({ garmin_client_id: 'fake-garmin-client-id', garmin_client_secret: 'fake-garmin-client-secret' })
+    expect(set.status).toBe(200)
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('garmin_client_id', 'fake-garmin-client-id')
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith(
+      'garmin_client_secret',
+      'fake-garmin-client-secret',
+    )
+    expect(JSON.stringify(set.body)).not.toContain('fake-garmin-client-secret')
+
+    vi.mocked(centralDb.setServerSetting).mockClear()
+    await supertest(buildApp()).patch('/admin/settings').send({ garmin_client_secret: null })
+    expect(centralDb.setServerSetting).toHaveBeenCalledWith('garmin_client_secret', '')
+    expect(centralDb.setServerSetting).not.toHaveBeenCalledWith('garmin_client_id', expect.anything())
   })
 })
 
@@ -917,7 +957,7 @@ describe('email (SMTP) settings and the test mail', () => {
         adminUsers,
         {} as InvitationAuth,
         'https://web.example.test',
-        gravlRedirectUri('https://api.example.test/api'),
+        redirectUris,
         async () => true,
         null,
         undefined,

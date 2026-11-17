@@ -2,6 +2,7 @@ import type {
   AuthActionResponse,
   ConnectGarminPersonalKeyBody,
   GarminLoginResponse,
+  OAuthConnectUrlResponse,
   GarminSyncResponse,
   GarminSyncStatusResponse,
   OuraSyncResponse,
@@ -114,6 +115,25 @@ export const disconnectGarminPersonalKey = async (): Promise<AuthActionResponse>
   const { token } = auth.value
   const response = await axios.post<AuthActionResponse>(
     `${API_URL}/auth/garmin/personal-key/disconnect`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  return response.data
+}
+
+export const getGarminOAuthConnectUrl = async (): Promise<string> => {
+  const { token } = auth.value
+  const response = await axios.get<OAuthConnectUrlResponse>(`${API_URL}/auth/garmin/oauth/connect`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.data.url) throw new Error(response.data.error ?? 'Garmin sign-in is not available')
+  return response.data.url
+}
+
+export const disconnectGarminOAuth = async (): Promise<AuthActionResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<AuthActionResponse>(
+    `${API_URL}/auth/garmin/oauth/disconnect`,
     {},
     { headers: { Authorization: `Bearer ${token}` } },
   )

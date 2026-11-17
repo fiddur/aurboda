@@ -138,6 +138,14 @@ export const garminLoginResponseSchema = authActionResponseSchema
 
 export type GarminLoginResponse = z.infer<typeof garminLoginResponseSchema>
 
+export const oauthConnectUrlResponseSchema = authActionResponseSchema
+  .extend({
+    url: z.string().optional().meta({ description: 'Where to send the browser to consent at the provider' }),
+  })
+  .meta({ description: 'The answer to starting an OAuth connection', id: 'OAuthConnectUrlResponse' })
+
+export type OAuthConnectUrlResponse = z.infer<typeof oauthConnectUrlResponseSchema>
+
 export const syncRescueTimeBodySchema = z
   .object({
     full_resync: fullResyncSchema,

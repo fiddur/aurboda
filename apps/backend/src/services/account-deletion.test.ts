@@ -34,6 +34,10 @@ const setup = (
         await overrides.central?.()
         return {}
       },
+      deleteGarminUserMappingByUsername: async (username) => {
+        calls.push(`garminMapping(${username})`)
+        return true
+      },
       deleteOuraUserMappingsByUsername: async (username) => {
         calls.push(`ouraMapping(${username})`)
         return 1
@@ -78,6 +82,7 @@ describe('createAccountDeleter', () => {
       'strava(alice)',
       'ouraMapping(alice)',
       'stravaMapping(alice)',
+      'garminMapping(alice)',
       'reserve(alice,alice)',
       'deleted(alice)',
       'drop(alice)',

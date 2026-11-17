@@ -22,7 +22,6 @@ import type { Request, Response } from 'express'
 
 import axios, { type AxiosInstance, isAxiosError } from 'axios'
 import { addSeconds, isAfter } from 'date-fns'
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 
 import type { OAuthToken } from '../../db/types.ts'
 import type {
@@ -34,6 +33,7 @@ import type {
 } from './types.ts'
 
 import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import { createPkcePair, openState, sealState } from '../../services/oauth-state.ts'
 import { getSettings } from '../../services/settings.ts'
 
 export const GRAVL_API_BASE = 'https://api.gravl.ai'
@@ -43,9 +43,6 @@ const GRAVL_REVOKE_URL = `${GRAVL_API_BASE}/oauth/revoke`
 
 /** `workouts:read` is all the sync needs today; the rest are for the follow-ups listed in #1042. */
 export const GRAVL_SCOPES = ['workouts:read', 'records:read', 'measurements:read', 'profile:read'] as const
-
-/** Authorization codes are valid 10 minutes; a sealed state older than that is useless anyway. */
-const STATE_MAX_AGE_MS = 10 * 60 * 1000
 
 /** Refresh an access token this close to expiry rather than risk a 401 mid-sync. */
 const TOKEN_EXPIRY_BUFFER_SECONDS = 100
@@ -110,53 +107,6 @@ const toGravlError = (error: unknown): unknown => {
     parseRetryAfter(error.response.headers?.['retry-after']),
   )
 }
-
-const base64url = (buf: Buffer): string => buf.toString('base64url')
-
-export const createPkcePair = (): { verifier: string; challenge: string } => {
-  const verifier = base64url(randomBytes(32))
-  const challenge = base64url(createHash('sha256').update(verifier).digest())
-  return { challenge, verifier }
-}
-
-interface SealedState {
-  iat: number
-  user: string
-  verifier: string
-}
-
-const stateKey = (clientSecret: string): Buffer => createHash('sha256').update(clientSecret).digest()
-
-/** AES-256-GCM: iv(12) | tag(16) | ciphertext, base64url. Integrity comes from the tag. */
-export const sealState = (state: SealedState, clientSecret: string): string => {
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', stateKey(clientSecret), iv)
-  const ciphertext = Buffer.concat([cipher.update(JSON.stringify(state), 'utf8'), cipher.final()])
-  return base64url(Buffer.concat([iv, cipher.getAuthTag(), ciphertext]))
-}
-
-export const openState = (sealed: string, clientSecret: string, now: Date): SealedState | null => {
-  try {
-    const buf = Buffer.from(sealed, 'base64url')
-    if (buf.length < 28) return null
-    const decipher = createDecipheriv('aes-256-gcm', stateKey(clientSecret), buf.subarray(0, 12))
-    decipher.setAuthTag(buf.subarray(12, 28))
-    const plain = Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]).toString('utf8')
-    const parsed: unknown = JSON.parse(plain)
-    if (!isSealedState(parsed)) return null
-    if (now.getTime() - parsed.iat > STATE_MAX_AGE_MS) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-const isSealedState = (value: unknown): value is SealedState =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as SealedState).iat === 'number' &&
-  typeof (value as SealedState).user === 'string' &&
-  typeof (value as SealedState).verifier === 'string'
 
 const defaultDeps = (): GravlClientDeps => ({
   ensureUserSchema: async (user) => {

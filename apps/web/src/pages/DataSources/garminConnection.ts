@@ -1,4 +1,4 @@
-import type { GarminPersonalKeyStatus } from '@aurboda/api-spec'
+import type { GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
 
 export const KEY_EXPIRY_CHOICES = [
   { days: 30, label: '30 days' },
@@ -48,6 +48,16 @@ export interface GarminConnectionFlags {
   personalKey: GarminPersonalKeyStatus | undefined
   /** A key and no login: the types and details only the login serves are missing. */
   keyOnly: boolean
+  oauth: GarminOAuthStatus
+  /** A login or a key: the connections the pull sync runs on. Connect with Garmin only receives pushes. */
+  canPull: boolean
+}
+
+const NO_OAUTH: GarminOAuthStatus = {
+  available: false,
+  connected: false,
+  needs_reconnect: false,
+  permissions: [],
 }
 
 export const garminConnectionFlags = (
@@ -56,15 +66,39 @@ export const garminConnectionFlags = (
         garmin_connected?: boolean
         garmin_session_connected?: boolean
         garmin_personal_key?: GarminPersonalKeyStatus
+        garmin_oauth?: GarminOAuthStatus
       }
     | undefined,
 ): GarminConnectionFlags => {
   const sessionConnected = settings?.garmin_session_connected ?? false
   const personalKey = settings?.garmin_personal_key
   return {
+    canPull: sessionConnected || (personalKey?.connected ?? false),
     isConnected: settings?.garmin_connected ?? false,
     keyOnly: !sessionConnected && (personalKey?.connected ?? false),
+    oauth: settings?.garmin_oauth ?? NO_OAUTH,
     personalKey,
     sessionConnected,
   }
 }
+
+const OAUTH_ERROR_TEXT: Record<string, string> = {
+  auth_failed: 'Garmin did not complete the connection. Try again.',
+  invalid_state: 'The connection attempt expired. Try again.',
+  not_configured: 'This server has not set up Garmin sign-in.',
+}
+
+/** The text for the `?error=` code the Connect with Garmin callback redirects with. */
+export const oauthErrorText = (code: string | null): string | null =>
+  code === null ? null : (OAUTH_ERROR_TEXT[code] ?? OAUTH_ERROR_TEXT.auth_failed)
+
+const PERMISSION_LABELS: Record<string, string> = {
+  ACTIVITY_EXPORT: 'Activities',
+  COURSE_IMPORT: 'Sending courses',
+  HEALTH_EXPORT: 'Health data',
+  MCT_EXPORT: 'Cycle tracking',
+  WORKOUT_IMPORT: 'Sending workouts',
+}
+
+export const garminPermissionLabel = (permission: string): string =>
+  PERMISSION_LABELS[permission] ?? permission

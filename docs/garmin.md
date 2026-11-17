@@ -1,15 +1,14 @@
 # Garmin Connect
 
-[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda reaches it in two ways, alone or together:
+[Garmin Connect](https://connect.garmin.com/) provides fitness and health data from Garmin wearable devices (watches, fitness trackers). Aurboda reaches it in three ways, alone or together:
 
+- **Connect with Garmin**: the official [Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/overview/) (OAuth 2.0 with PKCE). The user signs in at Garmin and picks what to share; Garmin then pushes new data to the server as the user's device syncs. It cannot pull, so it brings no history. See [Connect with Garmin](#connect-with-garmin).
 - **The Garmin Connect login** ("the session"): the Garmin Connect web API, reached with [`@fiddur/garmin-connect`](https://www.npmjs.com/package/@fiddur/garmin-connect), our [fork](https://github.com/fiddur/garmin-connect) of `@flow-js/garmin-connect` with two-step MFA login.
 - **A Personal API key**: Garmin's official [Personal API](https://developer.garmin.com/gc-developer-program/overview/) at `personal.connectapi.garmin.com`, which any Garmin Connect user can create a key for. It is pull only, like the session, and covers most but not all of what the session does.
 
-Garmin's partner (business) API, with push notifications, is not used.
+## The two pull connections
 
-## Two ways to connect
-
-Each data type is fetched through one connection:
+Each data type is pulled through one connection, the login or the key; Connect with Garmin takes no part in the pull sync:
 
 | Data type          | Login only | Key only                | Both                              |
 | ------------------ | ---------- | ----------------------- | --------------------------------- |
@@ -111,11 +110,33 @@ Garmin strength activities (`strength_training` rows from Garmin with a `garmin_
 - **Pace.** Each sync reads the sets of up to 10 activities, newest first, before their detail, so older strength activities fill in gradually over the following syncs. `full_resync` re-reads the newest 10.
 - **Sets logged elsewhere win.** When a session logged in Aurboda, Gravl or a manual log carries sets for the same session, those are the sets shown: sets imported from Garmin never replace sets from another row in a [merge](./gravl.md#enrich-dont-duplicate), whichever row starts first. Garmin's sets show only when no other row of the session has any. The rule holds everywhere a merged session is shown or written: the day and list views, the activity page, the shared post and the manual merge.
 
+## Connect with Garmin
+
+Connect with Garmin uses the Garmin Connect Developer Program's OAuth 2.0 authorization-code flow with PKCE (`apps/backend/src/integrations/garmin/oauth-client.ts`). It needs an app registered in the program by the server's admin (see [Admin Setup](#admin-setup)).
+
+**What it does today.** This release makes the connection only: the OAuth round trip, the Garmin user id mapping, the status on the Garmin page, token upkeep and disconnect. The data arrives through Garmin's pushes, which the server does not receive yet ([#1784](https://github.com/fiddur/aurboda/issues/1784)), so a user who connects this way alone gets no data until then. The pull sync, its data types and its sync states are unchanged and run only on the login and the key.
+
+**The round trip.** **Connect with Garmin** on the Garmin page calls `GET /api/auth/garmin/oauth/connect`, which answers `{ success: true, url }` (or `400` when the server has no credentials) and the page sends the browser to Garmin's consent screen (`https://connect.garmin.com/oauth2Confirm`). There is no scope parameter: the app's scope is fixed in the program, and the user picks which permissions to grant on the consent screen. The PKCE verifier and the user travel in the `state` parameter, sealed with AES-256-GCM under a key derived from the client secret and valid for ten minutes (`apps/backend/src/services/oauth-state.ts`, shared with Gravl). Garmin redirects to `GET /api/auth/garmincb`, which exchanges the code, reads the Garmin user id (`GET https://apis.garmin.com/wellness-api/rest/user/id`, required: without it nothing is stored) and the granted permissions (`.../user/permissions`, best effort), stores the grant and redirects to `/data-sources/garmin?connected=oauth`, or to `/data-sources/garmin?error=<code>` with `auth_failed`, `not_configured` or `invalid_state`.
+
+**Storage.** The grant is a row in the user's `oauth_tokens` (provider `garmin_oauth`): the access token, the refresh token, `expires_at`, and the granted permissions in `scopes` (`HEALTH_EXPORT`, `ACTIVITY_EXPORT`, `MCT_EXPORT`, `WORKOUT_IMPORT`, `COURSE_IMPORT`). The Garmin user id, which every push carries, maps to the Aurboda user in the central `garmin_user_mappings` table. One Garmin account belongs to one Aurboda user: connecting a Garmin account that another Aurboda user had connected moves it, deletes the other user's grant and audits it on both. A user who reconnects with a different Garmin account drops the old mapping. No token, code, verifier, client secret or Garmin user id reaches a response, an audit entry or a log line.
+
+**Token upkeep.** An access token lasts 24 hours and is refreshed when less than 600 seconds of it are left, as Garmin recommends; each refresh brings a new refresh token (rotation), which lasts about three months. Concurrent callers on one server share one refresh. A refresh Garmin answers with the OAuth error `invalid_grant` marks the grant refused (`oauth_tokens.refused_at`): it is not refreshed again, and the page asks the user to connect again. Any other failure, a rejected client secret included, leaves the grant as it is. Since a user whose data only arrives by push would otherwise never refresh, the five-minute background sync tick refreshes every grant that is due, so the refresh token does not lapse; a failure there is audited as a warning and that user is tried again an hour later.
+
+**Status.** Settings report `garmin_oauth` (`available`: the server has both credentials; `connected`; `needs_reconnect`: Garmin refused the refresh; `permissions`). `garmin_connected` is true for any of the three connections. The page's sync status, **Full Re-sync** and sync interval belong to the pull sync and show only with the login or a key.
+
 ## Admin Setup
 
-No server-side configuration is needed: both ways use per-user credentials. Admins can stop new Personal API key connections with **Garmin Personal API keys** on the Admin Settings page (`garmin_personal_key_enabled`, on by default) — see [Server administration](./admin.md#garmin-personal-api-keys). Garmin's terms restrict a Personal API key to tools its owner operates for their own use; on a shared server a user who connects a key shares it with the server's operator, which the key form says.
+The login and the key need no server-side configuration: they use per-user credentials. Connect with Garmin needs an app in the [Garmin Connect Developer Program](https://developerportal.garmin.com): register the redirect URL `<API_BASE_URL>/auth/garmincb` (shown on the Admin Settings page) with it, and enter the app's client ID and secret under **Garmin Connect Developer Program** on the Admin Settings page (`garmin_client_id` / `garmin_client_secret`, see [Server administration](./admin.md#garmin-connect-developer-program)). Without them the Garmin page does not offer Connect with Garmin. Admins can stop new Personal API key connections with **Garmin Personal API keys** on the Admin Settings page (`garmin_personal_key_enabled`, on by default) — see [Server administration](./admin.md#garmin-personal-api-keys). Garmin's terms restrict a Personal API key to tools its owner operates for their own use; on a shared server a user who connects a key shares it with the server's operator, which the key form says.
 
 ## User Setup
+
+### Connect with Garmin
+
+1. Go to **Data Sources > Garmin** and click **Connect with Garmin**.
+2. Sign in at Garmin and choose what to share with Aurboda.
+3. Garmin sends you back to the Garmin page, which shows **Connected** and what you share. To change what you share, use your Garmin Connect account's connected apps settings and connect again.
+
+Data from before you connect is not included: add the login or a Personal API key for history.
 
 ### Garmin Connect login
 
@@ -177,14 +198,15 @@ When an activity's detail lands for the first time (the poll, a manual sync, the
 
 ## Disconnecting
 
-The two connections are disconnected separately:
+The three connections are disconnected separately:
 
+- **Connect with Garmin:** `POST /api/auth/garmin/oauth/disconnect`, or **Disconnect** under Connect with Garmin on the Garmin page. Aurboda deregisters with Garmin (`DELETE https://apis.garmin.com/wellness-api/rest/user/registration`, best effort: a failure is audited and the rest goes ahead), deletes the grant and removes the Garmin user id mapping. Deleting the Aurboda account does the same.
 - **Login:** `POST /api/auth/garmin/disconnect`, or **Disconnect** under the login on the Garmin page. This removes the stored session tokens; you'll need to re-enter your credentials to reconnect.
 - **Key:** `POST /api/auth/garmin/personal-key/disconnect`, or **Disconnect key** on the Garmin page. This deletes the stored key. Revoke it in Garmin Connect too if you no longer use it.
 
 ## Limitations
 
-- **No webhook/push support:** Garmin's push API is part of its partner program. Both ways are pull-based only.
+- **No data from push yet:** Connect with Garmin connects, but the server does not yet receive Garmin's pushes ([#1784](https://github.com/fiddur/aurboda/issues/1784)). The login and the key are pull only.
 - **Session expiry:** Garmin Connect sessions may expire, requiring the user to re-authenticate by entering credentials again.
 - **Key expiry:** a Personal API key lasts at most a year and must then be replaced by hand; [reminders](#expiry-reminders) come before the entered date.
 - **MFA timeout:** The MFA verification code must be entered within 5 minutes of submitting credentials. If the session expires, start the login flow again.
