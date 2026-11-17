@@ -236,6 +236,20 @@
   color: #9ca3af;
 }
 
+.activity-type-meta-strength-score-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.activity-type-meta-strength-score-muted {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
 .activity-type-meta-empty {
   color: #9ca3af;
   font-size: 0.9rem;

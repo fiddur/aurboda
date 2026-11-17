@@ -193,6 +193,12 @@ import {
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import {
+  strengthScoreHistoryQuerySchema,
+  strengthScoreHistoryResponseSchema,
+  strengthScoreQuerySchema,
+  strengthScoreResponseSchema,
+} from './schemas/strength-score.ts'
+import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
@@ -819,6 +825,55 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get muscle group history',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/strength-score': {
+      get: {
+        description:
+          'Strength score at a moment (default now): per reference lift the best estimated one-rep max (Epley) of the working sets of 1 to 12 reps in the last 90 days, against a reference by sex and bodyweight (100 points: a solid recreational lifter); per muscle group the mean of its best 3 lifts, overall the mean of the groups. Only exercises matched to the exercise catalogue count. `missing` lists what the user has not given (sex in the settings, a weight); every score is then null.',
+        requestParams: { path: activityTypeNamePathSchema, query: strengthScoreQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthScoreResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength score',
+        tags: ['Activities'],
+      },
+    },
+    '/activity-types/{name}/strength-score/history': {
+      get: {
+        description:
+          'The strength score over a period (default the last 365 days), one point every step_days (default 7) back from end, oldest first; each point looks back over its own 90 days. No points when sex or bodyweight is missing.',
+        requestParams: { path: activityTypeNamePathSchema, query: strengthScoreHistoryQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthScoreHistoryResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Start not before end, more than 500 points, or the field is not a catalogue-backed item field of the activity type',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Unknown activity type',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength score history',
         tags: ['Activities'],
       },
     },

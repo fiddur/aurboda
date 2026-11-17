@@ -8,6 +8,9 @@ Logged exercise names stay free text on the sets; each name resolves to a catalo
 automatically or by the user's own mapping. See
 [Exercise identities](./activity-types.md#exercise-identities).
 
+The [strength score](./strength-score.md) counts the sets of a fixed list of reference lifts, each
+a handful of catalogue entries.
+
 ## In the web app
 
 A data-schema item field with `"catalog": "exercises"` is matched against this catalogue; the

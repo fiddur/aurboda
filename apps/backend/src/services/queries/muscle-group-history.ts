@@ -186,11 +186,15 @@ interface LoadedSessions {
   sessions: ExerciseSession[]
 }
 
-/** Every session of the type and its descendants, with the exercise resolver of the type each was logged as. */
-const loadSessions = async (
+/**
+ * Every session of the type and its descendants (those starting within `period` when given), with the
+ * exercise resolver of the type each was logged as.
+ */
+export const loadSessions = async (
   user: string,
   activityType: string,
   path: string,
+  period?: Period,
 ): Promise<ItemValueResult<LoadedSessions>> => {
   const resolved = await resolveCatalogItemPath(user, activityType, path)
   if (!resolved.success) return resolved
@@ -203,8 +207,8 @@ const loadSessions = async (
   const activities = await getActivities(
     user,
     types,
-    new Date(0),
-    new Date(),
+    period?.start ?? new Date(0),
+    period?.end ?? new Date(),
     undefined,
     undefined,
     categoryMap,

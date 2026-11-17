@@ -1,0 +1,92 @@
+.strength-score-notice {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.strength-score-notice p {
+  margin: 0;
+}
+
+.strength-score-notice p + p {
+  margin-top: 0.375rem;
+}
+
+.strength-score-history-header {
+  flex-wrap: wrap;
+}
+
+.strength-score-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.strength-score-row > a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.strength-score-group-heading h2 {
+  margin: 0;
+}
+
+.strength-score-points {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.strength-score-group-heading .strength-score-points {
+  font-size: 1.1rem;
+}
+
+.strength-score-muted {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.strength-score-muted a {
+  color: inherit;
+}
+
+.strength-score-muscles {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.strength-score-lifts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.strength-score-lift {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.strength-score-expiring {
+  color: #f57c00;
+}
+
+.strength-score-more {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.strength-score-more summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.strength-score-more p {
+  margin-top: 0.25rem;
+}

@@ -57,6 +57,7 @@ export { type ActivityTypeSummaryDeps, getActivityTypeSummary } from './activity
 export { getActivityNeighbors } from './activity-neighbors.ts'
 export { queryActivityItemHistory } from './activity-item-history.ts'
 export { queryMuscleGroupHistory, queryMuscleGroupOverview } from './muscle-group-history.ts'
+export { queryStrengthScore, queryStrengthScoreHistory } from './strength-score.ts'
 
 export {
   type ActivityFullDetailOptions,

@@ -18,6 +18,9 @@ Entry points: **Log a session** on the strength training type page, a line above
 the Add page, **Continue** on the detail page of a session in progress and **Edit sets** on a
 finished one logged in Aurboda.
 
+The logged sets feed the [strength score](strength-score.md): per reference lift the best
+estimated one-rep max of the last 90 days against a reference by sex and bodyweight.
+
 ## Exercise blocks
 
 The stored list is flat, in order. The pages group consecutive sets with the same exercise name
