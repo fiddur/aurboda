@@ -18,7 +18,7 @@ import {
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { garminConnectionFlags, garminOAuthReturn } from './garminConnection'
+import { garminConnectionFlags, garminDataTypeNote, garminOAuthReturn } from './garminConnection'
 import { GarminOAuth } from './GarminOAuth'
 import { GarminPersonalKey } from './GarminPersonalKey'
 import {
@@ -37,6 +37,7 @@ interface GarminDataTypeInfo {
   href?: string
   hc_note?: string // Health Connect overlap note (undefined = Garmin only)
   key_note?: string
+  push_note?: string
 }
 
 const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
@@ -67,6 +68,7 @@ const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
     label: 'Activities (exercise with HR, VO2 max)',
     hc_note: 'Also available via Health Connect. Garmin adds VO2 max, activity type detail.',
     key_note: 'Per-second detail and GPS from the FIT file; strength sets need the Garmin login',
+    push_note: 'Per-second detail and GPS from the FIT file; strength sets need the Garmin login',
   },
   { type: 'spo2', label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
   { type: 'respiration', label: 'Respiration rate', href: '/metric/respiratory_rate' },
@@ -75,6 +77,7 @@ const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
     label: 'Training readiness',
     href: '/metric/training_readiness',
     key_note: 'Needs the Garmin login',
+    push_note: 'Needs the Garmin login',
   },
   { type: 'intensityMinutes', label: 'Intensity minutes', href: '/metric/intensity_minutes' },
 ]
@@ -217,10 +220,12 @@ function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => vo
 function GarminDataTypeToggles({
   disabledTypes,
   keyOnly,
+  pushOnly,
   onToggle,
 }: {
   disabledTypes: GarminDataType[]
   keyOnly: boolean
+  pushOnly: boolean
   onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
 }) {
   // Optimistic local state — updates immediately on click
@@ -262,6 +267,7 @@ function GarminDataTypeToggles({
       <div class="garmin-data-types-grid">
         {GARMIN_DATA_TYPES.map((dt) => {
           const enabled = !disabledSet.has(dt.type)
+          const note = garminDataTypeNote(dt, { keyOnly, pushOnly })
           return (
             <label key={dt.type} class={`garmin-data-type-row ${enabled ? '' : 'disabled'}`}>
               <input type="checkbox" checked={enabled} onChange={() => handleToggle(dt.type)} />
@@ -274,7 +280,7 @@ function GarminDataTypeToggles({
                   <span class="garmin-data-type-label">{dt.label}</span>
                 )}
                 <span class="garmin-data-type-note">{dt.hc_note ?? 'Garmin only'}</span>
-                {keyOnly && dt.key_note && <span class="garmin-data-type-note">{dt.key_note}</span>}
+                {note && <span class="garmin-data-type-note">{note}</span>}
               </div>
             </label>
           )
@@ -287,11 +293,13 @@ function GarminDataTypeToggles({
 function GarminDataTypesSection({
   isConnected,
   keyOnly,
+  pushOnly,
   disabledTypes,
   queryClient,
 }: {
   isConnected: boolean
   keyOnly: boolean
+  pushOnly: boolean
   disabledTypes: GarminDataType[]
   queryClient: ReturnType<typeof useQueryClient>
 }) {
@@ -301,6 +309,7 @@ function GarminDataTypesSection({
     <GarminDataTypeToggles
       disabledTypes={disabledTypes}
       keyOnly={keyOnly}
+      pushOnly={pushOnly}
       onToggle={async (types) => {
         await updateUserSettings({ garmin_disabled_data_types: types })
         await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
@@ -546,6 +555,7 @@ export function GarminSource() {
         <GarminDataTypesSection
           isConnected={isConnected}
           keyOnly={keyOnly}
+          pushOnly={oauth.connected && !canPull}
           disabledTypes={userSettings?.garmin_disabled_data_types ?? []}
           queryClient={queryClient}
         />

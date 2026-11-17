@@ -55,6 +55,12 @@ export interface GarminConnectionFlags {
   canPull: boolean
 }
 
+/** The note a data type shows for a connection that misses some of it: a key alone, or Connect with Garmin alone. */
+export const garminDataTypeNote = (
+  { key_note, push_note }: { key_note?: string; push_note?: string },
+  { keyOnly, pushOnly }: { keyOnly: boolean; pushOnly: boolean },
+): string | undefined => (keyOnly ? key_note : pushOnly ? push_note : undefined)
+
 const NO_OAUTH: GarminOAuthStatus = {
   available: false,
   connected: false,

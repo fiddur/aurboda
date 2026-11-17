@@ -338,6 +338,23 @@ export const findDeletedActivityByExternalId = async (
   return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
 }
 
+/** The non-deleted activity carrying this Garmin activity id, merged rows included; the newest wins. */
+export const findActivityByGarminActivityId = async (
+  user: string,
+  garminActivityId: number,
+): Promise<Activity | null> => {
+  const result = await query(
+    user,
+    `SELECT ${ACTIVITY_COLUMNS_ALIAS}
+     FROM activities a
+     WHERE a.data->>'garmin_activity_id' = $1 AND a.deleted_at IS NULL
+     ORDER BY a.start_time DESC
+     LIMIT 1`,
+    [String(garminActivityId)],
+  )
+  return result.rows.length > 0 ? mapActivityRow(result.rows[0]) : null
+}
+
 /**
  * Get activities that have a garmin_activity_id but haven't had their
  * per-second detail data synced yet. Includes merged activities (source may be

@@ -56,27 +56,7 @@ const recordTime = (record: RecordMesg): number | null => {
   return null
 }
 
-/**
- * The activity in Garmin's download ZIP, or null when the archive holds no readable
- * `.fit` entry. Several entries are merged into one activity.
- */
-export const parseActivityFit = (
-  zipBytes: Uint8Array,
-  maxEntryBytes: number = MAX_FIT_ENTRY_BYTES,
-): FitActivity | null => {
-  let entries: Record<string, Uint8Array>
-  try {
-    entries = unzipSync(zipBytes, {
-      filter: (file) => /\.fit$/i.test(file.name) && file.originalSize <= maxEntryBytes,
-    })
-  } catch {
-    return null
-  }
-
-  const decoded = Object.entries(entries)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, bytes]) => decodeFit(bytes))
-    .filter((fit): fit is FitActivity => fit !== null)
+const mergeDecoded = (decoded: FitActivity[]): FitActivity | null => {
   if (decoded.length === 0) return null
 
   const records = decoded
@@ -94,6 +74,44 @@ export const parseActivityFit = (
     records,
     sessions: decoded.flatMap((fit) => fit.sessions),
   }
+}
+
+/**
+ * The activity in Garmin's download ZIP, or null when the archive holds no readable
+ * `.fit` entry. Several entries are merged into one activity.
+ */
+export const parseActivityFit = (
+  zipBytes: Uint8Array,
+  maxEntryBytes: number = MAX_FIT_ENTRY_BYTES,
+): FitActivity | null => {
+  let entries: Record<string, Uint8Array>
+  try {
+    entries = unzipSync(zipBytes, {
+      filter: (file) => /\.fit$/i.test(file.name) && file.originalSize <= maxEntryBytes,
+    })
+  } catch {
+    return null
+  }
+
+  return mergeDecoded(
+    Object.entries(entries)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, bytes]) => decodeFit(bytes))
+      .filter((fit): fit is FitActivity => fit !== null),
+  )
+}
+
+const isZip = (bytes: Uint8Array): boolean =>
+  bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04
+
+/** A download ZIP as `parseActivityFit` reads it, or one bare FIT file; null when it is neither. */
+export const parseActivityFile = (
+  bytes: Uint8Array,
+  maxEntryBytes: number = MAX_FIT_ENTRY_BYTES,
+): FitActivity | null => {
+  if (isZip(bytes)) return parseActivityFit(bytes, maxEntryBytes)
+  const fit = decodeFit(bytes)
+  return fit ? mergeDecoded([fit]) : null
 }
 
 const SEMICIRCLE_TO_DEGREES = 180 / 2 ** 31

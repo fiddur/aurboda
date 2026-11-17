@@ -127,7 +127,7 @@ export class GarminOAuthNotConnectedError extends Error {
   }
 }
 
-const redactAll = (message: string, secrets: (string | undefined)[]): string =>
+export const redactAll = (message: string, secrets: (string | undefined)[]): string =>
   secrets.reduce<string>((acc, secret) => (secret ? redactSecret(acc, secret) : acc), message)
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error))

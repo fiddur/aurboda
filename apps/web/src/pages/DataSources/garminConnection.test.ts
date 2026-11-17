@@ -4,6 +4,7 @@ import {
   addDaysToIsoDate,
   connectErrorText,
   garminConnectionFlags,
+  garminDataTypeNote,
   garminLastReceivedText,
   garminOAuthReturn,
   garminPermissionLabel,
@@ -131,6 +132,24 @@ describe('garminConnectionFlags', () => {
   it('can pull with the login or a key', () => {
     expect(garminConnectionFlags({ garmin_session_connected: true }).canPull).toBe(true)
     expect(garminConnectionFlags({ garmin_personal_key: key }).canPull).toBe(true)
+  })
+})
+
+describe('garminDataTypeNote', () => {
+  const notes = { key_note: 'key', push_note: 'push' }
+
+  it('shows the key note for a key alone', () => {
+    expect(garminDataTypeNote(notes, { keyOnly: true, pushOnly: false })).toBe('key')
+  })
+
+  it('shows the push note for Connect with Garmin alone', () => {
+    expect(garminDataTypeNote(notes, { keyOnly: false, pushOnly: true })).toBe('push')
+  })
+
+  it('shows nothing with the login, or when the type has no note', () => {
+    expect(garminDataTypeNote(notes, { keyOnly: false, pushOnly: false })).toBeUndefined()
+    expect(garminDataTypeNote({}, { keyOnly: true, pushOnly: false })).toBeUndefined()
+    expect(garminDataTypeNote({ key_note: 'key' }, { keyOnly: false, pushOnly: true })).toBeUndefined()
   })
 })
 

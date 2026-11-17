@@ -19,6 +19,7 @@ import {
   isCalendarDate,
   isPlainObject,
   noonUtc,
+  pushedGarminActivityId,
 } from './push-adapters.ts'
 
 export const garminPushToken = (sessionSecret: string): string =>
@@ -50,6 +51,9 @@ export interface GarminPushDeps {
   /** Drops the grant, the mapping and the push sync states without calling Garmin. */
   forgetGrant: (user: string) => Promise<void>
   updateGrantScopes: (user: string, scopes: string[]) => Promise<unknown>
+  /** Fetches and processes the activity's pushed FIT file once both it and its notice are here. */
+  syncActivityFile: (user: string, garminActivityId: number) => Promise<void>
+  onActivitySynced: (user: string, start: Date, end: Date) => void
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   auditError: typeof auditError
@@ -87,7 +91,19 @@ const idPart = (value: unknown): string | undefined =>
       ? String(value)
       : undefined
 
+/** An activity's FIT, TCX and GPX notices each keep their own record, found by exact id. */
+const activityFileExternalId = (item: Item): string | undefined => {
+  const activityId = pushedGarminActivityId(item)
+  if (activityId === undefined) return undefined
+  const fileType = typeof item.fileType === 'string' && item.fileType !== '' ? item.fileType : 'unknown'
+  return `file-${activityId}-${fileType.toLowerCase()}`
+}
+
 export const garminPushExternalId = (type: string, item: Item): string | undefined => {
+  if (type === 'activityFiles') {
+    const fileId = activityFileExternalId(item)
+    if (fileId) return fileId
+  }
   const summaryId = idPart(item.summaryId)
   if (summaryId) return summaryId
   const activityId = idPart(item.activityId)
@@ -152,16 +168,51 @@ const groupByGarminUser = (body: Item) => {
   return { byUser, dropped }
 }
 
+const ACTIVITY_TYPES = new Set(['activities', 'manuallyUpdatedActivities'])
+const ACTIVITY_WRITING_TYPES = new Set(['sleeps', ...ACTIVITY_TYPES])
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** The activity of each item is a row by the time its file notice is handled. */
+const processingOrder = (stored: Map<string, StoredItem[]>): [string, StoredItem[]][] =>
+  [...stored].sort(([a], [b]) => Number(a === 'activityFiles') - Number(b === 'activityFiles'))
+
+const isFitNotice = (item: Item): boolean =>
+  typeof item.fileType === 'string' && item.fileType.toUpperCase() === 'FIT'
+
+/** The earliest start and latest end of the items; the last day when none has a usable time. */
+const pushedSpan = (items: Item[], now: Date): { start: Date; end: Date } => {
+  const spans = items.flatMap((item) => {
+    const start = typeof item.startTimeInSeconds === 'number' ? item.startTimeInSeconds : NaN
+    if (!Number.isFinite(start)) return []
+    const duration =
+      typeof item.durationInSeconds === 'number' && Number.isFinite(item.durationInSeconds)
+        ? item.durationInSeconds
+        : 0
+    return [{ end: (start + duration) * 1000, start: start * 1000 }]
+  })
+  if (spans.length === 0) return { end: now, start: new Date(now.getTime() - DAY_MS) }
+  return {
+    end: new Date(Math.max(...spans.map((span) => span.end))),
+    start: new Date(Math.min(...spans.map((span) => span.start))),
+  }
+}
+
+const processItem = async (deps: GarminPushDeps, user: string, type: string, { feeds, item }: StoredItem) => {
+  const adapted = adaptGarminPushItem(type, item)
+  for (const { data, dataType } of adapted.garmin) {
+    if (feeds.includes(dataType)) await deps.processGarminData(user, dataType, data)
+  }
+  if (adapted.points.length > 0) await deps.insertTimeSeries(user, adapted.points)
+
+  const fileWanted = ACTIVITY_TYPES.has(type) || (type === 'activityFiles' && isFitNotice(item))
+  const activityId = fileWanted ? pushedGarminActivityId(item) : undefined
+  if (activityId !== undefined) await deps.syncActivityFile(user, activityId)
+}
+
 const processData = async (deps: GarminPushDeps, { stored, user }: UserPush): Promise<void> => {
-  for (const [type, entries] of stored) {
+  for (const [type, entries] of processingOrder(stored)) {
     try {
-      for (const { feeds, item } of entries) {
-        const adapted = adaptGarminPushItem(type, item)
-        for (const { data, dataType } of adapted.garmin) {
-          if (feeds.includes(dataType)) await deps.processGarminData(user, dataType, data)
-        }
-        if (adapted.points.length > 0) await deps.insertTimeSeries(user, adapted.points)
-      }
+      for (const entry of entries) await processItem(deps, user, type, entry)
       await deps.upsertSyncState(user, {
         data_type: type,
         error_message: undefined,
@@ -170,6 +221,13 @@ const processData = async (deps: GarminPushDeps, { stored, user }: UserPush): Pr
         retry_after: undefined,
         status: 'idle',
       })
+      if (ACTIVITY_WRITING_TYPES.has(type)) {
+        const { end, start } = pushedSpan(
+          entries.map((entry) => entry.item),
+          deps.now(),
+        )
+        deps.onActivitySynced(user, start, end)
+      }
     } catch (error) {
       await deps.auditError(user, 'sync', `Garmin: processing pushed ${type} failed`, {
         error: errorText(error),
@@ -309,10 +367,12 @@ export const receiveGarminPush = async (
     }
 
     if (push.stored.size > 0 || Object.keys(skipped).length > 0) {
-      void deps.auditInfo(user, 'sync', 'Garmin: data received', {
-        counts: countsOf(push.stored),
-        ...(Object.keys(skipped).length > 0 ? { skipped_disabled: skipped } : {}),
-      })
+      void deps
+        .auditInfo(user, 'sync', 'Garmin: data received', {
+          counts: countsOf(push.stored),
+          ...(Object.keys(skipped).length > 0 ? { skipped_disabled: skipped } : {}),
+        })
+        .catch(() => {})
     }
     if (push.stored.size > 0 || push.lifecycle.size > 0) pushes.push(push)
   }
