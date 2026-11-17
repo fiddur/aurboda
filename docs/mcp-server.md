@@ -136,10 +136,10 @@ route. See [Routes and segments](features/routes-and-segments.md#phase-4-segment
 
 See [Exercise catalogue](features/exercise-catalog.md). Logged exercise names on sets stay free text.
 
-| Tool                         | What it does                                                                                                                                                                                          |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, best matches first), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
-| `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                             |
+| Tool                         | What it does                                                                                                                                                                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_exercise_catalog`    | Search the built-in catalogue by `q` (word prefixes, plurals, written together or apart, db/bb/kb; best matches first), `similar_to` (entries closest to a logged name), exact `name` or alias, `equipment`, `muscle` (a muscle or a group, weight ≥ 0.5), `category`; paged by `limit` and `offset` |
+| `get_exercise_catalog_entry` | One catalogue exercise by its stable `key`: name, aliases, category, equipment, muscles with recruitment weights, and the same exercise in other datasets                                                                                                                                            |
 
 ### Activity type catalogue tools
 

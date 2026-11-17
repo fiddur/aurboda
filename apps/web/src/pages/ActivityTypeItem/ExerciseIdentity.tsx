@@ -91,6 +91,7 @@ const IdentityBody = ({
           <ExerciseCatalogPicker
             autoFocus={!view.pickerInitiallyOpen}
             disabled={pending}
+            similarTo={value}
             onPick={(entry) => setIdentity.mutate(entry.key)}
           />
         </div>

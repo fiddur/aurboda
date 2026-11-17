@@ -388,7 +388,11 @@ export const exerciseCatalogQuerySchema = z
     offset: z.coerce.number().int().min(0).default(0).meta({ description: 'Entries to skip (default 0)' }),
     q: z.string().optional().meta({
       description:
-        'Search words: each must be the start of a word of the name, an alias or a search term. Best matches first',
+        'Search words: each must be the start of a word of the name, an alias or a search term. A plural meets its singular, words written together or apart meet (pullup, pull up), db, bb and kb stand for dumbbell, barbell and kettlebell, and single means one. Best matches first',
+    }),
+    similar_to: z.string().optional().meta({
+      description:
+        'A logged exercise name. Alone: the entries closest to it by shared words, closest first, none when nothing is close. With q: equally ranked matches are ordered by closeness to it. Ignored with name or fit',
     }),
   })
   .meta({ description: 'Search the exercise catalogue', id: 'ExerciseCatalogQuery' })

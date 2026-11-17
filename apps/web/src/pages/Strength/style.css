@@ -542,6 +542,11 @@ button.strength-set-row:hover {
   color: var(--color-text-muted);
 }
 
+.strength-picker-more {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
 .strength-entry-link {
   display: block;
   margin: 0 0 1rem;

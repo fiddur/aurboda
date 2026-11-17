@@ -89,6 +89,15 @@ describe('GET /exercise-catalog', () => {
     expect(res.body.data.entries.map((e: { key: string }) => e.key)).toEqual(['dumbbell_bench_press'])
   })
 
+  test('similar_to alone gives the entries closest to a logged name', async () => {
+    const res = await supertest(buildApp())
+      .get('/exercise-catalog')
+      .query({ similar_to: 'Flat Dumbbell Press' })
+    expect(res.status).toBe(200)
+    expect(res.body.data.total).toBe(1)
+    expect(res.body.data.entries.map((e: { key: string }) => e.key)).toEqual(['dumbbell_bench_press'])
+  })
+
   test('name is an exact name-or-alias lookup', async () => {
     const res = await supertest(buildApp()).get('/exercise-catalog').query({ name: 'flat db press' })
     expect(res.body.data.entries.map((e: { key: string }) => e.key)).toEqual(['dumbbell_bench_press'])
