@@ -30,6 +30,13 @@ describe('summarizeAuditBody', () => {
     expect(summarizeAuditBody({ api_key: 'k'.repeat(5000) })?.api_key).toBe('[REDACTED]')
   })
 
+  test('redacts the code and state of an OAuth sign-in', () => {
+    expect(summarizeAuditBody({ code: 'fake-code', state: 'fake-state' })).toEqual({
+      code: '[REDACTED]',
+      state: '[REDACTED]',
+    })
+  })
+
   test('summarizes a large sync-like body', () => {
     const records = Array.from({ length: 5000 }, (_, i) => ({ time: i, value: 60 }))
     expect(summarizeAuditBody({ records, type: 'heart_rate' })).toEqual({

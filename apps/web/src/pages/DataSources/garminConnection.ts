@@ -95,6 +95,23 @@ const OAUTH_ERROR_TEXT: Record<string, string> = {
 export const oauthErrorText = (code: string | null): string | null =>
   code === null ? null : (OAUTH_ERROR_TEXT[code] ?? OAUTH_ERROR_TEXT.auth_failed)
 
+const OAUTH_RETURN_PARAMS = ['garmin_code', 'garmin_state'] as const
+
+/** The code and state Garmin's callback hands to the page, for the signed-in user to finish with. */
+export const garminOAuthReturn = (search: string): { code: string; state: string } | null => {
+  const params = new URLSearchParams(search)
+  const code = params.get('garmin_code')
+  const state = params.get('garmin_state')
+  return code && state ? { code, state } : null
+}
+
+export const withoutGarminOAuthReturn = (search: string): string => {
+  const params = new URLSearchParams(search)
+  for (const name of OAUTH_RETURN_PARAMS) params.delete(name)
+  const rest = params.toString()
+  return rest ? `?${rest}` : ''
+}
+
 const PERMISSION_LABELS: Record<string, string> = {
   ACTIVITY_EXPORT: 'Activities',
   COURSE_IMPORT: 'Sending courses',
