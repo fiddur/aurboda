@@ -719,7 +719,10 @@ describe('evaluateAutoshareWindow: settling', () => {
     const h = withRequeue({
       listCandidates: async () => [
         candidate('a1', { created_at: ingested, start_time: new Date(T0.getTime() + HOUR / 2) }),
-        candidate('a2', { created_at: new Date(ingested.getTime() - 4 * MINUTE) }),
+        candidate('a2', {
+          created_at: new Date(ingested.getTime() - 4 * MINUTE),
+          end_time: new Date(ingested.getTime() - 4 * MINUTE),
+        }),
       ],
     })
     const now = new Date(ingested.getTime() + MINUTE)
@@ -743,6 +746,90 @@ describe('evaluateAutoshareWindow: settling', () => {
     expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, now)).toBe(0)
     expect(h.requeued).toEqual([])
     expect(dedupeQueries).toBe(0)
+  })
+
+  describe('a session logged live, created at its start (#1778)', () => {
+    const finished = new Date(T0.getTime() + 2 * HOUR)
+    const started = new Date(finished.getTime() - 30 * MINUTE)
+    const live = (over: Partial<AutoshareCandidate> = {}) =>
+      candidate('live', {
+        created_at: started,
+        end_time: finished,
+        source: 'aurboda',
+        start_time: started,
+        ...over,
+      })
+
+    test('waits from when it ended, not from when its row was created', async () => {
+      const h = withRequeue({ listCandidates: async () => [live()] })
+      expect(
+        await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, new Date(finished.getTime() + 3000)),
+      ).toBe(0)
+      const settled = new Date(finished.getTime() + STABILISATION)
+      expect(h.requeued).toEqual([{ end: windowEnd, notBefore: settled, start: T0 }])
+
+      expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, settled)).toBe(1)
+      expect(h.createdPosts).toEqual([{ anchorId: 'live', ruleId: 'rule-1' }])
+    })
+
+    test("the rule's wait counts from when it ended", async () => {
+      const h = withRequeue({
+        getEnabledRules: async () => [rule({ delay_minutes: 30 })],
+        listCandidates: async () => [live()],
+      })
+      const readyAt = new Date(finished.getTime() + 30 * MINUTE)
+      expect(
+        await evaluateAutoshareWindow(
+          'u',
+          T0,
+          windowEnd,
+          h.deps,
+          new Date(finished.getTime() + STABILISATION),
+        ),
+      ).toBe(0)
+      expect(h.requeued).toEqual([{ end: windowEnd, notBefore: readyAt, start: T0 }])
+
+      expect(await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, readyAt)).toBe(1)
+    })
+
+    test('a member ingested after it ended decides when the group settles', async () => {
+      const joined = new Date(finished.getTime() + 2 * MINUTE)
+      const watch = candidate('watch', {
+        created_at: joined,
+        end_time: new Date(finished.getTime() + 4000),
+        start_time: new Date(started.getTime() + 4000),
+      })
+      const h = withRequeue({ getGroup: async () => [live(), watch], listCandidates: async () => [live()] })
+      expect(
+        await evaluateAutoshareWindow(
+          'u',
+          T0,
+          windowEnd,
+          h.deps,
+          new Date(finished.getTime() + STABILISATION),
+        ),
+      ).toBe(0)
+      expect(h.requeued.map((r) => r.notBefore)).toEqual([new Date(joined.getTime() + STABILISATION)])
+    })
+
+    test('the Garmin detail wait counts from when it ended', async () => {
+      const longEnd = new Date(T0.getTime() + 4 * HOUR)
+      const longStart = new Date(longEnd.getTime() - 3 * HOUR)
+      const longWindowEnd = new Date(T0.getTime() + 5 * HOUR)
+      const anchor = live({ created_at: longStart, end_time: longEnd, start_time: longStart })
+      const watch = candidate('watch', {
+        created_at: new Date(longEnd.getTime() + MINUTE),
+        detail_pending: true,
+        end_time: longEnd,
+        start_time: new Date(longStart.getTime() + 4000),
+      })
+      const h = withRequeue({ getGroup: async () => [anchor, watch], listCandidates: async () => [anchor] })
+      const now = new Date(longEnd.getTime() + 30 * MINUTE)
+      expect(await evaluateAutoshareWindow('u', T0, longWindowEnd, h.deps, now)).toBe(0)
+      expect(h.requeued).toEqual([
+        { end: longWindowEnd, notBefore: new Date(now.getTime() + STABILISATION), start: T0 },
+      ])
+    })
   })
 
   test('without a requeue dep a deferral is just a skip', async () => {
@@ -844,6 +931,29 @@ describe('evaluateAutoshareWindow: pending-share announces', () => {
     expect(h.sharedGroups).toEqual([])
   })
 
+  test('a session logged live is announced for its end plus the settling wait (#1778)', async () => {
+    const finished = new Date(T0.getTime() + 2 * HOUR)
+    const started = new Date(finished.getTime() - 30 * MINUTE)
+    const h = withHooks({
+      listCandidates: async () => [
+        candidate('live', {
+          created_at: started,
+          end_time: finished,
+          source: 'aurboda',
+          start_time: started,
+        }),
+      ],
+    })
+    expect(
+      await evaluateAutoshareWindow('u', T0, windowEnd, h.deps, new Date(finished.getTime() + 3000)),
+    ).toBe(0)
+    const shareAt = new Date(finished.getTime() + STABILISATION_SECONDS * 1000)
+    expect(h.announced).toEqual([
+      { anchorId: 'live', info: { detail_pending: false, share_at: shareAt }, ruleId: 'rule-1' },
+    ])
+    expect(h.createdPosts).toEqual([])
+  })
+
   test('an unsettled group that matches no rule is re-queued and not announced', async () => {
     const h = withHooks({
       listCandidates: async () => [candidate('a1', { activity_type: 'yoga', created_at: ingested })],
@@ -914,7 +1024,11 @@ describe('evaluateAutoshareWindow: pending-share announces', () => {
       },
       listCandidates: async () => [
         candidate('young', { created_at: ingested, start_time: new Date(T0.getTime() + HOUR / 2) }),
-        candidate('old', { created_at: new Date(ingested.getTime() - HOUR) }),
+        candidate('old', {
+          created_at: new Date(ingested.getTime() - HOUR),
+          end_time: new Date(ingested.getTime() - HOUR),
+          start_time: T0,
+        }),
       ],
       shared: async () => {
         throw new Error('notifier down')

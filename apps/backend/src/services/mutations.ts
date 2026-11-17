@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import type { Activity, MergedActivity } from '../db/types.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
-import { mergeOverlappingActivities } from '../db/activities/merge.ts'
+import { blendGroupData, mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
   checkActivityConflict,
@@ -895,13 +895,7 @@ export const buildMergedActivityData = (
     }
   }
 
-  // Merge data objects: earlier first, later overrides
-  let mergedData: Record<string, unknown> = {}
-  for (const a of sortedActivities) {
-    if (a.data) {
-      mergedData = { ...mergedData, ...a.data }
-    }
-  }
+  const mergedData: Record<string, unknown> = blendGroupData(sortedActivities)
 
   mergedData.merged_from = sortedActivities.map((a) => ({
     end_time: a.end_time?.toISOString(),

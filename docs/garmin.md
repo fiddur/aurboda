@@ -109,7 +109,7 @@ Garmin strength activities (`strength_training` rows from Garmin with a `garmin_
 - **Values.** Reps; weight in kg (Garmin sends grams); and for a set without reps, its duration in seconds as `time`. Rest sets, and sets with neither reps nor time, are skipped.
 - **Storage.** The sets go to `data.sets` with `data.sets_source: 'garmin'`, and `data.garmin_sets_synced` marks the activity read, also when it had no sets. The raw response is kept as a `garmin_exercise_sets` raw record. A failed read leaves the activity for the next sync.
 - **Pace.** Each sync reads the sets of up to 10 activities, newest first, before their detail, so older strength activities fill in gradually over the following syncs. `full_resync` re-reads the newest 10.
-- **Sets logged elsewhere win.** When Gravl or a manual log carries sets for the same session, those are the sets shown: sets imported from Garmin never replace sets from another row in a [merge](./gravl.md#enrich-dont-duplicate), whichever row starts first. Garmin's sets show only when no other row of the session has any.
+- **Sets logged elsewhere win.** When a session logged in Aurboda, Gravl or a manual log carries sets for the same session, those are the sets shown: sets imported from Garmin never replace sets from another row in a [merge](./gravl.md#enrich-dont-duplicate), whichever row starts first. Garmin's sets show only when no other row of the session has any. The rule holds everywhere a merged session is shown or written: the day and list views, the activity page, the shared post and the manual merge.
 
 ## Admin Setup
 

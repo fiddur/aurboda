@@ -193,6 +193,7 @@ export {
   retireSingleLiftTypes,
   mergeOverlappingActivities,
   pickOverrideWinner,
+  blendGroupData,
   restoreActivity,
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,

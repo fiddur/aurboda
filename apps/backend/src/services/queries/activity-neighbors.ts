@@ -2,6 +2,7 @@ import type { ActivityNeighbor, ActivityNeighbors } from '@aurboda/api-spec'
 
 import type { Activity } from '../../db/types.ts'
 
+import { blendGroupData } from '../../db/activities/merge.ts'
 import { findAdjacentActivity, getActivityById, getOverlappingActivities } from '../../db/index.ts'
 import { fieldValue } from '../activity-measures.ts'
 import { parseActivityId } from './activity-detail.ts'
@@ -40,7 +41,7 @@ export const getActivityNeighbors = async (
 
   const group = await mergeGroup(user, activity)
   const start = group[0]!.start_time
-  const data = group.reduce<Record<string, unknown>>((acc, a) => ({ ...acc, ...a.data }), {})
+  const data = blendGroupData(group)
 
   let filters: { field: string; value: string }[] | undefined
   if (sameField) {
