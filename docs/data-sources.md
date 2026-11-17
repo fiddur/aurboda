@@ -48,6 +48,10 @@ You connect sources from **Data Sources** in the web app's sidebar, one page per
 - ActivityWatch tracks last push time per device
 - No auto-sync (agent controls the schedule)
 
+**Garmin's Developer Program** (Connect with Garmin) pushes too, but from Garmin's servers to one secret
+URL the admin registers with Garmin, as the user's device syncs; each summary type received leaves a
+`garmin_push` sync state. See [Garmin → Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
+
 Check sync status:
 
 - REST: `GET /api/sync/{provider}/status`

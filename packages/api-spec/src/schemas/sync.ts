@@ -146,6 +146,19 @@ export const oauthConnectUrlResponseSchema = authActionResponseSchema
 
 export type OAuthConnectUrlResponse = z.infer<typeof oauthConnectUrlResponseSchema>
 
+export const completeGarminOAuthBodySchema = z
+  .object({
+    code: z.string().min(1).max(2048).meta({ description: 'The authorization code Garmin returned' }),
+    state: z.string().min(1).max(4096).meta({ description: 'The sealed state Garmin returned with it' }),
+  })
+  .meta({
+    description:
+      'Finish Connect with Garmin as the signed-in user, who must be the user that started the sign-in',
+    id: 'CompleteGarminOAuthBody',
+  })
+
+export type CompleteGarminOAuthBody = z.infer<typeof completeGarminOAuthBodySchema>
+
 export const syncRescueTimeBodySchema = z
   .object({
     full_resync: fullResyncSchema,

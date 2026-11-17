@@ -6,6 +6,7 @@ import {
   getOAuthToken,
   markOAuthTokenRefused,
   updateOAuthAccessToken,
+  updateOAuthTokenScopes,
   upsertOAuthToken,
 } from './oauth.ts'
 
@@ -22,6 +23,43 @@ describe('OAuth token Integration Tests', () => {
 
   beforeEach(async () => {
     await cleanTestDb()
+  })
+
+  describe('updateOAuthTokenScopes', () => {
+    test('replaces the scopes and keeps the tokens', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: 'garmin-access',
+        provider: 'garmin_oauth',
+        refresh_token: 'garmin-refresh',
+        scopes: ['HEALTH_EXPORT'],
+      })
+
+      expect(await updateOAuthTokenScopes(user, 'garmin_oauth', ['ACTIVITY_EXPORT', 'MCT_EXPORT'])).toBe(true)
+      const token = await getOAuthToken(user, 'garmin_oauth')
+      expect(token?.scopes).toEqual(['ACTIVITY_EXPORT', 'MCT_EXPORT'])
+      expect(token?.access_token).toBe('garmin-access')
+      expect(token?.refresh_token).toBe('garmin-refresh')
+    })
+
+    test('stores an empty list', async () => {
+      const user = getTestUser()
+      await upsertOAuthToken(user, {
+        access_token: 'garmin-access',
+        provider: 'garmin_oauth',
+        scopes: ['HEALTH_EXPORT'],
+      })
+
+      await updateOAuthTokenScopes(user, 'garmin_oauth', [])
+      expect((await getOAuthToken(user, 'garmin_oauth'))?.scopes).toEqual([])
+    })
+
+    test('answers false and creates nothing without a row', async () => {
+      const user = getTestUser()
+
+      expect(await updateOAuthTokenScopes(user, 'garmin_oauth', ['HEALTH_EXPORT'])).toBe(false)
+      expect(await getOAuthToken(user, 'garmin_oauth')).toBeNull()
+    })
   })
 
   describe('deleteOAuthToken', () => {

@@ -4,11 +4,14 @@ import {
   addDaysToIsoDate,
   connectErrorText,
   garminConnectionFlags,
+  garminLastReceivedText,
+  garminOAuthReturn,
   garminPermissionLabel,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
   oauthErrorText,
+  withoutGarminOAuthReturn,
 } from './garminConnection'
 
 describe('expiry quick choices', () => {
@@ -72,7 +75,13 @@ describe('garminConnectionFlags', () => {
       canPull: true,
       isConnected: true,
       keyOnly: true,
-      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
+      oauth: {
+        available: false,
+        connected: false,
+        last_received_at: null,
+        needs_reconnect: false,
+        permissions: [],
+      },
       personalKey: key,
       sessionConnected: false,
     })
@@ -90,14 +99,26 @@ describe('garminConnectionFlags', () => {
       canPull: false,
       isConnected: false,
       keyOnly: false,
-      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
+      oauth: {
+        available: false,
+        connected: false,
+        last_received_at: null,
+        needs_reconnect: false,
+        permissions: [],
+      },
       personalKey: undefined,
       sessionConnected: false,
     })
   })
 
   it('is connected but cannot pull with Connect with Garmin alone', () => {
-    const oauth = { available: true, connected: true, needs_reconnect: false, permissions: ['HEALTH_EXPORT'] }
+    const oauth = {
+      available: true,
+      connected: true,
+      last_received_at: null,
+      needs_reconnect: false,
+      permissions: ['HEALTH_EXPORT'],
+    }
     const flags = garminConnectionFlags({
       garmin_connected: true,
       garmin_oauth: oauth,
@@ -123,6 +144,21 @@ describe('oauthErrorText', () => {
   })
 })
 
+describe('garminLastReceivedText', () => {
+  const now = new Date('2026-11-17T10:00:00Z')
+
+  it('says how long ago Garmin last pushed', () => {
+    expect(garminLastReceivedText('2026-11-17T07:00:00Z', now)).toBe('Last data received about 3 hours ago')
+    expect(garminLastReceivedText('2026-11-15T10:00:00Z', now)).toBe('Last data received 2 days ago')
+  })
+
+  it('says nothing has arrived yet, and when it will', () => {
+    expect(garminLastReceivedText(null, now)).toBe(
+      'No data received yet. Garmin sends data the next time your watch syncs.',
+    )
+  })
+})
+
 describe('garminPermissionLabel', () => {
   it('names the known permissions and passes others through', () => {
     expect(garminPermissionLabel('HEALTH_EXPORT')).toBe('Health data')
@@ -131,5 +167,33 @@ describe('garminPermissionLabel', () => {
     expect(garminPermissionLabel('WORKOUT_IMPORT')).toBe('Sending workouts')
     expect(garminPermissionLabel('COURSE_IMPORT')).toBe('Sending courses')
     expect(garminPermissionLabel('NEW_THING')).toBe('NEW_THING')
+  })
+})
+
+describe('garminOAuthReturn', () => {
+  it('reads the code and state the callback hands over', () => {
+    expect(garminOAuthReturn('?garmin_code=fake-code&garmin_state=fake%2Bstate')).toEqual({
+      code: 'fake-code',
+      state: 'fake+state',
+    })
+  })
+
+  it('is null unless both are present and non-empty', () => {
+    expect(garminOAuthReturn('')).toBeNull()
+    expect(garminOAuthReturn('?garmin_code=fake-code')).toBeNull()
+    expect(garminOAuthReturn('?garmin_state=fake-state')).toBeNull()
+    expect(garminOAuthReturn('?garmin_code=&garmin_state=fake-state')).toBeNull()
+    expect(garminOAuthReturn('?error=auth_failed')).toBeNull()
+  })
+})
+
+describe('withoutGarminOAuthReturn', () => {
+  it('removes the code and state and keeps everything else', () => {
+    expect(withoutGarminOAuthReturn('?embed=1&garmin_code=fake-code&garmin_state=fake-state')).toBe(
+      '?embed=1',
+    )
+    expect(withoutGarminOAuthReturn('?garmin_code=fake-code&garmin_state=fake-state')).toBe('')
+    expect(withoutGarminOAuthReturn('')).toBe('')
+    expect(withoutGarminOAuthReturn('?embed=1')).toBe('?embed=1')
   })
 })

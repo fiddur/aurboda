@@ -1,5 +1,6 @@
 import type {
   AuthActionResponse,
+  CompleteGarminOAuthBody,
   ConnectGarminPersonalKeyBody,
   GarminLoginResponse,
   OAuthConnectUrlResponse,
@@ -128,6 +129,16 @@ export const getGarminOAuthConnectUrl = async (): Promise<string> => {
   })
   if (!response.data.url) throw new Error(response.data.error ?? 'Garmin sign-in is not available')
   return response.data.url
+}
+
+export const completeGarminOAuth = async (code: string, state: string): Promise<AuthActionResponse> => {
+  const { token } = auth.value
+  const body: CompleteGarminOAuthBody = { code, state }
+  const response = await axios.post<AuthActionResponse>(`${API_URL}/auth/garmin/oauth/complete`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+    validateStatus: () => true,
+  })
+  return response.data
 }
 
 export const disconnectGarminOAuth = async (): Promise<AuthActionResponse> => {

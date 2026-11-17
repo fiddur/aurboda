@@ -113,6 +113,8 @@ const defaultDeps: GarminProcessDeps = {
   upsertActivityTrack,
 }
 
+export { defaultDeps as defaultGarminProcessDeps }
+
 /**
  * Garmin activity typeKeys that should be mapped to a different activity type name.
  * Aligns Garmin naming with Health Connect exercise type names from api-spec

@@ -189,6 +189,10 @@ export const adminSettingsResponseSchema = baseResponseSchema
     garmin_redirect_uri: z.string().meta({
       description: 'Absolute OAuth redirect URI to register with Garmin (derived from API_BASE_URL)',
     }),
+    garmin_push_url: z.string().meta({
+      description:
+        'Absolute URL to register at Garmin as the push endpoint of every summary type. It holds a secret: keep it private',
+    }),
     gravl_client_id_set: z.boolean().meta({ description: 'Whether a Gravl OAuth client ID is configured' }),
     gravl_client_secret_set: z
       .boolean()

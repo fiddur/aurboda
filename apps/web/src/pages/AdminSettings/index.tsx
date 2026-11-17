@@ -191,6 +191,19 @@ function GarminApiSection() {
   const idSet = settings?.garmin_client_id_set ?? false
   const secretSet = settings?.garmin_client_secret_set ?? false
   const redirectUri = settings?.garmin_redirect_uri
+  const pushUrl = settings?.garmin_push_url
+  const [pushUrlCopied, setPushUrlCopied] = useState(false)
+
+  const handleCopyPushUrl = useCallback(async () => {
+    if (!pushUrl) return
+    try {
+      await navigator.clipboard.writeText(pushUrl)
+      setPushUrlCopied(true)
+      setTimeout(() => setPushUrlCopied(false), 3000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }, [pushUrl])
 
   const saveGarmin = useCallback(
     async (params: { garmin_client_id?: string | null; garmin_client_secret?: string | null }) => {
@@ -272,6 +285,24 @@ function GarminApiSection() {
         </a>
         ); register the redirect URL above with it.
       </p>
+      {pushUrl && (
+        <>
+          <p class="field-description">Push URL (keep it private):</p>
+          <div class="invitation-url">
+            <input type="text" value={pushUrl} readOnly />
+            <button type="button" class="copy-button" onClick={handleCopyPushUrl}>
+              {pushUrlCopied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <p class="field-description">
+            Paste it into every endpoint at{' '}
+            <a href="https://apis.garmin.com/tools/endpoints" target="_blank" rel="noopener noreferrer">
+              apis.garmin.com/tools/endpoints
+            </a>{' '}
+            and choose &quot;push&quot;.
+          </p>
+        </>
+      )}
     </div>
   )
 }
