@@ -20,6 +20,8 @@ finished one logged in Aurboda.
 
 The logged sets feed the [strength score](strength-score.md): per reference lift the best
 estimated one-rep max of the last 90 days against a reference by sex and bodyweight.
+They also feed [muscle recovery](muscle-recovery.md): per muscle group how far the fatigue of
+the working sets of the last days has worn off.
 
 ## Exercise blocks
 

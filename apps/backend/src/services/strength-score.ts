@@ -1,8 +1,3 @@
-/**
- * Strength score: per reference lift the best estimated one-rep max of a 90 day window against a
- * reference by sex and bodyweight, averaged per score group and overall. Pure; nothing is stored.
- */
-
 import {
   type BiologicalSex,
   STRENGTH_SCORE_GROUP_LIFTS,

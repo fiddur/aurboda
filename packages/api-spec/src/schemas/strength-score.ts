@@ -1,10 +1,3 @@
-/**
- * Strength score of an activity type with a catalogue-backed item path (strength sets): per reference
- * lift the best estimated one-rep max of the last 90 days against a reference that depends on sex and
- * bodyweight, averaged per muscle group and overall. 100 points is the reference: a solid recreational
- * lifter. Nothing is stored; the score and its history are computed on read.
- */
-
 import { z } from 'zod'
 
 import { createDataResponseSchema, dataFieldPathSchema } from './common.ts'
