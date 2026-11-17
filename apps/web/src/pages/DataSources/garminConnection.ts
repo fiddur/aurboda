@@ -1,5 +1,7 @@
 import type { GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
 
+import { formatDistance } from 'date-fns'
+
 export const KEY_EXPIRY_CHOICES = [
   { days: 30, label: '30 days' },
   { days: 90, label: '90 days' },
@@ -56,6 +58,7 @@ export interface GarminConnectionFlags {
 const NO_OAUTH: GarminOAuthStatus = {
   available: false,
   connected: false,
+  last_received_at: null,
   needs_reconnect: false,
   permissions: [],
 }
@@ -102,3 +105,9 @@ const PERMISSION_LABELS: Record<string, string> = {
 
 export const garminPermissionLabel = (permission: string): string =>
   PERMISSION_LABELS[permission] ?? permission
+
+/** The line under a Connect with Garmin connection: when Garmin last pushed, or that nothing has come yet. */
+export const garminLastReceivedText = (lastReceivedAt: string | null, now: Date = new Date()): string =>
+  lastReceivedAt === null
+    ? 'No data received yet. Garmin sends data the next time your watch syncs.'
+    : `Last data received ${formatDistance(new Date(lastReceivedAt), now, { addSuffix: true })}`

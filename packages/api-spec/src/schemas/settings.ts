@@ -349,6 +349,9 @@ export const garminOAuthStatusSchema = z
         'Whether this server has Garmin Connect Developer Program credentials (Connect with Garmin)',
     }),
     connected: z.boolean().meta({ description: 'Whether Garmin is connected through Connect with Garmin' }),
+    last_received_at: iso8601DateTimeSchema.nullable().meta({
+      description: 'When Garmin last pushed data for this user, or null when nothing has arrived yet',
+    }),
     needs_reconnect: z.boolean().meta({
       description: 'Whether Garmin refused to renew the connection, so the user has to connect again',
     }),
@@ -400,6 +403,7 @@ export const userSettingsResponseSchema = baseResponseSchema
     garmin_oauth: garminOAuthStatusSchema.default({
       available: false,
       connected: false,
+      last_received_at: null,
       needs_reconnect: false,
       permissions: [],
     }),

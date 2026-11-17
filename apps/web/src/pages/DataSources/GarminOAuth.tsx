@@ -3,7 +3,7 @@ import type { GarminOAuthStatus } from '@aurboda/api-spec'
 import { useCallback, useState } from 'preact/hooks'
 
 import { disconnectGarminOAuth, getGarminOAuthConnectUrl } from '../../state/api'
-import { garminPermissionLabel, oauthErrorText } from './garminConnection'
+import { garminLastReceivedText, garminPermissionLabel, oauthErrorText } from './garminConnection'
 
 const callbackErrorCode = (): string | null =>
   typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('error')
@@ -86,6 +86,7 @@ export function GarminOAuth({
               ? `You share: ${status.permissions.map(garminPermissionLabel).join(', ')}`
               : 'Garmin reported no shared data. Change what you share in your Garmin Connect account, under connected apps.'}
           </p>
+          <p class="field-description">{garminLastReceivedText(status.last_received_at)}</p>
           <div class="garmin-button-row">{disconnectButton}</div>
         </div>
       ) : (

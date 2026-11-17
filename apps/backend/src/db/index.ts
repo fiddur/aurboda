@@ -65,6 +65,7 @@ export {
   getAllScrobbles,
   getScrobbles,
   insertRawRecord,
+  insertRawRecords,
   queryRawRecords,
   type QueryRawRecordsParams,
   type RawRecordRow,
@@ -635,6 +636,7 @@ export {
   getOAuthToken,
   markOAuthTokenRefused,
   updateOAuthAccessToken,
+  updateOAuthTokenScopes,
   upsertOAuthToken,
 } from './oauth.ts'
 

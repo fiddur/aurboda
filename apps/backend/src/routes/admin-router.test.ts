@@ -12,12 +12,14 @@ import type { PublicTagModeration } from '../services/public-tag-moderation.ts'
 import type { RelayActions } from '../services/relays.ts'
 
 import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
+import { garminPushUrl } from '../integrations/garmin/push.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createTokenBucketLimiter } from '../services/rate-limit.ts'
 import { createAdminRouter } from './admin-router.ts'
 
 const redirectUris = {
   garmin: garminOAuthRedirectUri('https://api.example.test/api'),
+  garminPush: garminPushUrl('https://api.example.test/api', 'fake-session-secret'),
   gravl: gravlRedirectUri('https://api.example.test/api'),
 }
 
@@ -240,6 +242,14 @@ describe('admin settings', () => {
     } finally {
       vi.mocked(centralDb.getServerSetting).mockReset().mockResolvedValue(null)
     }
+  })
+
+  test('GET returns the Garmin push URL with its secret path', async () => {
+    const res = await supertest(buildApp()).get('/admin/settings')
+    expect(res.body.garmin_push_url).toBe(redirectUris.garminPush)
+    expect(res.body.garmin_push_url).toMatch(
+      /^https:\/\/api\.example\.test\/api\/webhooks\/garmin\/[\w-]{43}$/,
+    )
   })
 
   test('PATCH stores the Garmin credentials and clears them with null', async () => {

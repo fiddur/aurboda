@@ -14,6 +14,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  getAllSyncStates,
   getGoals,
   getOAuthToken,
   getUserSettings,
@@ -22,7 +23,12 @@ import {
   upsertUserSettings,
 } from '../db/index.ts'
 import { MAX_GAP_SECONDS, SINGLE_SAMPLE_SECONDS } from '../hr-zone-constants.ts'
-import { GARMIN_OAUTH_PROVIDER, garminOAuthStatusFromToken } from '../integrations/garmin/oauth-status.ts'
+import {
+  GARMIN_OAUTH_PROVIDER,
+  GARMIN_PUSH_PROVIDER,
+  garminOAuthStatusFromToken,
+  garminPushLastReceivedAt,
+} from '../integrations/garmin/oauth-status.ts'
 import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
@@ -242,6 +248,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     garminOAuthToken,
     garminClientId,
     garminClientSecret,
+    garminPushStates,
   ] = await Promise.all([
     getSettings(user),
     getOAuthToken(user, 'oura'),
@@ -260,6 +267,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
     getOAuthToken(user, GARMIN_OAUTH_PROVIDER),
     centralDb.getServerSetting('garmin_client_id'),
     centralDb.getServerSetting('garmin_client_secret'),
+    getAllSyncStates(user, GARMIN_PUSH_PROVIDER),
   ])
   const { zones, source } = hrZonesFromSettings(settings)
   // Mirrors the client's credential order: an OAuth grant wins over a pasted token.
@@ -272,6 +280,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const garminOAuth = {
     available: !!garminClientId && !!garminClientSecret,
     ...garminOAuthStatusFromToken(garminOAuthToken),
+    last_received_at: garminPushLastReceivedAt(garminPushStates),
   }
 
   return {
@@ -332,6 +341,7 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     garmin_oauth: {
       available: !!garminClientId && !!garminClientSecret,
       connected: false,
+      last_received_at: null,
       needs_reconnect: false,
       permissions: [],
     },

@@ -4,6 +4,7 @@ import {
   addDaysToIsoDate,
   connectErrorText,
   garminConnectionFlags,
+  garminLastReceivedText,
   garminPermissionLabel,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
@@ -72,7 +73,13 @@ describe('garminConnectionFlags', () => {
       canPull: true,
       isConnected: true,
       keyOnly: true,
-      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
+      oauth: {
+        available: false,
+        connected: false,
+        last_received_at: null,
+        needs_reconnect: false,
+        permissions: [],
+      },
       personalKey: key,
       sessionConnected: false,
     })
@@ -90,14 +97,26 @@ describe('garminConnectionFlags', () => {
       canPull: false,
       isConnected: false,
       keyOnly: false,
-      oauth: { available: false, connected: false, needs_reconnect: false, permissions: [] },
+      oauth: {
+        available: false,
+        connected: false,
+        last_received_at: null,
+        needs_reconnect: false,
+        permissions: [],
+      },
       personalKey: undefined,
       sessionConnected: false,
     })
   })
 
   it('is connected but cannot pull with Connect with Garmin alone', () => {
-    const oauth = { available: true, connected: true, needs_reconnect: false, permissions: ['HEALTH_EXPORT'] }
+    const oauth = {
+      available: true,
+      connected: true,
+      last_received_at: null,
+      needs_reconnect: false,
+      permissions: ['HEALTH_EXPORT'],
+    }
     const flags = garminConnectionFlags({
       garmin_connected: true,
       garmin_oauth: oauth,
@@ -120,6 +139,21 @@ describe('oauthErrorText', () => {
     expect(oauthErrorText('invalid_state')).toBe('The connection attempt expired. Try again.')
     expect(oauthErrorText('something_else')).toBe('Garmin did not complete the connection. Try again.')
     expect(oauthErrorText(null)).toBeNull()
+  })
+})
+
+describe('garminLastReceivedText', () => {
+  const now = new Date('2026-11-17T10:00:00Z')
+
+  it('says how long ago Garmin last pushed', () => {
+    expect(garminLastReceivedText('2026-11-17T07:00:00Z', now)).toBe('Last data received about 3 hours ago')
+    expect(garminLastReceivedText('2026-11-15T10:00:00Z', now)).toBe('Last data received 2 days ago')
+  })
+
+  it('says nothing has arrived yet, and when it will', () => {
+    expect(garminLastReceivedText(null, now)).toBe(
+      'No data received yet. Garmin sends data the next time your watch syncs.',
+    )
   })
 })
 

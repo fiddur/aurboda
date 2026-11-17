@@ -172,6 +172,8 @@ interface RestRoutesDeps {
   webHost: string
   webIndexPath: string | undefined
   apiBaseUrl: string
+  /** The secret-bearing Garmin push URL, shown to the admin only. */
+  garminPushUrl: string
   /** Open challenges from followed peers (`GET /challenges/discover`). */
   discoverChallenges: DiscoverChallenges
   garmin: GarminClient
@@ -254,6 +256,7 @@ export const mountRestRouters = ({
   webHost,
   webIndexPath,
   apiBaseUrl,
+  garminPushUrl,
   discoverChallenges,
   garmin,
   homeAssistant,
@@ -475,7 +478,11 @@ export const mountRestRouters = ({
       adminUsers,
       invitationAuth,
       webHost,
-      { garmin: garminOAuthRedirectUri(apiBaseUrl), gravl: gravlRedirectUri(apiBaseUrl) },
+      {
+        garmin: garminOAuthRedirectUri(apiBaseUrl),
+        garminPush: garminPushUrl,
+        gravl: gravlRedirectUri(apiBaseUrl),
+      },
       async (username) => (await listUserNames(userDb)).includes(username),
       ouraWebhookManager,
       accountDeleter,

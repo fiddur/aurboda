@@ -20,7 +20,7 @@ import {
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
-import { setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
+import { setupGarminPush, setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
@@ -73,6 +73,8 @@ import { defaultGarminKeyReminderDeps, remindGarminKey } from './integrations/ga
 import { garminOAuthClient } from './integrations/garmin/oauth-client.ts'
 import { garminPersonalClient } from './integrations/garmin/personal-client.ts'
 import { garminDataTypes } from './integrations/garmin/process.ts'
+import { garminPushBodyParser } from './integrations/garmin/push-router.ts'
+import { garminPushToken, garminPushUrl } from './integrations/garmin/push.ts'
 import {
   chooseGarminSource,
   garminRoutedClient,
@@ -1261,6 +1263,8 @@ const main = async () => {
     }),
   )
 
+  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large.
+  httpd.use('/webhooks/garmin', garminPushBodyParser(garminPushToken(sessionSecret)))
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
@@ -1322,6 +1326,8 @@ const main = async () => {
     })
     postListenCallbacks.push(ensureStravaWebhook)
   }
+
+  setupGarminPush({ centralDb, garminOAuth, httpd, isReadOnly, sessionSecret })
 
   const ouraWebhookManager = await setupOuraWebhook({
     httpd,
@@ -1389,6 +1395,7 @@ const main = async () => {
     dataExport,
     adminUsers,
     apiBaseUrl,
+    garminPushUrl: garminPushUrl(apiBaseUrl, sessionSecret),
     auth,
     authMiddleware,
     centralDb,
