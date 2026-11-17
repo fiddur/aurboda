@@ -58,13 +58,25 @@
 }
 
 .exercise-catalog-picker-hint,
-.exercise-catalog-picker-empty {
+.exercise-catalog-picker-empty,
+.exercise-catalog-picker-caption,
+.exercise-catalog-picker-count {
   color: #6b7280;
   font-size: 0.8rem;
 }
 
-.exercise-catalog-picker-empty {
+.exercise-catalog-picker-empty,
+.exercise-catalog-picker-caption {
   margin: 0;
+}
+
+.exercise-catalog-picker-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem 1rem;
+  padding: 0 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -84,7 +96,9 @@
   }
 
   .exercise-catalog-picker-hint,
-  .exercise-catalog-picker-empty {
+  .exercise-catalog-picker-empty,
+  .exercise-catalog-picker-caption,
+  .exercise-catalog-picker-count {
     color: #9ca3af;
   }
 }

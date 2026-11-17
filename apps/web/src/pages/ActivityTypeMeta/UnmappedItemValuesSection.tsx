@@ -71,7 +71,7 @@ const UnmappedRow = ({ name, path, item }: { name: string; path: string; item: U
       {searching && (
         <div class="activity-type-meta-unmapped-picker">
           <ExerciseCatalogPicker
-            initialQuery={item.value}
+            similarTo={item.value}
             autoFocus
             disabled={pending}
             onPick={(entry) => map.mutate(entry.key)}
