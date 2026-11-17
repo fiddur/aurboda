@@ -2,7 +2,13 @@ import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../types.ts'
 
-import { blendData, mergeGroupByPriority, mergeOverlappingActivities, pickOverrideWinner } from './merge.ts'
+import {
+  blendData,
+  blendGroupData,
+  mergeGroupByPriority,
+  mergeOverlappingActivities,
+  pickOverrideWinner,
+} from './merge.ts'
 
 const garmin = (overrides: Partial<Activity> = {}): Activity => ({
   activity_type: 'meditation',
@@ -378,6 +384,48 @@ describe('blendData — sets imported from Garmin never hide logged sets', () =>
       sets_source: 'garmin',
     })
     expect(blendData({ sets_source: 'garmin' }, { sets: logged })).toEqual({ sets: logged })
+  })
+})
+
+describe('blendGroupData — a session logged in Aurboda next to the watch (#1777)', () => {
+  const loggedSets = [
+    { exercise: 'Bench Press', reps: 8, weight: 60 },
+    { exercise: 'Squat', reps: 5, weight: 100 },
+  ]
+  const logged = (start: string) => ({
+    data: { in_progress: false, sets: loggedSets },
+    start_time: new Date(start),
+  })
+  const watch = (start: string) => ({
+    data: {
+      average_hr: 100,
+      garmin_activity_id: 1,
+      sets: [{ exercise: 'Unknown exercise', reps: 24 }],
+      sets_source: 'garmin',
+    },
+    start_time: new Date(start),
+  })
+
+  test.each([
+    ['logged first', [logged('2026-11-16T17:00:00Z'), watch('2026-11-16T17:00:04Z')]],
+    ['watch first', [watch('2026-11-16T17:00:00Z'), logged('2026-11-16T17:00:04Z')]],
+    ['given out of order', [watch('2026-11-16T17:00:04Z'), logged('2026-11-16T17:00:00Z')]],
+  ])('%s: the logged sets win and the watch keys stay', (_, members) => {
+    const data = blendGroupData(members)
+
+    expect(data.sets).toEqual(loggedSets)
+    expect(data).not.toHaveProperty('sets_source')
+    expect(data).toMatchObject({ average_hr: 100, garmin_activity_id: 1, in_progress: false })
+  })
+
+  test('a member without data is skipped', () => {
+    expect(
+      blendGroupData([{ start_time: new Date('2026-11-16T16:59:00Z') }, logged('2026-11-16T17:00:00Z')]),
+    ).toEqual({ in_progress: false, sets: loggedSets })
+  })
+
+  test('an empty group gives an empty object', () => {
+    expect(blendGroupData([])).toEqual({})
   })
 })
 

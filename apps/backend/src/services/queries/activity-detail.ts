@@ -15,6 +15,7 @@ import {
 import type { Activity as ActivityRow } from '../../db/types.ts'
 
 import {
+  blendGroupData,
   getActivityTrack,
   getDistinctMetrics,
   getLocations,
@@ -169,9 +170,7 @@ export const resolveActivityWindow = async (
 
   const start_time = new Date(Math.min(...overlapping.map((a) => a.start_time.getTime())))
   const end_time = new Date(Math.max(...overlapping.map((a) => (a.end_time ?? a.start_time).getTime())))
-  const data = overlapping
-    .toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
-    .reduce<Record<string, unknown>>((acc, a) => (a.data ? { ...acc, ...a.data } : acc), {})
+  const data = blendGroupData(overlapping)
 
   return { data: Object.keys(data).length > 0 ? data : activity.data, end_time, start_time }
 }

@@ -1,4 +1,5 @@
 export {
+  blendGroupData,
   CROSS_MERGE_SOURCES,
   findMergedGroupForActivity,
   isSupersedable,
