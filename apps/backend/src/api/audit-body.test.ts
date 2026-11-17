@@ -37,6 +37,37 @@ describe('summarizeAuditBody', () => {
     })
   })
 
+  test('redacts every provider credential an admin or user settings form saves', () => {
+    const body = {
+      client_secret: 'oidc',
+      garmin_client_secret: 'garmin',
+      garmin_client_secret_set: true,
+      gravl_api_token: 'gravl-token',
+      gravl_client_secret: 'gravl',
+      home_assistant_token: 'ha',
+      lastfm_api_key: 'lastfm',
+      oura_client_secret: 'oura',
+      smtp_password: 'smtp',
+      strava_client_secret: 'strava',
+      token: 'bearer',
+      garmin_client_id: 'public-id',
+    }
+    expect(summarizeAuditBody(body)).toEqual({
+      client_secret: '[REDACTED]',
+      garmin_client_secret: '[REDACTED]',
+      garmin_client_secret_set: true,
+      gravl_api_token: '[REDACTED]',
+      gravl_client_secret: '[REDACTED]',
+      home_assistant_token: '[REDACTED]',
+      lastfm_api_key: '[REDACTED]',
+      oura_client_secret: '[REDACTED]',
+      smtp_password: '[REDACTED]',
+      strava_client_secret: '[REDACTED]',
+      token: '[REDACTED]',
+      garmin_client_id: 'public-id',
+    })
+  })
+
   test('summarizes a large sync-like body', () => {
     const records = Array.from({ length: 5000 }, (_, i) => ({ time: i, value: 60 }))
     expect(summarizeAuditBody({ records, type: 'heart_rate' })).toEqual({
