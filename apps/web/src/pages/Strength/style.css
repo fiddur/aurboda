@@ -420,6 +420,45 @@ button.strength-set-row:hover {
   flex-direction: column;
 }
 
+.strength-plan-name {
+  overflow-wrap: anywhere;
+}
+
+.strength-plan-overdue {
+  color: #f57c00;
+}
+
+.strength-plan-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.strength-plan-subheading {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+}
+
+.strength-plan-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.strength-plan-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.625rem;
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
 .strength-times {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));

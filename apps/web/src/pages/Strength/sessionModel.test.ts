@@ -15,6 +15,7 @@ import {
   liveDraftFromServer,
   logSet,
   moveBlock,
+  newLiveDraft,
   nextSetPrefill,
   planFromSession,
   removeBlock,
@@ -292,6 +293,21 @@ describe('draft state', () => {
       saved_rev: 0,
       start_time: '2026-11-10T17:02:00.000Z',
     })
+  })
+})
+
+describe('plan_id', () => {
+  it('is set on a new live draft started from a plan', () => {
+    expect(newLiveDraft('2026-11-10T17:02:00.000Z', [], 'plan1').plan_id).toBe('plan1')
+    expect(newLiveDraft('2026-11-10T17:02:00.000Z', [])).not.toHaveProperty('plan_id')
+  })
+
+  it('is read back from the saved session', () => {
+    const at = { id: 'act1', start_time: '2026-11-10T17:02:00.000Z' }
+    expect(liveDraftFromServer({ ...at, data: { plan_id: 'plan1', sets: [] } }, ids()).plan_id).toBe('plan1')
+    expect(liveDraftFromServer({ ...at, data: { plan_id: 7, sets: [] } }, ids())).not.toHaveProperty(
+      'plan_id',
+    )
   })
 })
 

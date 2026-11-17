@@ -390,4 +390,20 @@ export const activitiesTables: Record<string, string> = {
   item_value_identities_indexes: `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_identities_field_value ON item_value_identities (field, lower(btrim(value)))
   `,
+
+  strength_plans: `
+    CREATE TABLE IF NOT EXISTS strength_plans (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name        TEXT NOT NULL,
+      planned_for DATE,
+      note        TEXT,
+      sets        JSONB NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  strength_plans_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_activities_plan_id ON activities ((data->>'plan_id')) WHERE data ? 'plan_id'
+  `,
 }

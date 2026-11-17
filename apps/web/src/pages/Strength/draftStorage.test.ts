@@ -57,6 +57,8 @@ describe('live draft', () => {
     const storage = memory()
     writeLiveDraft(live, storage)
     expect(readLiveDraft(storage)).toEqual(live)
+    writeLiveDraft({ ...live, plan_id: 'plan1' }, storage)
+    expect(readLiveDraft(storage)?.plan_id).toBe('plan1')
     clearLiveDraft(storage)
     expect(readLiveDraft(storage)).toBeUndefined()
   })
@@ -67,6 +69,7 @@ describe('live draft', () => {
       JSON.stringify({ draft: live, version: 0 }),
       JSON.stringify({ draft: { ...live, blocks: [{ exercise: 1 }] }, version: 1 }),
       JSON.stringify({ draft: { ...live, start_time: 'soon' }, version: 1 }),
+      JSON.stringify({ draft: { ...live, plan_id: 7 }, version: 1 }),
     ]) {
       const storage = memory({ [LIVE_DRAFT_KEY]: raw })
       expect(readLiveDraft(storage)).toBeUndefined()

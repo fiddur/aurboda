@@ -60,6 +60,7 @@ const OTHER_PAGE_TITLES = [
   { href: '/settings', label: 'Settings' },
   { href: '/notifications', label: 'Notifications' },
   { href: '/strength', label: 'Strength session' },
+  { href: '/strength/plan', label: 'Strength plan' },
   HELP_LINK,
   { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },

@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { Activity } from '../../state/api/types'
 
-import { fetchActivityById } from '../../state/api'
+import { fetchActivityById, fetchStrengthPlan } from '../../state/api'
 import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
 import { readLiveDraft, writeLiveDraft } from './draftStorage'
 import { timesFromActivity } from './formModel'
 import { LiveSession } from './LiveSession'
 import { PastSession } from './PastSession'
+import { liveBlocksFromPlan } from './planModel'
 import {
   blocksFromSets,
   isDirty,
@@ -154,7 +155,15 @@ const SavedSession = ({ id, onLive }: { id: string; onLive: (state: LiveState) =
   }
 }
 
-const NewSession = ({ repeat, onLive }: { repeat?: string; onLive: (state: LiveState) => void }) => {
+const NewSession = ({
+  repeat,
+  plan,
+  onLive,
+}: {
+  repeat?: string
+  plan?: string
+  onLive: (state: LiveState) => void
+}) => {
   const { route } = useLocation()
   const [startedAt] = useState(() => new Date().toISOString())
   const [local] = useState(() => readLiveDraft())
@@ -163,6 +172,12 @@ const NewSession = ({ repeat, onLive }: { repeat?: string; onLive: (state: LiveS
     enabled: !resumable && Boolean(repeat),
     queryFn: () => fetchActivityById(repeat ?? ''),
     queryKey: ['entity-detail', 'activity', repeat, 'strength'],
+    retry: 1,
+  })
+  const planSource = useQuery({
+    enabled: !resumable && Boolean(plan),
+    queryFn: () => fetchStrengthPlan(plan ?? ''),
+    queryKey: ['strength-plan', plan],
     retry: 1,
   })
 
@@ -175,12 +190,26 @@ const NewSession = ({ repeat, onLive }: { repeat?: string; onLive: (state: LiveS
       onLive({ draft: resumable, key: 'local' })
       return
     }
+    if (plan && planSource.isLoading) return
     if (repeat && source.isLoading) return
-    const plan = source.data ? planFromSession(setsOfData(source.data.activity.data)) : []
-    const draft = newLiveDraft(startedAt, plan)
+    const fromPlan = planSource.data
+    const draft = fromPlan
+      ? newLiveDraft(startedAt, liveBlocksFromPlan(fromPlan.sets), fromPlan.id)
+      : newLiveDraft(startedAt, source.data ? planFromSession(setsOfData(source.data.activity.data)) : [])
     writeLiveDraft(draft)
     onLive({ draft, key: 'new' })
-  }, [resumable, repeat, source.isLoading, source.data, startedAt, route, onLive])
+  }, [
+    resumable,
+    repeat,
+    plan,
+    source.isLoading,
+    source.data,
+    planSource.isLoading,
+    planSource.data,
+    startedAt,
+    route,
+    onLive,
+  ])
 
   return <p class="loading">Loading…</p>
 }
@@ -210,7 +239,7 @@ export function StrengthSession() {
     )
   }
   if (routeId) return <SavedSession key={routeId} id={routeId} onLive={onLive} />
-  return <NewSession repeat={query.repeat} onLive={onLive} />
+  return <NewSession repeat={query.repeat} plan={query.plan} onLive={onLive} />
 }
 
 export function StrengthLog() {

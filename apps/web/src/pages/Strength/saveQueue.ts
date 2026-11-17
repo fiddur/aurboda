@@ -112,6 +112,7 @@ export interface LiveApi {
 const liveData = (draft: SessionDraft): Record<string, unknown> => ({
   sets: withExerciseKeys(draft.blocks),
   ...(draft.last_set_at ? { last_set_at: draft.last_set_at } : {}),
+  ...(draft.plan_id ? { plan_id: draft.plan_id } : {}),
 })
 
 /**

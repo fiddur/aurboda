@@ -199,6 +199,13 @@ import {
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import {
+  createStrengthPlanBodySchema,
+  strengthPlanResponseSchema,
+  strengthPlansQuerySchema,
+  strengthPlansResponseSchema,
+  updateStrengthPlanBodySchema,
+} from './schemas/strength-plans.ts'
+import {
   strengthScoreHistoryQuerySchema,
   strengthScoreHistoryResponseSchema,
   strengthScoreQuerySchema,
@@ -686,6 +693,109 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get exercise catalogue entry',
+        tags: ['Activities'],
+      },
+    },
+    '/strength-plans': {
+      get: {
+        description:
+          'List planned strength workouts. A plan is a named list of planned sets, for a day (`planned_for`) or, without one, a routine to start whenever. `sessions` are the strength activities started from it (their `data.plan_id` is its id), newest first. `status=open` (default) gives routines and the plans with a day that have no session yet; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
+        requestParams: { query: strengthPlansQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlansResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List strength plans',
+        tags: ['Activities'],
+      },
+      post: {
+        description:
+          'Plan a strength workout: a name, the sets in the order to do them, and `planned_for` for a workout on a day (left out for a routine). A set with an `exercise_key` that is not a key of the exercise catalogue is refused.',
+        requestBody: { content: { 'application/json': { schema: createStrengthPlanBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Plan created',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or an unknown exercise_key',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create strength plan',
+        tags: ['Activities'],
+      },
+    },
+    '/strength-plans/{id}': {
+      delete: {
+        description: 'Delete a strength plan. Sessions started from it keep their `data.plan_id`.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Plan deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete strength plan',
+        tags: ['Activities'],
+      },
+      get: {
+        description: 'One strength plan with its sets and the sessions started from it.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get strength plan',
+        tags: ['Activities'],
+      },
+      patch: {
+        description:
+          'Change a strength plan: a field left out stays, `planned_for: null` and `note: null` clear, `sets` replaces the whole list. An empty body is refused.',
+        requestParams: {
+          path: z.object({ id: z.string().meta({ description: 'Plan ID' }) }),
+        },
+        requestBody: { content: { 'application/json': { schema: updateStrengthPlanBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: strengthPlanResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid or empty body, or an unknown exercise_key',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Plan not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update strength plan',
         tags: ['Activities'],
       },
     },
