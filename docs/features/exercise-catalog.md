@@ -23,12 +23,14 @@ built-in `strength_training` schema sets it on `sets.exercise` (see
   name when it is spelled differently; "Change" opens a catalogue search to map the name to another
   entry, and "Not this exercise" (a match by name) or "Remove mapping" (your mapping) undoes it. An
   unmatched name opens the search directly and can be marked "Not in the catalogue"; a name so
-  marked has "Undo". Other logged names resolving to the same entry are listed with their counts,
+  marked has "Undo". The search opens on the entries closest to the logged name ("Closest matches",
+  `similar_to`) and keeps them near the top while you type; it shows how many entries match and
+  "Show more" loads the next 10. Other logged names resolving to the same entry are listed with their counts,
   as candidates for the page's merge.
 - **Type page**: under each catalogue-backed item field, "Not in the catalogue" summarises the
   logged names that match no entry and that you have neither mapped nor dismissed
   (`GET /activity-types/:name/item-values/unmapped`, paged with `limit` and `offset`). "Review"
-  lists them, most used first, 20 at a time ("Show more" fetches the next 20), each with up to three suggested entries to map it to with one click, a catalogue search, and
+  lists them, most used first, 20 at a time ("Show more" fetches the next 20), each with up to three suggested entries to map it to with one click, a catalogue search that opens on the entries closest to the name (`similar_to`) and pages with "Show more", and
   "Not in the catalogue" to dismiss it. Nothing here is required: an unmapped name keeps working
   everywhere.
 
@@ -94,21 +96,32 @@ Equipment: generic keys (`barbell`, `dumbbell`, `kettlebell`, `ez_bar`, `plate`,
 Search parameters:
 
 - `q` -- words; each must be the start of a word of the name, an alias or a search term (search
-  terms are extra, non-unique words such as `hamstring curl` or `DB`). Ranked: an exact name or alias
+  terms are extra, non-unique words such as `hamstring curl` or `DB`). A plural meets its singular
+  exactly (`squats`, `triceps`, `crunches`; `abs` finds Ab Crunch but not Abduction), words written
+  together or apart meet (`pullup`, `pull up`, `pullups`; `dead lift` finds Deadlift), and `db`,
+  `bb` and `kb` stand for dumbbell, barbell and kettlebell, `single` means `one` and `flye` means
+  `fly`. Ranked: an exact name or alias (compared on those normalised forms, so `db curl` is exact
+  for Dumbbell Curl)
   first, together with the names or aliases that are `q` plus only the words of the entry's own free
   weight (`Barbell Squat` for `squat`, `Dumbbell Bench Press` for `bench press`); then the entries
-  whose name contains every word; then the rest. Within each of those the entries that come from
+  whose name contains every word; then the rest. Within each of those, with `similar_to`, the
+  entries closer to that name go first; then the entries that come from
   body.build (hand-picked gym exercises) go first, then those from free-exercise-db, then the
   Garmin-only entries; then the exact match before the free-weight names, and names starting with
   `q` before the other name matches; ties go to the shorter name. So `squat` leads with Barbell
   Squat, ahead of Garmin's generic Squat and of Belt Squat.
+- `similar_to` -- a logged exercise name. Alone, the entries closest to it by shared words (the same
+  score as the type page's suggestions, so `single` meets `one` and a plural its singular), closest
+  first; none when nothing is close, and `total` counts only those. With `q`, it orders equally
+  ranked matches by closeness to it. Ignored with `name` or `fit`.
 - `name` -- an exact name-or-alias match after normalisation: zero or one entry. `q` is ignored.
 - `fit` -- an exact Garmin FIT exercise, `<category>/<name>` in any letter case (e.g.
   `bench_press/barbell_bench_press`): zero or one entry. `q` is ignored. With `name` as well, the
   entry has to match both.
 - `equipment`, `category` -- exact keys. `muscle` -- a muscle or a group key: exercises working that
   muscle, or a muscle of that group, at weight 0.5 or more.
-- `limit` (1--100, default 20), `offset` (default 0). Without `q` the order is by name.
+- `limit` (1--100, default 20), `offset` (default 0). Without `q` or `similar_to` the order is by
+  name.
 
 An unknown `equipment`, `muscle` or `category` is a 400.
 
