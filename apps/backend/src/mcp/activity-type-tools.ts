@@ -11,6 +11,10 @@ import {
   muscleGroupHistoryQuerySchema,
   muscleGroupsQuerySchema,
   setItemValueIdentityBodySchema,
+  strengthScoreHistoryPeriod,
+  strengthScoreHistoryPeriodError,
+  strengthScoreHistoryQuerySchema,
+  strengthScoreQuerySchema,
   unmappedItemValuesQuerySchema,
   updateActivityTypeDefinitionBodySchema,
 } from '@aurboda/api-spec'
@@ -33,7 +37,12 @@ import {
   listUnmappedItemValues,
   setItemValueIdentity,
 } from '../services/item-value-identities.ts'
-import { queryMuscleGroupHistory, queryMuscleGroupOverview } from '../services/queries/index.ts'
+import {
+  queryMuscleGroupHistory,
+  queryMuscleGroupOverview,
+  queryStrengthScore,
+  queryStrengthScoreHistory,
+} from '../services/queries/index.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerActivityTypeTools = (server: McpServer, user: string) => {
@@ -256,6 +265,42 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
         return errorResponse(MUSCLE_GROUP_HISTORY_START_AFTER_END)
       }
       const result = await queryMuscleGroupHistory(user, activity_type, field, muscle_group, period)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_strength_score',
+    "Get the strength score of the activity type (or its subtypes) at a moment (at, ISO 8601; defaults to now). For every reference lift (barbell bench press, back squat, dumbbell curl, ...) the best estimated one-rep max (Epley: weight × (1 + reps / 30)) of its working sets of 1 to 12 reps in the 90 days up to `at` is scored against a reference that depends on sex and bodyweight: 100 points is a solid recreational lifter. Dumbbell lifts count the weight of one dumbbell, as logged. A muscle group's score (chest, shoulders, back, biceps, triceps, quadriceps, hamstrings, glutes) is the mean of its best 3 lift scores, the overall score the mean of the group scores. Only exercises of the catalogue-backed item path (sets.exercise) matched to the exercise catalogue count. Each lift gives its best set and when it leaves the window (expires_at). `missing` lists what the user has not given (`sex` in the user settings, `bodyweight` as any value of the weight metric); every score is then null but the best sets are still listed.",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...strengthScoreQuerySchema.shape,
+    },
+    async ({ activity_type, at, field }) => {
+      const result = await queryStrengthScore(
+        user,
+        activity_type,
+        field,
+        at === undefined ? new Date() : new Date(at),
+      )
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result.data)
+    },
+  )
+
+  server.tool(
+    'get_strength_score_history',
+    "Get the strength score (see get_strength_score) over a period: the overall score and each muscle group's at end and every step_days (1 to 31, default 7) before it down to start, oldest first; end defaults to now, start to 365 days before end, at most 500 points. Each point looks back over its own 90 days, so a lift's best set counts for 90 days and then drops out. No points when sex or bodyweight is missing (see `missing`).",
+    {
+      activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
+      ...strengthScoreHistoryQuerySchema.shape,
+    },
+    async ({ activity_type, end, field, start, step_days }) => {
+      const period = strengthScoreHistoryPeriod({ end, start, step_days })
+      const error = strengthScoreHistoryPeriodError(period)
+      if (error !== undefined) return errorResponse(error)
+      const result = await queryStrengthScoreHistory(user, activity_type, field, period)
       if (!result.success) return errorResponse(result.error)
       return jsonResponse(result.data)
     },
