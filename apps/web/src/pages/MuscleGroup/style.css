@@ -7,3 +7,13 @@
     color: #6b7280;
   }
 }
+
+.muscle-group-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.muscle-group-card-link:hover {
+  border-color: var(--color-accent);
+}

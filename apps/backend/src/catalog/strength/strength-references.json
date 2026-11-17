@@ -1,0 +1,399 @@
+{
+  "version": 1,
+  "reference_bodyweight_kg": 75,
+  "bodyweight_exponent": 0.67,
+  "groups": [
+    {
+      "key": "chest",
+      "muscle_groups": ["chest"],
+      "name": "Chest"
+    },
+    {
+      "key": "shoulders",
+      "muscle_groups": ["shoulders"],
+      "name": "Shoulders"
+    },
+    {
+      "key": "back",
+      "muscle_groups": ["lats", "middle_back"],
+      "name": "Back"
+    },
+    {
+      "key": "biceps",
+      "muscle_groups": ["biceps"],
+      "name": "Biceps"
+    },
+    {
+      "key": "triceps",
+      "muscle_groups": ["triceps"],
+      "name": "Triceps"
+    },
+    {
+      "key": "quadriceps",
+      "muscle_groups": ["quadriceps"],
+      "name": "Quadriceps"
+    },
+    {
+      "key": "hamstrings",
+      "muscle_groups": ["hamstrings"],
+      "name": "Hamstrings"
+    },
+    {
+      "key": "glutes",
+      "muscle_groups": ["glutes"],
+      "name": "Glutes"
+    }
+  ],
+  "lifts": [
+    {
+      "group": "chest",
+      "id": "barbell_bench_press",
+      "keys": [
+        "barbell_bench_press",
+        "flat_barbell_bench_press_powerlift",
+        "bench_press",
+        "wide_grip_barbell_bench_press"
+      ],
+      "name": "Barbell bench press",
+      "ratio": {
+        "female": 0.6,
+        "male": 1
+      }
+    },
+    {
+      "group": "chest",
+      "id": "incline_barbell_bench_press",
+      "keys": ["barbell_incline_bench_press_medium_grip"],
+      "name": "Incline barbell bench press",
+      "ratio": {
+        "female": 0.5,
+        "male": 0.85
+      }
+    },
+    {
+      "group": "chest",
+      "id": "dumbbell_bench_press",
+      "keys": ["dumbbell_bench_press", "dumbbell_bench_press_with_neutral_grip"],
+      "name": "Dumbbell bench press",
+      "ratio": {
+        "female": 0.23,
+        "male": 0.4
+      }
+    },
+    {
+      "group": "chest",
+      "id": "incline_dumbbell_press",
+      "keys": [
+        "incline_dumbbell_press",
+        "hammer_grip_incline_db_bench_press",
+        "incline_dumbbell_bench_with_palms_facing_in"
+      ],
+      "name": "Incline dumbbell press",
+      "ratio": {
+        "female": 0.2,
+        "male": 0.35
+      }
+    },
+    {
+      "group": "shoulders",
+      "id": "barbell_overhead_press",
+      "keys": ["barbell_overhead_press", "barbell_shoulder_press", "seated_barbell_military_press"],
+      "name": "Barbell overhead press",
+      "ratio": {
+        "female": 0.38,
+        "male": 0.62
+      }
+    },
+    {
+      "group": "shoulders",
+      "id": "dumbbell_shoulder_press",
+      "keys": [
+        "dumbbell_shoulder_press",
+        "seated_dumbbell_press",
+        "dumbbell_overhead_press",
+        "standing_alternating_dumbbell_press",
+        "single_arm_dumbbell_overhead_press",
+        "dumbbell_one_arm_shoulder_press"
+      ],
+      "name": "Dumbbell shoulder press",
+      "ratio": {
+        "female": 0.16,
+        "male": 0.27
+      }
+    },
+    {
+      "group": "shoulders",
+      "id": "arnold_press",
+      "keys": ["arnold_press", "seated_arnold_press", "standing_arnold_press"],
+      "name": "Arnold press",
+      "ratio": {
+        "female": 0.15,
+        "male": 0.25
+      }
+    },
+    {
+      "group": "shoulders",
+      "id": "dumbbell_lateral_raise",
+      "keys": ["standing_dumbbell_lateral_raise", "seated_side_lateral_raise", "seated_lateral_raise"],
+      "name": "Dumbbell lateral raise",
+      "ratio": {
+        "female": 0.08,
+        "male": 0.13
+      }
+    },
+    {
+      "group": "back",
+      "id": "barbell_row",
+      "keys": ["standing_bent_over_barbell_row", "reverse_grip_bent_over_rows", "pendlay_row"],
+      "name": "Barbell row",
+      "ratio": {
+        "female": 0.55,
+        "male": 0.9
+      }
+    },
+    {
+      "group": "back",
+      "id": "dumbbell_row",
+      "keys": [
+        "dumbbell_row",
+        "one_arm_dumbbell_row",
+        "standing_bent_over_dumbbell_row",
+        "standing_bench_supported_single_arm_dumbbell_rows",
+        "bent_over_two_dumbbell_row_with_palms_in",
+        "chest_supported_dumbbell_row",
+        "seated_dumbbell_row",
+        "alternating_dumbbell_row"
+      ],
+      "name": "Dumbbell row",
+      "ratio": {
+        "female": 0.27,
+        "male": 0.45
+      }
+    },
+    {
+      "group": "biceps",
+      "id": "barbell_curl",
+      "keys": [
+        "standing_barbell_bicep_curl",
+        "wide_grip_standing_barbell_curl",
+        "close_grip_standing_barbell_curl"
+      ],
+      "name": "Barbell curl",
+      "ratio": {
+        "female": 0.27,
+        "male": 0.45
+      }
+    },
+    {
+      "group": "biceps",
+      "id": "ez_bar_curl",
+      "keys": ["standing_ez_bar_bicep_curl", "close_grip_ez_bar_curl", "wide_grip_ez_bar_biceps_curl"],
+      "name": "EZ-bar curl",
+      "ratio": {
+        "female": 0.27,
+        "male": 0.45
+      }
+    },
+    {
+      "group": "biceps",
+      "id": "dumbbell_curl",
+      "keys": ["standing_dumbbell_bicep_curl", "seated_dumbbell_bicep_curl", "dumbbell_alternate_bicep_curl"],
+      "name": "Dumbbell curl",
+      "ratio": {
+        "female": 0.12,
+        "male": 0.2
+      }
+    },
+    {
+      "group": "biceps",
+      "id": "incline_dumbbell_curl",
+      "keys": ["incline_dumbbell_curl"],
+      "name": "Incline dumbbell curl",
+      "ratio": {
+        "female": 0.1,
+        "male": 0.17
+      }
+    },
+    {
+      "group": "biceps",
+      "id": "hammer_curl",
+      "keys": ["hammer_curls", "alternate_hammer_curl", "cross_body_hammer_curl"],
+      "name": "Hammer curl",
+      "ratio": {
+        "female": 0.13,
+        "male": 0.22
+      }
+    },
+    {
+      "group": "triceps",
+      "id": "close_grip_bench_press",
+      "keys": ["close_grip_barbell_bench_press"],
+      "name": "Close-grip bench press",
+      "ratio": {
+        "female": 0.52,
+        "male": 0.9
+      }
+    },
+    {
+      "group": "triceps",
+      "id": "ez_bar_skullcrusher",
+      "keys": ["ez_bar_skullcrusher"],
+      "name": "EZ-bar skullcrusher",
+      "ratio": {
+        "female": 0.25,
+        "male": 0.42
+      }
+    },
+    {
+      "group": "triceps",
+      "id": "lying_dumbbell_triceps_extension",
+      "keys": ["lying_dumbbell_tricep_extension", "decline_dumbbell_triceps_extension"],
+      "name": "Lying dumbbell triceps extension",
+      "ratio": {
+        "female": 0.1,
+        "male": 0.17
+      }
+    },
+    {
+      "group": "triceps",
+      "id": "one_arm_dumbbell_triceps_extension",
+      "keys": ["dumbbell_one_arm_triceps_extension", "standing_one_arm_dumbbell_triceps_extension"],
+      "name": "One-arm dumbbell triceps extension",
+      "ratio": {
+        "female": 0.09,
+        "male": 0.16
+      }
+    },
+    {
+      "group": "triceps",
+      "id": "two_hand_dumbbell_triceps_extension",
+      "keys": ["standing_dumbbell_triceps_extension"],
+      "name": "Two-hand dumbbell triceps extension",
+      "ratio": {
+        "female": 0.19,
+        "male": 0.32
+      }
+    },
+    {
+      "group": "quadriceps",
+      "id": "back_squat",
+      "keys": [
+        "barbell_squat",
+        "barbell_squat_powerlift",
+        "barbell_full_squat",
+        "back_squats",
+        "wide_stance_barbell_squat"
+      ],
+      "name": "Back squat",
+      "ratio": {
+        "female": 0.95,
+        "male": 1.3
+      }
+    },
+    {
+      "group": "quadriceps",
+      "id": "front_squat",
+      "keys": ["front_barbell_squat", "front_squat_clean_grip"],
+      "name": "Front squat",
+      "ratio": {
+        "female": 0.77,
+        "male": 1.05
+      }
+    },
+    {
+      "group": "quadriceps",
+      "id": "goblet_squat",
+      "keys": ["goblet_squat", "wide_stance_goblet_squat"],
+      "name": "Goblet squat",
+      "ratio": {
+        "female": 0.33,
+        "male": 0.45
+      }
+    },
+    {
+      "group": "quadriceps",
+      "id": "dumbbell_split_squat",
+      "keys": ["dumbbell_bulgarian_split_squat", "split_squat_with_dumbbells"],
+      "name": "Dumbbell split squat",
+      "ratio": {
+        "female": 0.22,
+        "male": 0.3
+      }
+    },
+    {
+      "group": "quadriceps",
+      "id": "dumbbell_lunge",
+      "keys": [
+        "dumbbell_forward_lunge",
+        "dumbbell_walking_lunge",
+        "dumbbell_backward_lunge",
+        "alternating_dumbbell_lunge"
+      ],
+      "name": "Dumbbell lunge",
+      "ratio": {
+        "female": 0.22,
+        "male": 0.3
+      }
+    },
+    {
+      "group": "hamstrings",
+      "id": "romanian_deadlift",
+      "keys": ["romanian_deadlift"],
+      "name": "Romanian deadlift",
+      "ratio": {
+        "female": 0.88,
+        "male": 1.2
+      }
+    },
+    {
+      "group": "hamstrings",
+      "id": "stiff_legged_deadlift",
+      "keys": ["stiff_legged_barbell_deadlift"],
+      "name": "Stiff-legged deadlift",
+      "ratio": {
+        "female": 0.84,
+        "male": 1.15
+      }
+    },
+    {
+      "group": "hamstrings",
+      "id": "dumbbell_romanian_deadlift",
+      "keys": ["dumbbell_romanian_deadlift", "stiff_legged_dumbbell_deadlift"],
+      "name": "Dumbbell Romanian deadlift",
+      "ratio": {
+        "female": 0.31,
+        "male": 0.42
+      }
+    },
+    {
+      "group": "glutes",
+      "id": "deadlift",
+      "keys": ["deadlift", "deadlift_powerlift", "sumo_deadlift"],
+      "name": "Deadlift",
+      "ratio": {
+        "female": 1.18,
+        "male": 1.6
+      }
+    },
+    {
+      "group": "glutes",
+      "id": "barbell_hip_thrust",
+      "keys": ["barbell_hip_thrust"],
+      "name": "Barbell hip thrust",
+      "ratio": {
+        "female": 1.2,
+        "male": 1.5
+      }
+    },
+    {
+      "group": "glutes",
+      "id": "barbell_glute_bridge",
+      "keys": ["barbell_glute_bridge"],
+      "name": "Barbell glute bridge",
+      "ratio": {
+        "female": 1.28,
+        "male": 1.6
+      }
+    }
+  ]
+}

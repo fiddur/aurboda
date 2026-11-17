@@ -35,6 +35,7 @@ import {
   validSchemaFields,
 } from './schemaFields'
 import { SessionsSection } from './SessionsSection'
+import { StrengthScoreSection } from './StrengthScoreSection'
 import { UnmappedItemValuesSection } from './UnmappedItemValuesSection'
 import './style.css'
 
@@ -796,6 +797,7 @@ export function ActivityTypeMeta() {
           <ItemGroupsSection name={name} path={itemPath(list, item)} list={list} item={item} />
           {item.catalog === 'exercises' && (
             <>
+              <StrengthScoreSection name={name} path={itemPath(list, item)} />
               <MuscleGroupSection name={name} path={itemPath(list, item)} />
               <UnmappedItemValuesSection name={name} path={itemPath(list, item)} />
             </>

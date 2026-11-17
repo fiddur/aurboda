@@ -33,6 +33,13 @@ import {
   type RenameActivityTypeResponse,
   type SetItemValueIdentityBody,
   setItemValueIdentityBodySchema,
+  strengthScoreHistoryPeriod,
+  type StrengthScoreHistoryQuery,
+  strengthScoreHistoryQuerySchema,
+  type StrengthScoreHistoryResponse,
+  type StrengthScoreQuery,
+  strengthScoreQuerySchema,
+  type StrengthScoreResponse,
   exerciseMuscleGroupSchema,
   type MuscleGroupHistoryQuery,
   muscleGroupHistoryPeriod,
@@ -71,6 +78,8 @@ import {
   queryActivitySessions,
   queryMuscleGroupHistory,
   queryMuscleGroupOverview,
+  queryStrengthScore,
+  queryStrengthScoreHistory,
   sessionsOptionsFromQuery,
 } from '../services/queries/index.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -262,6 +271,40 @@ export const createActivityTypesRouter = (authMiddleware: AnyMiddleware): TypedR
         req.query.field,
         group.data,
         muscleGroupHistoryPeriod(req.query),
+      )
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<{ name: string }, StrengthScoreResponse, unknown, StrengthScoreQuery>(
+    '/:name/strength-score',
+    authMiddleware,
+    validateQuery(strengthScoreQuerySchema),
+    async (req, res) => {
+      const at = req.query.at === undefined ? new Date() : new Date(req.query.at)
+      const result = await queryStrengthScore(req.user!, req.params.name, req.query.field, at)
+      if (!result.success) {
+        const status = result.error.includes('not found') ? 404 : 400
+        return res.status(status).json({ error: result.error, success: false })
+      }
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.get<{ name: string }, StrengthScoreHistoryResponse, unknown, StrengthScoreHistoryQuery>(
+    '/:name/strength-score/history',
+    authMiddleware,
+    validateQuery(strengthScoreHistoryQuerySchema),
+    async (req, res) => {
+      const result = await queryStrengthScoreHistory(
+        req.user!,
+        req.params.name,
+        req.query.field,
+        strengthScoreHistoryPeriod(req.query),
       )
       if (!result.success) {
         const status = result.error.includes('not found') ? 404 : 400
