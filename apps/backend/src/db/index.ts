@@ -870,3 +870,16 @@ export {
   moveItemValueIdentity,
   upsertItemValueIdentity,
 } from './item-value-identities.ts'
+
+export {
+  createStrengthPlan,
+  deleteStrengthPlan,
+  getStrengthPlan,
+  listStrengthPlans,
+  listStrengthPlanSessions,
+  type StrengthPlanInput,
+  type StrengthPlanPatch,
+  type StrengthPlanRecord,
+  type StrengthPlanSessionRecord,
+  updateStrengthPlan,
+} from './strength-plans.ts'

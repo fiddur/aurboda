@@ -187,6 +187,17 @@ describe('saveLiveSession', () => {
     ])
   })
 
+  it('sends the plan the session was started from on every save', async () => {
+    const { api, calls } = recordingApi()
+    await saveLiveSession(draft({ plan_id: 'plan1' }), api, () => undefined)
+    await saveLiveSession(draft({ id: 'act1', plan_id: 'plan1' }), api, () => undefined)
+    expect(calls[0][1]).toMatchObject({ data: { in_progress: true, plan_id: 'plan1' } })
+    expect(calls[1][2]).toMatchObject({ data: { plan_id: 'plan1' } })
+    const finished = recordingApi()
+    await finishLiveSession(draft({ id: 'act1', plan_id: 'plan1' }), finished.api, '2026-11-10T18:00:00.000Z')
+    expect(finished.calls[0][2]).toMatchObject({ data: { in_progress: false, plan_id: 'plan1' } })
+  })
+
   it('adopts the session an earlier create of unknown outcome made instead of creating again', async () => {
     const { api, calls } = recordingApi('made-before')
     expect(await saveLiveSession(draft({ create_attempted: true }), api, () => undefined)).toBe('made-before')

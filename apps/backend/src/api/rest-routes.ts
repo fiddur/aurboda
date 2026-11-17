@@ -116,6 +116,7 @@ import { createSettingsRouter } from '../routes/settings-router.ts'
 import { createShareHtmlRouter, createShareResolvers } from '../routes/share-html-router.ts'
 import { createSharedDashboardsRouter } from '../routes/shared-dashboards-router.ts'
 import { createSharedExercisesRouter } from '../routes/shared-exercises-router.ts'
+import { createStrengthPlansRouter } from '../routes/strength-plans-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
@@ -358,6 +359,7 @@ export const mountRestRouters = ({
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))
   httpd.use('/exercise-catalog', createExerciseCatalogRouter(authMiddleware))
+  httpd.use('/strength-plans', createStrengthPlansRouter(authMiddleware))
   httpd.use('/metric-catalog', createMetricCatalogRouter(authMiddleware))
   httpd.use('/profile', createProfileRouter(authMiddleware, webHost, onProfileChanged))
   // Mount the following, followers and images routers before `/feed` so `/feed/following/*`,

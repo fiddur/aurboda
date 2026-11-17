@@ -6,6 +6,7 @@ import { muscleGroupsHref, strengthScoreHref } from '../../components/sessions/s
 import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft, readLiveDraft } from './draftStorage'
 import { MuscleRecoveryCard } from './MuscleRecoveryCard'
+import { PlannedWorkouts } from './PlannedWorkouts'
 import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
 import { finishLiveSession } from './saveQueue'
 import { liveDraftFromServer, loggedSetCount, type SessionDraft, sessionSummary } from './sessionModel'
@@ -145,6 +146,7 @@ export function Strength() {
       )}
       <StrengthScoreCard />
       <MuscleRecoveryCard />
+      <PlannedWorkouts onStart={start} />
       <section class="strength-section">
         <h2>Repeat a session</h2>
         {sessions.isLoading && <p class="loading">Loading…</p>}

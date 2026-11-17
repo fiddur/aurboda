@@ -19,6 +19,7 @@ export interface SessionDraft {
   rev: number
   saved_rev: number
   create_attempted?: boolean
+  plan_id?: string
 }
 
 export type MakeId = () => string
@@ -137,7 +138,7 @@ export const expandQuickEntry = (count: number, reps?: number, weight?: number):
     ? Array.from({ length: count }, () => withoutUndefined({ reps, weight }))
     : []
 
-const prefillOf = (set: SetRow | undefined): SetPrefill =>
+export const prefillOf = (set: SetRow | undefined): SetPrefill =>
   set
     ? Object.fromEntries(PREFILL_FIELDS.flatMap((f) => (num(set[f]) === undefined ? [] : [[f, num(set[f])]])))
     : {}
@@ -208,12 +209,17 @@ export const exerciseNames = (sets: SetRow[]): string[] =>
 export const planFromSession = (sets: SetRow[], makeId: MakeId = makeBlockId): ExerciseBlock[] =>
   blocksFromSets(sets, makeId).map((b) => ({ ...b, planned: b.sets.map(prefillOf), sets: [] }))
 
-export const newLiveDraft = (startTime: string, blocks: ExerciseBlock[] = []): SessionDraft => ({
+export const newLiveDraft = (
+  startTime: string,
+  blocks: ExerciseBlock[] = [],
+  planId?: string,
+): SessionDraft => ({
   blocks,
   current_block_id: blocks[0]?.id,
   rev: 0,
   saved_rev: 0,
   start_time: startTime,
+  ...(planId ? { plan_id: planId } : {}),
 })
 
 export const liveDraftFromServer = (
@@ -222,6 +228,7 @@ export const liveDraftFromServer = (
 ): SessionDraft => {
   const blocks = blocksFromSets(setsOfData(activity.data), makeId)
   const lastSetAt = activity.data?.last_set_at
+  const planId = activity.data?.plan_id
   return {
     blocks,
     current_block_id: blocks.at(-1)?.id,
@@ -230,6 +237,7 @@ export const liveDraftFromServer = (
     saved_rev: 0,
     start_time: activity.start_time,
     ...(typeof lastSetAt === 'string' ? { last_set_at: lastSetAt } : {}),
+    ...(typeof planId === 'string' && planId !== '' ? { plan_id: planId } : {}),
   }
 }
 
