@@ -15,6 +15,8 @@ export interface PickerSection {
 
 export const RECENT_SESSIONS = 3
 
+export const CATALOG_SECTION_TITLE = 'From the catalogue'
+
 export const recentExercises = (sessions: SetRow[][]): string[] =>
   exerciseNames(sessions.slice(0, RECENT_SESSIONS).flat())
 
@@ -58,7 +60,7 @@ export const buildPickerSections = ({
         title: 'Recent',
       },
       { items: rest.map((v) => ownItem(v.value, v)), title: 'Your exercises' },
-      { items: catalogItems(catalog, own), title: 'From the catalogue' },
+      { items: catalogItems(catalog, own), title: CATALOG_SECTION_TITLE },
     ])
   }
   const needle = typed.toLowerCase()
@@ -70,7 +72,7 @@ export const buildPickerSections = ({
     : [{ kind: 'new', value: typed }]
   return withItems([
     { items: matching.map((v) => ownItem(v.value, v)), title: 'Your exercises' },
-    { items: fromCatalog, title: 'From the catalogue' },
+    { items: fromCatalog, title: CATALOG_SECTION_TITLE },
     { items: newRow },
   ])
 }

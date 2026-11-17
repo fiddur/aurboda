@@ -1,3 +1,5 @@
+import type { ComponentChildren } from 'preact'
+
 import {
   type ExerciseEquipment,
   exerciseEquipment,
@@ -6,14 +8,21 @@ import {
   exerciseMuscleGroups,
   exerciseMuscleInfo,
 } from '@aurboda/api-spec'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { useDebounced } from '../../components/useDebounced'
-import { fetchActivityFieldValues, searchExerciseCatalog } from '../../state/api'
+import { useExerciseCatalogPages } from '../../components/useExerciseCatalogPages'
+import { fetchActivityFieldValues } from '../../state/api'
 import { SETS_PATH, STRENGTH_TYPE } from './constants'
-import { buildPickerSections, type PickerItem, type PickerSection, recentExercises } from './picker'
+import {
+  buildPickerSections,
+  CATALOG_SECTION_TITLE,
+  type PickerItem,
+  type PickerSection,
+  recentExercises,
+} from './picker'
 import { useRecentStrengthSessions } from './queries'
 import { recentSessionSets } from './startModel'
 
@@ -41,7 +50,6 @@ const filterLabel = (filter: Filter): string =>
   filter.kind === 'muscle' ? exerciseMuscleInfo[filter.value].name : exerciseEquipmentInfo[filter.value].name
 
 const catalogQueryFor = (typed: string, filter: Filter | undefined) => ({
-  limit: CATALOG_LIMIT,
   ...(typed ? { q: typed } : {}),
   ...(filter?.kind === 'muscle' ? { muscle: filter.value } : {}),
   ...(filter?.kind === 'equipment' ? { equipment: filter.value } : {}),
@@ -93,9 +101,11 @@ const FilterValues = ({ kind, onPick }: { kind: Filter['kind']; onPick: (filter:
 
 const Sections = ({
   sections,
+  catalogMore,
   onPick,
 }: {
   sections: PickerSection[]
+  catalogMore?: ComponentChildren
   onPick: (item: PickerItem) => void
 }) => (
   <>
@@ -114,8 +124,10 @@ const Sections = ({
             </li>
           ))}
         </ul>
+        {section.title === CATALOG_SECTION_TITLE && catalogMore}
       </section>
     ))}
+    {!sections.some((section) => section.title === CATALOG_SECTION_TITLE) && catalogMore}
   </>
 )
 
@@ -151,16 +163,17 @@ export const ExercisePicker = ({
   const recent = useRecentStrengthSessions()
 
   const catalogQuery = catalogQueryFor(typed, filter)
-  const catalog = useQuery({
-    enabled: typed !== '' || filter !== undefined,
-    placeholderData: keepPreviousData,
-    queryFn: () => searchExerciseCatalog(catalogQuery),
-    queryKey: ['exercise-catalog', 'strength-picker', catalogQuery],
+  const catalogShown = typed !== '' || filter !== undefined
+  const catalog = useExerciseCatalogPages({
+    enabled: catalogShown,
+    pageSize: CATALOG_LIMIT,
+    query: catalogQuery,
     staleTime: 30 * 60 * 1000,
   })
+  const catalogRemaining = catalogShown ? catalog.remaining : 0
 
   const sections = buildPickerSections({
-    catalog: typed !== '' || filter ? (catalog.data?.entries ?? []) : [],
+    catalog: catalogShown ? catalog.entries : [],
     own: own.data?.values ?? [],
     recent: recentExercises(recentSessionSets(recent.data ?? [], sessionId)),
     text,
@@ -204,6 +217,18 @@ export const ExercisePicker = ({
       {!choosing && (
         <Sections
           sections={sections}
+          catalogMore={
+            catalogRemaining > 0 && (
+              <button
+                type="button"
+                class="btn-secondary strength-picker-more"
+                disabled={catalog.isLoadingMore}
+                onClick={catalog.loadMore}
+              >
+                Show more ({catalogRemaining})
+              </button>
+            )
+          }
           onPick={(item) => onPick(item.value, item.kind === 'catalog' ? item.key : undefined)}
         />
       )}
