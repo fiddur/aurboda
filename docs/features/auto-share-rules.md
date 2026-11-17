@@ -23,8 +23,8 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   member replaced by another member — the synced row behind an edit's override — is
   left out, so a value you corrected or cleared never comes back from the original.
 - **Max age** (`max_age_hours`, default 24, 1 to 8760): a rule shares an activity only
-  when it _ended_ at most this many hours before it _arrived_ (its youngest merge-group
-  member's ingest). The waits before sharing — the rule's own wait, the Garmin detail
+  when it _ended_ at most this many hours before it _arrived_ (when its youngest
+  merge-group member arrived: see [Evaluation & timing](#evaluation--timing)). The waits before sharing — the rule's own wait, the Garmin detail
   wait — do not count against it, so a long wait never eats the max age. A history
   update that makes old activities newly match — an enrich rule run over history that
   adds `session_name`, a re-sync, an import — therefore does not publish them. For an
@@ -33,7 +33,7 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   back from the evaluation. The flip side: an activity whose phone sync is delayed past
   the max age is not shared either. Rules created before the field existed have 24.
 - **Wait** (`delay_minutes`, default 10, 10 to 1440): how long after the activity
-  arrived (its youngest merge-group member's ingest) the rule waits before sharing it.
+  arrived (when its youngest merge-group member arrived) the rule waits before sharing it.
   The default equals the stabilisation delay, so it changes nothing; a longer wait gives
   you more time to stop a share from the [pending-share
   notification](#pending-share-notification).
@@ -61,14 +61,16 @@ A per-user set of rules, each combining a **predicate** and a **share template**
   time, so churn within the delay is naturally absorbed.
 - **Settled means settled per activity**, not per window: Health Connect pushes about
   once a minute, so some job always matures within the next minute. A merge group is
-  only evaluated once its **youngest member was ingested** at least 10 minutes earlier
-  (the stabilisation delay, measured from `activities.created_at`), so the created
+  only evaluated once its **youngest member arrived** at least 10 minutes earlier (the
+  stabilisation delay). A member arrives when it was ingested (`activities.created_at`)
+  or when it ended, whichever is later: a session logged live in Aurboda is created at
+  its start, so its waits count from "Finish". The created
   post's scalars and window reflect the settled activity (synced activities are
   frequently merged, enriched, or re-synced shortly after first landing).
 - **Garmin-backed activities wait for their detail.** A group with a member carrying
   `data.garmin_activity_id` but no `data.detail_synced: true` (GPS, per-second HR and
   distance not fetched yet) is deferred and re-checked every 10 minutes, for up to
-  **two hours** after the anchor was ingested; past that it is shared as is.
+  **two hours** after the anchor arrived; past that it is shared as is.
 - A deferred group **re-queues the window**: one new job per run, starting at the
   earliest time any deferred group can settle. A group that already has a post, or whose
   anchor was ingested before every enabled rule's `enabled_at` (a history backfill), is
@@ -118,7 +120,7 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 - The **first matching rule** (in creation order) wins; distance is only resolved when
   some eligible rule constrains it.
 - **The rule's wait**: a settled group is shared only once its rule's `delay_minutes`
-  have passed since its youngest member was ingested; until then the window is re-queued
+  have passed since its youngest member arrived; until then the window is re-queued
   for that time, like an unsettled group.
 - Auto-created posts are ordinary feed posts: they federate through the same delivery
   fan-out as a manual share, are editable/unshareable, and show an **auto-shared**
