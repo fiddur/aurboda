@@ -7,7 +7,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { Fragment } from 'preact'
 
-import { fieldLabel, itemPageHref } from '../../components/sessions/sessionView'
+import { fieldLabel, itemPageHref, muscleGroupsHref } from '../../components/sessions/sessionView'
 import { fetchActivityItemHistory } from '../../state/api'
 import { formatMeasure, formatSet, muscleGroupParts, recordBadge, trendParts } from '../../utils/measures'
 
@@ -130,8 +130,13 @@ export const ItemHistorySection = ({
         ))}
       </ul>
       {muscleParts.length > 0 && (
-        <div class="item-history-line">
-          <span class="item-history-when">Sets per muscle group</span> <Parts parts={muscleParts} />
+        <div class="item-history-muscles">
+          <h4>
+            <a href={muscleGroupsHref(activityType, path)}>Sets per muscle group</a>
+          </h4>
+          <div class="item-history-line">
+            <Parts parts={muscleParts} />
+          </div>
         </div>
       )}
     </div>
