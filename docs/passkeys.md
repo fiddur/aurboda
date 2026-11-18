@@ -27,8 +27,14 @@ prompts you to create a credential, and on success you're logged in.
 No password is involved at any point.
 
 Behind the scenes, the backend creates the Postgres role with a random
-internal password the user never sees. Login is always passkey-only for
-these users.
+internal password the user never sees, and marks the password as not a way
+in (`password_login = false`). Login is always passkey-only for these users,
+so deleting the account's last passkey is refused while it has no provider
+link (see [the last login method](sso.md#the-last-login-method)) and no
+password set through the emailed [password reset](account-recovery.md).
+Accounts that signed up with a passkey before this was recorded still count
+the unknown password as a way in: that cannot be told apart from a real
+password after the fact, so they are not backfilled.
 
 ### Password signup (fallback)
 

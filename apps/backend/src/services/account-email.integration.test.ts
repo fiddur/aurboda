@@ -3,7 +3,13 @@ import { Client } from 'pg'
 import format from 'pg-format'
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, test } from 'vitest'
 
-import { isInvalidPasswordError, loginToUserDb, setUserPassword, userDbName } from '../db/index.ts'
+import {
+  createUserRole,
+  isInvalidPasswordError,
+  loginToUserDb,
+  setUserPassword,
+  userDbName,
+} from '../db/index.ts'
 import { createRolePool, type UserDb, withTransaction } from '../db/pool.ts'
 import { type CentralDb, createCentralDb } from './central-db.ts'
 
@@ -147,11 +153,11 @@ describe('account_email_tokens', () => {
   })
 })
 
-describe('setUserPassword', () => {
+describe('createUserRole and setUserPassword', () => {
   const user = `pw_${suffix}`
 
   beforeAll(async () => {
-    await admin.query(format('CREATE USER %I WITH ENCRYPTED PASSWORD %L', user, 'old password'))
+    await createUserRole(admin, user, 'old password')
     await admin.query(format('CREATE DATABASE %I OWNER %I', userDbName(user), user))
   })
 
@@ -184,11 +190,32 @@ describe('setUserPassword', () => {
       ),
     )
 
+  const storedPassword = async () =>
+    (
+      await admin.query<{ rolpassword: string }>('SELECT rolpassword FROM pg_authid WHERE rolname = $1', [
+        user,
+      ])
+    ).rows[0].rolpassword
+
+  test('the server stores SCRAM verifiers, which the role is created with', async () => {
+    const { rows } = await admin.query<{ password_encryption: string }>('SHOW password_encryption')
+    expect(rows[0].password_encryption).toBe('scram-sha-256')
+    expect(await storedPassword()).toMatch(/^SCRAM-SHA-256\$4096:/)
+    expect(await loginError('old password')).toBeNull()
+  })
+
   test('after a reset, the new password signs in and the old one does not', async () => {
     expect(await loginError('old password')).toBeNull()
     await setUserPassword(admin, user, "new 'password'")
     expect(await loginError("new 'password'")).toBeNull()
     expect(isInvalidPasswordError(await loginError('old password'))).toBe(true)
+    expect(await storedPassword()).toMatch(/^SCRAM-SHA-256\$4096:/)
+  })
+
+  test('a non-ASCII password signs in', async () => {
+    await setUserPassword(admin, user, 'lösenord ✓')
+    expect(await loginError('lösenord ✓')).toBeNull()
+    await setUserPassword(admin, user, 'old password')
   })
 
   test('refuses an empty password', async () => {

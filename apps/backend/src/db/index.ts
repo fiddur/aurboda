@@ -42,6 +42,7 @@ export type {
 
 export {
   _setDbForUser,
+  createUserRole,
   dropUserDb,
   getDbForUser,
   initializeSchema,

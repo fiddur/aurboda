@@ -74,6 +74,7 @@ const setup = ({
   const setPassword = vi.fn(async (_username: string, _password: string) => {})
   const clearFailedLogins = vi.fn()
   const audit = vi.fn(async () => {})
+  const pruneAuditLog = vi.fn(async (_username: string) => {})
   const recovery = createAccountRecovery({
     audit,
     centralDb,
@@ -90,6 +91,7 @@ const setup = ({
     },
     newToken: () => `token-${++counter}`,
     now,
+    pruneAuditLog,
     recoveryLimiter: createTokenBucketLimiter({ capacity: mailCapacity, refill_per_second: 0 }, () => clock),
     setPassword,
     verificationLimiter: createTokenBucketLimiter(
@@ -105,6 +107,7 @@ const setup = ({
     audit,
     centralDb,
     clearFailedLogins,
+    pruneAuditLog,
     recovery,
     rows,
     sent,
@@ -249,7 +252,7 @@ describe('completeRecovery', () => {
   }
 
   test('with a password: sets it, clears failed logins, signs in, audits and notifies', async () => {
-    const { audit, clearFailedLogins, recovery, sent, setPassword } = await requested()
+    const { audit, clearFailedLogins, pruneAuditLog, recovery, sent, setPassword } = await requested()
     expect(await recovery.completeRecovery('token-1', 'new secret')).toEqual({
       is_admin: false,
       ok: true,
@@ -259,18 +262,32 @@ describe('completeRecovery', () => {
     expect(setPassword).toHaveBeenCalledWith('alice', 'new secret')
     expect(clearFailedLogins).toHaveBeenCalledWith('alice')
     expect(audit).toHaveBeenCalledWith('alice', 'Password reset by email')
+    expect(pruneAuditLog).toHaveBeenCalledWith('alice')
     await vi.waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0]).toMatchObject({ kind: 'recovery_notice', to: 'alice@example.com' })
     expect(sent[0].message.subject).toBe('Your Aurboda password was reset')
   })
 
   test('without a password: signs in and changes nothing about the password', async () => {
-    const { audit, recovery, sent, setPassword } = await requested()
+    const { audit, pruneAuditLog, recovery, sent, setPassword } = await requested()
     expect(await recovery.completeRecovery('token-1')).toMatchObject({ ok: true, token: 'session-for-alice' })
     expect(setPassword).not.toHaveBeenCalled()
     expect(audit).toHaveBeenCalledWith('alice', 'Recovery sign-in')
+    expect(pruneAuditLog).toHaveBeenCalledWith('alice')
     await vi.waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0].message.subject).toBe('Your Aurboda account was signed in to with a recovery link')
+  })
+
+  test('a failed audit log prune does not fail the sign-in', async () => {
+    const { pruneAuditLog, recovery } = await requested()
+    pruneAuditLog.mockRejectedValueOnce(new Error('db down'))
+    expect((await recovery.completeRecovery('token-1')).ok).toBe(true)
+  })
+
+  test('a refused link prunes nothing', async () => {
+    const { pruneAuditLog, recovery } = await requested()
+    expect((await recovery.completeRecovery('not-a-token')).ok).toBe(false)
+    expect(pruneAuditLog).not.toHaveBeenCalled()
   })
 
   test('the link works once', async () => {

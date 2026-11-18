@@ -9,6 +9,7 @@ import {
   emailDomainAllowed,
   hashOidcSecret,
   OIDC_LINK_EXPIRED_ERROR,
+  OIDC_SIGNUP_UNFINISHED_ERROR,
   type OidcServiceDeps,
   usernameFromEmail,
 } from './oidc.ts'
@@ -161,9 +162,13 @@ const setup = ({
         : { is_admin: false, ok: true, token: `token-${input.username}`, username: input.username },
   )
   const startEmailVerification = vi.fn()
+  const discardAccount = vi.fn(async (_username: string) => {})
+  const audit = vi.fn(async (_username: string, _message: string, _details?: Record<string, unknown>) => {})
   const deps: OidcServiceDeps = {
+    audit,
     createAccount,
     createSessionToken: (username) => `session-${username}`,
+    discardAccount,
     discover: vi.fn(async () => ({ authorizationUrl, exchange })),
     invitationAuth: {
       validateInvitationToken: (token: string) =>
@@ -197,9 +202,11 @@ const setup = ({
     advance: (ms: number) => {
       clock += ms
     },
+    audit,
     authorizationUrl,
     createAccount,
     deps,
+    discardAccount,
     exchange,
     memory,
     service,
@@ -523,6 +530,56 @@ describe('OIDC flow service', () => {
       await service.signup({ code, username: 'ada', verifier: started.verifier })
       expect(memory.emails.get('ada')).toEqual({ email: 'ada.lovelace@example.com', verified: false })
       expect(startEmailVerification).toHaveBeenCalledWith('ada')
+    })
+
+    test('a link insert that finds the identity taken rolls the new account back and keeps the code', async () => {
+      const { service, startAndCallback, memory, discardAccount, audit, verifier } = signupSetup()
+      const code = fragmentCode(await startAndCallback())
+      memory.store.insertOidcLink.mockImplementationOnce(async () => null)
+
+      expect(await service.signup({ code, username: 'ada', verifier: verifier() })).toEqual({
+        error: OIDC_SIGNUP_UNFINISHED_ERROR,
+        ok: false,
+        status: 500,
+      })
+      expect(discardAccount).toHaveBeenCalledWith('ada')
+      expect(audit).not.toHaveBeenCalled()
+      expect(memory.emails.has('ada')).toBe(false)
+      expect(await service.signup({ code, username: 'ada', verifier: verifier() })).toMatchObject({
+        ok: true,
+      })
+    })
+
+    test('a link insert that throws rolls the new account back', async () => {
+      const { service, startAndCallback, memory, discardAccount, verifier } = signupSetup()
+      const code = fragmentCode(await startAndCallback())
+      memory.store.insertOidcLink.mockRejectedValueOnce(new Error('connection reset'))
+
+      expect(await service.signup({ code, username: 'ada', verifier: verifier() })).toMatchObject({
+        error: OIDC_SIGNUP_UNFINISHED_ERROR,
+        ok: false,
+      })
+      expect(discardAccount).toHaveBeenCalledWith('ada')
+    })
+
+    test('a failed rollback keeps the account, audits it and still refuses the sign-up', async () => {
+      const { service, startAndCallback, memory, discardAccount, audit, verifier } = signupSetup()
+      const code = fragmentCode(await startAndCallback())
+      memory.store.insertOidcLink.mockImplementationOnce(async () => null)
+      discardAccount.mockRejectedValueOnce(new Error('drop failed'))
+
+      expect(await service.signup({ code, username: 'ada', verifier: verifier() })).toEqual({
+        error: OIDC_SIGNUP_UNFINISHED_ERROR,
+        ok: false,
+        status: 500,
+      })
+      expect(audit).toHaveBeenCalledWith('ada', expect.stringContaining('could not link'), {
+        provider_id: 'google',
+      })
+      expect(await service.signup({ code, username: 'ada2', verifier: verifier() })).toMatchObject({
+        ok: false,
+        status: 400,
+      })
     })
 
     test('a refused username keeps the code for another try', async () => {

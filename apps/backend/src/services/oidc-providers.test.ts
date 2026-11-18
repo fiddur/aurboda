@@ -149,6 +149,24 @@ describe('OIDC provider admin', () => {
     expect(await admin.update('nope', {})).toMatchObject({ ok: false, status: 404 })
   })
 
+  test('update refuses a new issuer while accounts are linked, and allows the other fields', async () => {
+    const { admin, store, verifyIssuer } = setup({
+      links: [link('ada'), link('bob'), { ...link('ada'), id: 'id-2' }],
+    })
+    expect(await admin.update('google', { issuer: 'https://other.example.com' })).toEqual({
+      error: expect.stringMatching(/^2 account\(s\) are linked .* would lose their sign-in/),
+      ok: false,
+      status: 409,
+    })
+    expect(verifyIssuer).not.toHaveBeenCalled()
+    expect(store.updateOidcProvider).not.toHaveBeenCalled()
+    expect(
+      await admin.update('google', { issuer: 'https://accounts.google.com', display_name: 'G' }),
+    ).toMatchObject({
+      ok: true,
+    })
+  })
+
   test('delete refuses when a linked user would have no login method left, unless forced', async () => {
     const links = [link('ada'), link('bob')]
     const { admin, store } = setup({ links, methods: { ada: 1, bob: 2 } })

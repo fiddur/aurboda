@@ -161,6 +161,7 @@ describe('OIDC sign-in end to end, against a fake issuer', () => {
       isAdmin: async () => false,
     }
     const service = createOidcService({
+      audit: async () => {},
       createAccount: async (input) => {
         const result = await createAccount(input)
         if (result.ok) {
@@ -169,6 +170,9 @@ describe('OIDC sign-in end to end, against a fake issuer', () => {
         return result
       },
       createSessionToken: (username) => `session-${username}`,
+      discardAccount: async (username) => {
+        await accounts.deleteUserAccount(username)
+      },
       discover: createDiscoveryCache(createOidcClient({ allowHttp: true })),
       invitationAuth: { validateInvitationToken: () => ({ valid: true }) } as never,
       log: { error: vi.fn(), warn: vi.fn() },

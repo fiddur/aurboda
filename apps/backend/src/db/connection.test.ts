@@ -1,4 +1,4 @@
-import type { QueryResult, QueryResultRow } from 'pg'
+import type { Client, QueryResult, QueryResultRow } from 'pg'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -9,8 +9,10 @@ import {
   _runMigrationOnce,
   _setDbForUser,
   closeAllUserPools,
+  createUserRole,
   getDbForUser,
   query,
+  setUserPassword,
 } from './connection.ts'
 
 describe('isSchemaError', () => {
@@ -193,5 +195,33 @@ describe('closeAllUserPools', () => {
     expect(a.end).toHaveBeenCalledTimes(1)
     expect(b.end).toHaveBeenCalledTimes(1)
     expect(await getDbForUser('closea')).not.toBe(a)
+  })
+})
+
+describe('password statements', () => {
+  const capture = () => {
+    const statements: string[] = []
+    const client = {
+      query: vi.fn(async (text: string) => {
+        statements.push(text)
+        return { rows: [] }
+      }),
+    }
+    return { client: client as unknown as Client, statements }
+  }
+
+  test('createUserRole sends a SCRAM verifier, never the clear password', async () => {
+    const { client, statements } = capture()
+    await createUserRole(client, 'alice', 'clear-secret')
+    expect(statements).toHaveLength(1)
+    expect(statements[0]).toMatch(/^CREATE USER alice WITH PASSWORD 'SCRAM-SHA-256\$4096:[^']+'$/)
+    expect(statements[0]).not.toContain('clear-secret')
+  })
+
+  test('setUserPassword sends a SCRAM verifier, never the clear password', async () => {
+    const { client, statements } = capture()
+    await setUserPassword(client, 'alice', "it's secret")
+    expect(statements[0]).toMatch(/^ALTER USER alice WITH PASSWORD 'SCRAM-SHA-256\$4096:[^']+'$/)
+    expect(statements[0]).not.toContain('secret')
   })
 })
