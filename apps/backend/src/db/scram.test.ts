@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 
-import { scramSha256Verifier } from './scram.ts'
+import { preparedPassword, scramSha256Verifier } from './scram.ts'
 
 const parse = (verifier: string) => {
   const match = /^SCRAM-SHA-256\$(\d+):([^$]+)\$([^:]+):(.+)$/.exec(verifier)
@@ -54,5 +54,12 @@ describe('scramSha256Verifier', () => {
     const salt = Buffer.alloc(16, 1)
     expect(scramSha256Verifier('ﬁsh', salt, 2)).toBe(scramSha256Verifier('fish', salt, 2))
     expect(scramSha256Verifier('café', salt, 2)).toBe(scramSha256Verifier('café', salt, 2))
+  })
+})
+
+describe('preparedPassword', () => {
+  test('is the NFKC form, and leaves ASCII alone', () => {
+    expect(preparedPassword('Ｐａｓｓword-ﬁx')).toBe('Password-fix')
+    expect(preparedPassword('pencil')).toBe('pencil')
   })
 })
