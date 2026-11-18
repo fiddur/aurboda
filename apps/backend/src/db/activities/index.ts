@@ -1,6 +1,7 @@
 export {
   blendGroupData,
   CROSS_MERGE_SOURCES,
+  CROSS_MERGEABLE_CATEGORIES,
   findMergedGroupForActivity,
   isSupersedable,
   mergeOverlappingActivities,

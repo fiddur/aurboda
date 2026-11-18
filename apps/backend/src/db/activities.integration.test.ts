@@ -1395,6 +1395,98 @@ describe('Activities Integration Tests', () => {
     })
   })
 
+  describe('getActivities with retyped rows (#1830)', () => {
+    const start = new Date('2026-05-05T10:00:00Z')
+    const end = new Date('2026-05-05T11:00:00Z')
+    const range = [new Date('2026-05-05T00:00:00Z'), new Date('2026-05-06T00:00:00Z')] as const
+    const categoryMap = new Map([
+      ['meditation', 'meditation'],
+      ['other_workout', 'exercise'],
+    ])
+
+    const insertSyncedWorkout = async (user: string): Promise<string> => {
+      const id = randomUUID()
+      await insertActivity(user, {
+        activity_type: 'other_workout',
+        end_time: end,
+        external_id: 'garmin-1830',
+        id,
+        source: 'garmin',
+        start_time: start,
+        title: 'Other workout',
+      })
+      return id
+    }
+
+    test('a synced row retyped by its override is returned under the override type only', async () => {
+      const user = getTestUser()
+      const garminId = await insertSyncedWorkout(user)
+      const override = await insertOverride(user, [garminId], {
+        activity_type: 'meditation',
+        end_time: end,
+        start_time: start,
+        title: 'Sit',
+      })
+
+      expect(await getActivities(user, 'other_workout', ...range)).toEqual([])
+
+      const meditations = await getActivities(user, 'meditation', ...range)
+      expect(meditations.map((a) => a.id)).toEqual([override!.id])
+    })
+
+    test('an override of the same type still returns the session once, with its title', async () => {
+      const user = getTestUser()
+      const garminId = await insertSyncedWorkout(user)
+      const override = await insertOverride(user, [garminId], {
+        activity_type: 'other_workout',
+        end_time: end,
+        start_time: start,
+        title: 'Renamed',
+      })
+
+      const workouts = await getActivities(user, 'other_workout', ...range, undefined, undefined, categoryMap)
+      expect(workouts).toHaveLength(1)
+      expect(workouts[0]!.id).toBe(override!.id)
+      expect(workouts[0]!.title).toBe('Renamed')
+    })
+
+    test('asking for both types returns one activity, under the override type', async () => {
+      const user = getTestUser()
+      const garminId = await insertSyncedWorkout(user)
+      await insertOverride(user, [garminId], {
+        activity_type: 'meditation',
+        end_time: end,
+        start_time: start,
+        title: 'Sit',
+      })
+
+      const merged = await getActivities(
+        user,
+        ['other_workout', 'meditation'],
+        ...range,
+        undefined,
+        undefined,
+        categoryMap,
+      )
+      expect(merged.map((a) => a.activity_type)).toEqual(['meditation'])
+    })
+
+    test('a soft-deleted override no longer hides the synced row', async () => {
+      const user = getTestUser()
+      const garminId = await insertSyncedWorkout(user)
+      const override = await insertOverride(user, [garminId], {
+        activity_type: 'meditation',
+        end_time: end,
+        start_time: start,
+        title: 'Sit',
+      })
+      await deleteActivity(user, override!.id!)
+
+      const workouts = await getActivities(user, 'other_workout', ...range)
+      expect(workouts.map((a) => a.id)).toEqual([garminId])
+    })
+  })
+
   describe('getEffectiveActivitiesInRange', () => {
     const dayStart = new Date('2026-05-05T00:00:00Z')
     const dayEnd = new Date('2026-05-05T23:59:59Z')

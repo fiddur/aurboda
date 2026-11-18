@@ -195,6 +195,7 @@ export {
   rematerializeSupersededOnce,
   retireSingleLiftTypes,
   mergeOverlappingActivities,
+  CROSS_MERGEABLE_CATEGORIES,
   pickOverrideWinner,
   blendGroupData,
   restoreActivity,

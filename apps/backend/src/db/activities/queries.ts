@@ -8,7 +8,7 @@ import type { Activity, MergedActivity } from '../types.ts'
 import { UUID_RE } from '../../utils.ts'
 import { buildBucketExpr } from '../bucket-expr.ts'
 import { query } from '../connection.ts'
-import { effectiveData } from '../effective-type.ts'
+import { effectiveData, effectiveType } from '../effective-type.ts'
 import { mapActivityRow } from '../row-mappers.ts'
 import { findMergedGroupForActivity, mergeOverlappingActivities } from './merge.ts'
 
@@ -152,6 +152,7 @@ const dataFilterClauses = (dataFilters: DataFilter[] | undefined, params: unknow
   return clauses
 }
 
+/** A row retyped by a live override is returned under the override's type only. */
 export const getActivities = async (
   user: string,
   activityType: ActivityType | ActivityType[],
@@ -191,7 +192,8 @@ export const getActivities = async (
     `SELECT ${ACTIVITY_COLUMNS_BARE}
      FROM activities
      WHERE activity_type = ANY($1) AND start_time >= $2 AND start_time <= $3
-       AND deleted_at IS NULL${filterClauses}
+       AND deleted_at IS NULL
+       AND ${effectiveType('activities')} = ANY($1)${filterClauses}
      ORDER BY start_time`,
     params,
   )

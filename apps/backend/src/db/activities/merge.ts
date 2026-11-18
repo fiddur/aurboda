@@ -26,7 +26,7 @@ export const CROSS_MERGE_SOURCES = new Set([
 ])
 
 /** Display categories whose activities can cross-merge with each other. */
-const CROSS_MERGEABLE_CATEGORIES = new Set(['exercise', 'meditation', 'wellness'])
+export const CROSS_MERGEABLE_CATEGORIES = new Set<string>(['exercise', 'meditation', 'wellness'])
 
 /**
  * Higher number = higher priority when picking the cross-merge winner.
