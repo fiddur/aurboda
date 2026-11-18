@@ -6,6 +6,7 @@ import {
   flaggedWindowsNote,
   genericCorrelationBodySchema,
   hrvCorrelationInputSchema,
+  impactBreakdownError,
   impactDurationBucketsError,
   impactExtraMetricsError,
   impactMetricsInputSchema,
@@ -100,10 +101,11 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
       const extraMetrics = metrics ?? []
       const metricsError = impactExtraMetricsError(extraMetrics)
       if (metricsError) return errorResponse(metricsError)
-      const bucketsError =
+      const paramsError =
         (duration_buckets && impactDurationBucketsError(duration_buckets)) ||
-        (time_buckets && impactTimeBucketsError(time_buckets))
-      if (bucketsError) return errorResponse(bucketsError)
+        (time_buckets && impactTimeBucketsError(time_buckets)) ||
+        impactBreakdownError(activity_type, breakdown)
+      if (paramsError) return errorResponse(paramsError)
       const periodDays = period_days ?? 90
       const windowMinutes = window_minutes ?? 30
 

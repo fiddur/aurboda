@@ -1,5 +1,5 @@
 import * as d3 from 'd3'
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { CHART_PRIMARY } from '../../theme'
 import {
@@ -99,7 +99,6 @@ const showTooltip = (
   tooltip.style.top = `${Math.max(0, my - height - 10)}px`
 }
 
-/** Sessions as dots, duration across and exertion up; collapsed, one dot per value sized by its count. */
 export function SessionScatterChart({
   points,
   y,
@@ -115,13 +114,24 @@ export function SessionScatterChart({
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
+  const empty = points.length === 0
+
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => setWidth(el.clientWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [empty])
 
   useEffect(() => {
     const container = containerRef.current
     const tooltip = tooltipRef.current
-    if (!svgRef.current || !container || !tooltip) return
+    if (!svgRef.current || !container || !tooltip || width === 0) return
 
-    const width = container.clientWidth
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
     svg.attr('width', width).attr('height', height)
@@ -196,9 +206,21 @@ export function SessionScatterChart({
         if (collapsed) onGroupClick(p)
         else onSessionClick(p)
       })
-  }, [points, y, collapsed, colorOf, entries, highlight, labelOf, onSessionClick, onGroupClick, height])
+  }, [
+    points,
+    y,
+    collapsed,
+    colorOf,
+    entries,
+    highlight,
+    labelOf,
+    onSessionClick,
+    onGroupClick,
+    height,
+    width,
+  ])
 
-  if (points.length === 0) return <div class="session-scatter-empty">No sessions to plot in this range</div>
+  if (empty) return <div class="session-scatter-empty">No sessions to plot in this range</div>
 
   return (
     <div ref={containerRef} class="session-scatter">

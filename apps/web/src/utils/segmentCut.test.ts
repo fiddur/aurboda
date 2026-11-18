@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clampStartKm,
   cumulativeDistancesM,
   cutBounds,
   cutLengthM,
+  cutRejectReason,
   cutTooShortReason,
+  endGapM,
   densifyLine,
   indexRangeForKm,
   indexRangeForOffsets,
   moveCutEdge,
+  pointAtM,
 } from './segmentCut'
 
 describe('indexRangeForOffsets', () => {
@@ -93,6 +97,49 @@ describe('cutTooShortReason', () => {
   it('refuses under 100 m', () => {
     expect(cutTooShortReason(99.9)).toBe('A segment must be at least 100 m long')
     expect(cutTooShortReason(100)).toBeNull()
+  })
+})
+
+describe('cutRejectReason', () => {
+  it('refuses a cut whose ends are under 50 m apart, as the server does', () => {
+    expect(cutRejectReason(400, 49.9)).toBe(
+      "A segment's start and end must be at least 50 m apart: a closed loop cannot be timed.",
+    )
+    expect(cutRejectReason(400, 50)).toBeNull()
+  })
+
+  it('names the length first and skips the gap when unknown', () => {
+    expect(cutRejectReason(50, 10)).toBe('A segment must be at least 100 m long')
+    expect(cutRejectReason(400)).toBeNull()
+  })
+})
+
+describe('pointAtM and endGapM', () => {
+  const line = [
+    { lat: 0, lon: 0 },
+    { lat: 0, lon: 0.001 },
+    { lat: 0, lon: 0.002 },
+  ]
+  const distances = cumulativeDistancesM(line)
+
+  it('interpolates between points and clamps to the ends', () => {
+    expect(pointAtM(line, distances, distances[1] / 2)?.lon).toBeCloseTo(0.0005)
+    expect(pointAtM(line, distances, -5)).toEqual({ lat: 0, lon: 0 })
+    expect(pointAtM(line, distances, 1e9)).toEqual({ lat: 0, lon: 0.002 })
+    expect(pointAtM([], [], 0)).toBeNull()
+  })
+
+  it('measures the straight line between two ends', () => {
+    expect(endGapM(line[0], line[2])).toBeCloseTo(distances[2])
+  })
+})
+
+describe('clampStartKm', () => {
+  it('keeps the start between 0 and both the end and the line length', () => {
+    expect(clampStartKm(0.5, 2, 3000)).toBe(0.5)
+    expect(clampStartKm(2.5, 2, 3000)).toBe(2)
+    expect(clampStartKm(5, 9, 3000)).toBe(3)
+    expect(clampStartKm(-1, 2, 3000)).toBe(0)
   })
 })
 

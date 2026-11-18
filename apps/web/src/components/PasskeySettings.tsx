@@ -7,7 +7,7 @@ import { SettingsSection } from './SettingsSection'
 
 const formatDate = (iso: string | null): string => {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 /** `recovered`: the user just signed in with a recovery link to add a new passkey. */

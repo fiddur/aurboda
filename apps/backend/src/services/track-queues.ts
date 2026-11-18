@@ -5,15 +5,15 @@
  * the activity's features (which re-evaluates the run category rules); it starts after the same kind
  * of stabilisation delay auto-share uses, since a track is often rewritten by a
  * re-sync shortly after it lands. `track-backfill` builds tracks for history
- * from stored raw records, matches routes and computes missing features for them,
- * one job per user.
+ * from stored raw records, matches routes, times segments and computes missing features for
+ * them, one job per user.
  */
 import type { PgBoss } from './pg-boss.ts'
 import type { TrackBackfillJobDeps, TrackBackfillResult } from './track-backfill.ts'
 
 import { auditError, auditInfo } from './audit-log.ts'
 import { backfillActivityFeatures } from './track-analyse.ts'
-import { backfillUserTracks } from './track-backfill.ts'
+import { backfillUserTracksWithIds } from './track-backfill.ts'
 
 /** `stately`: a re-sync while a job waits collapses into it. The policy is fixed at creation. */
 export const TRACK_ANALYSE_QUEUE = 'track-analyse'
@@ -54,17 +54,29 @@ export const runTrackBackfillJob = async (
 ): Promise<
   TrackBackfillResult & {
     routes: { matched: number; created: number }
+    segments: { efforts: number }
     suggestions: { scanned: number; suggested: number; remaining: number } | null
     features: { computed: number }
   }
 > => {
-  const result = await backfillUserTracks(job.user, deps)
+  const { activity_ids: written, ...result } = await backfillUserTracksWithIds(job.user, deps)
   if (result.garmin + result.strava + result.skipped > 0) {
     auditInfo(job.user, 'data', '🛤️ Activity track backfill done', { ...result })
   }
   const routes = await deps.matchRoutes(job.user)
   if (routes.matched + routes.created > 0) {
     auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
+  }
+  const segments = { efforts: 0 }
+  for (const activityId of written) {
+    try {
+      segments.efforts += (await deps.matchSegments(job.user, activityId)).efforts
+    } catch (error) {
+      auditError(job.user, 'data', 'Segment matching failed', {
+        activity_id: activityId,
+        error: String(error),
+      })
+    }
   }
   let suggestions = null
   try {
@@ -75,7 +87,7 @@ export const runTrackBackfillJob = async (
   const features = await backfillActivityFeatures(job.user, deps, {
     recompute: job.recompute_features === true,
   })
-  return { ...result, features, routes, suggestions }
+  return { ...result, features, routes, segments, suggestions }
 }
 
 /* v8 ignore start -- requires real pg-boss instance */
@@ -128,7 +140,7 @@ export const createTrackBackfillQueue = async (
       if (!job) return
       const result = await runTrackBackfillJob(job.data, deps)
       console.info(
-        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created; suggested segments: ${result.suggestions?.suggested ?? 'failed'}; features: ${result.features.computed} computed`,
+        `🛤️ track backfill for ${job.data.user}: ${result.garmin} garmin, ${result.strava} strava, ${result.skipped} skipped; routes: ${result.routes.matched} matched, ${result.routes.created} created; segment efforts: ${result.segments.efforts}; suggested segments: ${result.suggestions?.suggested ?? 'failed'}; features: ${result.features.computed} computed`,
       )
     },
   )

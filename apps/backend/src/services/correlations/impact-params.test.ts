@@ -2,6 +2,7 @@ import {
   activityImpactQuerySchema,
   formatImpactFilters,
   IMPACT_NO_VALUE_KEY,
+  impactBreakdownError,
   impactDurationBucketsError,
   impactFieldPath,
   impactTimeBucketsError,
@@ -113,5 +114,14 @@ describe('impact filter strings', () => {
     expect(parseImpactFilters('field:session_name:%E0%A4%A')).toBeNull()
     const tooMany = Array.from({ length: MAX_IMPACT_FILTERS + 1 }, (_, i) => `field:f${i}:x`).join(';')
     expect(parseImpactFilters(tooMany)).toBeNull()
+  })
+})
+
+describe('impactBreakdownError', () => {
+  test('refuses only a duration breakdown of meal_sensitivity', () => {
+    expect(impactBreakdownError('meal_sensitivity', 'duration')).toMatch(/meal_sensitivity/)
+    expect(impactBreakdownError('meal_sensitivity', 'time_of_day')).toBeNull()
+    expect(impactBreakdownError('meal_sensitivity', undefined)).toBeNull()
+    expect(impactBreakdownError('activity_type', 'duration')).toBeNull()
   })
 })

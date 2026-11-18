@@ -38,6 +38,7 @@ function LinkList({
             </span>
             <button
               type="button"
+              class="btn-secondary"
               disabled={lastMethod || busy}
               title={lastMethod ? 'This is your only way to log in' : undefined}
               onClick={() => onUnlink(link.id, link.provider_display_name)}

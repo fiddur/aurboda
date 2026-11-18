@@ -6,7 +6,7 @@ import type { GarminActivityDetailResponse } from '../integrations/garmin/client
 import type { TrackBackfillDeps } from './track-backfill.ts'
 
 import { auditError } from './audit-log.ts'
-import { backfillUserTracks } from './track-backfill.ts'
+import { backfillUserTracks, backfillUserTracksWithIds } from './track-backfill.ts'
 
 const start = new Date('2026-05-01T08:00:00Z')
 const day = (n: number): Date => new Date(start.getTime() + n * 86_400_000)
@@ -50,9 +50,10 @@ describe('backfillUserTracks', () => {
       upsertActivityTrack: vi.fn(async () => undefined),
     }
 
-    const result = await backfillUserTracks('alice', deps)
+    const result = await backfillUserTracksWithIds('alice', deps)
 
-    expect(result).toEqual({ garmin: 1, skipped: 0, strava: 1 })
+    expect(result).toMatchObject({ garmin: 1, skipped: 0, strava: 1 })
+    expect(result.activity_ids).toEqual(['g1', 's1'])
     expect(deps.upsertActivityTrack).toHaveBeenCalledWith('alice', {
       activity_id: 'g1',
       ewkt: 'SRID=4326;LINESTRING ZM(12.62 57.65 0 0, 12.6201 57.6501 0 1)',
@@ -110,7 +111,7 @@ describe('backfillUserTracks', () => {
 
     const result = await backfillUserTracks('alice', deps)
 
-    expect(result).toEqual({ garmin: 1, skipped: 3, strava: 0 })
+    expect(result).toMatchObject({ garmin: 1, skipped: 3, strava: 0 })
     expect(upsertActivityTrack).toHaveBeenCalledTimes(2)
     expect(auditError).toHaveBeenCalledTimes(1)
   })

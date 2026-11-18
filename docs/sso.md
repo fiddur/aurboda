@@ -43,6 +43,10 @@ provider has:
 | Allow new accounts    | Whether someone without an account may sign up through this provider. The server's signup mode still applies: closed refuses, invite-only needs a link. |
 | Enabled               | A disabled provider is not offered and its links do not sign in.                                                                                        |
 
+Links are keyed on the issuer, so changing a provider's issuer is refused (409, with the number of
+linked accounts) while any account is linked to it: those accounts would lose their sign-in through
+it. Unlink them, or delete the provider and add a new one.
+
 Deleting a provider deletes every link to it. When a linked user would be left with no way to log
 in (no usable password, no passkey, no other link), the delete is refused with the count, and
 the admin can delete anyway.
@@ -95,6 +99,11 @@ backend with `OIDC_ALLOW_HTTP_ISSUER=true`. Never set it in production.
 - **Sign up**: on the signup page, **Sign up with Google** or **Continue with …**, then pick a
   username (prefilled from the email when it is free). The provider's email becomes the account's
   email, verified when the provider says it is; otherwise a confirmation link is sent.
+
+If the identity cannot be linked once the account exists (it was linked to another account in the
+meantime), the new account is removed again and the sign-up answers "Could not finish the sign-up;
+try again". Should that removal fail, the account is kept for the admin and the failure is written to
+its audit log.
 
 An account created through a provider has a password nobody knows. Setting one through the emailed
 [password reset](account-recovery.md) makes the password a way in again.

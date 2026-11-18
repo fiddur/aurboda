@@ -337,11 +337,6 @@
   background: #b91c1c;
 }
 
-.activity-type-meta-page .btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .activity-type-meta-merge-desc {
   color: #6b7280;
   font-size: 0.85rem;

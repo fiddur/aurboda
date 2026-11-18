@@ -170,6 +170,11 @@ export const impactDurationBucketsError = (limits: number[]): string | null =>
 export const impactTimeBucketsError = (limits: number[]): string | null =>
   bucketLimitsError(limits, 0, 23, 'Time-of-day')
 
+export const impactBreakdownError = (activityType: string, breakdown: string | undefined): string | null =>
+  activityType === 'meal_sensitivity' && breakdown === 'duration'
+    ? 'breakdown duration does not apply to meal_sensitivity: a meal is a point in time, so every meal would fall in one duration group'
+    : null
+
 export const impactDimensionSchema = z
   .string()
   .refine(isImpactDimension, {
@@ -1418,6 +1423,14 @@ export const selectorSchema = z
   .meta({ id: 'CorrelationSelector' })
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
+
+export const articleSelectorSchema = selectorSchema.refine(
+  (selector): boolean => selector.kind !== 'sensitivity',
+  {
+    message:
+      'An article correlation block cannot use a sensitivity selector, as its flag id means nothing to a reader',
+  },
+)
 
 /**
  * Short axis label for a selector, including its unit where known. Shared single

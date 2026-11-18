@@ -7,6 +7,7 @@ import { normalizeStructuredActivity } from '../services/activitypub/quant-wire.
 import { createRolePool, type Queryable, type UserDb, withTransaction } from './pool.ts'
 import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 import { repairGarminSleepTimes } from './repair-garmin-sleep-times.ts'
+import { scramSha256Verifier } from './scram.ts'
 
 const dbByUser = new Map<string, Promise<UserDb>>()
 
@@ -203,10 +204,15 @@ export const loginToUserDb = async (user: string, password: string) => {
   }
 }
 
+/** Creates the login role with a SCRAM verifier, so the clear password is never in the statement. */
+export const createUserRole = async (adminClient: Queryable, user: string, password: string) => {
+  await query(adminClient, format('CREATE USER %I WITH PASSWORD %L', user, scramSha256Verifier(password)))
+}
+
 export const makeNewUserDb = async (adminClient: Client, user: string, password: string) => {
   const database = userDbName(user)
   console.info(`New user ${user}`)
-  await query(adminClient, format('CREATE USER %I WITH ENCRYPTED PASSWORD %L', user, password))
+  await createUserRole(adminClient, user, password)
   await query(adminClient, format('GRANT %I TO %I', user, process.env.PGUSER))
   await query(adminClient, format('CREATE DATABASE %I OWNER %I', database, user))
 
@@ -232,7 +238,7 @@ export const makeNewUserDb = async (adminClient: Client, user: string, password:
  */
 export const setUserPassword = async (adminClient: Client, user: string, password: string) => {
   if (!password) throw new Error('A password must not be empty')
-  await query(adminClient, format('ALTER USER %I WITH ENCRYPTED PASSWORD %L', user, password))
+  await query(adminClient, format('ALTER USER %I WITH PASSWORD %L', user, scramSha256Verifier(password)))
 }
 
 /**

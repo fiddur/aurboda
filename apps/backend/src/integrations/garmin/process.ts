@@ -22,10 +22,12 @@ import {
   adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
   findActivityByExternalId,
+  hasRawRecord,
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
   setGarminActivityFitSets,
   softDeleteSupersededLocations,
   upsertActivityTrack,
@@ -34,6 +36,7 @@ import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { loadExerciseCatalog } from '../../services/exercise-catalog.ts'
 import { aliasActivityData } from '../../services/item-value-aliases.ts'
 import { applyItemValueKeysForWrite } from '../../services/item-value-identities.ts'
+import { maxOf, minOf } from '../../services/numeric-extremes.ts'
 import {
   GARMIN_HC_ORIGIN,
   garminActivityExternalId,
@@ -80,6 +83,12 @@ export interface GarminFitSetsDeps extends GarminSetNamingDeps {
   setGarminActivityFitSets: typeof setGarminActivityFitSets
 }
 
+/** What lets a FIT file's samples replace those its activity's JSON detail wrote. */
+export interface GarminFitReplaceDeps {
+  hasRawRecord: typeof hasRawRecord
+  replaceTimeSeriesInWindow: typeof replaceTimeSeriesInWindow
+}
+
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
   adoptLegacyActivity: typeof adoptLegacyActivity
@@ -89,6 +98,8 @@ export interface GarminProcessDeps {
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
   /** Absent, a FIT file's strength sets are not stored. */
   fitSets?: GarminFitSetsDeps
+  /** Absent, a FIT file's samples are written next to any the JSON detail left. */
+  fitReplace?: GarminFitReplaceDeps
   /** The stored row, whose title and end an item without a name or duration keeps; absent, the fallbacks are written. */
   findActivityByExternalId?: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
@@ -125,6 +136,9 @@ const defaultDeps: GarminProcessDeps = {
   /** Built on use, so importing this module reads no export of a test's partial `db` mock. */
   get fitSets(): GarminFitSetsDeps {
     return { aliasActivityData, applyItemValueKeysForWrite, loadExerciseCatalog, setGarminActivityFitSets }
+  },
+  get fitReplace(): GarminFitReplaceDeps {
+    return { hasRawRecord, replaceTimeSeriesInWindow }
   },
   insertActivity,
   insertLocations,
@@ -1010,6 +1024,8 @@ interface ExtractedDetail {
   gpsPoints: Location[]
   trackPoints: TrackPoint[]
   raw: RawRecord | null
+  /** The window whose earlier `garmin` samples of the points' metrics the points replace. */
+  replaceWindow?: { start: Date; end: Date } | null
 }
 
 /**
@@ -1018,7 +1034,7 @@ interface ExtractedDetail {
  */
 const writeActivityDetail = async (
   user: string,
-  { garminActivityId, gpsPoints, points, raw, trackPoints }: ExtractedDetail,
+  { garminActivityId, gpsPoints, points, raw, replaceWindow, trackPoints }: ExtractedDetail,
   {
     activityId,
     activitySpan,
@@ -1028,7 +1044,17 @@ const writeActivityDetail = async (
   }: ProcessActivityDetailOptions,
 ): Promise<number> => {
   if (raw) await deps.insertRawRecord(user, raw)
-  if (points.length > 0) await deps.insertTimeSeries(user, points)
+  if (points.length > 0 && replaceWindow && deps.fitReplace) {
+    await deps.fitReplace.replaceTimeSeriesInWindow(
+      user,
+      'garmin',
+      points,
+      replaceWindow.start,
+      replaceWindow.end,
+    )
+  } else if (points.length > 0) {
+    await deps.insertTimeSeries(user, points)
+  }
 
   if (gpsPoints.length > 0) {
     const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
@@ -1104,6 +1130,29 @@ export const processActivityDetail = async (
   )
 
 /**
+ * When the activity was synced through its JSON detail before, the window its samples lie in:
+ * the activity's span widened to the file's samples. Null when there is nothing to replace.
+ */
+const jsonDetailWindow = async (
+  user: string,
+  garminActivityId: number,
+  points: TimeSeriesPoint[],
+  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions,
+): Promise<{ start: Date; end: Date } | null> => {
+  if (points.length === 0 || !deps.fitReplace) return null
+  const synced = await deps.fitReplace.hasRawRecord(
+    user,
+    'garmin',
+    'garmin_activity_detail',
+    `garmin-activity-detail-${garminActivityId}`,
+  )
+  if (!synced) return null
+  const times = points.map((p) => p.time.getTime())
+  if (activitySpan) times.push(activitySpan.start.getTime(), activitySpan.end.getTime())
+  return { end: new Date(maxOf(times) ?? 0), start: new Date(minOf(times) ?? 0) }
+}
+
+/**
  * The activity's original FIT file in place of the JSON detail: the full recording. The raw
  * record keeps only its summary, under its own type, so the JSON detail's stays apart.
  */
@@ -1123,6 +1172,7 @@ export const processActivityFit = async (
       gpsPoints,
       points,
       raw: makeRaw('garmin_activity_fit', `garmin-activity-fit-${garminActivityId}`, recordedAt, summary),
+      replaceWindow: await jsonDetailWindow(user, garminActivityId, points, options),
       trackPoints,
     },
     options,

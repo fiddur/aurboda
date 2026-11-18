@@ -5,13 +5,15 @@ import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { createSegment } from '../../state/api'
-import { cutTooShortReason } from '../../utils/segmentCut'
+import { cutRejectReason } from '../../utils/segmentCut'
 import { formatDistance } from '../EntityDetail/format-utils'
 import { formatElapsed } from '../Routes/format'
 import './style.css'
 
 type CreateSegmentFormProps = {
   lengthM: number
+  /** The straight-line distance between the cut's ends, checked against the server's closed-loop rule. */
+  endGapM?: number
   durationS?: number
   onCancel: () => void
 } & (
@@ -27,7 +29,7 @@ type CreateSegmentFormProps = {
 
 /** The shared foot of the create panels: length line, name, Create and Cancel. */
 export const CreateSegmentForm = (props: CreateSegmentFormProps) => {
-  const { lengthM, durationS, onCancel } = props
+  const { lengthM, endGapM, durationS, onCancel } = props
   const queryClient = useQueryClient()
   const { route: navigate } = useLocation()
   const [name, setName] = useState('')
@@ -46,7 +48,7 @@ export const CreateSegmentForm = (props: CreateSegmentFormProps) => {
     },
   })
 
-  const tooShort = cutTooShortReason(lengthM)
+  const tooShort = cutRejectReason(lengthM, endGapM)
 
   return (
     <div class="segment-create-form">

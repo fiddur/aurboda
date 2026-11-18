@@ -153,6 +153,13 @@ export const isHighlighted = (
   return !entries.some((e) => e.key !== OTHER_KEY && e.key === point.group)
 }
 
+/** The legend entry a group belongs to: its own, or "Other" when its value has no colour. */
+export const legendKeyOf = (group: string | undefined, entries: LegendEntry[]): string | undefined => {
+  if (group === undefined) return undefined
+  if (entries.some((e) => e.key === group)) return group
+  return entries.some((e) => e.key === OTHER_KEY) ? OTHER_KEY : undefined
+}
+
 /** From 0 to a nice value a little above the largest, so the outermost dots are not cut by the edge. */
 export const scatterDomain = (values: number[]): [number, number] => {
   const max = Math.max(0, ...values) * 1.05

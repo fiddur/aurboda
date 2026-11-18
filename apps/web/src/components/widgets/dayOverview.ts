@@ -164,3 +164,24 @@ export const hourTicks = (range: TimeRange, width: number): Date[] => {
 /** The sleep types drawn as a shaded band behind the plot instead of an icon. */
 export const isSleepType = (type: string, parentType: string | undefined): boolean =>
   type === 'sleep' || type === 'nap' || parentType === 'sleep'
+
+export type DayStatus = 'loading' | 'failed' | 'empty' | 'ready'
+
+export interface DayStatusResult {
+  status: DayStatus
+  hint?: string
+}
+
+/** Both queries failed is a failure; one failed shows what the other loaded with a hint about the missing part. */
+export const dayStatus = (
+  loading: boolean,
+  failed: { metrics: boolean; activities: boolean },
+  parts: Record<string, readonly unknown[]>,
+): DayStatusResult => {
+  if (loading) return { status: 'loading' }
+  if (failed.metrics && failed.activities) return { status: 'failed' }
+  const status = Object.values(parts).every((part) => part.length === 0) ? 'empty' : 'ready'
+  if (failed.metrics) return { hint: 'The metrics could not be loaded', status }
+  if (failed.activities) return { hint: 'The activities could not be loaded', status }
+  return { status }
+}

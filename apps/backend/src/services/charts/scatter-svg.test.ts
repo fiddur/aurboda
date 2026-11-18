@@ -72,6 +72,16 @@ describe('buildScatterSvg', () => {
     expect(svg).toContain('transform="rotate(-90') // y-axis label rotated
   })
 
+  test('names a sensitivity axis by its flag, generically when the flag is unknown', () => {
+    const trigger = { flag: 'f1', kind: 'sensitivity' } as const
+    expect(buildScatterSvg({ ...base, flag_names: { f1: 'gluten' }, trigger })).toContain(
+      'Meals with gluten (count)',
+    )
+    expect(buildScatterSvg({ ...base, flag_names: {}, trigger })).toContain(
+      'Meals with a sensitivity flag (count)',
+    )
+  })
+
   test('renders a dash for null coefficients rather than crashing', () => {
     const svg = buildScatterSvg({ ...base, pearson: null, pearson_p: null, spearman: null })
     expect(svg).toContain('r=—')

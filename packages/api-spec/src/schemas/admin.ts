@@ -412,9 +412,12 @@ export const updateAdminSettingsBodySchema = z
       .string()
       .trim()
       .max(320)
-      .refine((value) => value === '' || /^[^@\s<>]+@[^@\s<>]+$|<[^@\s<>]+@[^@\s<>]+>$/.test(value), {
-        message: 'A sender address, e.g. no-reply@example.org or Aurboda <no-reply@example.org>',
-      })
+      .refine(
+        (value) => value === '' || /^(?:[^@\s<>]+@[^@\s<>]+|[^<>]*<[^@\s<>]+@[^@\s<>]+>)$/.test(value),
+        {
+          message: 'A sender address, e.g. no-reply@example.org or Aurboda <no-reply@example.org>',
+        },
+      )
       .nullable()
       .optional()
       .meta({

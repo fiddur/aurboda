@@ -151,10 +151,13 @@ describe('shared food items through export and restore', () => {
     central = await createCentral('src')
     const cheese = await central.upsertSharedFoodItem({
       calories: 350,
+      default_log_quantity: 3,
       default_quantity: 100,
       default_unit: 'g',
       icon: '🧀',
+      last_fetched_at: new Date('2026-10-01T00:00:00Z'),
       name: "Hushållsost, Bob's",
+      nutrient_data_incomplete: true,
       source: 'livsmedelsverket',
       source_id: '10',
     })
@@ -229,14 +232,20 @@ describe('shared food items through export and restore', () => {
   test('the restored database carries the referenced shared items in their own table', async () => {
     const db = await restoreInto(`sfood_peek_${suffix}`, dumpPath)
     const rows = (
-      await db.query('SELECT id, name, source, source_id, calories, icon FROM exported_shared_food_items')
+      await db.query(
+        `SELECT id, name, source, source_id, calories, icon, default_log_quantity, nutrient_data_incomplete,
+                last_fetched_at FROM exported_shared_food_items`,
+      )
     ).rows
     expect(rows).toEqual([
       {
         calories: 350,
+        default_log_quantity: 3,
         icon: '🧀',
         id: sharedId,
+        last_fetched_at: new Date('2026-10-01T00:00:00Z'),
         name: "Hushållsost, Bob's",
+        nutrient_data_incomplete: true,
         source: 'livsmedelsverket',
         source_id: '10',
       },
@@ -382,6 +391,18 @@ describe('shared food items through export and restore', () => {
         )
       ).rows,
     ).toEqual([{ ingredient: own, parent: 'Sandwich' }])
+  }, 120_000)
+
+  test('a copy without an override keeps the shared item’s default log quantity', async () => {
+    const target = `sfood_nooverride_${suffix}`
+    const db = await restoreInto(target, dumpPath)
+    await db.query('DELETE FROM shared_food_item_overrides')
+
+    await reconcileExportedSharedFoodItems(target, { central: await createCentral('empty2') })
+
+    expect(
+      (await db.query('SELECT icon, default_log_quantity FROM food_items WHERE id = $1', [sharedId])).rows,
+    ).toEqual([{ default_log_quantity: 3, icon: '🧀' }])
   }, 120_000)
 
   test('restored on a server whose library has the same id, nothing changes', async () => {

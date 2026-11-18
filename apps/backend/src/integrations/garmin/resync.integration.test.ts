@@ -7,22 +7,26 @@ import { resolve } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { GarminActivityDetailResponse } from './client.ts'
+import type { FitActivity } from './fit.ts'
 
 import {
   activityTypeExists,
   adoptLegacyActivity,
   getActivityTrack,
   getTimeSeries,
+  getTimeSeriesWithSource,
+  hasRawRecord,
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
 } from '../../db/index.ts'
 import { softDeleteSupersededLocations } from '../../db/locations.ts'
 import { upsertActivityTrack } from '../../db/tracks.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
-import { extractTrackPoints, processActivityDetail } from './process.ts'
+import { extractTrackPoints, processActivityDetail, processActivityFit } from './process.ts'
 
 const garminDetailFixture = JSON.parse(
   readFileSync(resolve(__dirname, '../../test/fixtures/garmin-activity-detail.json'), 'utf-8'),
@@ -160,6 +164,75 @@ describe('Garmin resync integration', () => {
     const points2 = await processActivityDetail(user, data, { deps: realDeps })
 
     expect(points1).toBe(points2)
+  })
+
+  test('a FIT re-sync of a JSON-synced activity replaces its samples of the metrics the file has', async () => {
+    const user = getTestUser()
+    const data = garminDetailFixture as unknown as GarminActivityDetailResponse
+    const start = extractTrackPoints(data)[0]!.time
+    const at = (offsetMs: number) => new Date(start.getTime() + offsetMs)
+    await processActivityDetail(user, data, { deps: realDeps })
+    const jsonHr = await getTimeSeriesWithSource(user, 'heart_rate', at(-600_000), at(3_600_000))
+    expect(jsonHr.length).toBeGreaterThan(2)
+    const span = { end: jsonHr.at(-1)!.time, start: jsonHr[0]!.time }
+    const bodyBattery = await getTimeSeries(user, 'body_battery', at(-600_000), at(3_600_000))
+    const outside = at(-3_600_000)
+    await insertTimeSeries(user, [
+      { metric: 'heart_rate', source: 'garmin', time: outside, value: 61 },
+      { metric: 'heart_rate', source: 'oura', time: at(10_500), value: 62 },
+    ])
+
+    const fit = {
+      exerciseTitles: [],
+      fileIds: [],
+      laps: [],
+      records: [
+        { heartRate: 140, timestamp: at(10_250) },
+        { heartRate: 150, timestamp: at(20_250) },
+      ],
+      sessions: [],
+      sets: [],
+    } as unknown as FitActivity
+    const fitDeps = { ...realDeps, fitReplace: { hasRawRecord, replaceTimeSeriesInWindow } }
+    const options = { activitySpan: span, activityStart: start, deps: fitDeps }
+    await processActivityFit(user, { fit, garminActivityId: data.activityId }, options)
+    await processActivityFit(user, { fit, garminActivityId: data.activityId }, options)
+
+    const hr = await getTimeSeriesWithSource(user, 'heart_rate', at(-7_200_000), at(3_600_000))
+    expect(hr.map((p) => [p.time.getTime() - start.getTime(), p.value, p.source])).toEqual([
+      [-3_600_000, 61, 'garmin'],
+      [10_250, 140, 'garmin'],
+      [10_500, 62, 'oura'],
+      [20_250, 150, 'garmin'],
+    ])
+    expect(await getTimeSeries(user, 'body_battery', at(-600_000), at(3_600_000))).toEqual(bodyBattery)
+  })
+
+  test('a FIT sync of an activity never synced through the JSON detail adds to what is there', async () => {
+    const user = getTestUser()
+    const start = new Date('2026-05-01T08:00:00Z')
+    await insertTimeSeries(user, [{ metric: 'heart_rate', source: 'garmin', time: start, value: 70 }])
+    const fit = {
+      exerciseTitles: [],
+      fileIds: [],
+      laps: [],
+      records: [{ heartRate: 140, timestamp: new Date(start.getTime() + 1000) }],
+      sessions: [],
+      sets: [],
+    } as unknown as FitActivity
+
+    await processActivityFit(
+      user,
+      { fit, garminActivityId: 1 },
+      {
+        activitySpan: { end: new Date(start.getTime() + 60_000), start },
+        activityStart: start,
+        deps: { ...realDeps, fitReplace: { hasRawRecord, replaceTimeSeriesInWindow } },
+      },
+    )
+
+    const hr = await getTimeSeries(user, 'heart_rate', start, new Date(start.getTime() + 60_000))
+    expect(hr.map(([, value]) => value)).toEqual([70, 140])
   })
 
   test('insertLocations works with Garmin GPS points (no regions)', async () => {

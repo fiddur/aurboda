@@ -132,6 +132,15 @@ describe('GET /correlations/activity-impact/:activity', () => {
     expect(breakdown.status).toBe(400)
     expect(getActivityImpact).not.toHaveBeenCalled()
   })
+
+  test('400 for a duration breakdown of meal_sensitivity', async () => {
+    const res = await supertest(buildApp()).get(
+      '/correlations/activity-impact/flag-1?activity_type=meal_sensitivity&breakdown=duration',
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/meal is a point in time/)
+    expect(getActivityImpact).not.toHaveBeenCalled()
+  })
 })
 
 describe('extra metrics', () => {

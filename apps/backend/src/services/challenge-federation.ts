@@ -38,6 +38,7 @@ import {
   getLeftChallengeToken,
   getParticipationById,
   getParticipationByUrl,
+  listChallengeParticipations,
   removeChallengeMember,
   upsertChallengeMember,
 } from '../db/index.ts'
@@ -433,6 +434,17 @@ export const leaveChallenge = async (
   return deleteChallengeParticipation(user, participation.id)
 }
 
+/** A row stored under an older spelling of the URL (before canonicalisation) is the same challenge. */
+const findParticipation = async (
+  user: string,
+  canonicalUrl: string,
+): Promise<ChallengeParticipationRecord | null> =>
+  (await getParticipationByUrl(user, canonicalUrl)) ??
+  (await listChallengeParticipations(user)).find(
+    (participation) => canonicalChallengeUrl(participation.challenge_url) === canonicalUrl,
+  ) ??
+  null
+
 export interface JoinChallengeDeps {
   user: string
   challengeUrl: string
@@ -462,7 +474,7 @@ export const joinChallenge = async ({
 
   // Idempotent: joining the same challenge again returns the existing record
   // instead of creating a duplicate participation (with a second data token).
-  const existing = await getParticipationByUrl(user, normalizedUrl).catch(() => null)
+  const existing = await findParticipation(user, normalizedUrl).catch(() => null)
   if (existing) return existing
 
   // Local shortcut: the host is this instance.

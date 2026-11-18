@@ -224,7 +224,7 @@ const rankedEfforts = (segmentFilter: string): string => `
   ),
   ranked AS (
     SELECT kept.*,
-           RANK() OVER (PARTITION BY kept.segment_id ORDER BY kept.elapsed_s) AS rank,
+           RANK() OVER (PARTITION BY kept.segment_id ORDER BY kept.approximate, kept.elapsed_s) AS rank,
            ROW_NUMBER() OVER (PARTITION BY kept.segment_id ORDER BY kept.approximate, kept.elapsed_s, kept.t0) = 1 AS is_best
     FROM kept
   )`

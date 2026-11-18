@@ -497,6 +497,17 @@ describe('validateAndUpdateSettings', () => {
     ])
   })
 
+  test('forgets the remembered report import mapping with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { report_import_mapping: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['report_import_mapping'])
+  })
+
   test('stores maf_hr and clears it with null', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({})
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})

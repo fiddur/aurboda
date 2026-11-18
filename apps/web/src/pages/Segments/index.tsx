@@ -33,17 +33,20 @@ const SORT_LABELS: Record<SegmentSort, string> = {
   alphabetical: 'Name',
 }
 
-/** Scans until nothing is left (or a run gets through nothing), then says what it found. */
+/** Scans until nothing is left, a run gets through nothing or the rounds are used up, then says what it found. */
 function ScanButton() {
   const queryClient = useQueryClient()
   const scanMutation = useMutation({
     mutationFn: async () => {
-      const totals = { scanned: 0, suggested: 0 }
-      for (;;) {
+      const totals = { more: false, scanned: 0, suggested: 0 }
+      for (let rounds = 1; ; rounds++) {
         const result = await scanSuggestedSegments()
         totals.scanned += result.scanned
         totals.suggested += result.suggested
-        if (!shouldScanAgain(result)) return totals
+        if (!shouldScanAgain(result, rounds)) {
+          totals.more = result.remaining > 0 && result.scanned > 0
+          return totals
+        }
       }
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: SUGGESTED_QUERY_KEY }),

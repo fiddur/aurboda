@@ -290,6 +290,10 @@ export const updateSettingsInputSchema = z
       description:
         'Get-started steps the user marked as done by hand, for steps Aurboda cannot detect by itself (set to null to clear)',
     }),
+    report_import_mapping: reportImportMappingSchema.nullable().optional().meta({
+      description:
+        'The column mapping the lab report import remembers from the last import (set to null to forget it)',
+    }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
     }),

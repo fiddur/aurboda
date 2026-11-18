@@ -8,6 +8,7 @@ import {
   formatPassedOn,
   formatScanTotals,
   lengthKm,
+  MAX_SCAN_ROUNDS,
   promoteTrim,
   searchFromSegmentsQuery,
   segmentEffortSeries,
@@ -103,9 +104,20 @@ describe('suggested segments', () => {
   })
 
   it('scans again while something is left and the last run got through some', () => {
-    expect(shouldScanAgain({ remaining: 4, scanned: 10, suggested: 0 })).toBe(true)
-    expect(shouldScanAgain({ remaining: 0, scanned: 10, suggested: 0 })).toBe(false)
-    expect(shouldScanAgain({ remaining: 4, scanned: 0, suggested: 0 })).toBe(false)
+    expect(shouldScanAgain({ remaining: 4, scanned: 10, suggested: 0 }, 1)).toBe(true)
+    expect(shouldScanAgain({ remaining: 0, scanned: 10, suggested: 0 }, 1)).toBe(false)
+    expect(shouldScanAgain({ remaining: 4, scanned: 0, suggested: 0 }, 1)).toBe(false)
+  })
+
+  it('stops after the last allowed round', () => {
+    expect(shouldScanAgain({ remaining: 4, scanned: 10, suggested: 0 }, MAX_SCAN_ROUNDS - 1)).toBe(true)
+    expect(shouldScanAgain({ remaining: 4, scanned: 10, suggested: 0 }, MAX_SCAN_ROUNDS)).toBe(false)
+  })
+
+  it('says that more can be scanned when the rounds ran out', () => {
+    expect(formatScanTotals({ more: true, scanned: 12, suggested: 1 })).toBe(
+      'Looked through 12 activities and found 1 new suggestion. There is more to look through: press again to go on.',
+    )
   })
 
   it('sums up the scan in one sentence', () => {

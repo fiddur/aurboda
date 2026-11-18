@@ -2,7 +2,6 @@ import type { DataFieldDefinition } from '@aurboda/api-spec'
 
 import { fieldLabel } from './sessionView'
 
-/** The field to group a type's sessions by (its categorical fields and Place), or '' for none. */
 export const SessionGroupPicker = ({
   fields,
   value,

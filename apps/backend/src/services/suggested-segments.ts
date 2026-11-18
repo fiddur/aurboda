@@ -14,13 +14,14 @@ import type {
 
 import { findNearbyNamedLocation } from '../db/locations.ts'
 import {
+  claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
-  getSuggestedSegment,
   getSuggestionInput,
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
+  settleSuggestedSegmentClaim,
   suggestedSegmentLine,
   upsertSuggestion,
 } from '../db/suggested-segments.ts'
@@ -49,7 +50,8 @@ export interface SuggestedSegmentDeps {
   listUnscannedTrackedActivities: (user: string, limit: number) => Promise<{ activity_id: string }[]>
   countUnscannedTrackedActivities: (user: string) => Promise<number>
   listSuggestedSegments: (user: string) => Promise<SuggestedSegmentRecord[]>
-  getSuggestedSegment: (user: string, id: string) => Promise<SuggestedSegmentRecord | null>
+  claimSuggestedSegment: (user: string, id: string) => Promise<SuggestedSegmentRecord | null>
+  settleSuggestedSegmentClaim: (user: string, id: string, segmentId: string | null) => Promise<void>
   suggestedSegmentLine: (
     user: string,
     id: string,
@@ -68,16 +70,17 @@ export interface SuggestedSegmentDeps {
 }
 
 export const defaultSuggestedSegmentDeps: SuggestedSegmentDeps = {
+  claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
   findNearbyNamedLocation,
-  getSuggestedSegment,
   getSuggestionInput,
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
   now: () => Date.now(),
   segment: defaultSegmentDeps,
+  settleSuggestedSegmentClaim,
   suggestedSegmentLine,
   upsertSuggestion,
 }
@@ -192,26 +195,19 @@ export const listSuggestedSegmentsWithNames = async (
   )
 }
 
-/**
- * Adds a pending suggestion as a segment (trimmed when start_km and end_km are given), exactly
- * as creating one from a line does, and marks the suggestion promoted. Null when there is no
- * pending suggestion with this id.
- */
-export const promoteSuggestedSegment = async (
+const createFromSuggestion = async (
   user: string,
-  id: string,
+  suggestion: SuggestedSegmentRecord,
   body: PromoteSuggestedSegmentBody,
   deps: SuggestedSegmentDeps,
 ): Promise<CreateSegmentResult | null> => {
-  const suggestion = await deps.getSuggestedSegment(user, id)
-  if (suggestion?.status !== 'pending') return null
-  const result = await deps.suggestedSegmentLine(user, id, body.start_km, body.end_km)
+  const result = await deps.suggestedSegmentLine(user, suggestion.id, body.start_km, body.end_km)
   if (!result.ok) {
     return result.reason === 'not_found'
       ? null
       : { error: 'start_km and end_km must lie within the suggested segment', ok: false }
   }
-  const created = await createSegmentFromLine(
+  return createSegmentFromLine(
     user,
     result.line,
     {
@@ -220,8 +216,29 @@ export const promoteSuggestedSegment = async (
     },
     deps.segment,
   )
-  if (created.ok) await deps.decideSuggestedSegment(user, id, 'promoted', created.segment.id)
-  return created
+}
+
+/**
+ * Adds a pending suggestion as a segment (trimmed when start_km and end_km are given), exactly
+ * as creating one from a line does. The suggestion is claimed first, so a second promote of it
+ * finds nothing pending, and made pending again when no segment came of it. Null when there is
+ * no pending suggestion with this id.
+ */
+export const promoteSuggestedSegment = async (
+  user: string,
+  id: string,
+  body: PromoteSuggestedSegmentBody,
+  deps: SuggestedSegmentDeps,
+): Promise<CreateSegmentResult | null> => {
+  const suggestion = await deps.claimSuggestedSegment(user, id)
+  if (!suggestion) return null
+  let created: CreateSegmentResult | null = null
+  try {
+    created = await createFromSuggestion(user, suggestion, body, deps)
+    return created
+  } finally {
+    await deps.settleSuggestedSegmentClaim(user, id, created?.ok ? created.segment.id : null)
+  }
 }
 
 export const dismissSuggestedSegment = (

@@ -1,6 +1,4 @@
-import type { ScreentimeCategory } from '@aurboda/api-spec'
-
-import type { Activity, ProductivityRecord } from '../../state/api'
+import type { Activity } from '../../state/api'
 
 export const MUSIC_COLOR = '#ec4899'
 export const TAG_COLOR = '#8b5cf6'
@@ -76,19 +74,6 @@ export const getActivityColor = (activity: Activity): string =>
 
 export const getProductivityColor = (score: number | undefined): string =>
   productivityColors[score ?? 0] ?? productivityColors[0]!
-
-export const getResolvedColor = (p: ProductivityRecord, categories: ScreentimeCategory[]): string => {
-  if (p.resolved_category && p.resolved_category.length > 0 && categories.length > 0) {
-    for (let depth = p.resolved_category.length; depth > 0; depth--) {
-      const path = p.resolved_category.slice(0, depth)
-      const match = categories.find(
-        (c) => c.name.length === path.length && c.name.every((n, i) => n === path[i]),
-      )
-      if (match?.color) return match.color
-    }
-  }
-  return getProductivityColor(p.productivity)
-}
 
 export const resolveCategoryIcon = (
   resolvedCategory: string[] | undefined,

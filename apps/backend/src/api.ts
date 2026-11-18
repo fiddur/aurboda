@@ -673,6 +673,7 @@ const main = async () => {
     createSessionToken: (user) => auth.createToken(user),
     isValidUsername,
     mailer,
+    pruneAuditLog: async (user) => pruneAuditLog(user, await centralDb.getAuditLogRetentionDays()),
     recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
     setPassword: async (user, password) => {
       await setUserPassword(userDb, user, password)
@@ -707,8 +708,13 @@ const main = async () => {
       },
     }),
     service: createOidcService({
+      audit: (user, message, details) => auditError(user, 'auth', message, details),
       createAccount: (input) => createAccount(signupDeps, input),
       createSessionToken: (user) => auth.createToken(user),
+      discardAccount: async (user) => {
+        await dropUserDb(userDb, user)
+        await centralDb.deleteAllCentralUserData(user)
+      },
       discover: createDiscoveryCache(oidcClient),
       invitationAuth,
       loginMethods,

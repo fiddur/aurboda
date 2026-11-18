@@ -1025,6 +1025,24 @@ describe('email (SMTP) settings and the test mail', () => {
     expect(res.status).toBe(400)
   })
 
+  test.each([
+    '<<junk <no-reply@example.org>',
+    'a <b> <no-reply@example.org>',
+    'x>Name <no-reply@example.org>',
+  ])('PATCH refuses %s, whose name part holds angle brackets', async (smtp_from) => {
+    const res = await supertest(buildEmailApp().app).patch('/admin/settings').send({ smtp_from })
+    expect(res.status).toBe(400)
+  })
+
+  test('PATCH accepts a named sender', async () => {
+    const { app, db } = buildEmailApp()
+    const res = await supertest(app)
+      .patch('/admin/settings')
+      .send({ smtp_from: 'Aurboda Mail <no-reply@example.org>' })
+    expect(res.status).toBe(200)
+    expect(db.setServerSetting).toHaveBeenCalledWith('smtp_from', 'Aurboda Mail <no-reply@example.org>')
+  })
+
   test("the test mail goes to the given address, else the admin's own", async () => {
     const given = buildEmailApp()
     const res = await supertest(given.app).post('/admin/email/test').send({ to: 'other@example.com' })

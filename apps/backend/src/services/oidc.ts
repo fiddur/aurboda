@@ -60,7 +60,9 @@ export type OidcSignupInfoResult =
 
 export type OidcSignupResult =
   | { ok: true; token: string; is_admin: boolean; username: string }
-  | { ok: false; status: 400 | 403 | 409; error: string }
+  | { ok: false; status: 400 | 403 | 409 | 500; error: string }
+
+export const OIDC_SIGNUP_UNFINISHED_ERROR = 'Could not finish the sign-up; try again'
 
 export type OidcLinkCompleteResult = { ok: true } | { ok: false; status: 400 | 409; error: string }
 
@@ -93,6 +95,10 @@ export interface OidcServiceDeps {
   discover: (provider: OidcProviderRecord) => Promise<OidcProviderClient>
   invitationAuth: Pick<InvitationAuth, 'validateInvitationToken'>
   createAccount: (input: AccountSignupInput) => Promise<AccountSignupResult>
+  /** Removes an account `createAccount` made moments ago: its role, its database and its central rows. */
+  discardAccount: (username: string) => Promise<void>
+  /** Records an event in the account's own audit log. */
+  audit: (username: string, message: string, details?: Record<string, unknown>) => Promise<void>
   usernameTaken: (username: string) => Promise<boolean>
   loginMethods: LoginMethodCounter
   createSessionToken: (username: string) => string
@@ -392,7 +398,28 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
           username,
         })
         .catch(logFailure('linking the identity'))
-      if (!link) log.error(`⚠️ OIDC signup of ${username}: the identity was not linked`)
+      if (!link) {
+        const unfinished = { error: OIDC_SIGNUP_UNFINISHED_ERROR, ok: false as const, status: 500 as const }
+        try {
+          await deps.discardAccount(username)
+        } catch (error) {
+          log.error(
+            `⚠️ OIDC signup of ${username}: the identity was not linked and rolling back failed:`,
+            error,
+          )
+          await deps.audit(
+            username,
+            'Single sign-on sign-up could not link the identity; the account was kept',
+            {
+              provider_id: provider.id,
+            },
+          )
+          return unfinished
+        }
+        log.warn(`⚠️ OIDC signup of ${username}: the identity was not linked; the account was rolled back`)
+        await store.saveOidcCode(record).catch(logFailure('keeping the code for another try'))
+        return unfinished
+      }
       if (record.email) {
         const email = record.email
         await (async () => {

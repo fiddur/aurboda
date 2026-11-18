@@ -9,6 +9,7 @@ import { query } from './connection.ts'
 import { createRouteWithPair } from './routes.ts'
 import { insertSegment } from './segments.ts'
 import {
+  claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
   getSuggestedSegment,
@@ -16,6 +17,7 @@ import {
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
+  settleSuggestedSegmentClaim,
   suggestedSegmentLine,
   upsertSuggestion,
 } from './suggested-segments.ts'
@@ -292,6 +294,49 @@ describe('Suggested segments integration', () => {
       expect(await decideSuggestedSegment(user, long.id, 'promoted')).toBe(false)
       expect((await getSuggestedSegment(user, long.id))?.status).toBe('dismissed')
       expect((await listSuggestedSegments(user)).map((s) => s.activity_count)).toEqual([6])
+    })
+  })
+
+  describe('claiming for a promote', () => {
+    test('only one claim wins; a failed one is given back; a settled one keeps its segment', async () => {
+      const user = getTestUser()
+      const source = await addTrackedActivity(EAST)
+      await upsertSuggestion(user, {
+        activity_count: 3,
+        activity_type: 'running',
+        source_activity_id: source,
+        wkt: wkt([
+          [0, 0],
+          [1000, 0],
+        ]),
+      })
+      const [pending] = await listSuggestedSegments(user)
+      const id = pending!.id
+
+      const claims = await Promise.all([claimSuggestedSegment(user, id), claimSuggestedSegment(user, id)])
+      expect(claims.filter((c) => c != null)).toHaveLength(1)
+      expect(claims.find((c) => c != null)).toMatchObject({
+        id,
+        source_activity_id: source,
+        status: 'promoted',
+      })
+      expect(await listSuggestedSegments(user)).toEqual([])
+
+      await settleSuggestedSegmentClaim(user, id, null)
+      expect((await getSuggestedSegment(user, id))?.status).toBe('pending')
+
+      expect(await claimSuggestedSegment(user, id)).not.toBeNull()
+      const segmentId = await insertSegment(user, {
+        activity_type: 'running',
+        name: 'Claimed',
+        wkt: wkt([
+          [0, 0],
+          [1000, 0],
+        ]),
+      })
+      await settleSuggestedSegmentClaim(user, id, segmentId)
+      await settleSuggestedSegmentClaim(user, id, null)
+      expect(await getSuggestedSegment(user, id)).toMatchObject({ segment_id: segmentId, status: 'promoted' })
     })
   })
 

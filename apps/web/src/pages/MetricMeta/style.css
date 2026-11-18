@@ -357,11 +357,6 @@
   background: #b91c1c;
 }
 
-.metric-meta-page .btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .metric-meta-merge-desc {
   color: #6b7280;
   font-size: 0.85rem;

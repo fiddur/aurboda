@@ -216,6 +216,14 @@ describe('parseActivityFit', () => {
     expect(parseActivityFit(zip({ 'a.fit': fit }), fit.length)).not.toBeNull()
   })
 
+  test('throws when the entries together inflate past the total limit', () => {
+    const fit = encodeFit({ records: [record(1, { heartRate: 120 })] })
+    const twoEntries = zip({ 'a.fit': fit, 'b.fit': fit })
+
+    expect(() => parseActivityFit(twoEntries, fit.length, 2 * fit.length - 1)).toThrow(/more than/)
+    expect(parseActivityFit(twoEntries, fit.length, 2 * fit.length)).not.toBeNull()
+  })
+
   test('ignores developer fields, also one named like a profile field', () => {
     const bytes = zip({
       'a.fit': encodeFit({

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'preact/hooks'
 
 import { RouteMap } from '../../components/charts/RouteMap'
 import { dismissSuggestedSegment, promoteSuggestedSegment } from '../../state/api'
-import { cumulativeDistancesM, densifyLine, indexRangeForKm } from '../../utils/segmentCut'
+import { cumulativeDistancesM, densifyLine, endGapM, indexRangeForKm, pointAtM } from '../../utils/segmentCut'
 import { formatDistance } from '../EntityDetail/format-utils'
 import { ActivityTypeName } from '../Routes/ActivityTypeName'
 import { CreateSegmentForm } from './CreateSegmentForm'
@@ -45,6 +45,9 @@ function SuggestionCard({ suggestion }: { suggestion: SuggestedSegment }) {
   const startKm = cut ? parseKm(cut.start) : 0
   const endKm = cut ? parseKm(cut.end) : maxKm
   const lengthM = Math.max(0, Math.min(endKm * 1000, suggestion.length_m) - startKm * 1000)
+  const startPoint = pointAtM(mapPoints, distancesM, startKm * 1000)
+  const endPoint = pointAtM(mapPoints, distancesM, endKm * 1000)
+  const gapM = startPoint && endPoint ? endGapM(startPoint, endPoint) : undefined
   const kmInput = (edge: keyof KmCut, label: string) =>
     cut && (
       <label class="segment-cut-km">
@@ -80,6 +83,7 @@ function SuggestionCard({ suggestion }: { suggestion: SuggestedSegment }) {
           </div>
           <CreateSegmentForm
             lengthM={lengthM}
+            endGapM={gapM}
             onCancel={() => setCut(null)}
             submit={(name) =>
               promoteSuggestedSegment(suggestion.id, {

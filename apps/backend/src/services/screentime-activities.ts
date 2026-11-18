@@ -1,7 +1,6 @@
 /**
- * We mirror the frontend `productivityMerge.ts` contract: adjacent records of
- * the same resolved category within MERGE_GAP_MS collapse into a single span.
- * Each span becomes an activity whose `activity_type` is the category's
+ * Adjacent screen-time records of the same resolved category within
+ * MERGE_GAP_MS collapse into a single span. Each span becomes an activity whose `activity_type` is the category's
  * derived type slug (one type per category, mirroring the category hierarchy
  * via `parent_type`). Categories that haven't been linked yet — legacy data
  * before the link migration ran — fall back to the umbrella `screentime` type.
@@ -39,7 +38,7 @@ export const getScoreForCategory = (
   return undefined
 }
 
-const MERGE_GAP_MS = 2 * 60 * 1000 // Mirrors productivityMerge.ts
+const MERGE_GAP_MS = 2 * 60 * 1000
 const MIN_SPAN_MS = 60_000 // Skip spans shorter than 1 minute
 
 export const categoryPathToString = (path: string[]): string => path.join(' > ')

@@ -6,6 +6,7 @@ import { query } from './connection.ts'
 import {
   getRawRecordsByExternalIds,
   getScrobbles,
+  hasRawRecord,
   insertRawRecord,
   insertRawRecords,
   listRawRecordKeysReceivedSince,
@@ -282,6 +283,32 @@ describe('Raw Records Integration Tests', () => {
         source: 'health_connect',
       })
       expect(total).toBe(2)
+    })
+  })
+
+  describe('hasRawRecord', () => {
+    test('finds a record by source, type and external id only', async () => {
+      const user = getTestUser()
+      await insertRawRecord(user, {
+        data: { a: 1 },
+        external_id: 'garmin-activity-detail-1',
+        record_type: 'garmin_activity_detail',
+        recorded_at: new Date('2026-02-17T10:05:00Z'),
+        source: 'garmin',
+      })
+
+      expect(await hasRawRecord(user, 'garmin', 'garmin_activity_detail', 'garmin-activity-detail-1')).toBe(
+        true,
+      )
+      expect(await hasRawRecord(user, 'garmin', 'garmin_activity_detail', 'garmin-activity-detail-2')).toBe(
+        false,
+      )
+      expect(await hasRawRecord(user, 'garmin', 'garmin_activity_fit', 'garmin-activity-detail-1')).toBe(
+        false,
+      )
+      expect(await hasRawRecord(user, 'strava', 'garmin_activity_detail', 'garmin-activity-detail-1')).toBe(
+        false,
+      )
     })
   })
 

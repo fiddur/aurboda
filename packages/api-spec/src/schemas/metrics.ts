@@ -273,6 +273,9 @@ export const metricBucketSchema = z
 
 export type MetricBucket = z.infer<typeof metricBucketSchema>
 
+export const metricsBucketedTzNote =
+  "Buckets are laid from the given start in the timezone's wall-clock time: a daily bucket begins at start's local time of day (local midnight only when start is local midnight) and keeps it across daylight-saving changes. Defaults to UTC."
+
 export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
   .extend({
     bucket: bucketSizeSchema,
@@ -289,9 +292,7 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
       .string()
       .optional()
       .meta({
-        description:
-          'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ' +
-          'Daily+ buckets align to local midnight. Defaults to UTC.',
+        description: `IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ${metricsBucketedTzNote}`,
         example: 'Europe/Stockholm',
       }),
   })

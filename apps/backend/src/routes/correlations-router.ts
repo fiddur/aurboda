@@ -23,6 +23,7 @@ import {
   type ImpactMetricsQuery,
   impactMetricsQuerySchema,
   type ImpactMetricsResponse,
+  impactBreakdownError,
   impactTimeBucketsError,
   parseImpactBucketLimits,
   parseImpactFilters,
@@ -126,6 +127,8 @@ export const createCorrelationsRouter = (
       const timeBuckets = parseImpactBucketLimits(time_buckets)
       const timeError = timeBuckets && impactTimeBucketsError(timeBuckets)
       if (timeError) return res.status(400).json({ error: timeError, success: false })
+      const breakdownError = impactBreakdownError(activity_type, breakdown)
+      if (breakdownError) return res.status(400).json({ error: breakdownError, success: false })
       const parsedFilters = parseImpactFilters(filters)
       if (!parsedFilters) return res.status(400).json({ error: 'Malformed filters', success: false })
       const periodDays = period_days ? parseInt(period_days, 10) : 90

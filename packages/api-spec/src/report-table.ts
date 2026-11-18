@@ -1,7 +1,5 @@
 import type { ReportImportDateOrder } from './schemas/reports.ts'
 
-/** Reading a spreadsheet table pasted or exported as text, shared by the import and its preview. */
-
 export type Delimiter = '\t' | ';' | ','
 
 export const stripBom = (text: string): string => text.replace(/^\uFEFF/, '')

@@ -9,6 +9,7 @@ import {
   collapsedRadius,
   collapsePoints,
   isHighlighted,
+  legendKeyOf,
   median,
   missingCaption,
   NONE_KEY,
@@ -188,6 +189,26 @@ describe('isHighlighted', () => {
   it('marks every value folded into Other', () => {
     expect(isHighlighted(point('a', 1, 1, 'Flow'), OTHER_KEY, entries)).toBe(true)
     expect(isHighlighted(point('a', 1, 1, 'Yin'), OTHER_KEY, entries)).toBe(false)
+  })
+})
+
+describe('legendKeyOf', () => {
+  const entries = [
+    { color: '', count: 1, key: 'Yin', label: 'Yin' },
+    { color: '', count: 1, key: OTHER_KEY, label: 'Other' },
+  ]
+
+  it('keeps a value that has its own entry', () => {
+    expect(legendKeyOf('Yin', entries)).toBe('Yin')
+  })
+
+  it('maps a value folded into Other to the Other entry', () => {
+    expect(legendKeyOf('Flow', entries)).toBe(OTHER_KEY)
+  })
+
+  it('has no entry without a group or without an Other entry', () => {
+    expect(legendKeyOf(undefined, entries)).toBeUndefined()
+    expect(legendKeyOf('Flow', entries.slice(0, 1))).toBeUndefined()
   })
 })
 

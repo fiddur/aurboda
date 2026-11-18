@@ -68,6 +68,7 @@ const buildApp = (
         getServerSetting: vi.fn(async () => null),
         isAdmin: vi.fn(async () => false),
         isUsernameDeleted: vi.fn(async () => false),
+        setPasswordLogin: vi.fn(async () => true),
         ...options.centralDb,
       } as unknown as CentralDb,
       invitationAuth: {
@@ -423,6 +424,7 @@ describe('POST /webauthn/signup/verify', () => {
     const insertHandle = vi.fn(async () => {})
     const addAdmin = vi.fn(async () => {})
     const ensureUserAccount = vi.fn(async () => true)
+    const setPasswordLogin = vi.fn(async () => true)
     const app = buildApp(webAuthn, {
       auth: { createToken: vi.fn(() => 'fresh-token') },
       centralDb: {
@@ -431,6 +433,7 @@ describe('POST /webauthn/signup/verify', () => {
         getAdminCount: vi.fn(async () => 0),
         insertWebAuthnUserHandle: insertHandle,
         isAdmin: vi.fn(async () => false),
+        setPasswordLogin,
       },
     })
     const res = await supertest(app)
@@ -461,6 +464,45 @@ describe('POST /webauthn/signup/verify', () => {
       preExisting: false,
       trialEndsAt: null,
     })
+    expect(setPasswordLogin).toHaveBeenCalledWith('alice', false)
+  })
+
+  test('still signs up when marking the password unused fails', async () => {
+    const setPasswordLogin = vi.fn(async () => {
+      throw new Error('central db down')
+    })
+    const app = buildApp(verifiedSignup(), {
+      centralDb: {
+        addAdmin: vi.fn(async () => {}),
+        getAdminCount: vi.fn(async () => 1),
+        insertWebAuthnUserHandle: vi.fn(async () => {}),
+        setPasswordLogin,
+      },
+    })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ response_json: '{}', username: 'ada' })
+
+    expect(res.status).toBe(200)
+    expect(setPasswordLogin).toHaveBeenCalledWith('ada', false)
+  })
+
+  test('does not mark the password unused when the signup rolls back', async () => {
+    vi.mocked(webauthnDb.insertWebAuthnCredential).mockRejectedValueOnce(new Error('boom'))
+    const setPasswordLogin = vi.fn(async () => true)
+    const app = buildApp(verifiedSignup(), {
+      centralDb: {
+        deleteWebAuthnUserHandle: vi.fn(async () => {}),
+        insertWebAuthnUserHandle: vi.fn(async () => {}),
+        setPasswordLogin,
+      },
+    })
+    const res = await supertest(app)
+      .post('/webauthn/signup/verify')
+      .send({ response_json: '{}', username: 'ada' })
+
+    expect(res.status).toBe(500)
+    expect(setPasswordLogin).not.toHaveBeenCalled()
   })
 
   test('stores the optional display name and email once the account exists', async () => {

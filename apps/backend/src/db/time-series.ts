@@ -501,6 +501,30 @@ export const deleteTimeSeriesBySource = async (
   return result.rowCount ?? 0
 }
 
+/**
+ * Writes the points over the samples an earlier sync of the same recording left: the source's
+ * live samples of the points' metrics in [start, end] are hard-deleted (a tombstone stays) and
+ * the points inserted, in one transaction.
+ */
+export const replaceTimeSeriesInWindow = async (
+  user: string,
+  source: string,
+  points: TimeSeriesPoint[],
+  start: Date,
+  end: Date,
+): Promise<number> =>
+  withUserTransaction(user, async (tx) => {
+    const metrics = [...new Set(points.map((p) => p.metric))]
+    const deleted = await query(
+      tx,
+      `DELETE FROM time_series
+       WHERE source = $1 AND metric = ANY($2::text[]) AND time >= $3 AND time <= $4 AND deleted_at IS NULL`,
+      [source, metrics, start, end],
+    )
+    await insertTimeSeries(tx, points)
+    return deleted.rowCount ?? 0
+  })
+
 export const getTimeSeriesBucketed = async (
   user: string,
   metrics: MetricType[],

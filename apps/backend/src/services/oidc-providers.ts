@@ -138,6 +138,14 @@ export const createOidcProviderAdmin = (deps: OidcProviderAdminDeps): OidcProvid
       if (!current) return { error: 'Provider not found', ok: false, status: 404 }
       const { issuer } = body
       if (issuer !== undefined && issuer !== current.issuer) {
+        const linked = new Set((await store.listOidcLinksForProvider(id)).map((link) => link.username)).size
+        if (linked > 0) {
+          return {
+            error: `${linked} account(s) are linked to this provider by its current issuer and would lose their sign-in with it; the issuer cannot change while links exist`,
+            ok: false,
+            status: 409,
+          }
+        }
         const refused = await checkIssuer(
           issuer,
           body.client_id ?? current.client_id,
