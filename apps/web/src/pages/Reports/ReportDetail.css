@@ -283,11 +283,6 @@
   background: #b91c1c;
 }
 
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .btn-secondary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;

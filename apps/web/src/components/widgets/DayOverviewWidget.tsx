@@ -23,6 +23,8 @@ import {
   contiguousRuns,
   dayOverviewEmptyMessage,
   dayOverviewRange,
+  dayStatus,
+  type DayStatus,
   formatRangeLabel,
   hourTicks,
   isSleepType,
@@ -35,6 +37,7 @@ import {
 import './DayOverviewWidget.css'
 
 const HOUR_MS = 3_600_000
+const NOW_TICK_MS = 5 * 60_000
 const SLEEP_LOOKBEHIND_MS = 12 * HOUR_MS
 const PLOT_TOP = 6
 const PLOT_BOTTOM = 92
@@ -244,6 +247,15 @@ const roundedNow = () => {
   return now
 }
 
+const useNow = () => {
+  const [now, setNow] = useState(roundedNow)
+  useEffect(() => {
+    const id = setInterval(() => setNow(roundedNow()), NOW_TICK_MS)
+    return () => clearInterval(id)
+  }, [])
+  return now
+}
+
 const iconOf = (
   activity: Activity,
   defs: ReadonlyMap<string, ActivityTypeDefinition>,
@@ -259,24 +271,13 @@ const iconOf = (
 
 const formatValue = (value: number | undefined) => (value === undefined ? undefined : Math.round(value))
 
-type DayStatus = 'loading' | 'failed' | 'empty' | 'ready'
-
 interface DayData {
   status: DayStatus
+  hint: string | undefined
   bars: BucketValue[]
   line: BucketValue[]
   icons: Omit<DayIcon, 'x'>[]
   sleep: PlotProps['sleep']
-}
-
-const dayStatus = (
-  loading: boolean,
-  failed: boolean,
-  parts: Pick<DayData, 'bars' | 'line' | 'icons' | 'sleep'>,
-): DayStatus => {
-  if (loading) return 'loading'
-  if (failed) return 'failed'
-  return Object.values(parts).every((part) => part.length === 0) ? 'empty' : 'ready'
 }
 
 const useDayOverviewData = (
@@ -323,12 +324,12 @@ const useDayOverviewData = (
     }
   }, [activitiesQuery.data, defs, range])
 
-  const status = dayStatus(
+  const { hint, status } = dayStatus(
     metricsQuery.isLoading || activitiesQuery.isLoading,
-    metricsQuery.isError && activitiesQuery.isError,
+    { activities: activitiesQuery.isError, metrics: metricsQuery.isError },
     { bars, icons, line, sleep },
   )
-  return { bars, icons, line, sleep, status }
+  return { bars, hint, icons, line, sleep, status }
 }
 
 function DayFigures({
@@ -359,11 +360,11 @@ function DayFigures({
 
 export function DayOverviewWidget({ config }: { config: DayOverviewConfig }) {
   const { barMetric, lineMetric, title, window } = resolveDayOverviewConfig(config)
-  const [now] = useState(roundedNow)
+  const now = useNow()
   const range = useMemo(() => dayOverviewRange(window, now), [window, now])
   const dataEnd = range.end < now ? range.end : now
   const { ref, width } = useWidth()
-  const { bars, icons, line, sleep, status } = useDayOverviewData(range, dataEnd, barMetric, lineMetric)
+  const { bars, hint, icons, line, sleep, status } = useDayOverviewData(range, dataEnd, barMetric, lineMetric)
   const href = `/timeline${buildViewHash(range.start, range.end, new Set(), getDefaultOrientation())}`
 
   const body = {
@@ -396,6 +397,7 @@ export function DayOverviewWidget({ config }: { config: DayOverviewConfig }) {
       <div ref={ref} class="day-overview-plot">
         {body[status]}
       </div>
+      {hint && <p class="day-overview-hint">{hint}</p>}
     </a>
   )
 }

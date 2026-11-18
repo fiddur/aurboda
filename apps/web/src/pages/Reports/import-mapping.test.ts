@@ -6,6 +6,7 @@ import {
   mappingFits,
   mappingFromRoles,
   missingRoles,
+  nextStepMapping,
   rolesFromMapping,
   setRole,
   sortRows,
@@ -182,5 +183,45 @@ describe('startingMapping', () => {
       layout: 'long',
       roles: ['date', 'metric', 'value'],
     })
+  })
+})
+
+describe('nextStepMapping', () => {
+  const records = [['Datum', 'Analys', 'Resultat']]
+  const remembered = {
+    date: 2,
+    date_order: 'dmy' as const,
+    has_header: true,
+    layout: 'long' as const,
+    metric: 1,
+    value: 0,
+  }
+
+  test('builds the mapping when the step opens', () => {
+    expect(nextStepMapping(undefined, records, true, remembered)).toEqual({
+      changed: false,
+      mapping: startingMapping(records, remembered),
+      withSettings: true,
+    })
+  })
+
+  test('applies the remembered mapping once when the settings load after the step opened', () => {
+    const early = nextStepMapping(undefined, records, false, undefined)
+    expect(early?.mapping.roles).toEqual(['date', 'metric', 'value'])
+    const late = nextStepMapping(early, records, true, remembered)
+    expect(late?.mapping.roles).toEqual(['value', 'metric', 'date'])
+    expect(nextStepMapping(late, records, true, remembered)).toBeUndefined()
+  })
+
+  test('keeps a mapping the user changed before the settings loaded', () => {
+    const early = nextStepMapping(undefined, records, false, undefined)
+    if (!early) throw new Error('expected a mapping')
+    const changed = { ...early, changed: true }
+    expect(nextStepMapping(changed, records, true, remembered)).toBeUndefined()
+  })
+
+  test('waits while the settings are still loading', () => {
+    const early = nextStepMapping(undefined, records, false, undefined)
+    expect(nextStepMapping(early, records, false, undefined)).toBeUndefined()
   })
 })

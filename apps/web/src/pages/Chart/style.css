@@ -79,6 +79,7 @@
 
 .chart-type-toggle {
   display: flex;
+  align-self: flex-start;
   gap: 0;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -152,10 +153,6 @@
   font-size: 0.85rem;
   color: #6b7280;
   font-weight: 500;
-}
-
-.chart-type-toggle.chart-scatter-y {
-  align-self: flex-start;
 }
 
 .chart-controls label.chart-scatter-collapse {

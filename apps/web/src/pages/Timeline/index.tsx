@@ -141,6 +141,7 @@ export const Timeline = () => {
     mergeGapMs,
     splitAbutting,
     toDateKey: toDate.value,
+    trainingLoadShown: orientation === 'horizontal',
   })
   const {
     activities,
@@ -516,15 +517,24 @@ export const Timeline = () => {
             : []),
         ]
         for (const { label, y, height } of laneLabels) {
-          outerG
+          const text = outerG
             .append('text')
-            .attr('x', -margin.left + 4)
-            .attr('y', y + height / 2)
-            .attr('dy', '0.35em')
             .attr('fill', 'currentColor')
             .attr('font-size', '0.65rem')
             .attr('opacity', 0.5)
             .text(label)
+          // The metrics lane's y-axis ticks share the gutter, so its label runs up the edge instead.
+          if (label === 'Metrics') {
+            text
+              .attr('transform', `translate(${-margin.left + 4},${y + height / 2}) rotate(-90)`)
+              .attr('text-anchor', 'middle')
+              .attr('dy', '0.71em')
+          } else {
+            text
+              .attr('x', -margin.left + 4)
+              .attr('y', y + height / 2)
+              .attr('dy', '0.35em')
+          }
         }
 
         const xAxisGroup = outerG

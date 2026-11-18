@@ -98,6 +98,39 @@ export const MIN_SEGMENT_LENGTH_M = 100
 export const cutTooShortReason = (lengthM: number): string | null =>
   lengthM < MIN_SEGMENT_LENGTH_M ? `A segment must be at least ${MIN_SEGMENT_LENGTH_M} m long` : null
 
+/** Mirrors `MIN_SEGMENT_END_GAP_M` in apps/backend/src/services/segments.ts: a closed loop cannot be timed. */
+export const MIN_SEGMENT_END_GAP_M = 50
+
+/** The straight-line distance between a cut's two ends, in metres. */
+export const endGapM = (a: { lat: number; lon: number }, b: { lat: number; lon: number }): number =>
+  haversineM(a, b)
+
+/** The point `m` metres along the line, between its points; null for an empty line. */
+export const pointAtM = <P extends { lat: number; lon: number }>(
+  points: P[],
+  distancesM: number[],
+  m: number,
+): { lat: number; lon: number } | null => {
+  if (points.length < 2) return points[0] ?? null
+  const i = Math.min(points.length - 1, Math.max(1, lowerBound(distancesM, m)))
+  const a = points[i - 1]
+  const b = points[i]
+  const span = distancesM[i] - distancesM[i - 1]
+  const f = span > 0 ? Math.min(1, Math.max(0, (m - distancesM[i - 1]) / span)) : 0
+  return { lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f }
+}
+
+/** Why the server would refuse this cut, or null when it can be created: too short, or its ends too close. */
+export const cutRejectReason = (lengthM: number, gapM?: number): string | null =>
+  cutTooShortReason(lengthM) ??
+  (gapM !== undefined && gapM < MIN_SEGMENT_END_GAP_M
+    ? `A segment's start and end must be at least ${MIN_SEGMENT_END_GAP_M} m apart: a closed loop cannot be timed.`
+    : null)
+
+/** A km cut's start within the line: from 0 up to its end and the line's length. */
+export const clampStartKm = (startKm: number, endKm: number, lengthM: number): number =>
+  Math.max(0, Math.min(startKm, endKm, lengthM / 1000))
+
 const MIN_CUT_GAP_S = 1
 
 /**

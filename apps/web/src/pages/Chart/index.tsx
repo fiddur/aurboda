@@ -34,6 +34,7 @@ import {
   buildLegend,
   buildSessionPoints,
   collapsePoints,
+  legendKeyOf,
   missingCaption,
   NONE_KEY,
   type ScatterPoint,
@@ -509,7 +510,7 @@ function ScatterControls({
     <>
       <label>
         Exertion
-        <div class="chart-type-toggle chart-scatter-y">
+        <div class="chart-type-toggle">
           {scatterYOptions.map((o) => (
             <button
               key={o.value}
@@ -889,7 +890,6 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
 
 const NO_SESSIONS: never[] = []
 
-/** The type's sessions in the range as dots: duration across, exertion up, coloured by a field. */
 function ScatterDisplay({
   state,
   start,
@@ -938,10 +938,10 @@ function ScatterDisplay({
   const onSessionClick = useCallback((p: ScatterPoint) => route(`/detail/activity/${p.id}`), [route])
   const onGroupClick = useCallback(
     (p: ScatterPoint) => {
-      setHighlight(p.group)
+      setHighlight(legendKeyOf(p.group, legend.entries))
       onUpdate({ collapse: false })
     },
-    [onUpdate],
+    [legend, onUpdate],
   )
 
   if (!state.pattern) return <div class="chart-empty">Select an activity type to plot its sessions.</div>

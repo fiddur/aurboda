@@ -113,6 +113,8 @@ export interface UseTimelineDataOptions {
   collapseDepth: number
   /** Whether the daily metric tracks are drawn: a span over three days in the horizontal layout. */
   dailyTracksShown: boolean
+  /** Whether the training load is drawn: only the horizontal layout draws it. */
+  trainingLoadShown: boolean
 }
 
 // eslint-disable-next-line complexity -- data hook aggregating multiple queries
@@ -128,6 +130,7 @@ export const useTimelineData = ({
   splitAbutting,
   collapseDepth,
   dailyTracksShown,
+  trainingLoadShown,
 }: UseTimelineDataOptions): TimelineData => {
   const [paddedStart, paddedEnd] = padFetchWindow(fetchStart, fetchEnd)
   const { data: activityTypeDefs = [] } = useQuery({
@@ -198,7 +201,7 @@ export const useTimelineData = ({
   })
 
   const trainingLoadQuery = useQuery({
-    enabled: !hiddenCategories.has('training_load'),
+    enabled: trainingLoadShown && !hiddenCategories.has('training_load'),
     placeholderData: keepPreviousData,
     queryFn: () => fetchTrainingLoad(paddedStart, paddedEnd, barBucketSize),
     queryKey: ['timeline-training-load', fromDateKey, toDateKey, barBucketSize],

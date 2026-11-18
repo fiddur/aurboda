@@ -9,7 +9,7 @@ import {
   oidcSignup,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { codeFromHash, takeOidcVerifier } from '../../utils/oidc'
+import { codeFromHash, loginReturningTo, takeOidcVerifier } from '../../utils/oidc'
 import { apiErrorText } from '../../utils/profile'
 import '../Login/style.css'
 import '../Signup/style.css'
@@ -208,8 +208,19 @@ export function SignupOidc() {
   )
 }
 
+/** Signed out (the session ended while at the provider): log in first, then come back here with the code. */
+function LinkOidcSignedOut() {
+  const { route } = useLocation()
+  useEffect(() => route(loginReturningTo(window.location), true), [])
+  return null
+}
+
 /** `/settings/oidc-link#code=…`: where a link flow lands; the signed-in account completes the link. */
 export function LinkOidc() {
+  return auth.value.token ? <LinkOidcSignedIn /> : <LinkOidcSignedOut />
+}
+
+function LinkOidcSignedIn() {
   const { route } = useLocation()
   const code = useFragmentCode()
   const verifier = useVerifier()

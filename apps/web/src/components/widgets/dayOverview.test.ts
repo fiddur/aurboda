@@ -10,6 +10,7 @@ import {
   contiguousRuns,
   dayOverviewEmptyMessage,
   dayOverviewRange,
+  dayStatus,
   hourTicks,
   isSleepType,
   latestValue,
@@ -170,5 +171,37 @@ describe('isSleepType', () => {
     expect(isSleepType('nap', undefined)).toBe(true)
     expect(isSleepType('power_nap', 'sleep')).toBe(true)
     expect(isSleepType('running', 'exercise')).toBe(false)
+  })
+})
+
+describe('dayStatus', () => {
+  const none = { activities: false, metrics: false }
+  const loaded = { bars: [1], icons: [] }
+  const nothing = { bars: [], icons: [] }
+
+  it('is loading while either query loads', () => {
+    expect(dayStatus(true, none, loaded)).toEqual({ status: 'loading' })
+  })
+
+  it('fails only when both queries failed', () => {
+    expect(dayStatus(false, { activities: true, metrics: true }, nothing)).toEqual({ status: 'failed' })
+  })
+
+  it('shows what loaded with a hint when the metrics failed', () => {
+    expect(dayStatus(false, { activities: false, metrics: true }, { bars: [], icons: [1] })).toEqual({
+      hint: 'The metrics could not be loaded',
+      status: 'ready',
+    })
+  })
+
+  it('shows what loaded with a hint when the activities failed', () => {
+    expect(dayStatus(false, { activities: true, metrics: false }, loaded)).toEqual({
+      hint: 'The activities could not be loaded',
+      status: 'ready',
+    })
+  })
+
+  it('is empty without a hint when nothing failed and nothing loaded', () => {
+    expect(dayStatus(false, none, nothing)).toEqual({ status: 'empty' })
   })
 })

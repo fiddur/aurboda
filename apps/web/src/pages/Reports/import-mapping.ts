@@ -253,3 +253,25 @@ export const startingMapping = (
   }
   return { date_order: remembered?.date_order ?? 'dmy', has_header: true, ...guessed }
 }
+
+export interface StepMapping {
+  mapping: MappingState
+  /** Built while the settings, and so the remembered mapping, were loaded. */
+  withSettings: boolean
+  /** Changed by the user in the step. */
+  changed: boolean
+}
+
+/**
+ * The mapping step's next mapping, or undefined to keep it: built when the step opens, and built
+ * once more with the remembered mapping when the settings load later, unless the user changed it.
+ */
+export const nextStepMapping = (
+  current: StepMapping | undefined,
+  records: string[][],
+  settingsLoaded: boolean,
+  remembered: ReportImportMapping | null | undefined,
+): StepMapping | undefined => {
+  if (current && (current.withSettings || current.changed || !settingsLoaded)) return undefined
+  return { changed: false, mapping: startingMapping(records, remembered), withSettings: settingsLoaded }
+}

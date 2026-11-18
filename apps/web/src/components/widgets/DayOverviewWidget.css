@@ -27,6 +27,12 @@
   vertical-align: -1px;
 }
 
+.day-overview-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: #b45309;
+}
+
 .day-overview-plot {
   width: 100%;
   min-height: 140px;
@@ -96,6 +102,10 @@
 @media (prefers-color-scheme: dark) {
   .day-overview-figures {
     color: #9ca3af;
+  }
+
+  .day-overview-hint {
+    color: #fbbf24;
   }
 
   .day-overview-figures strong {
