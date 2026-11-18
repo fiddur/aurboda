@@ -161,7 +161,7 @@ export function DataSources() {
     {
       dataTypes: 'Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness',
       isConnected: isGarminConnected,
-      name: 'Garmin Connect',
+      name: 'Garmin',
       path: '/data-sources/garmin',
       statusText: isGarminConnected ? 'Connected' : 'Not connected',
     },

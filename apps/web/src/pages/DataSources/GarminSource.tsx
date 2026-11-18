@@ -18,7 +18,15 @@ import {
   verifyGarminMfa,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { garminConnectionFlags, garminDataTypeNote, garminOAuthReturn } from './garminConnection'
+import {
+  garminConnectionFlags,
+  garminDataTypeNote,
+  garminLoginOnlyData,
+  garminOAuthReturn,
+  type GarminSwitchStep,
+  garminSwitchStep,
+  joinList,
+} from './garminConnection'
 import { GarminOAuth } from './GarminOAuth'
 import { GarminPersonalKey } from './GarminPersonalKey'
 import {
@@ -318,43 +326,158 @@ function GarminDataTypesSection({
   )
 }
 
+function GarminSwitchGuide({ step, loginOnly }: { step: GarminSwitchStep; loginOnly: string[] | null }) {
+  return (
+    <div class="garmin-switch-guide">
+      <h2>Switching to Connect with Garmin</h2>
+      {step === 'connect' && (
+        <p>
+          This server offers Connect with Garmin, Garmin's official connection: you sign in at Garmin, and
+          Garmin sends new data as your watch syncs. To switch from the login, connect it below, wait for the
+          first data, then disconnect the login. You can also keep both.
+        </p>
+      )}
+      {step === 'wait' && (
+        <p>
+          Connect with Garmin is connected. Once it shows data received, you can disconnect the login below,
+          or keep both.
+        </p>
+      )}
+      {step === 'ready' && (
+        <p>
+          Connect with Garmin now delivers your new data. Keep the login for {joinList(loginOnly ?? [])}, or
+          disconnect it below.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function GarminLoginSection({
+  sessionConnected,
+  loginOnly,
+  loginStatus,
+  setLoginStatus,
+  disconnecting,
+  handleLoginSuccess,
+  handleDisconnect,
+}: {
+  sessionConnected: boolean
+  loginOnly: string[] | null
+  loginStatus: LoginStatus
+  setLoginStatus: (s: LoginStatus) => void
+  disconnecting: boolean
+  handleLoginSuccess: () => Promise<void>
+  handleDisconnect: () => Promise<void>
+}) {
+  return (
+    <section class="settings-section">
+      <h2>Garmin login (email and password)</h2>
+      <p class="field-description">
+        Aurboda signs in to Garmin Connect as you and fetches your data on a schedule, including your history,
+        training readiness and strength sets. This is not an official Garmin API, so Garmin can ask you to
+        sign in again.
+      </p>
+
+      {sessionConnected ? (
+        <div class="garmin-connected-actions">
+          <p class="connected-status">Connected</p>
+          {loginOnly && (
+            <p class="field-description">
+              If you disconnect the login, these stop: {joinList(loginOnly)}. Everything else keeps arriving.
+            </p>
+          )}
+          <div class="garmin-button-row">
+            <button
+              type="button"
+              class="connect-button disconnect-button"
+              disabled={disconnecting}
+              onClick={handleDisconnect}
+            >
+              {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          </div>
+        </div>
+      ) : loginStatus === 'mfa' ? (
+        <GarminMfaForm onCancel={() => setLoginStatus('idle')} onSuccess={handleLoginSuccess} />
+      ) : (
+        <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
+      )}
+    </section>
+  )
+}
+
+function GarminPullSection({
+  syncStatusData,
+  syncStatusLoading,
+  syncStatus,
+  syncMessage,
+  handleSyncNow,
+  handleFullResync,
+}: {
+  syncStatusData: { states?: ProviderSyncStatus[] } | undefined
+  syncStatusLoading: boolean
+  syncStatus: string
+  syncMessage: string
+  handleSyncNow: () => Promise<void>
+  handleFullResync: () => Promise<void>
+}) {
+  return (
+    <>
+      <section class="settings-section">
+        <h2>Sync</h2>
+        <SyncStatusBar
+          states={syncStatusData?.states}
+          isLoading={syncStatusLoading}
+          onSyncNow={handleSyncNow}
+        />
+        <div class="garmin-button-row">
+          <button
+            type="button"
+            class="connect-button"
+            disabled={syncStatus === 'syncing'}
+            onClick={handleFullResync}
+          >
+            {syncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
+          </button>
+        </div>
+        {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
+      </section>
+
+      <SyncIntervalField provider="garmin" />
+    </>
+  )
+}
+
 function GarminConnectionSection({
   isConnected,
-  canPull,
   oauth,
   sessionConnected,
   personalKey,
   onPersonalKeyChanged,
-  syncStatusData,
-  syncStatusLoading,
   loginStatus,
   setLoginStatus,
   disconnecting,
-  syncStatus,
-  syncMessage,
   handleLoginSuccess,
   handleDisconnect,
-  handleSyncNow,
-  handleFullResync,
 }: {
   isConnected: boolean
-  canPull: boolean
   oauth: GarminOAuthStatus
   sessionConnected: boolean
   personalKey: GarminPersonalKeyStatus | undefined
   onPersonalKeyChanged: () => Promise<void>
-  syncStatusData: { states?: ProviderSyncStatus[] } | undefined
-  syncStatusLoading: boolean
   loginStatus: LoginStatus
   setLoginStatus: (s: LoginStatus) => void
   disconnecting: boolean
-  syncStatus: string
-  syncMessage: string
   handleLoginSuccess: () => Promise<void>
   handleDisconnect: () => Promise<void>
-  handleSyncNow: () => Promise<void>
-  handleFullResync: () => Promise<void>
 }) {
+  const switchStep = garminSwitchStep({ oauth, sessionConnected })
+  const loginOnly = garminLoginOnlyData({
+    keyConnected: personalKey?.connected ?? false,
+    oauthConnected: oauth.connected && !oauth.needs_reconnect,
+  })
+
   return (
     <>
       <StatusBanner
@@ -362,70 +485,21 @@ function GarminConnectionSection({
         label={isConnected ? 'Garmin is connected' : 'Garmin not connected'}
       />
 
-      {canPull && (
-        <SyncStatusBar
-          states={syncStatusData?.states}
-          isLoading={syncStatusLoading}
-          onSyncNow={handleSyncNow}
-        />
-      )}
+      {switchStep && <GarminSwitchGuide step={switchStep} loginOnly={loginOnly} />}
 
-      <div class="links-row">
-        <a
-          href="https://github.com/fiddur/aurboda/blob/develop/docs/garmin.md"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="doc-link"
-        >
-          Garmin integration documentation
-        </a>
-      </div>
+      <GarminOAuth status={oauth} onChanged={onPersonalKeyChanged} hasLogin={sessionConnected} />
 
-      {canPull && (
-        <section class="settings-section">
-          <div class="garmin-button-row">
-            <button
-              type="button"
-              class="connect-button"
-              disabled={syncStatus === 'syncing'}
-              onClick={handleFullResync}
-            >
-              {syncStatus === 'syncing' ? 'Syncing...' : 'Full Re-sync'}
-            </button>
-          </div>
-          {syncMessage && <p class={`garmin-sync-message ${syncStatus}`}>{syncMessage}</p>}
-        </section>
-      )}
-
-      <GarminOAuth status={oauth} onChanged={onPersonalKeyChanged} />
-
-      <section class="settings-section">
-        <h2>Garmin Connect login</h2>
-
-        {sessionConnected ? (
-          <div class="garmin-connected-actions">
-            <p class="connected-status">Connected</p>
-            <div class="garmin-button-row">
-              <button
-                type="button"
-                class="connect-button disconnect-button"
-                disabled={disconnecting}
-                onClick={handleDisconnect}
-              >
-                {disconnecting ? 'Disconnecting...' : 'Disconnect'}
-              </button>
-            </div>
-          </div>
-        ) : loginStatus === 'mfa' ? (
-          <GarminMfaForm onCancel={() => setLoginStatus('idle')} onSuccess={handleLoginSuccess} />
-        ) : (
-          <GarminLoginForm onMfaRequired={() => setLoginStatus('mfa')} onSuccess={handleLoginSuccess} />
-        )}
-      </section>
+      <GarminLoginSection
+        sessionConnected={sessionConnected}
+        loginOnly={loginOnly}
+        loginStatus={loginStatus}
+        setLoginStatus={setLoginStatus}
+        disconnecting={disconnecting}
+        handleLoginSuccess={handleLoginSuccess}
+        handleDisconnect={handleDisconnect}
+      />
 
       {personalKey && <GarminPersonalKey status={personalKey} onChanged={onPersonalKeyChanged} />}
-
-      {canPull && <SyncIntervalField provider="garmin" />}
     </>
   )
 }
@@ -544,13 +618,39 @@ export function GarminSource() {
           <a href="https://connect.garmin.com/" target="_blank" rel="noopener noreferrer">
             Garmin Connect
           </a>{' '}
-          provides fitness and health data from Garmin wearable devices. Aurboda connects to your Garmin
-          account in three ways, alone or together: Connect with Garmin, where you sign in at Garmin and
-          Garmin sends new data as your device syncs; the Garmin Connect login (your credentials are used only
-          for the initial login and are never stored — only session tokens are persisted), which fetches your
-          history and what Garmin's official APIs leave out; and a Personal API key from Garmin's official
-          Personal API.
+          provides fitness and health data from Garmin wearable devices. Aurboda can connect to your Garmin
+          account in the ways below. They work alone or together and fill the same records, so nothing is
+          counted twice.
         </p>
+
+        {isLoading ? (
+          <div class="loading">Loading...</div>
+        ) : (
+          <>
+            <GarminConnectionSection
+              isConnected={isConnected}
+              oauth={oauth}
+              sessionConnected={sessionConnected}
+              personalKey={personalKey}
+              onPersonalKeyChanged={handlePersonalKeyChanged}
+              loginStatus={loginStatus}
+              setLoginStatus={setLoginStatus}
+              disconnecting={disconnecting}
+              handleLoginSuccess={handleLoginSuccess}
+              handleDisconnect={handleDisconnect}
+            />
+            {canPull && (
+              <GarminPullSection
+                syncStatusData={syncStatusData}
+                syncStatusLoading={syncStatusLoading}
+                syncStatus={syncStatus}
+                syncMessage={syncMessage}
+                handleSyncNow={handleSyncNow}
+                handleFullResync={handleFullResync}
+              />
+            )}
+          </>
+        )}
 
         <GarminDataTypesSection
           isConnected={isConnected}
@@ -560,29 +660,16 @@ export function GarminSource() {
           queryClient={queryClient}
         />
 
-        {isLoading ? (
-          <div class="loading">Loading...</div>
-        ) : (
-          <GarminConnectionSection
-            isConnected={isConnected}
-            canPull={canPull}
-            oauth={oauth}
-            sessionConnected={sessionConnected}
-            personalKey={personalKey}
-            onPersonalKeyChanged={handlePersonalKeyChanged}
-            syncStatusData={syncStatusData}
-            syncStatusLoading={syncStatusLoading}
-            loginStatus={loginStatus}
-            setLoginStatus={setLoginStatus}
-            disconnecting={disconnecting}
-            syncStatus={syncStatus}
-            syncMessage={syncMessage}
-            handleLoginSuccess={handleLoginSuccess}
-            handleDisconnect={handleDisconnect}
-            handleSyncNow={handleSyncNow}
-            handleFullResync={handleFullResync}
-          />
-        )}
+        <div class="links-row">
+          <a
+            href="https://github.com/fiddur/aurboda/blob/develop/docs/garmin.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="doc-link"
+          >
+            Garmin integration documentation
+          </a>
+        </div>
       </div>
     </div>
   )
