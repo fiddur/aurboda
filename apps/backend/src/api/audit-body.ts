@@ -1,66 +1,92 @@
-const FULL_DETAIL_MAX_CHARS = 4096
-const SUMMARY_STRING_MAX_CHARS = 200
+import type { Request } from 'express'
 
-/** These routes finish an OAuth sign-in: their `code` and `state` are the provider's authorization code and state. */
-const OAUTH_COMPLETION_PATHS = new Set([
-  '/auth/garmin/oauth/complete',
-  '/auth/gravl/complete',
-  '/auth/oura/complete',
-  '/auth/strava/complete',
-])
-const OAUTH_COMPLETION_KEYS = new Set(['code', 'state'])
+export type AuditBodyShape =
+  | { type: 'object'; fields: number }
+  | { type: 'array'; items: number }
+  | { type: 'string' | 'number' | 'boolean' | 'null' }
 
-/** By suffix, so a credential added to a settings form later is redacted without a change here. */
-const SECRET_KEY_PATTERN = /(^|_)(api_key|password|secret|token)$/
-
-const isSecretKey = (key: string, path: string | undefined): boolean =>
-  SECRET_KEY_PATTERN.test(key) ||
-  (path !== undefined && OAUTH_COMPLETION_PATHS.has(path) && OAUTH_COMPLETION_KEYS.has(key))
-
-const summarizeValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) return { count: value.length }
-  if (typeof value === 'string' && value.length > SUMMARY_STRING_MAX_CHARS) {
-    return `${value.slice(0, SUMMARY_STRING_MAX_CHARS)}…`
-  }
-  if (value !== null && typeof value === 'object') return { keys: Object.keys(value).length }
-  return value
+const scalarType = (value: unknown): 'string' | 'number' | 'boolean' | 'null' | undefined => {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return 'string'
+  if (typeof value === 'number' || typeof value === 'bigint') return 'number'
+  if (typeof value === 'boolean') return 'boolean'
+  return undefined
 }
 
 /**
- * Skips stringifying a (up to 10 MB) body whose size is already settled: an
- * array of n items serializes to at least 2n + 1 chars and a string of n chars
- * to at least n + 2, so either one alone takes the body over the limit.
+ * Audit `details` for a request body: its shape only, never a value or a key
+ * name, so the audit log holds no copy of what the user wrote. A body-less
+ * request reaches here as `undefined` or, from the JSON parser, `{}`.
  */
-const certainlyOverLimit = (values: unknown[]): boolean =>
-  values.some(
-    (v) =>
-      (Array.isArray(v) && v.length > FULL_DETAIL_MAX_CHARS / 2) ||
-      (typeof v === 'string' && v.length > FULL_DETAIL_MAX_CHARS),
-  )
+export const summarizeAuditBody = (body: unknown): { body: AuditBodyShape } | undefined => {
+  if (Array.isArray(body)) return { body: { items: body.length, type: 'array' } }
+  if (body !== null && typeof body === 'object') {
+    const fields = Object.keys(body).length
+    return fields === 0 ? undefined : { body: { fields, type: 'object' } }
+  }
+  const type = scalarType(body)
+  return type === undefined ? undefined : { body: { type } }
+}
+
+export type AuditErrorType =
+  | 'validation'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'conflict'
+  | 'too_large'
+  | 'rate_limited'
+  | 'client_error'
+  | 'server_error'
+
+const ERROR_TYPES: Record<number, AuditErrorType> = {
+  400: 'validation',
+  401: 'unauthorized',
+  403: 'forbidden',
+  404: 'not_found',
+  409: 'conflict',
+  413: 'too_large',
+  429: 'rate_limited',
+}
+
+export const auditErrorType = (status: number): AuditErrorType =>
+  status >= 500 ? 'server_error' : (ERROR_TYPES[status] ?? 'client_error')
+
+const routeTemplates = new WeakMap<Request, string>()
 
 /**
- * Audit `details` for a request or response body. Small bodies are kept whole;
- * bulk uploads (sync chunks up to 10 MB) are reduced to a shallow summary so
- * the audit log does not store every upload a second time.
+ * Records `baseUrl + route.path` at the moment the router assigns `req.route`.
+ * Read later, `req.baseUrl` is already reset when the request left its router
+ * through `next(err)`, so the template has to be taken while routing.
  */
-export const summarizeAuditBody = (body: unknown, path?: string): Record<string, unknown> | undefined => {
-  if (Array.isArray(body)) return { items: body.length }
-  if (body === null || typeof body !== 'object') return undefined
-
-  const redacted = Object.fromEntries(
-    Object.entries(body as Record<string, unknown>).map(([k, v]) =>
-      isSecretKey(k, path) ? [k, '[REDACTED]'] : [k, v],
-    ),
-  )
-  if (
-    !certainlyOverLimit(Object.values(redacted)) &&
-    JSON.stringify(redacted).length <= FULL_DETAIL_MAX_CHARS
-  ) {
-    return redacted
-  }
-
-  return {
-    ...Object.fromEntries(Object.entries(redacted).map(([k, v]) => [k, summarizeValue(v)])),
-    _truncated: true,
-  }
+export const trackRouteTemplate = (req: Request): void => {
+  let route: unknown = req.route
+  Object.defineProperty(req, 'route', {
+    configurable: true,
+    enumerable: true,
+    get: () => route,
+    set: (value: unknown) => {
+      route = value
+      const path = (value as { path?: unknown } | undefined)?.path
+      if (typeof path === 'string') routeTemplates.set(req, `${req.baseUrl}${path}`)
+    },
+  })
 }
+
+/** The audited operation: the method and the matched route template, never the path with its ids. */
+export const auditOperation = (req: Request): string => {
+  const tracked = routeTemplates.get(req)
+  if (tracked !== undefined) return `${req.method} ${tracked}`
+  const path = (req.route as { path?: unknown } | undefined)?.path
+  return typeof path === 'string' ? `${req.method} ${req.baseUrl}${path}` : `${req.method} (no route)`
+}
+
+/** The audit entry for an error that reached the global handler; `err.message` is left out, since it can echo input. */
+export const unhandledErrorAudit = (
+  req: Request,
+  err: Error,
+  status: number,
+): { message: string; details: Record<string, unknown> } => ({
+  details: { error_name: err.name, error_type: auditErrorType(status), status },
+  message: auditOperation(req),
+})

@@ -6,6 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
+import { unhandledErrorAudit } from './api/audit-body.ts'
 import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
@@ -1508,10 +1509,8 @@ const main = async () => {
     if (status >= 500) console.error(err)
 
     if (req.user) {
-      auditError(req.user, 'system', `${req.method} ${req.path}: ${err.message}`, {
-        status,
-        ...(status >= 500 && { stack: err.stack }),
-      })
+      const { details, message } = unhandledErrorAudit(req, err, status)
+      auditError(req.user, 'system', message, details)
     }
 
     res.status(status).json(errorResponseBody(err, status))

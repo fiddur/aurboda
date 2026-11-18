@@ -15,18 +15,17 @@ import { backfillScreentimeActivities } from '../services/backfill-screentime-ac
 import { reconcileExportedSharedFoodItems } from '../services/exported-shared-food.ts'
 import { redactGarminLoginAudit } from '../services/redact-garmin-login-audit.ts'
 import { retypeLegacyScreentime } from '../services/retype-legacy-screentime.ts'
-import { summarizeAuditBody } from './audit-body.ts'
-
-const summarizeResponse = (body: unknown): unknown =>
-  body !== null && typeof body === 'object' ? summarizeAuditBody(body) : body
+import { auditErrorType, auditOperation, summarizeAuditBody, trackRouteTemplate } from './audit-body.ts'
 
 /**
  * Log level is based on response status: 4xx → warn, 5xx → error, otherwise → info.
- * Redacts `password` and summarizes large request/response bodies (see `summarizeAuditBody`).
+ * The details keep the body's shape and, for an error, the status and its coarse type:
+ * nothing the user wrote, and no response body.
  */
 export const createAuditLogMiddleware =
   (auth: Auth, isDeletedUser: (user: string) => boolean = () => false): RequestHandler =>
   (req, res, next) => {
+    trackRouteTemplate(req)
     if (req.method !== 'GET' && req.method !== 'OPTIONS' && req.method !== 'HEAD') {
       const user = (() => {
         try {
@@ -39,32 +38,18 @@ export const createAuditLogMiddleware =
       })()
 
       if (user) {
-        const sanitizedBody = summarizeAuditBody(req.body, req.path)
-
-        // Capture response body for error logging by intercepting res.json()
-        let responseBody: unknown
-        const originalJson = res.json.bind(res)
-        res.json = (body: unknown) => {
-          responseBody = body
-          return originalJson(body)
-        }
+        const shape = summarizeAuditBody(req.body)
 
         res.on('finish', () => {
           if (isDeletedUser(user)) return
-          if (res.statusCode >= 500) {
-            auditError(user, 'data', `${req.method} ${req.path}`, {
-              ...sanitizedBody,
-              status: res.statusCode,
-              response: summarizeResponse(responseBody),
-            })
-          } else if (res.statusCode >= 400) {
-            auditWarn(user, 'data', `${req.method} ${req.path}`, {
-              ...sanitizedBody,
-              status: res.statusCode,
-              response: summarizeResponse(responseBody),
-            })
+          const operation = auditOperation(req)
+          const status = res.statusCode
+          if (status >= 500) {
+            auditError(user, 'data', operation, { ...shape, error_type: auditErrorType(status), status })
+          } else if (status >= 400) {
+            auditWarn(user, 'data', operation, { ...shape, error_type: auditErrorType(status), status })
           } else {
-            auditInfo(user, 'data', `${req.method} ${req.path}`, sanitizedBody)
+            auditInfo(user, 'data', operation, shape)
           }
         })
       }

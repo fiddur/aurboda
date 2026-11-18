@@ -80,6 +80,7 @@ import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReminderTools } from './mcp/reminder-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
+import { mcpRequestBudgetError } from './mcp/request-budget.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSegmentTools } from './mcp/segment-tools.ts'
@@ -332,6 +333,13 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       return
     }
 
+    if (mcpRequestBudgetError(req.body) !== null) {
+      res
+        .status(413)
+        .json({ error: { code: -32600, message: 'Request too large' }, id: null, jsonrpc: '2.0' })
+      return
+    }
+
     const tools = mcpToolCallNames(req.body)
     for (const tool of tools) {
       recordUsage(user, isMutatingMcpTool(tool) ? 'write' : 'read', 'mcp')
@@ -345,13 +353,16 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       sessionIdGenerator: undefined,
     })
 
-    await server.connect(transport)
-    await transport.handleRequest(
-      req,
-      res,
-      req.body === undefined ? undefined : trimToolCallArguments(req.body),
-    )
-    await server.close()
+    try {
+      await server.connect(transport)
+      await transport.handleRequest(
+        req,
+        res,
+        req.body === undefined ? undefined : trimToolCallArguments(req.body),
+      )
+    } finally {
+      await server.close()
+    }
   })
 
   router.use(jsonRpcBodyError)

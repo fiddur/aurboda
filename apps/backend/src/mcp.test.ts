@@ -1,4 +1,5 @@
 import { defaultDashboardConfig } from '@aurboda/api-spec'
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import express from 'express'
 import request from 'supertest'
@@ -281,6 +282,64 @@ describe('MCP Server', () => {
         .send({ id: 1, jsonrpc: '2.0', method: 'tools/list', params: { pad: 'x'.repeat(3_000_000) } })
 
       expect(response.status).toBe(200)
+    })
+  })
+
+  describe('Request budget - POST /mcp', () => {
+    const tooLarge = { error: { code: -32600, message: 'Request too large' }, id: null, jsonrpc: '2.0' }
+    const deleteNote = (id: number) => ({
+      id,
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { arguments: { id: '00000000-0000-4000-8000-000000000000' }, name: 'delete_note' },
+    })
+
+    test('answers a batch of more than 20 messages with 413 without reaching a tool', async () => {
+      const connect = vi.spyOn(McpServer.prototype, 'connect')
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${token}`)
+        .send(Array.from({ length: 21 }, (_, i) => deleteNote(i)))
+
+      expect(response.status).toBe(413)
+      expect(response.body).toEqual(tooLarge)
+      expect(connect).not.toHaveBeenCalled()
+      expect(mutations.deleteNoteById).not.toHaveBeenCalled()
+      connect.mockRestore()
+    })
+
+    test('answers an over-deep request with 413 without reaching a tool', async () => {
+      const connect = vi.spyOn(McpServer.prototype, 'connect')
+      const token = auth.createToken('testuser')
+      let deep: unknown = 'leaf'
+      for (let i = 0; i < 70; i++) deep = { next: deep }
+
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${token}`)
+        .send({ ...deleteNote(1), params: { arguments: { deep }, name: 'delete_note' } })
+
+      expect(response.status).toBe(413)
+      expect(response.body).toEqual(tooLarge)
+      expect(connect).not.toHaveBeenCalled()
+      connect.mockRestore()
+    })
+
+    test('closes the per-request server when handling the request throws', async () => {
+      const connect = vi
+        .spyOn(McpServer.prototype, 'connect')
+        .mockRejectedValue(new Error('transport failed'))
+      const close = vi.spyOn(McpServer.prototype, 'close')
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(createTestApp())
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      expect(response.status).toBe(500)
+      expect(close).toHaveBeenCalledTimes(1)
+      connect.mockRestore()
+      close.mockRestore()
     })
   })
 

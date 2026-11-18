@@ -311,7 +311,8 @@ orientation is applied and the picture turned upright; its longest edge is shrun
 stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
 most 10 MB and at most 16383×16383 pixels (about 268 megapixels, sharp's own default, so a
 200-megapixel phone photo is taken), and a small file declaring more is refused before it is
-decoded (the same limit holds for avatars and challenge banners).
+decoded (the same limit holds for avatars and challenge banners). An upload over the size
+limit is answered 413; a request with a second file or more form fields than the route takes, 400.
 
 Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
 BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)

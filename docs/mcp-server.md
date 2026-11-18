@@ -238,6 +238,11 @@ The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
 
 Request bodies are limited to 4 MB; a larger body gets HTTP 413 with a JSON-RPC `-32600` error.
 
+A request is also refused before any tool runs, with HTTP 413 and the JSON-RPC error
+`{ "code": -32600, "message": "Request too large" }`, when it is a batch of more than 20 messages,
+nests deeper than 64 levels, or holds more than 100,000 elements in all (every array item and every
+object property counts as one). A 10,000-point `add_metrics_bulk` is about 50,000 elements.
+
 ## Authentication
 
 The MCP server supports two authentication methods:

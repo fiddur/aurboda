@@ -116,6 +116,16 @@ describe('POST /feed/images', () => {
     expect(deps.addFeedImage).not.toHaveBeenCalled()
   })
 
+  test('400 for a second picture in one request, without storing', async () => {
+    const { app, deps } = buildApp()
+    const res = await post(app)
+      .attach('image', Buffer.from('one'), { contentType: 'image/png', filename: 'a.png' })
+      .attach('image', Buffer.from('two'), { contentType: 'image/png', filename: 'b.png' })
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid upload', success: false })
+    expect(deps.addFeedImage).not.toHaveBeenCalled()
+  })
+
   test('401 without authentication', async () => {
     const { app, deps } = buildApp()
     const res = await supertest(app)

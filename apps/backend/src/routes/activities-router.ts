@@ -29,11 +29,11 @@ import {
   updateActivityBodySchema,
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
-import multer from 'multer'
 
 import type { ActivitySpan } from '../integrations/gps-precedence.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
+import { singleUpload } from '../api/upload.ts'
 import {
   blendGroupData,
   getActivityById,
@@ -289,15 +289,12 @@ export const createActivitiesRouter = (
     },
   )
 
-  const upload = multer({
-    limits: { fileSize: 10 * 1024 * 1024 },
-    storage: multer.memoryStorage(),
-  })
+  const upload = singleUpload({ field: 'fit_file', fields: 2, fileSize: 10 * 1024 * 1024 })
 
   router.post<
     Record<string, never>,
     { success: boolean; data?: AddActivityResponse['data'] | AddActivityResponse['data'][]; error?: string }
-  >('/activities/upload-fit', authMiddleware, upload.single('fit_file'), async (req, res) => {
+  >('/activities/upload-fit', authMiddleware, upload, async (req, res) => {
     const user = req.user!
     const file = req.file
 
