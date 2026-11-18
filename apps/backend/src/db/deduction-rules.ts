@@ -199,18 +199,19 @@ export const deleteStaleRuleActivities = async (
   windowStart: Date,
   windowEnd: Date,
   keepIds: string[],
-): Promise<number> => {
-  const result = await query(
+): Promise<{ activity_type: string; start_time: Date }[]> => {
+  const result = await query<{ activity_type: string; start_time: Date }>(
     user,
     `DELETE FROM activities
      WHERE source = 'deduction-rule'
        AND (data->>'rule_id') = $1
        AND start_time >= $2
        AND start_time <= $3
-       ${keepIds.length > 0 ? `AND id != ALL($4::uuid[])` : ''}`,
+       ${keepIds.length > 0 ? `AND id != ALL($4::uuid[])` : ''}
+     RETURNING activity_type, start_time`,
     keepIds.length > 0 ? [ruleId, windowStart, windowEnd, keepIds] : [ruleId, windowStart, windowEnd],
   )
-  return result.rowCount ?? 0
+  return result.rows
 }
 
 export const pruneDeductionRuleRuns = async (user: string, retentionDays: number): Promise<number> => {

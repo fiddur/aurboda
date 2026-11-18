@@ -50,20 +50,38 @@ export const trainingLoadSettingsSchema = z
     hr_rest: z.number().int().positive().max(120).optional().meta({
       description: 'Resting heart rate override (bpm). Falls back to most recent resting HR metric.',
     }),
+    impulse_computed_from: z.string().optional().meta({
+      description:
+        'Internal: ISO 8601 start of the earliest hour the stored impulse buckets cover. A read of a longer range fills in the hours before it.',
+    }),
+    impulse_dirty_rev: z.number().int().optional().meta({
+      description:
+        'Internal: counts the times stored impulse hours were marked dirty, so a recompute in progress sees a mark made while it ran.',
+    }),
+    impulse_recompute_lease: z
+      .object({
+        holder: z.string(),
+        until: z.string(),
+      })
+      .optional()
+      .meta({
+        description:
+          'Internal: the backend process recomputing the impulse buckets and when its claim expires (ISO 8601), so one process recomputes a user at a time.',
+      }),
     impulse_version: z.number().int().optional().meta({
       description:
         'Internal: version of the rules the stored impulse buckets were computed with. When it is behind the server, the buckets are recomputed from the first workout on the next read.',
     }),
     impulse_watermark: z.string().optional().meta({
       description:
-        'ISO 8601 timestamp of the earliest hour that needs recomputation. Set when new data arrives retroactively.',
+        'Internal: ISO 8601 timestamp of the earliest hour that needs recomputation. Set when new data arrives retroactively.',
     }),
     k_factor: z.number().positive().optional().meta({
       description: 'TRIMP sex-dependent constant (1.92 for males, 1.67 for females). Defaults to 1.92.',
     }),
     observed_hr_max: z.number().int().positive().max(250).optional().meta({
       description:
-        'Cached maximum observed heart rate (bpm). Updated during impulse recomputation to avoid expensive 1-year scans.',
+        'Internal: cached maximum observed heart rate (bpm). Updated during impulse recomputation to avoid expensive 1-year scans.',
     }),
     tau_acute: z
       .number()
@@ -79,6 +97,19 @@ export const trainingLoadSettingsSchema = z
   .meta({ description: 'User-configurable training load parameters', id: 'TrainingLoadSettings' })
 
 export type TrainingLoadSettings = z.infer<typeof trainingLoadSettingsSchema>
+
+/**
+ * The fields of `TrainingLoadSettings` the server keeps for itself (their descriptions start with
+ * "Internal:"); a settings update from a client never changes them.
+ */
+export const trainingLoadInternalFields = [
+  'impulse_computed_from',
+  'impulse_dirty_rev',
+  'impulse_recompute_lease',
+  'impulse_version',
+  'impulse_watermark',
+  'observed_hr_max',
+] as const satisfies readonly (keyof TrainingLoadSettings)[]
 
 /** Larger buckets reduce payload size for long ranges. */
 export const trainingLoadBucketSizes = ['1h', '1d', '1w'] as const

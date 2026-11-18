@@ -21,6 +21,7 @@ import {
   updateCustomMetric,
 } from './mutations.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
+import { markWorkoutHoursDirty } from './training-load/dirty.ts'
 
 const TX = vi.hoisted(() => ({ tx: true }))
 
@@ -65,6 +66,10 @@ vi.mock('../db', async () => ({
   updateCustomMetricDefinition: vi.fn(),
   upsertUserSettings: vi.fn(),
   withUserTransaction: vi.fn((_user: string, fn: (tx: unknown) => Promise<unknown>) => fn(TX)),
+}))
+
+vi.mock('./training-load/dirty.ts', () => ({
+  markWorkoutHoursDirty: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('./track-analyse.ts', () => ({
@@ -148,6 +153,17 @@ describe('isInProgress', () => {
 describe('addActivity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  test('marks the training load hours of the new session dirty', async () => {
+    vi.mocked(db.upsertActivity).mockResolvedValue({ changed: true, id: 'test-id' })
+    const start_time = new Date('2024-03-15T10:30:00Z')
+
+    await addActivity('testuser', { activity_type: 'running', start_time })
+
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('testuser', [
+      expect.objectContaining({ activity_type: 'running', start_time }),
+    ])
   })
 
   test('enqueues no Health Connect insert for an activity in progress', async () => {
@@ -1114,12 +1130,44 @@ describe('deleteActivity', () => {
     await deleteActivity('testuser', 'override-1')
 
     expect(reanalyseOverrideTargets).toHaveBeenCalledExactlyOnceWith('testuser', override)
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('testuser', [override])
   })
 })
 
 describe('updateActivity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  test('marks the training load hours of the session as it was and as it is dirty', async () => {
+    const before: Activity = {
+      activity_type: 'running',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    }
+    const after: Activity = { ...before, activity_type: 'sauna' }
+    vi.mocked(db.getActivityById).mockResolvedValue(before)
+    vi.mocked(db.updateActivity).mockResolvedValue(after)
+
+    await updateActivity('testuser', 'activity-123', { activity_type: 'sauna' })
+
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('testuser', [before, after])
+  })
+
+  test('a title change marks nothing dirty', async () => {
+    const row: Activity = {
+      activity_type: 'running',
+      id: 'activity-123',
+      source: 'aurboda',
+      start_time: new Date('2024-03-15T10:00:00Z'),
+    }
+    vi.mocked(db.getActivityById).mockResolvedValue(row)
+    vi.mocked(db.updateActivity).mockResolvedValue({ ...row, title: 'Evening run' })
+
+    await updateActivity('testuser', 'activity-123', { title: 'Evening run' })
+
+    expect(markWorkoutHoursDirty).not.toHaveBeenCalled()
   })
 
   test('updates activity times successfully', async () => {
@@ -2333,6 +2381,7 @@ describe('mergeActivities', () => {
         }),
       ),
       insertMergedActivity: vi.fn().mockResolvedValue('merged-id'),
+      markWorkoutHoursDirty: vi.fn().mockResolvedValue(undefined),
       materializeSuperseded: vi.fn().mockResolvedValue(undefined),
     }
 

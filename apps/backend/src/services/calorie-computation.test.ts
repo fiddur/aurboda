@@ -6,6 +6,7 @@ const mockEnqueueInserts = vi.fn().mockResolvedValue(0)
 vi.mock('../db/index.ts', () => ({
   enqueueOutboundSyncInsertsIfChanged: (...args: unknown[]) => mockEnqueueInserts(...args),
   getUserSettings: vi.fn(),
+  mutateTrainingLoadSettings: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
 

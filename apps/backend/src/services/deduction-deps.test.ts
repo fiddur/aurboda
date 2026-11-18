@@ -17,12 +17,16 @@ vi.mock('./locations', () => ({
   getPlaceVisits: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('./training-load/dirty', () => ({
+  markWorkoutHoursDirty: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('./mutations', () => ({
   updateActivity: vi.fn().mockResolvedValue({ id: 'x', success: true }),
 }))
 
 import { query } from '../db/connection.ts'
-import { getOverrideForActivity, upsertActivity } from '../db/index.ts'
+import { deleteStaleRuleActivities, getOverrideForActivity, upsertActivity } from '../db/index.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
 import { updateActivity } from './mutations.ts'
 
@@ -125,6 +129,40 @@ describe('createDefaultEngineDeps', () => {
       new Date('2024-03-15T22:00:00Z'),
       undefined,
     )
+  })
+
+  describe('training load hours', () => {
+    const output = {
+      activity_type: 'running',
+      data: { rule_id: 'rule-123' },
+      source: 'deduction-rule' as const,
+      start_time: new Date('2024-03-15T20:00:00Z'),
+    }
+
+    test('an insert that changed the row marks its hours dirty', async () => {
+      const mark = vi.fn().mockResolvedValue(undefined)
+      await createDefaultEngineDeps(undefined, mark).insertActivity('testuser', output)
+      expect(mark).toHaveBeenCalledExactlyOnceWith('testuser', [output])
+    })
+
+    test('an unchanged re-upsert marks nothing', async () => {
+      vi.mocked(upsertActivity).mockResolvedValueOnce({ changed: false, id: 'existing-id' })
+      const mark = vi.fn().mockResolvedValue(undefined)
+      await createDefaultEngineDeps(undefined, mark).insertActivity('testuser', output)
+      expect(mark).not.toHaveBeenCalled()
+    })
+
+    test('removed stale outputs mark their hours dirty and are counted', async () => {
+      const removed = [{ activity_type: 'running', start_time: new Date('2024-03-14T20:00:00Z') }]
+      vi.mocked(deleteStaleRuleActivities).mockResolvedValueOnce(removed)
+      const mark = vi.fn().mockResolvedValue(undefined)
+      const deps = createDefaultEngineDeps(undefined, mark)
+
+      const count = await deps.deleteStaleRuleActivities('testuser', 'rule-123', new Date(0), new Date(), [])
+
+      expect(count).toBe(1)
+      expect(mark).toHaveBeenCalledExactlyOnceWith('testuser', removed)
+    })
   })
 
   describe('getScrobbles', () => {

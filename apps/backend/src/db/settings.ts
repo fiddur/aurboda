@@ -1,6 +1,9 @@
+import type { TrainingLoadSettings } from '@aurboda/api-spec'
+
 import type { Queryable } from './pool.ts'
 import type { UserSettings } from './types.ts'
 
+import { withStoredInternalFields } from '../services/training-load/state.ts'
 import { query, withUserTransaction } from './connection.ts'
 
 // One-time migration from camelCase to snake_case JSONB keys.
@@ -105,7 +108,8 @@ const lockSettings = (tx: Queryable) => query(tx, `SELECT pg_advisory_xact_lock(
 /**
  * Merges the provided updates with existing settings; keys listed in `clear`
  * are removed so the setting reverts to its default (#1063). The read and the write hold the
- * settings lock, so a flag claimed meanwhile (claimSettingsFlagIn) is not overwritten.
+ * settings lock, so a flag claimed meanwhile (claimSettingsFlagIn) is not overwritten. The internal
+ * fields of `training_load` are kept as stored; `mutateTrainingLoadSettings` is their writer.
  */
 export const upsertUserSettings = (
   user: string,
@@ -123,6 +127,9 @@ export const upsertUserSettings = (
     const { tag_icons, ...rest } = updates
     const defined = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
     const merged: UserSettings = { ...existing, ...defined }
+    if (merged.training_load && rest.training_load !== undefined) {
+      merged.training_load = withStoredInternalFields(merged.training_load, existing.training_load)
+    }
     for (const key of clear) delete merged[key]
     if (tag_icons !== undefined) {
       merged.item_icons = { ...merged.item_icons, ...tag_icons }
@@ -135,6 +142,31 @@ export const upsertUserSettings = (
     }
 
     return merged
+  })
+
+/**
+ * Replaces `training_load` with what `mutate` makes of the stored one, under the settings lock, so
+ * two writers that each read and change it cannot lose each other's change. `undefined` removes it.
+ */
+export const mutateTrainingLoadSettings = (
+  user: string,
+  mutate: (current: TrainingLoadSettings | undefined) => TrainingLoadSettings | undefined,
+): Promise<TrainingLoadSettings | undefined> =>
+  withUserTransaction(user, async (tx) => {
+    await lockSettings(tx)
+    const current = await query(tx, `SELECT settings FROM user_settings LIMIT 1`)
+    const raw = current.rows[0]?.settings as Record<string, unknown> | undefined
+    const existing = (raw ? (migrateSettingsToSnakeCase(raw) ?? raw) : {}) as UserSettings
+    const next = mutate(existing.training_load)
+    const { training_load: _previous, ...rest } = existing
+    const merged: UserSettings = next === undefined ? rest : { ...rest, training_load: next }
+
+    if (current.rows.length === 0) {
+      await query(tx, `INSERT INTO user_settings (settings) VALUES ($1)`, [merged])
+    } else {
+      await query(tx, `UPDATE user_settings SET settings = $1, updated_at = NOW()`, [merged])
+    }
+    return next === undefined ? undefined : (JSON.parse(JSON.stringify(next)) as TrainingLoadSettings)
   })
 
 /**

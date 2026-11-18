@@ -40,11 +40,26 @@ A session counts under the type it has after merges and rules, as the day view s
 
 Training stress from general daily movement (active calories). Converted from calories using a scale factor (default: 100 active calories = 10 impulse units). This captures non-workout activity like walking and housework.
 
+A tracked workout counts in both impulses: its TRIMP in the training impulse, and the active calories burned during it in the activity impulse.
+
 ### Stored impulse
 
 Both impulses are stored per completed hour and recomputed from the raw data when it changes. When the rules for the stored hours change, they are recomputed from your first workout on the next read, tracked by `training_load.impulse_version` in your settings.
 
-The recompute runs in the background, one at a time per user, four weeks at a time: after each stretch it moves `training_load.impulse_watermark` forward, so an interrupted recompute resumes where it stopped. A read waits for it a few seconds at most; while it is still running, the page says it is recalculating (and updates by itself), and the API and MCP tool answer with `recomputing: true` and no points.
+What marks stored hours dirty (moves `training_load.impulse_watermark` back to the earliest changed hour):
+
+- new heart rate data, through the active calories computed from it;
+- adding, editing (type, times or data), deleting, merging or restoring a workout through the app, the API or MCP, including retyping a session into or out of a workout type;
+- deduction rules that create, retype or remove a workout session;
+- activity type changes that make a type a workout type or stop it being one (a category change, a merge, a rename or a delete), from that type's first session.
+
+Bulk inserts by the sync integrations do not mark hours by themselves: synced workouts arrive with heart rate or calorie data, which marks them.
+
+The recompute runs in the background, one at a time per user, four weeks at a time: after each stretch it moves `training_load.impulse_watermark` forward, so an interrupted recompute resumes where it stopped. A change that marks hours dirty while a stretch is being computed is not lost: it bumps `training_load.impulse_dirty_rev`, and the stretch is redone. One backend process recomputes a user at a time, also while an overlapping deploy runs two: it holds a lease in `training_load.impulse_recompute_lease`, renewed after every stretch, and a process that dies leaves it to expire after two minutes, when the next read takes over and resumes from the stored watermark. A read waits for the recompute a few seconds at most; while it is still running (here or in another process), the page says it is recalculating (and updates by itself), and the API and MCP tool answer with `recomputing: true` and no points.
+
+The stored hours start at `training_load.impulse_computed_from`. The first read computes them for its range (with its look-back for CTL); a later read of a longer range fills in the older hours once, newest four weeks first, lowering `impulse_computed_from` after each, so an interrupted fill resumes too. A user without any data ends with `impulse_computed_from` set and nothing stored, so the computation is not repeated.
+
+The `impulse_*` fields and `observed_hr_max` are internal bookkeeping: a settings update through the app, `PATCH /user/settings` or `update_user_settings` never changes them, whatever values its `training_load` object carries, so a stale copy written back cannot undo a dirty mark.
 
 ## Recovery Zones
 

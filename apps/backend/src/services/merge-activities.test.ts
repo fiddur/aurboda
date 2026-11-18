@@ -160,6 +160,7 @@ describe('mergeActivities', () => {
       .mockImplementation((_user: string, activity: Activity) =>
         Promise.resolve(activity.id ?? 'generated-id'),
       ),
+    markWorkoutHoursDirty: vi.fn().mockResolvedValue(undefined),
     materializeSuperseded: vi.fn().mockResolvedValue(undefined),
   })
 
@@ -190,6 +191,10 @@ describe('mergeActivities', () => {
     expect(inserted.source).toBe('aurboda')
     expect(inserted.data.merged_from).toHaveLength(2)
     expect(sourceIds).toEqual(['a1', 'a2'])
+    expect(deps.markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('user1', [
+      expect.objectContaining({ id: 'a1' }),
+      expect.objectContaining({ id: 'a2' }),
+    ])
   })
 
   test('errors on different activity types', async () => {

@@ -3,17 +3,24 @@
  * abstracts a DB or external read so the pure compute logic can be unit tested
  * with simple stubs.
  */
-import type { BiologicalSex, TrainingLoadSettings } from '@aurboda/api-spec'
+import type { ActivityTypeDefinition, BiologicalSex, TrainingLoadSettings } from '@aurboda/api-spec'
 
 import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 
 export interface TrainingLoadDeps {
+  /** Read once per training load read and once per recompute run, and passed to the workout reads */
+  getActivityTypeDefinitions: (user: string) => Promise<ActivityTypeDefinition[]>
   /** Every workout type's sessions (exercise and its subtypes, custom exercise types), merged across sources */
-  getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
+  getExercises: (
+    user: string,
+    start: Date,
+    end: Date,
+    definitions: ActivityTypeDefinition[],
+  ) => Promise<Activity[]>
   /** Start of the user's earliest workout, of any workout type */
-  getEarliestExerciseStart: (user: string) => Promise<Date | undefined>
-  /** Activity type name → display name */
-  getActivityTypeDisplayNames: (user: string) => Promise<Map<string, string>>
+  getEarliestExerciseStart: (user: string, definitions: ActivityTypeDefinition[]) => Promise<Date | undefined>
+  /** The earliest stored training or activity impulse bucket */
+  getEarliestImpulseBucket: (user: string) => Promise<Date | undefined>
   /** Get HR time-series data in a time range (bucketed to 5-min) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
   /** `getHrSamples` for many windows in one round trip; the result is index-aligned with `windows` */
@@ -41,43 +48,46 @@ export interface TrainingLoadDeps {
     sex?: BiologicalSex
     birth_date?: string
   }>
-  /** Update training load settings (for watermark) */
-  updateTrainingLoadSettings: (user: string, update: Partial<TrainingLoadSettings>) => Promise<void>
+  /** Replaces the stored training load settings with what `mutate` makes of them, atomically */
+  mutateTrainingLoadSettings: (
+    user: string,
+    mutate: (current: TrainingLoadSettings | undefined) => TrainingLoadSettings | undefined,
+  ) => Promise<TrainingLoadSettings | undefined>
+  /** This process's id in a recompute lease; one process recomputes a user at a time. */
+  leaseHolder: string
   /**
-   * Per user, the earliest hour (epoch ms) an auto-bootstrap recompute has already covered, and
-   * when it ran (epoch ms). A user with no exercise or calorie data gets no buckets written, so
-   * without this every read would bootstrap again.
+   * Per user, the impulse recompute running in this process; a read joins it rather than starting
+   * another. It resolves false when another process holds the lease and nothing ran here.
    */
-  bootstrappedFrom: Map<string, { at: number; fromHour: number }>
-  /** Per user, the impulse recompute running in this process; a read joins it rather than starting another. */
-  recomputing: Map<string, Promise<void>>
+  recomputing: Map<string, Promise<boolean>>
   /** How long (ms) a read waits for a recompute before answering with `recomputing: true`. */
   recomputeWaitMs: number
   /** Reports a recompute that failed; one that no read waits for any more fails nowhere else. */
   onRecomputeError: (user: string, error: unknown) => void
 }
 
+import { randomUUID } from 'node:crypto'
+
 import {
   deleteTimeSeriesBySource,
   getActivityTypeDefinitions,
   getLatestTimeSeriesValue,
+  getMetricTimeRange,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesBucketedAvgForWindows,
   getTimeSeriesStats,
   insertTimeSeries,
 } from '../../db/index.ts'
-import { upsertUserSettings } from '../../db/settings.ts'
+import { mutateTrainingLoadSettings } from '../../db/settings.ts'
 import { auditError } from '../audit-log.ts'
 import { getSettings } from '../settings.ts'
 import { getEarliestWorkoutStart, getWorkoutActivities } from '../workout-activities.ts'
 
-const processBootstrappedFrom: TrainingLoadDeps['bootstrappedFrom'] = new Map()
+const processLeaseHolder = randomUUID()
 const processRecomputing: TrainingLoadDeps['recomputing'] = new Map()
 
 export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
-  bootstrappedFrom: processBootstrappedFrom,
-
   deleteImpulseBuckets: async (user, metric, source, start, end) => {
     return deleteTimeSeriesBySource(user, metric, source, start, end)
   },
@@ -87,10 +97,18 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
     return samples
   },
 
-  getActivityTypeDisplayNames: async (user) =>
-    new Map((await getActivityTypeDefinitions(user)).map((d) => [d.name, d.display_name])),
+  getActivityTypeDefinitions,
 
   getEarliestExerciseStart: getEarliestWorkoutStart,
+
+  getEarliestImpulseBucket: async (user) => {
+    const ranges = await Promise.all([
+      getMetricTimeRange(user, 'training_impulse'),
+      getMetricTimeRange(user, 'activity_impulse'),
+    ])
+    const starts = ranges.flatMap((range) => (range ? [range.min.getTime()] : []))
+    return starts.length > 0 ? new Date(Math.min(...starts)) : undefined
+  },
 
   getExercises: getWorkoutActivities,
 
@@ -138,16 +156,13 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
     auditError(user, 'data', 'Training load recompute failed', { error: String(error) })
   },
 
+  leaseHolder: processLeaseHolder,
+
+  mutateTrainingLoadSettings,
+
   recomputeWaitMs: 5000,
 
   recomputing: processRecomputing,
-
-  updateTrainingLoadSettings: async (user, update) => {
-    const current = await getSettings(user)
-    await upsertUserSettings(user, {
-      training_load: { ...current.training_load, ...update },
-    })
-  },
 
   writeImpulseBuckets: async (user, points) => {
     await insertTimeSeries(user, points)

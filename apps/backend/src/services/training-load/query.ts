@@ -2,9 +2,16 @@
  * Read path for training load: combines pre-computed impulse buckets with the
  * current incomplete hour, runs the hourly Banister EMA, and aggregates into
  * the requested bucket size. Triggers a recompute if the impulse watermark is
- * dirty or no buckets exist (auto-bootstrap), and waits for it only briefly.
+ * dirty, the range reaches before the stored buckets, or none were computed yet
+ * (auto-bootstrap), and waits for it only briefly.
  */
-import type { TrainingLoadResult, trainingLoadBucketSizes, WorkoutTrimp } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  TrainingLoadResult,
+  TrainingLoadSettings,
+  trainingLoadBucketSizes,
+  WorkoutTrimp,
+} from '@aurboda/api-spec'
 
 import type { TrainingLoadDeps } from './deps.ts'
 
@@ -28,27 +35,14 @@ import {
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 import { finishedWithin, startOrJoinRecompute } from './recompute-run.ts'
 import { exerciseWindow, IMPULSE_VERSION } from './recompute.ts'
+import { withDirtyMark } from './state.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
-
-const BOOTSTRAP_MEMO_MS = 60 * 60 * 1000
-
-/** Also drops expired entries, which keeps the process-global memo bounded. */
-const rememberBootstrap = (
-  memo: TrainingLoadDeps['bootstrappedFrom'],
-  user: string,
-  now: number,
-  fromHour: number,
-) => {
-  for (const [memoUser, entry] of memo) {
-    if (now - entry.at >= BOOTSTRAP_MEMO_MS) memo.delete(memoUser)
-  }
-  memo.set(user, { at: now, fromHour })
-}
 
 const mergeLiveHourImpulses = async (
   deps: TrainingLoadDeps,
   user: string,
+  definitions: ActivityTypeDefinition[],
   queryEnd: Date,
   currentHour: Date,
   hrMax: number,
@@ -62,7 +56,7 @@ const mergeLiveHourImpulses = async (
 
   const nextHour = new Date(currentHour.getTime() + MS_PER_HOUR)
   const [exercises, hrSamples, calories] = await Promise.all([
-    deps.getExercises(user, currentHour, nextHour),
+    deps.getExercises(user, currentHour, nextHour, definitions),
     deps.getHrSamples(user, currentHour, nextHour),
     deps.getActiveCalories(user, currentHour, nextHour),
   ])
@@ -90,20 +84,19 @@ const mergeLiveHourImpulses = async (
 const buildWorkoutList = async (
   deps: TrainingLoadDeps,
   user: string,
+  definitions: ActivityTypeDefinition[],
   start: Date,
   end: Date,
   hrMax: number,
   hrRest: number,
   kFactor: number,
 ): Promise<WorkoutTrimp[]> => {
-  const exercises = await deps.getExercises(user, start, end)
+  const exercises = await deps.getExercises(user, start, end, definitions)
   if (exercises.length === 0) return []
 
   // Only the sessions' own windows, not the whole range: months of 5-minute HR data would be wasted
-  const [hrPerExercise, displayNames] = await Promise.all([
-    deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow)),
-    deps.getActivityTypeDisplayNames(user),
-  ])
+  const hrPerExercise = await deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow))
+  const displayNames = new Map(definitions.map((d) => [d.name, d.display_name]))
 
   const training = new Map<string, number>() // throwaway, just for reusing processExercise
   const workoutList: WorkoutTrimp[] = []
@@ -121,73 +114,58 @@ const withTypeTitle = (workout: WorkoutTrimp, displayNames: Map<string, string>)
   return title ? { ...workout, title } : workout
 }
 
-const earlierIso = (a: string | undefined, b: Date | undefined): string | undefined => {
-  if (!b) return a
-  if (!a) return b.toISOString()
-  return new Date(a) <= b ? a : b.toISOString()
-}
-
 /**
  * Buckets stored under an older IMPULSE_VERSION are marked dirty from the first workout. Version and
  * watermark are persisted before the recompute, so an interrupted one resumes on the next read.
- * Returns the watermark to recompute from.
+ * Returns the training load settings to go on with.
  */
 const markOutdatedImpulses = async (
   deps: TrainingLoadDeps,
   user: string,
-  watermark: string | undefined,
-  version: number | undefined,
-): Promise<string | undefined> => {
-  if ((version ?? 0) >= IMPULSE_VERSION) return watermark
-  const dirtyFrom = earlierIso(watermark, await deps.getEarliestExerciseStart(user))
-  await deps.updateTrainingLoadSettings(user, {
+  stored: TrainingLoadSettings | undefined,
+  definitions: ActivityTypeDefinition[],
+): Promise<TrainingLoadSettings | undefined> => {
+  if ((stored?.impulse_version ?? 0) >= IMPULSE_VERSION) return stored
+  const earliest = await deps.getEarliestExerciseStart(user, definitions)
+  return deps.mutateTrainingLoadSettings(user, (current) => ({
+    ...(earliest ? withDirtyMark(current, earliest) : current),
     impulse_version: IMPULSE_VERSION,
-    ...(dirtyFrom ? { impulse_watermark: dirtyFrom } : {}),
-  })
-  return dirtyFrom
+  }))
 }
 
 type ImpulseBuckets = [Date, number][]
 
+const needsRecompute = (stored: TrainingLoadSettings | undefined, from: Date): boolean =>
+  stored?.impulse_watermark !== undefined ||
+  stored?.impulse_computed_from === undefined ||
+  from < new Date(stored.impulse_computed_from)
+
 /**
- * The stored training and activity buckets in [from, to], after a recompute that the watermark, a
- * run in flight or an auto-bootstrap asks for; undefined while that recompute outlasts the wait.
+ * The stored training and activity buckets in [from, to], after the recompute that the watermark,
+ * a range reaching before the stored buckets, a run in flight or an auto-bootstrap asks for;
+ * undefined while that recompute outlasts the wait or runs in another process. A run joined from
+ * another read may have covered a shorter range, so the settings are checked once more after it.
  */
 const readStoredImpulses = async (
   deps: TrainingLoadDeps,
   user: string,
-  watermark: string | undefined,
+  stored: TrainingLoadSettings | undefined,
   from: Date,
   to: Date,
 ): Promise<[ImpulseBuckets, ImpulseBuckets] | undefined> => {
-  const recomputeInTime = (fromHour: Date) =>
-    finishedWithin(startOrJoinRecompute(deps, user, fromHour), deps.recomputeWaitMs)
-  const read = () =>
-    Promise.all([
-      deps.getImpulseBuckets(user, 'training_impulse', from, to),
-      deps.getImpulseBuckets(user, 'activity_impulse', from, to),
-    ])
-
-  if (watermark || deps.recomputing.has(user)) {
-    const fromHour = watermark ? floorToHour(new Date(watermark)) : from
-    if (!(await recomputeInTime(fromHour))) return undefined
+  let current = stored
+  for (let pass = 0; pass < 2; pass++) {
+    if (!needsRecompute(current, from) && !deps.recomputing.has(user)) break
+    if (!(await finishedWithin(startOrJoinRecompute(deps, user, from), deps.recomputeWaitMs))) {
+      return undefined
+    }
+    current = (await deps.getUserSettings(user)).training_load
   }
 
-  const buckets = await read()
-
-  // Auto-bootstrap: if no watermark was set and no impulse buckets exist,
-  // trigger a full recompute from the extended start range. A user without data
-  // gets nothing written, so a bootstrap that already covered this range is not
-  // repeated — for an hour, since not every ingestion path sets the watermark.
-  const covered = deps.bootstrappedFrom.get(user)
-  const now = Date.now()
-  const alreadyCovered =
-    covered !== undefined && now - covered.at < BOOTSTRAP_MEMO_MS && from.getTime() >= covered.fromHour
-  if (watermark || buckets[0].length > 0 || buckets[1].length > 0 || alreadyCovered) return buckets
-
-  if (!(await recomputeInTime(from))) return undefined
-  rememberBootstrap(deps.bootstrappedFrom, user, now, from.getTime())
-  return read()
+  return Promise.all([
+    deps.getImpulseBuckets(user, 'training_impulse', from, to),
+    deps.getImpulseBuckets(user, 'activity_impulse', from, to),
+  ])
 }
 
 export const computeTrainingLoad = async (
@@ -198,9 +176,10 @@ export const computeTrainingLoad = async (
   bucketSize: TrainingLoadBucketSize = '1h',
   tz: string = 'UTC',
 ): Promise<TrainingLoadResult> => {
-  const [userSettings, latestRestingHr] = await Promise.all([
+  const [userSettings, latestRestingHr, definitions] = await Promise.all([
     deps.getUserSettings(user),
     deps.getLatestRestingHr(user),
+    deps.getActivityTypeDefinitions(user),
   ])
 
   const maxObservedHr = await getOrCacheMaxObservedHr(deps, user, userSettings.training_load)
@@ -211,7 +190,16 @@ export const computeTrainingLoad = async (
 
   // Start building the workout list early — it only needs settings, not impulse buckets.
   // Runs in parallel with watermark recompute + impulse fetch + EMA.
-  const workoutListPromise = buildWorkoutList(deps, user, start, end, hrMax, hrRest, settings.k_factor)
+  const workoutListPromise = buildWorkoutList(
+    deps,
+    user,
+    definitions,
+    start,
+    end,
+    hrMax,
+    hrRest,
+    settings.k_factor,
+  )
 
   // Extended range for EMA bootstrapping (3 × tau_chronic in hours)
   const lookbackHours = Math.ceil(settings.tau_chronic * 3 * HOURS_PER_DAY)
@@ -221,14 +209,9 @@ export const computeTrainingLoad = async (
   const currentHour = getCurrentHourStart()
   const effectiveEnd = end > currentHour ? currentHour : floorToHour(end)
 
-  const watermark = await markOutdatedImpulses(
-    deps,
-    user,
-    userSettings.training_load?.impulse_watermark,
-    userSettings.training_load?.impulse_version,
-  )
+  const trainingLoad = await markOutdatedImpulses(deps, user, userSettings.training_load, definitions)
   const resolvedSettings = { ...settings, hr_max: hrMax, hr_rest: hrRest }
-  const stored = await readStoredImpulses(deps, user, watermark, extendedStartHour, effectiveEnd)
+  const stored = await readStoredImpulses(deps, user, trainingLoad, extendedStartHour, effectiveEnd)
   if (!stored) {
     const workoutList = await workoutListPromise
     return {
@@ -255,6 +238,7 @@ export const computeTrainingLoad = async (
   await mergeLiveHourImpulses(
     deps,
     user,
+    definitions,
     end,
     currentHour,
     hrMax,
