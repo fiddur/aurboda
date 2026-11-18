@@ -2,7 +2,7 @@
  * Read path for training load: combines pre-computed impulse buckets with the
  * current incomplete hour, runs the hourly Banister EMA, and aggregates into
  * the requested bucket size. Triggers a recompute if the impulse watermark is
- * dirty or no buckets exist (auto-bootstrap).
+ * dirty or no buckets exist (auto-bootstrap), and waits for it only briefly.
  */
 import type { TrainingLoadResult, trainingLoadBucketSizes, WorkoutTrimp } from '@aurboda/api-spec'
 
@@ -26,7 +26,8 @@ import {
   summarizeImpulseBasis,
 } from './banister.ts'
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
-import { exerciseWindow, IMPULSE_VERSION, recomputeImpulseBuckets } from './recompute.ts'
+import { finishedWithin, startOrJoinRecompute } from './recompute-run.ts'
+import { exerciseWindow, IMPULSE_VERSION } from './recompute.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
@@ -146,6 +147,49 @@ const markOutdatedImpulses = async (
   return dirtyFrom
 }
 
+type ImpulseBuckets = [Date, number][]
+
+/**
+ * The stored training and activity buckets in [from, to], after a recompute that the watermark, a
+ * run in flight or an auto-bootstrap asks for; undefined while that recompute outlasts the wait.
+ */
+const readStoredImpulses = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  watermark: string | undefined,
+  from: Date,
+  to: Date,
+): Promise<[ImpulseBuckets, ImpulseBuckets] | undefined> => {
+  const recomputeInTime = (fromHour: Date) =>
+    finishedWithin(startOrJoinRecompute(deps, user, fromHour), deps.recomputeWaitMs)
+  const read = () =>
+    Promise.all([
+      deps.getImpulseBuckets(user, 'training_impulse', from, to),
+      deps.getImpulseBuckets(user, 'activity_impulse', from, to),
+    ])
+
+  if (watermark || deps.recomputing.has(user)) {
+    const fromHour = watermark ? floorToHour(new Date(watermark)) : from
+    if (!(await recomputeInTime(fromHour))) return undefined
+  }
+
+  const buckets = await read()
+
+  // Auto-bootstrap: if no watermark was set and no impulse buckets exist,
+  // trigger a full recompute from the extended start range. A user without data
+  // gets nothing written, so a bootstrap that already covered this range is not
+  // repeated — for an hour, since not every ingestion path sets the watermark.
+  const covered = deps.bootstrappedFrom.get(user)
+  const now = Date.now()
+  const alreadyCovered =
+    covered !== undefined && now - covered.at < BOOTSTRAP_MEMO_MS && from.getTime() >= covered.fromHour
+  if (watermark || buckets[0].length > 0 || buckets[1].length > 0 || alreadyCovered) return buckets
+
+  if (!(await recomputeInTime(from))) return undefined
+  rememberBootstrap(deps.bootstrappedFrom, user, now, from.getTime())
+  return read()
+}
+
 export const computeTrainingLoad = async (
   deps: TrainingLoadDeps,
   user: string,
@@ -183,34 +227,20 @@ export const computeTrainingLoad = async (
     userSettings.training_load?.impulse_watermark,
     userSettings.training_load?.impulse_version,
   )
-  if (watermark) {
-    const fromHour = floorToHour(new Date(watermark))
-    await recomputeImpulseBuckets(deps, user, fromHour)
+  const resolvedSettings = { ...settings, hr_max: hrMax, hr_rest: hrRest }
+  const stored = await readStoredImpulses(deps, user, watermark, extendedStartHour, effectiveEnd)
+  if (!stored) {
+    const workoutList = await workoutListPromise
+    return {
+      bootstrapping: false,
+      estimated_impulse: summarizeImpulseBasis(workoutList),
+      points: [],
+      recomputing: true,
+      settings: resolvedSettings,
+      workouts: workoutList,
+    }
   }
-
-  let [trainingBuckets, activityBuckets] = await Promise.all([
-    deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
-    deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
-  ])
-
-  // Auto-bootstrap: if no watermark was set and no impulse buckets exist,
-  // trigger a full recompute from the extended start range. A user without data
-  // gets nothing written, so a bootstrap that already covered this range is not
-  // repeated — for an hour, since not every ingestion path sets the watermark.
-  const covered = deps.bootstrappedFrom.get(user)
-  const now = Date.now()
-  const alreadyCovered =
-    covered !== undefined &&
-    now - covered.at < BOOTSTRAP_MEMO_MS &&
-    extendedStartHour.getTime() >= covered.fromHour
-  if (!watermark && trainingBuckets.length === 0 && activityBuckets.length === 0 && !alreadyCovered) {
-    await recomputeImpulseBuckets(deps, user, extendedStartHour)
-    rememberBootstrap(deps.bootstrappedFrom, user, now, extendedStartHour.getTime())
-    ;[trainingBuckets, activityBuckets] = await Promise.all([
-      deps.getImpulseBuckets(user, 'training_impulse', extendedStartHour, effectiveEnd),
-      deps.getImpulseBuckets(user, 'activity_impulse', extendedStartHour, effectiveEnd),
-    ])
-  }
+  const [trainingBuckets, activityBuckets] = stored
 
   const trainingImpulses = new Map<string, number>()
   for (const [time, value] of trainingBuckets) {
@@ -260,11 +290,7 @@ export const computeTrainingLoad = async (
     bootstrapping,
     estimated_impulse: summarizeImpulseBasis(workoutList),
     points,
-    settings: {
-      ...settings,
-      hr_max: hrMax,
-      hr_rest: hrRest,
-    },
+    settings: resolvedSettings,
     workouts: workoutList,
     zones,
   }
