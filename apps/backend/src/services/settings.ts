@@ -30,7 +30,11 @@ import {
   garminPushLastReceivedAt,
 } from '../integrations/garmin/oauth-status.ts'
 import { garminPushDelivered } from '../integrations/garmin/push-coverage.ts'
-import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
+import {
+  garminDataSources,
+  getGarminConnections,
+  readGarminPersonalKeyEnabled,
+} from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
@@ -278,16 +282,19 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
       : settings.gravl_api_token
         ? 'token'
         : null
+  const now = new Date()
+  const delivers = garminPushDelivered(garminOAuthToken, garminPushStates, now)
   const garminOAuth = {
     available: !!garminClientId && !!garminClientSecret,
     ...garminOAuthStatusFromToken(garminOAuthToken),
-    delivers: garminPushDelivered(garminOAuthToken, garminPushStates, new Date()),
+    delivers,
     last_received_at: garminPushLastReceivedAt(garminPushStates),
   }
 
   return {
     ...withDefaults(settings),
     garmin_connected: garmin.session || garmin.personal_key.connected || garminOAuth.connected,
+    garmin_data_sources: garminDataSources(delivers, garmin, now),
     garmin_oauth: garminOAuth,
     garmin_personal_key: {
       available: garminPersonalKeyEnabled,
@@ -340,6 +347,7 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     lastfm_configured: !!lastFmApiKey,
     oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
+    garmin_data_sources: {},
     garmin_oauth: {
       available: !!garminClientId && !!garminClientSecret,
       connected: false,

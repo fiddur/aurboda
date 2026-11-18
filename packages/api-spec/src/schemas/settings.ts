@@ -368,6 +368,22 @@ export const garminOAuthStatusSchema = z
 
 export type GarminOAuthStatus = z.infer<typeof garminOAuthStatusSchema>
 
+export const garminDataSourceSchema = z.enum(['push', 'session', 'personal_key']).meta({
+  description:
+    'The connection a Garmin data type comes through: push (Connect with Garmin delivers it), session (fetched through the Garmin login) or personal_key (fetched with the Personal API key)',
+  id: 'GarminDataSource',
+})
+
+export type GarminDataSource = z.infer<typeof garminDataSourceSchema>
+
+export const garminDataSourcesSchema = z.partialRecord(garminDataTypeSchema, garminDataSourceSchema).meta({
+  description:
+    'For each Garmin data type, the connection it comes through right now; a type no connection brings is left out',
+  id: 'GarminDataSources',
+})
+
+export type GarminDataSources = z.infer<typeof garminDataSourcesSchema>
+
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
@@ -416,6 +432,7 @@ export const userSettingsResponseSchema = baseResponseSchema
       .array(garminDataTypeSchema)
       .default([])
       .meta({ description: 'Garmin data types currently disabled for sync' }),
+    garmin_data_sources: garminDataSourcesSchema.default({}),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.default('default').meta({

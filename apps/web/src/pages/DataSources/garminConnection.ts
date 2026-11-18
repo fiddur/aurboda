@@ -1,4 +1,10 @@
-import type { GarminDataType, GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
+import type {
+  GarminDataSource,
+  GarminDataSources,
+  GarminDataType,
+  GarminOAuthStatus,
+  GarminPersonalKeyStatus,
+} from '@aurboda/api-spec'
 
 import { formatDistance } from 'date-fns'
 
@@ -61,19 +67,20 @@ export const garminDataTypeNote = (
   { keyOnly, pushOnly }: { keyOnly: boolean; pushOnly: boolean },
 ): string | undefined => (keyOnly ? key_note : pushOnly ? push_note : undefined)
 
+const SOURCE_NOTES: Record<GarminDataSource, string> = {
+  personal_key: 'Fetched with the Personal API key',
+  push: 'Delivered by Connect with Garmin',
+  session: 'Fetched through the Garmin login',
+}
+
 /** The line under a data type saying which connection brings it, once Connect with Garmin delivers something. */
 export const garminDataTypeSourceNote = (
   type: GarminDataType,
-  {
-    delivers,
-    keyConnected,
-    sessionConnected,
-  }: { delivers: readonly GarminDataType[]; sessionConnected: boolean; keyConnected: boolean },
+  sources: GarminDataSources | undefined,
 ): string | undefined => {
-  if (delivers.length === 0) return undefined
-  if (delivers.includes(type)) return 'Delivered by Connect with Garmin'
-  if (sessionConnected) return 'Fetched through the Garmin login'
-  return keyConnected ? 'Fetched with the Personal API key' : undefined
+  if (!sources || !Object.values(sources).includes('push')) return undefined
+  const source = sources[type]
+  return source ? SOURCE_NOTES[source] : undefined
 }
 
 const NO_OAUTH: GarminOAuthStatus = {

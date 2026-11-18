@@ -278,27 +278,36 @@ describe('joinList', () => {
 })
 
 describe('garminDataTypeSourceNote', () => {
-  const both = { keyConnected: true, sessionConnected: true }
+  const loginAndKey = {
+    activities: 'personal_key',
+    dailySummary: 'push',
+    hrv: 'personal_key',
+    sleep: 'push',
+    stress: 'session',
+    trainingReadiness: 'session',
+  } as const
 
   it('says nothing while Connect with Garmin delivers nothing', () => {
-    expect(garminDataTypeSourceNote('sleep', { delivers: [], ...both })).toBeUndefined()
+    expect(
+      garminDataTypeSourceNote('sleep', { hrv: 'personal_key', sleep: 'session', stress: 'session' }),
+    ).toBeUndefined()
+    expect(garminDataTypeSourceNote('sleep', undefined)).toBeUndefined()
   })
 
   it('names Connect with Garmin for a type it delivers', () => {
-    expect(garminDataTypeSourceNote('sleep', { delivers: ['sleep'], ...both })).toBe(
-      'Delivered by Connect with Garmin',
+    expect(garminDataTypeSourceNote('sleep', loginAndKey)).toBe('Delivered by Connect with Garmin')
+  })
+
+  it('with a login and a key, names the key for the types the key serves and the login for the rest', () => {
+    expect(garminDataTypeSourceNote('hrv', loginAndKey)).toBe('Fetched with the Personal API key')
+    expect(garminDataTypeSourceNote('activities', loginAndKey)).toBe('Fetched with the Personal API key')
+    expect(garminDataTypeSourceNote('stress', loginAndKey)).toBe('Fetched through the Garmin login')
+    expect(garminDataTypeSourceNote('trainingReadiness', loginAndKey)).toBe(
+      'Fetched through the Garmin login',
     )
   })
 
-  it('names the pull connection for the rest, the login first', () => {
-    expect(garminDataTypeSourceNote('trainingReadiness', { delivers: ['sleep'], ...both })).toBe(
-      'Fetched through the Garmin login',
-    )
-    expect(
-      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: true, sessionConnected: false }),
-    ).toBe('Fetched with the Personal API key')
-    expect(
-      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: false, sessionConnected: false }),
-    ).toBeUndefined()
+  it('says nothing for a type no connection brings', () => {
+    expect(garminDataTypeSourceNote('stress', { sleep: 'push' })).toBeUndefined()
   })
 })

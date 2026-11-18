@@ -99,6 +99,29 @@ export const syncGarminBodySchema = z
 
 export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
+export const reprocessGarminPushesBodySchema = z
+  .object({
+    since: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Process again what Connect with Garmin pushed since this time (default 7 days ago; at most 90 days back, an earlier time is taken as 90 days ago)',
+    }),
+  })
+  .meta({
+    description:
+      'Process the stored Connect with Garmin pushes again, the same way a fresh push is processed',
+    id: 'ReprocessGarminPushesBody',
+  })
+
+export type ReprocessGarminPushesBody = z.infer<typeof reprocessGarminPushesBodySchema>
+
+export const reprocessGarminPushesResponseSchema = baseResponseSchema
+  .extend({
+    queued: z.number().int().optional().meta({ description: 'How many stored push records were queued' }),
+  })
+  .meta({ id: 'ReprocessGarminPushesResponse' })
+
+export type ReprocessGarminPushesResponse = z.infer<typeof reprocessGarminPushesResponseSchema>
+
 export const connectGarminPersonalKeyBodySchema = z
   .object({
     api_key: z.string().trim().min(1).max(4096).meta({

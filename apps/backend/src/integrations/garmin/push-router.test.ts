@@ -12,22 +12,18 @@ const makeDeps = (overrides: Partial<GarminPushDeps> = {}): GarminPushDeps => ({
   auditError: vi.fn(async () => {}),
   auditInfo: vi.fn(async () => {}),
   auditWarn: vi.fn(async () => {}),
+  enqueuePush: vi.fn(async () => {}),
   forgetGrant: vi.fn(async () => {}),
   getClientId: vi.fn(async () => CLIENT_ID),
   getDisabledDataTypes: vi.fn(async () => []),
   getUsernameByGarminUserId: vi.fn(async () => 'alice'),
   insertRawRecords: vi.fn(async () => {}),
-  insertTimeSeries: vi.fn(async () => {}),
   isReadOnly: vi.fn(async () => false),
   logWarn: vi.fn(),
   now: () => new Date('2026-11-17T10:00:00Z'),
-  onActivitySynced: vi.fn(),
   probeGrant: vi.fn(async () => ({ status: 'gone' as const })),
-  processGarminData: vi.fn(async () => 1),
   pushToken: TOKEN,
-  syncActivityFile: vi.fn(async () => {}),
   updateGrantScopes: vi.fn(async () => true),
-  upsertSyncState: vi.fn(async () => {}),
   ...overrides,
 })
 
@@ -52,7 +48,7 @@ const body = {
 }
 
 describe('Garmin push router', () => {
-  test('answers 200 with an empty body, stores, then queues the processing', async () => {
+  test('answers 200 with an empty body once the records are stored and their processing is queued', async () => {
     const deps = makeDeps()
     const { app, jobs } = makeApp(deps)
     const res = await request(app).post(`/webhooks/garmin/${TOKEN}`).send(body)
@@ -61,10 +57,30 @@ describe('Garmin push router', () => {
     expect(deps.insertRawRecords).toHaveBeenCalledWith('alice', [
       expect.objectContaining({ external_id: 'sd-1' }),
     ])
-    expect(deps.processGarminData).not.toHaveBeenCalled()
+    expect(deps.enqueuePush).toHaveBeenCalledWith({
+      records: [{ external_id: 'sd-1', type: 'dailies' }],
+      user: 'alice',
+    })
+    expect(jobs).toHaveLength(0)
+  })
+
+  test('a connection notice is handled in this process after the answer', async () => {
+    const deps = makeDeps()
+    const { app, jobs } = makeApp(deps)
+    const res = await request(app)
+      .post(`/webhooks/garmin/${TOKEN}`)
+      .send({ deregistrations: [{ userId: 'garmin-user-1' }] })
+    expect(res.status).toBe(200)
+    expect(deps.probeGrant).not.toHaveBeenCalled()
     expect(jobs).toHaveLength(1)
     await jobs[0]!()
-    expect(deps.processGarminData).toHaveBeenCalled()
+    expect(deps.probeGrant).toHaveBeenCalledWith('alice')
+  })
+
+  test('a failure to queue the processing is a 500', async () => {
+    const deps = makeDeps({ enqueuePush: vi.fn().mockRejectedValue(new Error('queue down')) })
+    const res = await request(makeApp(deps).app).post(`/webhooks/garmin/${TOKEN}`).send(body)
+    expect(res.status).toBe(500)
   })
 
   test('a wrong token is a 404 with an empty body', async () => {
@@ -120,16 +136,17 @@ describe('Garmin push router', () => {
 })
 
 describe('Garmin push body parser', () => {
-  const makeParserApp = () => {
+  const makeParserApp = (limit?: string) => {
     const reached = vi.fn()
+    const logWarn = vi.fn()
     const app = express()
-    app.use('/webhooks/garmin', garminPushBodyParser(TOKEN))
+    app.use('/webhooks/garmin', garminPushBodyParser(TOKEN, { limit, logWarn }))
     app.use(express.json({ limit: '1kb' }))
     app.post('/webhooks/garmin/:token', (req, res) => {
       reached(req.body)
       res.status(200).end()
     })
-    return { app, reached }
+    return { app, logWarn, reached }
   }
   const large = { dailies: [{ note: 'x'.repeat(5000), summaryId: 'sd-1', userId: 'garmin-user-1' }] }
 
@@ -156,5 +173,40 @@ describe('Garmin push body parser', () => {
     const res = await request(app).post(`/webhooks/garmin/${TOKEN}/more`).send(large)
     expect(res.status).toBe(404)
     expect(reached).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['a body that is not JSON', '{ not json'],
+    ['a bare JSON string', '"just a string"'],
+  ])('answers 200 with an empty body to %s, logging a count without the path or the body', async (_, raw) => {
+    const { app, logWarn, reached } = makeParserApp()
+    const res = await request(app)
+      .post(`/webhooks/garmin/${TOKEN}`)
+      .set('content-type', 'application/json')
+      .send(raw)
+    expect(res.status).toBe(200)
+    expect(res.text).toBe('')
+    expect(reached).not.toHaveBeenCalled()
+    expect(logWarn).toHaveBeenCalledWith('Garmin push: 1 unreadable body dropped')
+    expect(JSON.stringify(logWarn.mock.calls)).not.toContain(TOKEN)
+    expect(JSON.stringify(logWarn.mock.calls)).not.toContain('not json')
+  })
+
+  test('still answers 413 to a body over the limit', async () => {
+    const { app, reached } = makeParserApp('1kb')
+    const res = await request(app).post(`/webhooks/garmin/${TOKEN}`).send(large)
+    expect(res.status).toBe(413)
+    expect(res.text).toBe('')
+    expect(reached).not.toHaveBeenCalled()
+  })
+
+  test('a wrong token is still a 404 before an unreadable body is read', async () => {
+    const { app, logWarn } = makeParserApp()
+    const res = await request(app)
+      .post('/webhooks/garmin/not-the-token')
+      .set('content-type', 'application/json')
+      .send('"just a string"')
+    expect(res.status).toBe(404)
+    expect(logWarn).not.toHaveBeenCalled()
   })
 })

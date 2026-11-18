@@ -1,4 +1,5 @@
 import type {
+  GarminDataSources,
   GarminDataType,
   GarminOAuthStatus,
   GarminPersonalKeyStatus,
@@ -225,12 +226,6 @@ function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => vo
   )
 }
 
-interface GarminDataTypeSources {
-  delivers: readonly GarminDataType[]
-  sessionConnected: boolean
-  keyConnected: boolean
-}
-
 function GarminDataTypeRow({
   dt,
   enabled,
@@ -273,7 +268,7 @@ function GarminDataTypeToggles({
   disabledTypes: GarminDataType[]
   keyOnly: boolean
   pushOnly: boolean
-  sources: GarminDataTypeSources
+  sources: GarminDataSources | undefined
   onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
 }) {
   // Optimistic local state — updates immediately on click
@@ -339,7 +334,7 @@ function GarminDataTypesSection({
   isConnected: boolean
   keyOnly: boolean
   pushOnly: boolean
-  sources: GarminDataTypeSources
+  sources: GarminDataSources | undefined
   disabledTypes: GarminDataType[]
   queryClient: ReturnType<typeof useQueryClient>
 }) {
@@ -693,11 +688,7 @@ export function GarminSource() {
           isConnected={isConnected}
           keyOnly={keyOnly}
           pushOnly={oauth.connected && !canPull}
-          sources={{
-            delivers: oauth.delivers,
-            keyConnected: personalKey?.connected ?? false,
-            sessionConnected,
-          }}
+          sources={userSettings?.garmin_data_sources}
           disabledTypes={userSettings?.garmin_disabled_data_types ?? []}
           queryClient={queryClient}
         />

@@ -216,6 +216,8 @@ import {
   dailyAggregatesBodySchema,
   healthConnectDeletionsBodySchema,
   healthConnectSyncBodySchema,
+  reprocessGarminPushesBodySchema,
+  reprocessGarminPushesResponseSchema,
   syncOuraBodySchema,
   syncGravlBodySchema,
   syncHomeAssistantBodySchema,
@@ -1989,6 +1991,28 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Sync Oura data',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/garmin/reprocess-pushes': {
+      post: {
+        description:
+          'Process the stored Connect with Garmin pushes again, the same way a fresh push is processed: every record Garmin pushed since the given time is queued, and each is read as it is stored now. For when processing failed or the processing changed.',
+        requestBody: {
+          content: { 'application/json': { schema: reprocessGarminPushesBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reprocessGarminPushesResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Bad request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Process Garmin pushes again',
         tags: ['Sync'],
       },
     },
