@@ -119,6 +119,7 @@ import {
   muscleGroupsResponseSchema,
 } from './schemas/muscle-groups.ts'
 import {
+  MUSCLE_RECOVERY_HISTORY_MAX_POINTS,
   muscleRecoveryHistoryQuerySchema,
   muscleRecoveryHistoryResponseSchema,
   muscleRecoveryQuerySchema,
@@ -952,8 +953,7 @@ const openApiDocument = createDocument({
           },
           400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description:
-              'Start not before end, more than 500 points, or the field is not a catalogue-backed item field of the activity type',
+            description: `Start not before end, more than ${MUSCLE_RECOVERY_HISTORY_MAX_POINTS} points, or the field is not a catalogue-backed item field of the activity type`,
           },
           404: {
             content: { 'application/json': { schema: errorResponseSchema } },
@@ -996,7 +996,7 @@ const openApiDocument = createDocument({
     '/activity-types/{name}/strength-score': {
       get: {
         description:
-          'Strength score at a moment (default now): per reference lift the best estimated one-rep max (Epley) of the working sets of 1 to 12 reps in the last 90 days, against a reference by sex and bodyweight (100 points: a solid recreational lifter); per muscle group the mean of its best 3 lifts, overall the mean of the groups. Only exercises matched to the exercise catalogue count. `missing` lists what the user has not given (sex in the settings, a weight); every score is then null.',
+          'Strength score at a moment (default now): per reference lift the best estimated one-rep max (Epley) of the working sets with a weight in the last 90 days (reps above 12 count as 12), against a reference by sex and bodyweight (100 points: a solid recreational lifter); per muscle group the mean of its best 3 lifts, overall the mean of the groups. Only exercises matched to the exercise catalogue count. `missing` lists what the user has not given (sex in the settings, a weight); every score is then null.',
         requestParams: { path: activityTypeNamePathSchema, query: strengthScoreQuerySchema },
         responses: {
           200: {

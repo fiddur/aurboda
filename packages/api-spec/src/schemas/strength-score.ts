@@ -67,21 +67,23 @@ export const strengthScoreSetSchema = z
         'Bodyweight in kg the reference is scaled to: the latest weight at or before the session, else the earliest after it; absent without any weight',
     }),
     catalog_key: z.string().meta({ description: 'The catalogue entry the logged exercise resolves to' }),
-    e1rm: z
-      .number()
-      .meta({ description: 'Estimated one-rep max in kg (Epley: weight × (1 + reps / 30)), one decimal' }),
+    e1rm: z.number().meta({
+      description: `Estimated one-rep max in kg (Epley: weight × (1 + reps / 30)), one decimal; reps above ${STRENGTH_SCORE_MAX_REPS} count as ${STRENGTH_SCORE_MAX_REPS}`,
+    }),
     reference_e1rm: z.number().optional().meta({
       description:
         'The one-rep max in kg that scores 100 points at that bodyweight and sex, one decimal; absent without sex or bodyweight',
     }),
-    reps: z.number(),
+    reps: z.number().meta({
+      description: `Reps as logged; above ${STRENGTH_SCORE_MAX_REPS} they count as ${STRENGTH_SCORE_MAX_REPS} in \`e1rm\``,
+    }),
     session_id: z.string().meta({ description: 'Session id (`merged:<id>` for a merged session)' }),
     start_time: z.string().meta({ description: 'ISO start time of the session' }),
     value: z.string().meta({ description: 'The exercise as logged' }),
     weight: z.number().meta({ description: 'Logged weight in kg; one dumbbell for a dumbbell lift' }),
   })
   .meta({
-    description: 'The set a lift is scored on: its best working set of 1 to 12 reps in the window',
+    description: 'The set a lift is scored on: its best working set with a weight in the window',
     id: 'StrengthScoreSet',
   })
 

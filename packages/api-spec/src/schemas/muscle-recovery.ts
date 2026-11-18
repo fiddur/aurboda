@@ -9,7 +9,7 @@ export const MUSCLE_RECOVERY_SET_FATIGUE = 0.1
 export const MUSCLE_RECOVERY_MAX_SOURCES = 5
 export const MUSCLE_RECOVERY_HISTORY_DEFAULT_DAYS = 14
 export const MUSCLE_RECOVERY_HISTORY_DEFAULT_STEP_HOURS = 6
-export const MUSCLE_RECOVERY_HISTORY_MAX_POINTS = 500
+export const MUSCLE_RECOVERY_HISTORY_MAX_POINTS = 1000
 
 export const MUSCLE_RECOVERY_HISTORY_START_AFTER_END = 'start must be before end'
 export const MUSCLE_RECOVERY_HISTORY_TOO_MANY_POINTS = `the period holds more than ${MUSCLE_RECOVERY_HISTORY_MAX_POINTS} points; raise step_hours or shorten it`

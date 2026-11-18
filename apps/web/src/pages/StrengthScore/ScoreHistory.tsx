@@ -1,29 +1,16 @@
 import type { StrengthScoreGroup } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
 
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { fetchStrengthScoreHistory } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { useStrengthScoreHistory } from './queries'
 import {
   groupsWithHistory,
   type ScoreSeriesKey,
   scoreSeries,
   STRENGTH_SCORE_PERIODS,
-  strengthScorePeriod,
 } from './strengthScoreView'
-
-const FIVE_MIN = 5 * 60 * 1000
-
-export const useStrengthScoreHistory = (name: string, field: string, days: number) => {
-  const period = useMemo(() => strengthScorePeriod(days, new Date()), [days])
-  return useQuery({
-    queryFn: () => fetchStrengthScoreHistory(name, { field, ...period }),
-    queryKey: ['strength-score-history', name, field, period.start, period.end, period.step_days],
-    staleTime: FIVE_MIN,
-  })
-}
 
 const Chart = ({ data }: { data: { date: string; value: number }[] }) =>
   data.length < 2 ? (

@@ -7,6 +7,7 @@ import type { ExerciseSession, ResolverOf } from './queries/muscle-group-history
 import { strengthReferencesOf } from './strength-references.ts'
 import {
   bodyweightLookup,
+  epley,
   historyMoments,
   referenceE1rm,
   type ScoredSet,
@@ -144,7 +145,7 @@ describe('scoredSets', () => {
     expect(scored?.lift.id).toBe('curl')
   })
 
-  test('leaves out warm-ups, sets without weight, above 12 reps and exercises of no lift', () => {
+  test('leaves out warm-ups, sets without weight or reps and exercises of no lift', () => {
     const sets = setsOf([
       session('s1', daysBefore(1), [
         set('Curl', 20, 5, { set_type: 'warmup' }),
@@ -161,9 +162,16 @@ describe('scoredSets', () => {
       ]),
     ])
     expect(sets.map((s) => [s.weight, s.reps])).toEqual([
+      [20, 13],
       [20, 1],
       [18, 12],
     ])
+  })
+
+  test('a set above 12 reps keeps its reps and is estimated as 12 reps with the same weight', () => {
+    const [scored] = setsOf([session('s1', daysBefore(1), [set('Curl', 12, 17)])])
+    expect(scored?.reps).toBe(17)
+    expect(scored?.e1rm).toBeCloseTo(epley(12, 12))
   })
 
   test('without any weight the sets have no bodyweight', () => {
@@ -173,6 +181,12 @@ describe('scoredSets', () => {
 })
 
 describe('strengthScoreAt', () => {
+  test('a group whose only set has 17 reps gets a score', () => {
+    const score = scoreOf([session('s1', daysBefore(1), [set('Curl', 12, 17)])])
+    expect(lift(score, 'biceps', 'curl')?.best).toMatchObject({ e1rm: 16.8, reps: 17 })
+    expect(group(score, 'biceps')?.score).toBe(140)
+  })
+
   test('a worked example: 12 kg × 12 against a 12 kg reference is 140 points', () => {
     const score = scoreOf([session('s1', daysBefore(1), [set('Curl', 12, 12)])])
     const curl = lift(score, 'biceps', 'curl')

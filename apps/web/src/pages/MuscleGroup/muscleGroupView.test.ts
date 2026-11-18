@@ -9,6 +9,7 @@ import {
   muscleGroupPeriod,
   muscleGroupWidgetConfig,
   recruitmentLabel,
+  scoreSectionHeading,
   setsThisWeek,
 } from './muscleGroupView'
 
@@ -158,5 +159,15 @@ describe('the chart config', () => {
       lookback_days: 365,
       title: 'Chest',
     })
+  })
+})
+
+describe('scoreSectionHeading', () => {
+  test("plain when the score group has the muscle group's name", () => {
+    expect(scoreSectionHeading('Chest', 'Chest')).toBe('Strength score')
+  })
+
+  test('names the score group when it differs', () => {
+    expect(scoreSectionHeading('Back', 'Lats')).toBe('Strength score · Back')
   })
 })
