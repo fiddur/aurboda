@@ -24,6 +24,7 @@ import {
   liveApi,
   useExerciseContext,
   useSessionHistory,
+  useStrengthPlan,
 } from './queries'
 import { recordLines } from './records'
 import { RestBar } from './RestBar'
@@ -176,7 +177,33 @@ const CurrentBlock = ({
   )
 }
 
-export const LiveSession = ({ initial, onId }: { initial: SessionDraft; onId: (id: string) => void }) => {
+const PlanHeader = ({ planId }: { planId: string }) => {
+  const plan = useStrengthPlan(planId).data
+  if (!plan) return null
+  return (
+    <section class="strength-card strength-plan-header">
+      <h2>{plan.name}</h2>
+      {plan.note && <p class="strength-muted">{plan.note}</p>}
+    </section>
+  )
+}
+
+const SessionIntro = ({ notice, planId }: { notice?: string; planId?: string }) => (
+  <>
+    {notice && <p class="strength-muted">{notice}</p>}
+    {planId && <PlanHeader planId={planId} />}
+  </>
+)
+
+export const LiveSession = ({
+  initial,
+  notice,
+  onId,
+}: {
+  initial: SessionDraft
+  notice?: string
+  onId: (id: string) => void
+}) => {
   const queryClient = useQueryClient()
   const { route } = useLocation()
   const [draft, setDraft] = useState(initial)
@@ -227,6 +254,7 @@ export const LiveSession = ({ initial, onId }: { initial: SessionDraft; onId: (i
           if (!snapshot.id) {
             navigation.current.onId(id)
             navigation.current.route(sessionUrl(id), true)
+            if (snapshot.plan_id) void queryClient.invalidateQueries({ queryKey: ['strength-plans'] })
           }
           void queryClient.invalidateQueries({ queryKey: ['activity-item-history', id] })
         },
@@ -323,6 +351,7 @@ export const LiveSession = ({ initial, onId }: { initial: SessionDraft; onId: (i
         </button>
       </header>
       {finishError && <p class="strength-error">{finishError}</p>}
+      <SessionIntro notice={notice} planId={draft.plan_id} />
       {rest && lastSetAt && (
         <RestBar
           rest={rest}

@@ -16,7 +16,9 @@ table stay for corrections.
 
 Entry points: **Log a session** on the strength training type page, a line above the sets table on
 the Add page, **Continue** on the detail page of a session in progress and **Edit sets** on a
-finished one logged in Aurboda.
+finished one logged in Aurboda. A logged session merged with a watch's activity keeps **Edit sets**
+when the group holds exactly one Aurboda row with logged sets that is not an override; it edits that
+row and returns to the merged page on Save or Cancel.
 
 The logged sets feed the [strength score](strength-score.md): per reference lift the best
 estimated one-rep max of the last 90 days against a reference by sex and bodyweight.
@@ -68,13 +70,16 @@ While a session is open:
 Each block shows last time's sets and the best e1RM for the exercise, its muscles when the name
 resolves to a catalogue entry, and, after each save, the records the session set (from the
 session's item history). The next set is prefilled from the block's previous set, else the planned
-set when the session was started with **Repeat**, else the set at that position last time (weight,
-reps and time only). An exercise last done as timed holds asks for seconds instead of reps. A rest
+set when the session was started with **Repeat** or from a plan, else the set at that position last
+time (weight, reps and time). A planned set's type (warmup, drop set, failure) is also preselected
+for that set, and the planned line shows it ("planned: 14 kg × 10 (warmup)"); a set logged without
+changing it keeps that type. An exercise last done as timed holds asks for seconds instead of reps. A rest
 timer (default two minutes, **+30 s**, **Skip**) counts from `last_set_at`, so it survives a
 reload, and vibrates at zero where the browser can; the page asks to keep the screen awake.
 
 **Repeat** starts a live session with another session's blocks in order and their sets as planned
-sets, greyed and not saved, which disappear one by one as sets are logged.
+sets, greyed and not saved, which disappear one by one as sets are logged. Their notes are not
+carried over.
 
 ## What is stored on the device
 

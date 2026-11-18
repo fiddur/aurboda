@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express'
 
 import {
+  type BaseResponse,
   type DashboardDataQuery,
   dashboardDataQuerySchema,
   type DashboardDataResponse,
@@ -14,6 +15,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { upsertUserSettings } from '../db/index.ts'
+import { dashboardConfigError } from '../services/dashboard-config.ts'
 import { queryDataPresence } from '../services/data-presence.ts'
 import { PeriodError } from '../services/periods.ts'
 import { getSettings } from '../services/settings.ts'
@@ -61,12 +63,14 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): TypedRout
     },
   )
 
-  router.put<Record<string, never>, DashboardResponse, UpdateDashboardInput>(
+  router.put<Record<string, never>, DashboardResponse | BaseResponse, UpdateDashboardInput>(
     '/',
     authMiddleware,
     validateBody(updateDashboardInputSchema),
     async (req, res) => {
       const user = req.user!
+      const configError = dashboardConfigError(req.body)
+      if (configError) return res.status(400).json({ error: configError, success: false })
       await upsertUserSettings(user, { dashboard: req.body })
       res.json({ dashboard: req.body, success: true })
     },

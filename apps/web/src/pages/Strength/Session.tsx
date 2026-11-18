@@ -4,13 +4,15 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { Activity } from '../../state/api/types'
 
-import { fetchActivityById, fetchStrengthPlan } from '../../state/api'
+import { fetchActivityById } from '../../state/api'
+import { safeBackPath } from './backPath'
 import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
 import { readLiveDraft, writeLiveDraft } from './draftStorage'
 import { timesFromActivity } from './formModel'
 import { LiveSession } from './LiveSession'
 import { PastSession } from './PastSession'
 import { liveBlocksFromPlan } from './planModel'
+import { useStrengthPlan } from './queries'
 import {
   blocksFromSets,
   isDirty,
@@ -28,7 +30,10 @@ import './style.css'
 interface LiveState {
   key: string
   draft: SessionDraft
+  notice?: string
 }
+
+const PLAN_GONE = 'That plan no longer exists. Starting an empty session.'
 
 const isEditable = (activity: Activity & { source_records?: unknown[] }, id: string): boolean =>
   activity.source === 'aurboda' &&
@@ -110,7 +115,15 @@ const savedMode = (
     : { activity, kind: 'read-only' }
 }
 
-const SavedSession = ({ id, onLive }: { id: string; onLive: (state: LiveState) => void }) => {
+const SavedSession = ({
+  id,
+  back,
+  onLive,
+}: {
+  id: string
+  back?: string
+  onLive: (state: LiveState) => void
+}) => {
   const query = useQuery({
     gcTime: 0,
     queryFn: () => fetchActivityById(id),
@@ -145,6 +158,7 @@ const SavedSession = ({ id, onLive }: { id: string; onLive: (state: LiveState) =
     case 'edit':
       return (
         <PastSession
+          back={back}
           edit={{
             blocks: blocksFromSets(setsOfData(mode.activity.data)),
             id,
@@ -174,12 +188,7 @@ const NewSession = ({
     queryKey: ['entity-detail', 'activity', repeat, 'strength'],
     retry: 1,
   })
-  const planSource = useQuery({
-    enabled: !resumable && Boolean(plan),
-    queryFn: () => fetchStrengthPlan(plan ?? ''),
-    queryKey: ['strength-plan', plan],
-    retry: 1,
-  })
+  const planSource = useStrengthPlan(plan, !resumable)
 
   useEffect(() => {
     if (resumable?.id) {
@@ -197,7 +206,7 @@ const NewSession = ({
       ? newLiveDraft(startedAt, liveBlocksFromPlan(fromPlan.sets), fromPlan.id)
       : newLiveDraft(startedAt, source.data ? planFromSession(setsOfData(source.data.activity.data)) : [])
     writeLiveDraft(draft)
-    onLive({ draft, key: 'new' })
+    onLive({ draft, key: 'new', ...(plan && planSource.isError ? { notice: PLAN_GONE } : {}) })
   }, [
     resumable,
     repeat,
@@ -205,6 +214,7 @@ const NewSession = ({
     source.isLoading,
     source.data,
     planSource.isLoading,
+    planSource.isError,
     planSource.data,
     startedAt,
     route,
@@ -232,13 +242,16 @@ export function StrengthSession() {
       <LiveSession
         key={live.key}
         initial={live.draft}
+        notice={live.notice}
         onId={(id) => {
           liveId.current = id
         }}
       />
     )
   }
-  if (routeId) return <SavedSession key={routeId} id={routeId} onLive={onLive} />
+  if (routeId) {
+    return <SavedSession key={routeId} id={routeId} back={safeBackPath(query.back)} onLive={onLive} />
+  }
   return <NewSession repeat={query.repeat} plan={query.plan} onLive={onLive} />
 }
 

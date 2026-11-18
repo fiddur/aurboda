@@ -36,6 +36,7 @@ import {
   readGarminPersonalKeyEnabled,
 } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
+import { dashboardConfigError } from './dashboard-config.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 
@@ -478,6 +479,8 @@ export const validateAndUpdateSettings = async (
   if (!parsed.success) {
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
+  const configError = parsed.data.dashboard && dashboardConfigError(parsed.data.dashboard)
+  if (configError) return buildErrorSettingsResponse(configError)
 
   if (parsed.data.goals !== undefined) {
     const newGoals = parsed.data.goals === null ? [] : parsed.data.goals

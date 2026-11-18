@@ -57,6 +57,7 @@ import {
   typicalAvgHr,
 } from './activityStats'
 import { type ActivityDraft, EditableActivityFields } from './EditableActivityFields'
+import { aurbodaStrengthMemberId, editableSetsRowId } from './editSets'
 import { EntityActions, type EntityType } from './EntityActions'
 import { formatDateTimeLocal, formatTime } from './format-utils'
 import { ItemHistorySection } from './ItemHistorySection'
@@ -609,7 +610,7 @@ const ResyncDetailButton = ({
 // eslint-disable-next-line complexity -- composite component with edit / save / merge / revert flows
 const ActivityContent = ({ entityId }: { entityId: string }) => {
   const queryClient = useQueryClient()
-  const { route } = useLocation()
+  const { route, url } = useLocation()
   const isMerged = entityId.startsWith('merged:')
   const rawEntityId = isMerged ? entityId.slice('merged:'.length) : entityId
 
@@ -675,6 +676,14 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
 
   const isMergedActivity = Boolean(activity?.source_records && activity.source_records.length > 1)
   const aurbodaSource = activity?.source_records?.find((r) => r.source === 'aurboda')
+  const setsMemberId = activity ? aurbodaStrengthMemberId(activity, isMerged || isMergedActivity) : undefined
+  const { data: setsMember } = useQuery({
+    enabled: setsMemberId !== undefined,
+    queryFn: () => fetchActivityById(setsMemberId ?? ''),
+    queryKey: ['entity-detail', 'activity', setsMemberId],
+    select: (result) => result.activity,
+    staleTime: 60_000,
+  })
 
   const startEditing = useCallback(() => {
     if (!activity) return
@@ -808,13 +817,8 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
   const showSiblings = !isEditing && !activity.deleted_at
   const isStrength = activity.activity_type === 'strength_training' && !activity.deleted_at
   const strengthInProgress = isStrength && activity.data?.in_progress === true
-  const canEditSets =
-    isStrength &&
-    !strengthInProgress &&
-    !isMerged &&
-    !isMergedActivity &&
-    activity.source === 'aurboda' &&
-    !activity.override_target_ids?.length
+  const editSetsId = editableSetsRowId(activity, isMerged || isMergedActivity, setsMember)
+  const editSetsBack = isMerged || isMergedActivity ? `?back=${encodeURIComponent(url)}` : ''
 
   return (
     <>
@@ -856,8 +860,11 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         saveDisabled={stillUploading(draft.notes)}
         onStartMerging={!activity.deleted_at && !isMergedActivity ? () => setIsMerging(true) : undefined}
         extraActions={
-          canEditSets ? (
-            <a class="btn-secondary" href={`/strength/session/${encodeURIComponent(rawEntityId)}`}>
+          editSetsId ? (
+            <a
+              class="btn-secondary"
+              href={`/strength/session/${encodeURIComponent(editSetsId)}${editSetsBack}`}
+            >
               Edit sets
             </a>
           ) : undefined

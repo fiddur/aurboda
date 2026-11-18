@@ -1,5 +1,4 @@
-import type { DashboardConfig } from '@aurboda/api-spec'
-
+import { type DashboardConfig, MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE } from '@aurboda/api-spec'
 import express, { type RequestHandler } from 'express'
 import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -11,6 +10,7 @@ vi.mock('../services/settings.ts', () => ({ getSettings: vi.fn() }))
 vi.mock('../services/shared-dashboard-data.ts', () => ({ resolveDashboardView: vi.fn() }))
 vi.mock('../services/data-presence.ts', () => ({ queryDataPresence: vi.fn() }))
 
+const { upsertUserSettings } = await import('../db/index.ts')
 const { getSettings } = await import('../services/settings.ts')
 const { resolveDashboardView } = await import('../services/shared-dashboard-data.ts')
 const { queryDataPresence } = await import('../services/data-presence.ts')
@@ -24,6 +24,7 @@ const asAlice: RequestHandler = (req, _res, next) => {
 
 const app = () => {
   const a = express()
+  a.use(express.json())
   a.use('/dashboard', createDashboardRouter(asAlice) as unknown as express.RequestHandler)
   return supertest(a)
 }
@@ -82,5 +83,51 @@ describe('GET /dashboard/data-presence', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ ...presence, success: true })
     expect(queryDataPresence).toHaveBeenCalledWith('alice', { activity_types: 'exercise', metrics: 'steps' })
+  })
+})
+
+describe('PUT /dashboard', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const withBars = (measure: string): DashboardConfig =>
+    ({
+      sections: [
+        {
+          id: 's',
+          title: 'Strength',
+          type: 'charts',
+          widgets: [
+            {
+              config: {
+                bucket_size: '1w',
+                filter_field: 'sets.exercise.muscle_group',
+                filter_value: 'chest',
+                lookback_days: 90,
+                measure,
+                pattern: 'strength_training',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    }) as DashboardConfig
+
+  test('saves a bar chart with a valid muscle-group filter', async () => {
+    const res = await app().put('/dashboard').send(withBars('set_count'))
+
+    expect(res.status).toBe(200)
+    expect(upsertUserSettings).toHaveBeenCalledOnce()
+  })
+
+  test('refuses a muscle-group filter the chart data route refuses, without saving', async () => {
+    const res = await app().put('/dashboard').send(withBars('e1rm'))
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE, success: false })
+    expect(upsertUserSettings).not.toHaveBeenCalled()
   })
 })

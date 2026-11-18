@@ -289,6 +289,22 @@ button.strength-set-row:hover {
   font-size: 0.9rem;
 }
 
+.strength-planned-note {
+  display: block;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.strength-plan-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.strength-plan-header p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .strength-next-set {
   display: flex;
   flex-direction: column;

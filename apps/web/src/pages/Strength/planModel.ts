@@ -12,7 +12,7 @@ import {
   loggedSetCount,
   makeBlockId,
   type MakeId,
-  prefillOf,
+  plannedOf,
   sessionSummary,
   type SetRow,
   withExerciseKeys,
@@ -33,7 +33,11 @@ export const blocksFromPlan = (sets: StrengthPlanSet[], makeId: MakeId = makeBlo
   })
 
 export const liveBlocksFromPlan = (sets: StrengthPlanSet[], makeId: MakeId = makeBlockId): ExerciseBlock[] =>
-  blocksFromPlan(sets, makeId).map((b) => ({ ...b, planned: b.sets.map(prefillOf), sets: [] }))
+  blocksFromPlan(sets, makeId).map((b) => ({
+    ...b,
+    planned: b.sets.map((s) => plannedOf(s, { withNote: true })),
+    sets: [],
+  }))
 
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
 

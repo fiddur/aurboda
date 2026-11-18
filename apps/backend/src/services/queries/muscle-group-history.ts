@@ -1,9 +1,3 @@
-/**
- * Muscle group history of an activity type: when each muscle group was last trained, and one group's
- * totals, exercises and sessions over a period. Every measure counts a set by the exercise's
- * recruitment weight for the group (see `../muscle-group-measures.ts`).
- */
-
 import {
   type ActivityMeasures,
   type ExerciseMuscleGroup,

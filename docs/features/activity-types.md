@@ -357,7 +357,8 @@ merge keeps it under the new spelling.
   automatic resolution; 404 when none is stored
 - `GET /activity-types/:name/item-values/unmapped?field=sets.exercise&limit=50&offset=0` -- the
   logged names in state `unmapped`, most used first, each with up to three suggested entries (word
-  overlap with the entry's name or aliases). One page of `limit` names (default 50, at most 200)
+  overlap with the entry's name or aliases, on the normalised words the catalogue search uses:
+  singularised, `db` as `dumbbell`, `single` as `one`). One page of `limit` names (default 50, at most 200)
   from `offset`; `total` counts them all. Suggestions are built for the page only
 
 A field without a catalogue is a 400. The MCP twins are `get_item_value_identity`,
