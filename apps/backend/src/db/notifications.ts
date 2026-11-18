@@ -224,6 +224,26 @@ export const markNotificationsReadByType = async (user: string, type: string): P
   return result.rowCount ?? 0
 }
 
+/**
+ * Marks read every unread `reminder` notification this reminder raised, except the one with
+ * `exceptDedupeKey`: the scheduler calls this on every tick while an occurrence is due, and must
+ * not withdraw the occurrence it is raising.
+ */
+export const markReminderNotificationsRead = async (
+  user: string,
+  reminderId: string,
+  exceptDedupeKey?: string,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `UPDATE notifications SET read_at = NOW()
+     WHERE type = 'reminder' AND read_at IS NULL AND data->>'reminder_id' = $1
+       AND dedupe_key IS DISTINCT FROM $2`,
+    [reminderId, exceptDedupeKey ?? null],
+  )
+  return result.rowCount ?? 0
+}
+
 /** Deletes read rows created before `readBefore` and every row created before `anyBefore`. */
 export const pruneNotifications = async (
   user: string,

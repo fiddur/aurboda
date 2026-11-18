@@ -78,6 +78,7 @@ import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
+import { registerReminderTools } from './mcp/reminder-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
@@ -252,6 +253,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.centralDb?.isAdmin ?? (async () => false),
     deps.runNotificationAction,
   )
+  registerReminderTools(server, user)
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

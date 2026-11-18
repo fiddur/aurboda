@@ -107,6 +107,7 @@ import { createPublicBannerRouter } from '../routes/public-banner-router.ts'
 import { createPublicFeedImageRouter } from '../routes/public-feed-image-router.ts'
 import { createPublicSharesRouter } from '../routes/public-shares-router.ts'
 import { createRawRecordsRouter } from '../routes/raw-records-router.ts'
+import { createRemindersRouter } from '../routes/reminders-router.ts'
 import { createReportsRouter } from '../routes/reports-router.ts'
 import { createRoutesRouter } from '../routes/routes-router.ts'
 import { createScreentimeCategoriesRouter } from '../routes/screentime-categories-router.ts'
@@ -305,6 +306,7 @@ export const mountRestRouters = ({
       runAction: runNotificationAction,
     }),
   )
+  httpd.use('/reminders', createRemindersRouter(authMiddleware))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))

@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import java.net.URLEncoder
 import java.time.Instant
+import net.aurboda.api.models.RemindersResponse
 
 /**
  * Backend calls for the notifier: the central notifications store, and for a server without it
@@ -76,6 +77,10 @@ suspend fun fetchUnreadNotificationCount(httpClient: HttpClient, apiUrl: String,
 
 suspend fun fetchNotificationTypes(httpClient: HttpClient, apiUrl: String, authToken: String): NotificationTypesList? =
     getJson(httpClient, "$apiUrl/notifications/types", authToken)
+
+/** The user's reminders and the earliest `next_due_at`; null when the call failed or the server has no reminders. */
+suspend fun fetchReminders(httpClient: HttpClient, apiUrl: String, authToken: String): RemindersResponse? =
+    getJson(httpClient, "$apiUrl/reminders", authToken)
 
 suspend fun markNotificationRead(httpClient: HttpClient, apiUrl: String, authToken: String, id: String): Boolean =
     postEmpty(httpClient, "$apiUrl/notifications/$id/read", authToken)

@@ -41,7 +41,8 @@ hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
 corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Meals,
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
-[Notifications](features/notifications.md)). The two native-only screens — **Live**
+[Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see
+[Reminders](features/reminders.md)). The two native-only screens — **Live**
 sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does
@@ -88,7 +89,12 @@ sync succeeds, `SyncWorker` asks for one extra poll a minute later (`Notificatio
 an auto-share announces itself shortly after the activity lands and shares after the rule's
 wait, 10 minutes by default, which is shorter than the poll interval. The periodic poll and
 `checkSoon` are two unique works, so they share one lock and never post the same notification
-at once.
+at once. A [reminder](features/reminders.md) should arrive on time too, so after each successful
+poll the worker reads `GET /reminders` and, when `next_due_at` is set, schedules one more poll a
+minute after it (`NotificationWorker.scheduleReminderPoll`, the delay from the pure
+`reminderPollDelaySeconds` in `ReminderPoll.kt`): a third unique work with its own name, replaced
+each time, so it and `checkSoon` never cancel each other. A failed read schedules nothing and
+never fails the poll.
 
 **Keeping the shade current.** Every poll also re-reads the server notifications still in the
 shade: their server id and a key of what they show (title, body, link and actions,

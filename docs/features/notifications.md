@@ -19,7 +19,7 @@ Notifications live in the user's own database, in two tables:
 their labels are the registry `notificationTypes` / `notificationTypeInfo` in
 `packages/api-spec/src/schemas/notifications.ts`.
 
-Each type belongs to a **group** (`feed`, `data_sources`, `admin`), which is how Settings →
+Each type belongs to a **group** (`feed`, `data_sources`, `reminders`, `admin`), which is how Settings →
 **Notifications** lays them out: one block per group in that order, and none for a group with no
 type this user can receive.
 
@@ -35,6 +35,7 @@ type this user can receive.
 | `feed_post`            | Feed         | A new top-level post, or a boost card, from a person you follow whose bell is on in your Following list, or a new post arriving through a followed tag whose bell is on in your Followed tags list, that your timeline shows (`timeline_show_replies`)                                                                                                                                                     | The reader                                |
 | `autoshare_pending`    | Feed         | An [auto-share rule](auto-share-rules.md#pending-share-notification) is about to share a new activity; revised in place to "was shared" or "will not be shared" (also when the share no longer happens)                                                                                                                                                                                                    | The activity's owner                      |
 | `garmin_key_expiring`  | Data sources | A [Garmin Personal API key](../garmin.md#expiry-reminders) has 14 days left, again at 3 days, once it has expired, and once Garmin refuses it; checked by the five-minute sync tick, each step once per expiry date (the refusal once per refusal; again about every 90 days while a dead key stays connected, once the read reminder is pruned), and marked read when the key is replaced or disconnected | The key's owner                           |
+| `reminder`             | Reminders    | A [reminder](reminders.md) you set up is due (once per occurrence; its earlier unread ones are marked read)                                                                                                                                                                                                                                                                                                | The reminder's owner                      |
 | `admin_signup`         | Admin        | An account is created (password or passkey signup)                                                                                                                                                                                                                                                                                                                                                         | Every admin except the new account itself |
 
 The feed types are raised by the ActivityPub inbox (`apps/backend/src/services/activitypub/federation.ts`)

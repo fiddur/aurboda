@@ -43,14 +43,19 @@ export function Notifications() {
     <div class="notifications-page">
       <div class="notifications-header">
         <h1>Notifications</h1>
-        <button
-          type="button"
-          class="notification-mark-all"
-          disabled={unread === 0 || markAll.isPending}
-          onClick={() => markAll.mutate()}
-        >
-          Mark all read
-        </button>
+        <div class="notifications-header-actions">
+          <a class="notifications-reminders-link" href="/reminders">
+            Reminders
+          </a>
+          <button
+            type="button"
+            class="notification-mark-all"
+            disabled={unread === 0 || markAll.isPending}
+            onClick={() => markAll.mutate()}
+          >
+            Mark all read
+          </button>
+        </div>
       </div>
       {isLoading ? (
         <p class="notification-empty">Loading…</p>

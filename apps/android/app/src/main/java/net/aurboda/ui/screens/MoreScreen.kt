@@ -55,7 +55,13 @@ private val NOTIFICATIONS_DESTINATION = MoreDestination.Web("/notifications")
  * sync with the web navigation (see apps/web/src/components/nav-links.ts).
  */
 val moreGroups: List<MoreGroup> = listOf(
-    MoreGroup("Inbox", listOf(MoreItem("Notifications", NOTIFICATIONS_DESTINATION))),
+    MoreGroup(
+        "Inbox",
+        listOf(
+            MoreItem("Notifications", NOTIFICATIONS_DESTINATION),
+            MoreItem("Reminders", MoreDestination.Web("/reminders")),
+        ),
+    ),
     MoreGroup(
         "Explore",
         listOf(

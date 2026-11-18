@@ -236,6 +236,8 @@ import {
   relayRecipients,
   retryErroredRelays,
 } from './services/relays.ts'
+import { createReminderScheduler } from './services/reminder-scheduler.ts'
+import { raiseDueReminders, reminderDeps } from './services/reminders.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -1129,6 +1131,19 @@ const main = async () => {
     } catch (error) {
       console.error('Failed to initialize sync scheduler:', error)
     }
+  }
+
+  if (boss) {
+    try {
+      await createReminderScheduler(boss, {
+        listUsers: () => listUserNames(userDb),
+        raiseDue: (user) => raiseDueReminders(reminderDeps, user),
+      })
+    } catch (error) {
+      console.error('Failed to initialize reminder scheduler:', error)
+    }
+  } else {
+    console.warn('⚠️ Reminders disabled (no job queue)')
   }
 
   // Challenge completion: a scheduled sweep over every user's hosted challenges

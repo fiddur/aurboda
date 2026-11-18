@@ -19,6 +19,7 @@ export const notificationTypes = [
   'feed_post',
   'autoshare_pending',
   'garmin_key_expiring',
+  'reminder',
 ] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
@@ -32,7 +33,7 @@ export const notificationTypeSchema = z.enum(notificationTypes).meta({
 export const isNotificationType = (value: string): value is NotificationType =>
   (notificationTypes as readonly string[]).includes(value)
 
-export const notificationGroups = ['feed', 'data_sources', 'admin'] as const
+export const notificationGroups = ['feed', 'data_sources', 'reminders', 'admin'] as const
 
 export type NotificationGroup = (typeof notificationGroups)[number]
 
@@ -40,6 +41,7 @@ export const notificationGroupLabels: Record<NotificationGroup, string> = {
   admin: 'Admin',
   data_sources: 'Data sources',
   feed: 'Feed',
+  reminders: 'Reminders',
 }
 
 export interface NotificationTypeInfo {
@@ -118,6 +120,12 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
     description: 'Your Garmin Personal API key is about to expire, has expired, or was refused by Garmin',
     group: 'data_sources',
     label: 'Garmin key renewal',
+  },
+  reminder: {
+    admin_only: false,
+    description: 'A reminder you set up yourself is due',
+    group: 'reminders',
+    label: 'Reminders',
   },
 }
 
@@ -239,7 +247,7 @@ export const notificationTypeSettingSchema = z
     description: z.string().meta({ description: 'What raises this type' }),
     group: z.string().meta({
       description:
-        'The group the type is shown under in settings (`feed`, `data_sources`, `admin`). Plain text, like `type`, so a client never fails to decode a group added after it was built.',
+        'The group the type is shown under in settings (`feed`, `data_sources`, `reminders`, `admin`). Plain text, like `type`, so a client never fails to decode a group added after it was built.',
       example: 'feed',
     }),
     group_label: z.string().meta({ description: 'Human-readable name of the group', example: 'Feed' }),

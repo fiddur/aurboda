@@ -208,6 +208,17 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 | `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
 | `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
 
+### Reminder tools
+
+Recurring reminders delivered as `reminder` notifications. See [Reminders](features/reminders.md).
+
+| Tool              | What it does                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `list_reminders`  | The reminders with `next_due_at`, the earliest of those and the time zone, like `GET /reminders` |
+| `add_reminder`    | Create one: `title`, `time_of_day` (HH:MM, five-minute steps), `weekdays` (default every day), … |
+| `update_reminder` | Change a reminder by `id`; only the given fields; `body` and `link` take null to clear           |
+| `delete_reminder` | Delete a reminder by `id`                                                                        |
+
 ### Auto-share tools
 
 The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).
