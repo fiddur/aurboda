@@ -196,7 +196,8 @@ export interface CentralDb
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
     UserUsageApi {
-  initializeCentralDb: () => Promise<void>
+  /** Creates the tables; resolves true when this call seeded `signup_mode`, i.e. on a fresh install. */
+  initializeCentralDb: (initialSignupMode?: SignupMode) => Promise<boolean>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
   setServerSetting: <K extends keyof ServerSettings>(key: K, value: ServerSettings[K]) => Promise<void>
   getAuditLogRetentionDays: () => Promise<number>
@@ -508,7 +509,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows[0].username
     },
 
-    initializeCentralDb: async () => {
+    initializeCentralDb: async (initialSignupMode = 'open') => {
       const client = await getClient()
       await client.query(CREATE_SERVER_SETTINGS_TABLE)
       await client.query(CREATE_ADMINS_TABLE)
@@ -576,11 +577,14 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       await client.query(CREATE_SHARED_NUTRIENT_RECOMMENDATIONS_TABLE)
       await deps.withTransaction((tx) => seedSharedNutrientRecommendations(tx))
 
-      await client.query(
+      const seeded = await client.query(
         `INSERT INTO server_settings (key, value)
-         VALUES ('signup_mode', '"open"')
-         ON CONFLICT (key) DO NOTHING`,
+         VALUES ('signup_mode', $1)
+         ON CONFLICT (key) DO NOTHING
+         RETURNING key`,
+        [JSON.stringify(initialSignupMode)],
       )
+      return (seeded.rowCount ?? 0) > 0
     },
 
     ...createAccountEmailTokensApi(getClient, deps.withTransaction),
@@ -953,22 +957,23 @@ export const getCentralDb = (): CentralDb => {
 }
 
 /**
+ * `ALLOW_SIGNUP` set to anything but `true` starts a fresh install closed. It is never applied
+ * again: re-applying it on every start closed signups an admin had opened, at each deploy.
+ */
+export const signupModeFromEnv = (allowSignup: string | undefined): SignupMode =>
+  allowSignup === undefined || allowSignup === 'true' ? 'open' : 'closed'
+
+/**
  * Should be called once at server startup.
  */
 export const initializeCentralDb = async (): Promise<void> => {
   const db = getCentralDb()
-  await db.initializeCentralDb()
-
-  // Check for ALLOW_SIGNUP env for backwards compatibility
   const allowSignupEnv = process.env.ALLOW_SIGNUP
-  if (allowSignupEnv !== undefined) {
-    const currentMode = await db.getSignupMode()
-    if (currentMode === 'open') {
-      const newMode: SignupMode = allowSignupEnv === 'true' ? 'open' : 'closed'
-      await db.setSignupMode(newMode)
-      console.info(`Migrated ALLOW_SIGNUP=${allowSignupEnv} to signup_mode=${newMode}`)
-      console.info('DEPRECATION: ALLOW_SIGNUP env is deprecated. Use admin settings to control signup mode.')
-    }
+  const seeded = await db.initializeCentralDb(signupModeFromEnv(allowSignupEnv))
+  if (allowSignupEnv !== undefined && !seeded) {
+    console.info(
+      'ALLOW_SIGNUP only sets the signup mode of a fresh install; the admin settings decide it now.',
+    )
   }
 
   console.info('Central database initialized')
