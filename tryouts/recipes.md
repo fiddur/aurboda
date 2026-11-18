@@ -419,6 +419,61 @@ fix) against a with-attribution control (ingests).
   shown. For the comment tally, seed a boost card whose `in_reply_to_uri` is one of your own
   posts: 3 rows point at the post while `reply_count` and `/api/feed/:id/replies` both say 2.
 
+### Followed tags and tag-actor boosts, with no tags.pub (#1757, #1766)
+
+`POST /api/feed/followed-tags` needs to resolve the tag actor on tags.pub, which the rig cannot
+reach (`⚠️ Tag follows: could not resolve the tag actor of #…`). Seed the follow and drive the
+inbox in-container instead, with the image's own `src/test/inbox-context.ts`:
+
+```ts
+// src/_feedprobe.ts — ORIGIN must be WEB_HOST (http://localhost:8080) so own-post URIs resolve
+import { Announce } from '@fedify/fedify/vocab'
+import { markFeedFollowingAccepted, upsertFeedFollowing } from './db/feed-following.ts'
+import { createFeedFederation, handleInboundAnnounce } from './services/activitypub/federation.ts'
+import { actorDocument, inboxContext } from './test/inbox-context.ts'
+const TAG = 'https://tags.pub/user/running'
+await upsertFeedFollowing(USER, { actor_uri: TAG, inbox_uri: `${TAG}/inbox`, tag: 'running' })
+await markFeedFollowingAccepted(USER, TAG)
+const ctx = inboxContext(createFeedFederation(ORIGIN, `${ORIGIN}/api`), ORIGIN, USER, {
+  [TAG]: actorDocument(TAG, 'running', '#running'),
+  [CAROL]: actorDocument(CAROL, 'carol', 'Carol'),
+  [NOTE]: {
+    '@context': 'https://www.w3.org/ns/activitystreams',
+    type: 'Note',
+    id: NOTE,
+    attributedTo: CAROL,
+    content: '<p>…</p>',
+    published: '…Z',
+  },
+})
+await handleInboundAnnounce(
+  ctx,
+  new Announce({ actor: new URL(TAG), id: new URL(`${TAG}/announces/1`), object: new URL(NOTE) }),
+  ORIGIN,
+)
+```
+
+Oracles:
+
+- A post via a followed tag (bell on): `GET /api/notifications` has one `feed_post` titled
+  `Carol posted in #running`, link `/feed?tag=running`. Redelivery, and the same Note announced by
+  a second followed tag, add none.
+- With `PATCH /api/feed/followed-tags/running {"notify_on_post":false}` a new post via that tag
+  gets a timeline entry but no notification. Unknown tag → 404 `Not following that tag`; a
+  non-boolean → zod 400. MCP twin: `set_followed_tag_notify`.
+- The same Announce with `object` = an own post (`${ORIGIN}/users/<user>/feed/<id>`) is a tag
+  account boosting your post. A `feed_post_reaction` row is stored, but `boost_count` on
+  `GET /api/feed`, `GET /api/feed/<id>/reactions` and MCP `list_feed_post_reactions` (arg `id`,
+  not `post_id`) all leave it out, and it raises no notification. Use a
+  `https://mastodon.example/users/alice` Announce as the control: it counts and raises
+  `Alice boosted your post`.
+- Web: on `/feed`, tab **People & sharing**, each Followed-tags `.following-row` has a
+  `.following-notify` button (🔔 `aria-pressed="true"` / 🔕 `"false"`).
+
+The probe imports nothing newer than the release of 2026-11-16, so it also seeds the old image of
+an upgrade leg. On an image from before #1757 the tags.pub boost counts (`boost_count: 2`,
+`#running boosted your post`); after the upgrade it is filtered on read.
+
 ### Inbound Update{Person}: the stale-seed inversion (#1110)
 
 Never fight a fixture host's caching to change a served document. Seed the DB rows **stale**
@@ -1471,6 +1526,11 @@ the running pick ending soonest, Advance at once for an unknown URL, Suggest(fal
   stdout** (O_TRUNC on the file). Use `-w ' HTTP %{http_code}'` without `-o` (#1265).
 - **`GET /api/activities` and `GET /api/notes` need full ISO datetimes.** A date-only `start`
   answers 400 "Invalid ISO datetime".
+- **Anonymous pages need their own browser context.** `signedInPage` seeds `localStorage.auth`,
+  and a second `browser.newPage()` in the same browser shares that origin's storage. So an
+  "anonymous" `/login` or `/u/<user>` page is in fact signed in, and `/login` redirects away
+  (`No element found for selector: #user`). Use `(await browser.createBrowserContext()).newPage()`
+  for anything that has to be logged out (#1768).
 - **Typing into a textarea and clicking the submit button immediately drops the last character**
   (a Preact render race, not a bug). Type with `{delay: 40}` and sleep before clicking.
 - **Re-`evaluateHandle` a button immediately before clicking**: re-renders detach handles taken

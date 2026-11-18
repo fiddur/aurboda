@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
 import {
+  completeOAuth,
   disconnectOura,
   fetchOuraSyncStatus,
   fetchUserSettings,
@@ -11,10 +12,12 @@ import {
   syncOura,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { callbackErrorText, useOAuthCompletion } from './oauthReturn'
 import {
   type DataTypeItem,
   DataTypesList,
-  LoginRequired,
+  LoginRequiredToFinish,
+  OAuthFinishLines,
   StatusBanner,
   SyncIntervalField,
   SyncStatusBar,
@@ -31,6 +34,8 @@ const DATA_TYPES: DataTypeItem[] = [
   { label: 'Meditation / breathing sessions' },
   { label: 'Oura tags (mood, symptoms, etc.)' },
 ]
+
+const completeOura = (code: string, state: string) => completeOAuth('oura', code, state)
 
 const DISCONNECT_CONFIRMATION =
   'Disconnect Oura Ring? Aurboda forgets the authorization and stops syncing; you will need to connect again to resume. Data already synced is kept.'
@@ -50,6 +55,20 @@ function OuraConnection({
   const [ouraSyncStatus, setOuraSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [ouraSyncMessage, setOuraSyncMessage] = useState<string>('')
   const [disconnecting, setDisconnecting] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(() => callbackErrorText('Oura'))
+
+  const refreshConnection = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await queryClient.invalidateQueries({ queryKey: ['ouraSyncStatus'] })
+  }, [queryClient])
+
+  const finishing = useOAuthCompletion({
+    complete: completeOura,
+    onChanged: refreshConnection,
+    provider: 'oura',
+    providerName: 'Oura',
+    setError: setConnectError,
+  })
 
   const handleConnectOura = useCallback(async () => {
     try {
@@ -152,6 +171,7 @@ function OuraConnection({
             </p>
           </>
         )}
+        <OAuthFinishLines error={connectError} finishing={finishing} providerName="Oura" />
       </section>
       <SyncIntervalField provider="oura" />
     </>
@@ -175,7 +195,7 @@ export function OuraSource() {
     queryKey: ['ouraSyncStatus'],
   })
 
-  if (!isLoggedIn) return <LoginRequired />
+  if (!isLoggedIn) return <LoginRequiredToFinish provider="oura" providerName="Oura" />
 
   return (
     <div class="data-sources-page">

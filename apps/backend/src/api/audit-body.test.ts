@@ -30,10 +30,29 @@ describe('summarizeAuditBody', () => {
     expect(summarizeAuditBody({ api_key: 'k'.repeat(5000) })?.api_key).toBe('[REDACTED]')
   })
 
-  test('redacts the code and state of an OAuth sign-in', () => {
-    expect(summarizeAuditBody({ code: 'fake-code', state: 'fake-state' })).toEqual({
+  test.each([
+    '/auth/garmin/oauth/complete',
+    '/auth/oura/complete',
+    '/auth/strava/complete',
+    '/auth/gravl/complete',
+  ])('redacts the code and state of an OAuth sign-in finished at %s', (path) => {
+    expect(summarizeAuditBody({ code: 'fake-code', state: 'fake-state' }, path)).toEqual({
       code: '[REDACTED]',
       state: '[REDACTED]',
+    })
+  })
+
+  test('keeps a code and state on any other route, and without a path', () => {
+    const body = { code: 'SE', state: 'open' }
+    expect(summarizeAuditBody(body, '/locations')).toEqual(body)
+    expect(summarizeAuditBody(body, '/auth/oura/disconnect')).toEqual(body)
+    expect(summarizeAuditBody(body)).toEqual(body)
+  })
+
+  test('still redacts the other secret keys on a completion route', () => {
+    expect(summarizeAuditBody({ code: 'fake-code', password: 'pw' }, '/auth/oura/complete')).toEqual({
+      code: '[REDACTED]',
+      password: '[REDACTED]',
     })
   })
 

@@ -1,63 +1,13 @@
 import type { GarminOAuthStatus } from '@aurboda/api-spec'
 
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useState } from 'preact/hooks'
 
-import { completeGarminOAuth, disconnectGarminOAuth, getGarminOAuthConnectUrl } from '../../state/api'
-import {
-  garminLastReceivedText,
-  garminOAuthReturn,
-  garminPermissionLabel,
-  oauthErrorText,
-  withoutGarminOAuthReturn,
-} from './garminConnection'
+import { completeOAuth, disconnectGarminOAuth, getGarminOAuthConnectUrl } from '../../state/api'
+import { garminLastReceivedText, garminPermissionLabel } from './garminConnection'
+import { callbackErrorText, useOAuthCompletion } from './oauthReturn'
+import { OAuthFinishLines } from './shared'
 
-const callbackErrorCode = (): string | null =>
-  typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('error')
-
-/** Finishes a Connect with Garmin sign-in the callback handed to this page, once. */
-function useGarminOAuthCompletion(
-  onChanged: () => Promise<void>,
-  setError: (error: string | null) => void,
-): boolean {
-  const [finishing, setFinishing] = useState(false)
-  const finishStarted = useRef(false)
-
-  useEffect(() => {
-    if (finishStarted.current) return
-    const handedOver = garminOAuthReturn(window.location.search)
-    if (!handedOver) return
-    finishStarted.current = true
-    setFinishing(true)
-    setError(null)
-    // A code works once: drop it from the address before anything can fail, so a reload does not replay it.
-    const { hash, pathname, search } = window.location
-    window.history.replaceState(
-      window.history.state,
-      '',
-      `${pathname}${withoutGarminOAuthReturn(search)}${hash}`,
-    )
-    void (async () => {
-      try {
-        const answer = await completeGarminOAuth(handedOver.code, handedOver.state)
-        if (answer.success) await onChanged()
-        else setError(answer.error ?? oauthErrorText('auth_failed'))
-      } catch (err) {
-        setError(err instanceof Error ? err.message : oauthErrorText('auth_failed'))
-      } finally {
-        setFinishing(false)
-      }
-    })()
-  }, [onChanged])
-
-  return finishing
-}
-
-const StatusLines = ({ error, finishing }: { error: string | null; finishing: boolean }) => (
-  <>
-    {finishing && <p class="field-description">Finishing the Garmin connection…</p>}
-    {error && <p class="garmin-login-error">{error}</p>}
-  </>
-)
+const completeGarmin = (code: string, state: string) => completeOAuth('garmin', code, state)
 
 const NotConnectedText = ({ hasLogin }: { hasLogin: boolean }) => (
   <>
@@ -101,10 +51,16 @@ export function GarminOAuth({
   onChanged: () => Promise<void>
   hasLogin?: boolean
 }) {
-  const [error, setError] = useState<string | null>(() => oauthErrorText(callbackErrorCode()))
+  const [error, setError] = useState<string | null>(() => callbackErrorText('Garmin'))
   const [connecting, setConnecting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
-  const finishing = useGarminOAuthCompletion(onChanged, setError)
+  const finishing = useOAuthCompletion({
+    complete: completeGarmin,
+    onChanged,
+    provider: 'garmin',
+    providerName: 'Garmin',
+    setError,
+  })
 
   const handleConnect = useCallback(async () => {
     setConnecting(true)
@@ -135,7 +91,7 @@ export function GarminOAuth({
     return (
       <section class="settings-section">
         <h2>Connect with Garmin</h2>
-        <StatusLines error={error} finishing={finishing} />
+        <OAuthFinishLines error={error} finishing={finishing} providerName="Garmin" />
       </section>
     )
   }
@@ -187,7 +143,7 @@ export function GarminOAuth({
           <NotConnectedText hasLogin={hasLogin} />
         </>
       )}
-      <StatusLines error={error} finishing={finishing} />
+      <OAuthFinishLines error={error} finishing={finishing} providerName="Garmin" />
     </section>
   )
 }

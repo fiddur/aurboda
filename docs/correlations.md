@@ -318,7 +318,10 @@ API:
   `contains` (default: every name containing `activity`, case-insensitive) or
   `exact` (the grouping key the context table uses). For `activity_type` and
   `tag`, an activity also matches when any ancestor of its type matches the same
-  rule, so the parent counts as many occurrences as its table row. `timeline` is an ordered
+  rule, so the parent counts as many occurrences as its table row. With
+  `contains` the rule is applied to each ancestor's name as well: `run` selects
+  every subtype of any type whose name contains `run`, whatever the subtype is
+  called (`intervals` under `running`). `timeline` is an ordered
   array of buckets, `{ phase, start_offset_minutes, end_offset_minutes, hrv, hr,
 stress }`: the before buckets oldest first, then `during`, then the after
   buckets. Offsets of before buckets are relative to the session start

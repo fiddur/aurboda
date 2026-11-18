@@ -18,7 +18,10 @@ import type {
 } from './types.ts'
 
 import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import { auditWarn } from '../../services/audit-log.ts'
+import { handOverOAuthCallback, type OAuthCompletion } from '../../services/oauth-completion.ts'
 import { signOAuthState, verifyOAuthState } from '../../services/signed-oauth-state.ts'
+import { redactSecret } from '../garmin/client.ts'
 import { parseRateLimitHeaders } from './types.ts'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
@@ -29,6 +32,8 @@ const STRAVA_SCOPES = 'activity:read_all,profile:read_all,read'
 
 export interface StravaClientOptions {
   onUserAuthenticated?: (stravaAthleteId: number, username: string) => Promise<void>
+  now?: () => Date
+  auditWarn?: typeof auditWarn
 }
 
 export type StravaCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
@@ -44,6 +49,16 @@ export const stravaClient = (
   options?: StravaClientOptions,
 ) => {
   const redirectUri = `${apiBaseUrl}/auth/stravacb`
+  const now = options?.now ?? (() => new Date())
+  const audit = options?.auditWarn ?? auditWarn
+
+  const readCredentials = async () => {
+    try {
+      return await getCredentials()
+    } catch {
+      return null
+    }
+  }
 
   const apiGet = async <T>(path: string, token: string): Promise<StravaApiResponse<T>> => {
     const response: AxiosResponse<T> = await axios.get(`${STRAVA_API_BASE}${path}`, {
@@ -85,24 +100,32 @@ export const stravaClient = (
   }
 
   return {
+    /**
+     * Strava's redirect carries no Aurboda login, so it only hands the code and state to the
+     * signed-in page, which finishes through `complete`.
+     */
     async authCb(req: Request, res: Response) {
-      const { code, state, error } = req.query as Record<string, string | undefined>
+      const target = await handOverOAuthCallback(req.query, 'strava', async (state) => {
+        const credentials = await readCredentials()
+        if (!credentials) return 'not_configured'
+        return verifyOAuthState(state, { provider: 'strava' }, credentials.clientSecret, now())
+          ? null
+          : 'invalid_state'
+      })
+      return res.redirect(target)
+    },
 
-      if (error || !state) {
-        return res.redirect('/data-sources/strava?error=auth_failed')
-      }
+    /** Links the Strava athlete to `user`, who must be the user that started the sign-in. */
+    async complete(user: string, code: string, state: string): Promise<OAuthCompletion> {
+      const credentials = await readCredentials()
+      if (!credentials) return { ok: false, reason: 'not_configured' }
+      const { clientId, clientSecret } = credentials
 
-      let clientId: string
-      let clientSecret: string
-      try {
-        ;({ clientId, clientSecret } = await getCredentials())
-      } catch {
-        return res.redirect('/data-sources/strava?error=not_configured')
-      }
-
-      const user = verifyOAuthState(state, { provider: 'strava' }, clientSecret, new Date())
-      if (!user) {
-        return res.redirect('/data-sources/strava?error=invalid_state')
+      const stateUser = verifyOAuthState(state, { provider: 'strava' }, clientSecret, now())
+      if (!stateUser) return { ok: false, reason: 'invalid_state' }
+      if (stateUser !== user) {
+        await audit(user, 'auth', 'Strava sign-in started by another account was refused')
+        return { ok: false, reason: 'wrong_user' }
       }
 
       if (!(await schemaInitialized(user))) {
@@ -131,9 +154,13 @@ export const stravaClient = (
           await options.onUserAuthenticated(athlete.id, user)
         }
 
-        return res.redirect('/data-sources/strava?connected=true')
-      } catch {
-        return res.redirect('/data-sources/strava?error=auth_failed')
+        return { ok: true }
+      } catch (failure) {
+        const message = failure instanceof Error ? failure.message : String(failure)
+        await audit(user, 'auth', 'Strava OAuth connection failed', {
+          error: [clientSecret, code].reduce((acc, secret) => redactSecret(acc, secret), message),
+        })
+        return { ok: false, reason: 'auth_failed' }
       }
     },
 
@@ -184,7 +211,7 @@ export const stravaClient = (
         return
       }
 
-      const state = signOAuthState({ provider: 'strava', user }, clientSecret, new Date())
+      const state = signOAuthState({ provider: 'strava', user }, clientSecret, now())
 
       const location = new URL(STRAVA_AUTH_URL)
       location.searchParams.append('client_id', clientId)

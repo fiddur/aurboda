@@ -130,16 +130,25 @@ describe('ouraClient.getTags', () => {
 describe('ouraClient OAuth state', () => {
   const now = new Date('2026-11-17T12:00:00Z')
   const onUserAuthenticated = vi.fn()
+  const auditWarn = vi.fn()
   const authClient = ouraClient(
     async () => ({ clientId: 'client-id', clientSecret: 'client-secret' }),
     'https://example.com/api',
-    { now: () => now, onUserAuthenticated },
+    { auditWarn, now: () => now, onUserAuthenticated },
+  )
+  const unconfigured = ouraClient(
+    async () => {
+      throw new Error('Oura not configured')
+    },
+    'https://example.com/api',
+    { auditWarn, now: () => now, onUserAuthenticated },
   )
 
   const fakeRes = () => {
     const res = {
       end: vi.fn(),
       json: vi.fn(),
+      redirect: vi.fn(),
       status: vi.fn(),
       statusCode: 200,
     }
@@ -148,16 +157,19 @@ describe('ouraClient OAuth state', () => {
     return res
   }
 
-  const callback = async (query: Record<string, string>) => {
+  const callback = async (query: Record<string, unknown>, target = authClient) => {
     const res = fakeRes()
-    await authClient.authCb({ query } as unknown as Request, res as unknown as Response)
-    return res
+    await target.authCb({ query } as unknown as Request, res as unknown as Response)
+    return res.redirect.mock.calls[0]?.[0] as string
   }
+
+  const stateFor = (user: string, at = now) => signOAuthState({ provider: 'oura', user }, 'client-secret', at)
 
   const expectNothingTouched = () => {
     expect(schemaInitialized).not.toHaveBeenCalled()
     expect(initializeSchema).not.toHaveBeenCalled()
     expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(mockedAxios.get).not.toHaveBeenCalled()
     expect(upsertOAuthToken).not.toHaveBeenCalled()
     expect(onUserAuthenticated).not.toHaveBeenCalled()
   }
@@ -165,7 +177,7 @@ describe('ouraClient OAuth state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockedAxios.post = vi.fn().mockResolvedValue({
-      data: { access_token: 'access', expires_in: 3600, refresh_token: 'refresh' },
+      data: { access_token: 'access', expires_in: 3600, refresh_token: 'refresh', scope: 'daily heartrate' },
     })
     mockedAxios.get = vi.fn().mockResolvedValue({ data: { id: 'oura-user-1' } })
   })
@@ -186,54 +198,110 @@ describe('ouraClient OAuth state', () => {
     expect(res.status).toHaveBeenCalledWith(401)
   })
 
+  test('authCb hands the code and state to the page, with no token request and no write', async () => {
+    const state = stateFor('alice')
+    const target = new URL(await callback({ code: 'the-code', state }), 'https://web.example.test')
+
+    expect(target.pathname).toBe('/data-sources/oura')
+    expect(target.searchParams.get('oura_code')).toBe('the-code')
+    expect(target.searchParams.get('oura_state')).toBe(state)
+    expectNothingTouched()
+  })
+
   test.each([
     ['a bare username', 'alice'],
     ['another secret', signOAuthState({ provider: 'oura', user: 'alice' }, 'other-secret', now)],
-    [
-      'an expired state',
-      signOAuthState(
-        { provider: 'oura', user: 'alice' },
-        'client-secret',
-        new Date(now.getTime() - SIGNED_STATE_MAX_AGE_MS - 1),
-      ),
-    ],
+    ['an expired state', stateFor('alice', new Date(now.getTime() - SIGNED_STATE_MAX_AGE_MS - 1))],
     ['a Strava state', signOAuthState({ provider: 'strava', user: 'alice' }, 'client-secret', now)],
   ])('authCb rejects %s as invalid_state and touches nothing', async (_, state) => {
-    const res = await callback({ code: 'the-code', state })
-
-    expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_state', success: false })
+    expect(await callback({ code: 'the-code', state })).toBe('/data-sources/oura?error=invalid_state')
     expectNothingTouched()
   })
 
   test.each([
-    ['code', { state: signOAuthState({ provider: 'oura', user: 'alice' }, 'client-secret', now) }],
-    ['state', { code: 'the-code' }],
-  ])('authCb rejects a missing %s as invalid_request and touches nothing', async (_, query) => {
-    const res = await callback(query)
-
-    expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith({ error: 'invalid_request', success: false })
+    ['a missing code', { state: stateFor('alice') }],
+    ['a missing state', { code: 'the-code' }],
+    ['a repeated code', { code: ['the-code', 'other'], state: stateFor('alice') }],
+    ['a repeated state', { code: 'the-code', state: [stateFor('alice'), stateFor('alice')] }],
+    ['an error parameter', { error: 'access_denied' }],
+  ])('authCb rejects %s as auth_failed and touches nothing', async (_, query) => {
+    expect(await callback(query)).toBe('/data-sources/oura?error=auth_failed')
     expectNothingTouched()
   })
 
-  test('authCb with a valid state stores the token and the Oura user mapping for the signed user', async () => {
-    vi.mocked(schemaInitialized).mockResolvedValue(false)
-    const state = signOAuthState({ provider: 'oura', user: 'alice' }, 'client-secret', now)
+  test('authCb answers not_configured without server credentials', async () => {
+    expect(await callback({ code: 'the-code', state: stateFor('alice') }, unconfigured)).toBe(
+      '/data-sources/oura?error=not_configured',
+    )
+  })
 
-    const res = await callback({ code: 'the-code', state })
+  test('complete refuses a sign-in started by another account before any request', async () => {
+    expect(await authClient.complete('alice', 'the-code', stateFor('bob'))).toEqual({
+      ok: false,
+      reason: 'wrong_user',
+    })
+    expectNothingTouched()
+    expect(auditWarn.mock.calls).toEqual([
+      ['alice', 'auth', 'Oura sign-in started by another account was refused'],
+    ])
+  })
+
+  test('complete answers invalid_state for an expired or tampered state', async () => {
+    const expired = stateFor('alice', new Date(now.getTime() - SIGNED_STATE_MAX_AGE_MS - 1))
+    expect(await authClient.complete('alice', 'the-code', expired)).toEqual({
+      ok: false,
+      reason: 'invalid_state',
+    })
+    expect(await authClient.complete('alice', 'the-code', `${stateFor('alice')}x`)).toEqual({
+      ok: false,
+      reason: 'invalid_state',
+    })
+    expectNothingTouched()
+  })
+
+  test('complete answers not_configured without server credentials', async () => {
+    expect(await unconfigured.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'not_configured',
+    })
+    expectNothingTouched()
+  })
+
+  test('complete stores the token and the Oura user mapping for the signed-in user', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(false)
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({ ok: true })
 
     expect(initializeSchema).toHaveBeenCalledWith('alice')
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
     const tokenUrl = new URL(vi.mocked(mockedAxios.post).mock.calls[0][0] as string)
     expect(tokenUrl.origin + tokenUrl.pathname).toBe('https://cloud.ouraring.com/oauth/token')
     expect(tokenUrl.searchParams.get('code')).toBe('the-code')
-    expect(upsertOAuthToken).toHaveBeenCalledWith(
-      'alice',
-      expect.objectContaining({ access_token: 'access', provider: 'oura', refresh_token: 'refresh' }),
-    )
+    expect(tokenUrl.searchParams.get('redirect_uri')).toBe('https://example.com/api/auth/ouracb')
+    expect(upsertOAuthToken).toHaveBeenCalledWith('alice', {
+      access_token: 'access',
+      expires_at: new Date('2026-11-17T13:00:00Z'),
+      provider: 'oura',
+      refresh_token: 'refresh',
+      scopes: ['daily', 'heartrate'],
+    })
     expect(onUserAuthenticated).toHaveBeenCalledWith('oura-user-1', 'alice')
-    expect(res.status).not.toHaveBeenCalled()
-    expect(res.end).toHaveBeenCalled()
+  })
+
+  test('complete answers auth_failed when the exchange fails, storing nothing and auditing no secret', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockRejectedValue(new Error('400 for the-code with client-secret'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+    expect(auditWarn).toHaveBeenCalledWith('alice', 'auth', 'Oura OAuth connection failed', expect.anything())
+    const audited = JSON.stringify(auditWarn.mock.calls)
+    expect(audited).not.toContain('the-code')
+    expect(audited).not.toContain('client-secret')
   })
 })

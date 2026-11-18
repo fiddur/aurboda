@@ -39,7 +39,7 @@ export const createAuditLogMiddleware =
       })()
 
       if (user) {
-        const sanitizedBody = summarizeAuditBody(req.body)
+        const sanitizedBody = summarizeAuditBody(req.body, req.path)
 
         // Capture response body for error logging by intercepting res.json()
         let responseBody: unknown

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
+import { type OAuthProvider, oauthReturn } from './oauthReturn'
 
 export { type SaveStatus, SaveStatusIndicator }
 
@@ -48,6 +49,44 @@ export function LoginRequired() {
   return (
     <div class="data-sources-page">
       <p>Please log in to view data source settings.</p>
+    </div>
+  )
+}
+
+export function OAuthFinishLines({
+  error,
+  finishing,
+  providerName,
+}: {
+  error: string | null
+  finishing: boolean
+  providerName: string
+}) {
+  return (
+    <>
+      {finishing && <p class="field-description">Finishing the {providerName} connection…</p>}
+      {error && <p class="garmin-login-error">{error}</p>}
+    </>
+  )
+}
+
+/** For a browser without a login: a sign-in handed back to the page is finished after logging in, on this page. */
+export function LoginRequiredToFinish({
+  provider,
+  providerName,
+}: {
+  provider: OAuthProvider
+  providerName: string
+}) {
+  const { pathname, search } = window.location
+  if (!oauthReturn(search, provider)) return <LoginRequired />
+  return (
+    <div class="data-sources-page">
+      <p>
+        <a href={`/login?next=${encodeURIComponent(pathname + search)}`}>
+          Log in to finish connecting {providerName}
+        </a>
+      </p>
     </div>
   )
 }

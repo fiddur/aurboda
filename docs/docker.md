@@ -462,3 +462,8 @@ This architecture:
 - Simplifies deployment to a single container
 - API is not directly exposed, only through nginx proxy
 - Static assets benefit from nginx's caching and compression
+
+nginx sends `Referrer-Policy: same-origin` on every response, so an address never leaves the site
+in a `Referer` header. The Garmin, Oura, Strava and Gravl sign-ins hand a one-time code to the data
+source page in its address until the page removes it. A reverse proxy in front of the container
+should keep that header (or set the same policy).

@@ -213,6 +213,23 @@ describe('authCb', () => {
     expect(http.post).not.toHaveBeenCalled()
   })
 
+  it('answers auth_failed for a repeated code or state, which arrives as an array', async () => {
+    const { client, http } = makeClient()
+    const state = sealedFor('alice')
+    const repeated = async (query: Record<string, unknown>) => {
+      const redirect = vi.fn()
+      await client.authCb({ query } as unknown as Request, { redirect } as unknown as Response)
+      return redirect.mock.calls[0]?.[0] as string
+    }
+    expect(await repeated({ code: ['fake-code', 'fake-other'], state })).toBe(
+      '/data-sources/garmin?error=auth_failed',
+    )
+    expect(await repeated({ code: 'fake-code', state: [state, state] })).toBe(
+      '/data-sources/garmin?error=auth_failed',
+    )
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
   it('answers not_configured without server credentials', async () => {
     const { client } = makeClient({ configured: false })
     expect(await callback(client, { code: 'fake-code', state: sealedFor('alice') })).toBe(
