@@ -21,6 +21,7 @@ import { auth } from '../../state/auth'
 import {
   garminConnectionFlags,
   garminDataTypeNote,
+  garminDataTypeSourceNote,
   garminLoginOnlyData,
   garminOAuthReturn,
   type GarminSwitchStep,
@@ -225,15 +226,55 @@ function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => vo
   )
 }
 
+interface GarminDataTypeSources {
+  delivers: readonly GarminDataType[]
+  sessionConnected: boolean
+  keyConnected: boolean
+}
+
+function GarminDataTypeRow({
+  dt,
+  enabled,
+  note,
+  sourceNote,
+  onToggle,
+}: {
+  dt: GarminDataTypeInfo
+  enabled: boolean
+  note: string | undefined
+  sourceNote: string | undefined
+  onToggle: () => void
+}) {
+  return (
+    <label class={`garmin-data-type-row ${enabled ? '' : 'disabled'}`}>
+      <input type="checkbox" checked={enabled} onChange={onToggle} />
+      <div class="garmin-data-type-info">
+        {dt.href ? (
+          <a class="garmin-data-type-label" href={dt.href}>
+            {dt.label}
+          </a>
+        ) : (
+          <span class="garmin-data-type-label">{dt.label}</span>
+        )}
+        <span class="garmin-data-type-note">{dt.hc_note ?? 'Garmin only'}</span>
+        {note && <span class="garmin-data-type-note">{note}</span>}
+        {sourceNote && <span class="garmin-data-type-note">{sourceNote}</span>}
+      </div>
+    </label>
+  )
+}
+
 function GarminDataTypeToggles({
   disabledTypes,
   keyOnly,
   pushOnly,
+  sources,
   onToggle,
 }: {
   disabledTypes: GarminDataType[]
   keyOnly: boolean
   pushOnly: boolean
+  sources: GarminDataTypeSources
   onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
 }) {
   // Optimistic local state — updates immediately on click
@@ -269,30 +310,20 @@ function GarminDataTypeToggles({
     <div class="data-types-section">
       <h2>Data types</h2>
       <p class="field-description">
-        Toggle which data types to sync from Garmin. Disable types that are already synced via Health Connect
-        to avoid duplicates.
+        Toggle which data types Aurboda takes from Garmin, whichever connection brings them. Disable types
+        that are already synced via Health Connect to avoid duplicates.
       </p>
       <div class="garmin-data-types-grid">
-        {GARMIN_DATA_TYPES.map((dt) => {
-          const enabled = !disabledSet.has(dt.type)
-          const note = garminDataTypeNote(dt, { keyOnly, pushOnly })
-          return (
-            <label key={dt.type} class={`garmin-data-type-row ${enabled ? '' : 'disabled'}`}>
-              <input type="checkbox" checked={enabled} onChange={() => handleToggle(dt.type)} />
-              <div class="garmin-data-type-info">
-                {dt.href ? (
-                  <a class="garmin-data-type-label" href={dt.href}>
-                    {dt.label}
-                  </a>
-                ) : (
-                  <span class="garmin-data-type-label">{dt.label}</span>
-                )}
-                <span class="garmin-data-type-note">{dt.hc_note ?? 'Garmin only'}</span>
-                {note && <span class="garmin-data-type-note">{note}</span>}
-              </div>
-            </label>
-          )
-        })}
+        {GARMIN_DATA_TYPES.map((dt) => (
+          <GarminDataTypeRow
+            key={dt.type}
+            dt={dt}
+            enabled={!disabledSet.has(dt.type)}
+            note={garminDataTypeNote(dt, { keyOnly, pushOnly })}
+            sourceNote={garminDataTypeSourceNote(dt.type, sources)}
+            onToggle={() => handleToggle(dt.type)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -302,12 +333,14 @@ function GarminDataTypesSection({
   isConnected,
   keyOnly,
   pushOnly,
+  sources,
   disabledTypes,
   queryClient,
 }: {
   isConnected: boolean
   keyOnly: boolean
   pushOnly: boolean
+  sources: GarminDataTypeSources
   disabledTypes: GarminDataType[]
   queryClient: ReturnType<typeof useQueryClient>
 }) {
@@ -318,6 +351,7 @@ function GarminDataTypesSection({
       disabledTypes={disabledTypes}
       keyOnly={keyOnly}
       pushOnly={pushOnly}
+      sources={sources}
       onToggle={async (types) => {
         await updateUserSettings({ garmin_disabled_data_types: types })
         await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
@@ -345,16 +379,29 @@ function GarminSwitchGuide({ step, loginOnly }: { step: GarminSwitchStep; loginO
       )}
       {step === 'ready' && (
         <p>
-          Connect with Garmin now delivers your new data. Keep the login for {joinList(loginOnly ?? [])}, or
-          disconnect it below.
+          Connect with Garmin now delivers your new data, and the login only fetches what it lacks. Keep the
+          login for {joinList(loginOnly ?? [])}, or disconnect it below.
         </p>
       )}
     </div>
   )
 }
 
+function GarminLoginDeliveredNote({ delivered }: { delivered: number }) {
+  if (delivered === 0) return null
+  return (
+    <p class="field-description">
+      Connect with Garmin delivers {delivered} of your data types, so the login no longer fetches those on its
+      schedule. It still fetches the rest (see Data types below) and strength sets. Sync Now and Full Re-sync
+      fetch everything through the login, including your history. If Garmin stops sending data for a day, the
+      login takes over again.
+    </p>
+  )
+}
+
 function GarminLoginSection({
   sessionConnected,
+  delivered,
   loginOnly,
   loginStatus,
   setLoginStatus,
@@ -363,6 +410,7 @@ function GarminLoginSection({
   handleDisconnect,
 }: {
   sessionConnected: boolean
+  delivered: number
   loginOnly: string[] | null
   loginStatus: LoginStatus
   setLoginStatus: (s: LoginStatus) => void
@@ -382,6 +430,7 @@ function GarminLoginSection({
       {sessionConnected ? (
         <div class="garmin-connected-actions">
           <p class="connected-status">Connected</p>
+          <GarminLoginDeliveredNote delivered={delivered} />
           {loginOnly && (
             <p class="field-description">
               If you disconnect the login, these stop: {joinList(loginOnly)}. Everything else keeps arriving.
@@ -491,6 +540,7 @@ function GarminConnectionSection({
 
       <GarminLoginSection
         sessionConnected={sessionConnected}
+        delivered={oauth.delivers.length}
         loginOnly={loginOnly}
         loginStatus={loginStatus}
         setLoginStatus={setLoginStatus}
@@ -656,6 +706,11 @@ export function GarminSource() {
           isConnected={isConnected}
           keyOnly={keyOnly}
           pushOnly={oauth.connected && !canPull}
+          sources={{
+            delivers: oauth.delivers,
+            keyConnected: personalKey?.connected ?? false,
+            sessionConnected,
+          }}
           disabledTypes={userSettings?.garmin_disabled_data_types ?? []}
           queryClient={queryClient}
         />

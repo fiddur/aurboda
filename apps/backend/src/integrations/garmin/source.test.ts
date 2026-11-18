@@ -231,4 +231,21 @@ describe('garminRoutedClient', () => {
     expect(await garmin.sourceFor('alice', 'activityDetail')).toBe('personal_key')
     expect(await garmin.sourceFor('alice', 'sleep')).toBe('personal_key')
   })
+
+  test('pushDelivers answers whether Connect with Garmin delivers the type for the user', async () => {
+    const getPushDelivered = vi.fn(
+      async (user: string): Promise<GarminDataType[]> => (user === 'alice' ? ['sleep', 'activities'] : []),
+    )
+    const garmin = garminRoutedClient({
+      getConnections: async () => connections({ session: true }),
+      getPushDelivered,
+      personal: fakeClient('personal') as never,
+      session: fakeClient('session') as never,
+    })
+
+    expect(await garmin.pushDelivers('alice', 'sleep')).toBe(true)
+    expect(await garmin.pushDelivers('alice', 'trainingReadiness')).toBe(false)
+    expect(await garmin.pushDelivers('bob', 'sleep')).toBe(false)
+    expect(getPushDelivered).toHaveBeenCalledWith('alice')
+  })
 })

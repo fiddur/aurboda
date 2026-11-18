@@ -40,6 +40,7 @@ export interface SyncResult {
   error?: string
   errors_by_day?: number
   retry_after?: Date
+  delivered_by_push?: boolean
 }
 
 /** Exponential backoff schedule: 1, 5, 15, 60 minutes. */
@@ -226,6 +227,64 @@ export const syncAllGarminData = async (
   return results
 }
 
+/**
+ * The automatic paths (the poll, the top-up before a query, source enrichment): a type Connect
+ * with Garmin delivers is left to the push, and its sync state is stamped so the interval holds
+ * and a later pull resumes from here.
+ */
+export const syncGarminDataTypeAutomatically = async (
+  user: string,
+  garmin: GarminClient,
+  dataType: GarminDataType,
+  options: {
+    onPull?: () => void
+    onDetailSynced?: DetailSyncedCallback
+    onTrackWritten?: TrackWrittenCallback
+    now?: Date
+  } = {},
+): Promise<SyncResult> => {
+  const now = options.now ?? new Date()
+  const delivered = await garmin.pushDelivers(user, dataType)
+  const result = delivered
+    ? await leaveToPush(user, dataType, now)
+    : await pull(user, garmin, dataType, options.onPull)
+  if (dataType === 'activities') {
+    await syncActivityDetails(user, garmin, {
+      now,
+      onDetailSynced: options.onDetailSynced,
+      onTrackWritten: options.onTrackWritten,
+      waitForPushedFile: delivered,
+    })
+  }
+  return result
+}
+
+const pull = async (
+  user: string,
+  garmin: GarminClient,
+  dataType: GarminDataType,
+  onPull?: () => void,
+): Promise<SyncResult> => {
+  onPull?.()
+  return syncGarminDataType(user, garmin, dataType)
+}
+
+/** A state a manual sync holds as `syncing` is left for that sync to finish. */
+const leaveToPush = async (user: string, dataType: GarminDataType, now: Date): Promise<SyncResult> => {
+  const state = await getSyncState(user, 'garmin', dataType)
+  if (state?.status !== 'syncing') {
+    await upsertSyncState(user, {
+      data_type: dataType,
+      error_message: undefined,
+      last_sync_time: now,
+      provider: 'garmin',
+      retry_after: undefined,
+      status: 'idle',
+    })
+  }
+  return { data_type: dataType, delivered_by_push: true, records_processed: 0, status: 'skipped' }
+}
+
 /** Told about an activity whose detail just landed for the first time. */
 export type DetailSyncedCallback = (user: string, activityId: string) => void
 
@@ -341,11 +400,14 @@ export const syncActivityDetails = async (
     now = new Date(),
     onDetailSynced,
     onTrackWritten,
+    waitForPushedFile = false,
   }: {
     fullResync?: boolean
     now?: Date
     onDetailSynced?: DetailSyncedCallback
     onTrackWritten?: TrackWrittenCallback
+    /** Leave activities under a day old to the pushed FIT file, which arrives as the full recording. */
+    waitForPushedFile?: boolean
   } = {},
 ): Promise<void> => {
   const source = await garmin.sourceFor(user, 'activityDetail')
@@ -353,10 +415,12 @@ export const syncActivityDetails = async (
   const hasSession = (await garmin.sourceFor(user, 'activitySession')) === 'session'
   if (hasSession) await syncActivitySets(user, garmin, { fullResync })
   const activities = await getActivitiesNeedingDetail(user, { forceAll: fullResync })
+  const waitsForFile = (start: Date) =>
+    waitForPushedFile && !fullResync && now.getTime() - start.getTime() < NO_FILE_GRACE_MS
 
   for (const activity of activities) {
     const garminActivityId = activity.data?.garmin_activity_id as number | undefined
-    if (!garminActivityId || !activity.id) continue
+    if (!garminActivityId || !activity.id || waitsForFile(activity.start_time)) continue
 
     // No end_time means no usable span — a start-only one would clamp the
     // precedence range to a few minutes around the start. Fall back to the

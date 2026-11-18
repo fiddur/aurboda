@@ -23,7 +23,7 @@ export const garminPushLastReceivedAt = (states: SyncState[]): string | null => 
 
 export const garminOAuthStatusFromToken = (
   token: OAuthToken | null,
-): Omit<GarminOAuthStatus, 'available' | 'last_received_at'> => {
+): Omit<GarminOAuthStatus, 'available' | 'delivers' | 'last_received_at'> => {
   if (!isGarminOAuthConnected(token)) return { connected: false, needs_reconnect: false, permissions: [] }
   return { connected: true, needs_reconnect: token.refused_at !== undefined, permissions: token.scopes ?? [] }
 }

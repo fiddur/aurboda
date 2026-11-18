@@ -7,6 +7,7 @@ import {
   connectErrorText,
   garminConnectionFlags,
   garminDataTypeNote,
+  garminDataTypeSourceNote,
   garminLastReceivedText,
   garminLoginOnlyData,
   garminOAuthReturn,
@@ -84,6 +85,7 @@ describe('garminConnectionFlags', () => {
       oauth: {
         available: false,
         connected: false,
+        delivers: [],
         last_received_at: null,
         needs_reconnect: false,
         permissions: [],
@@ -108,6 +110,7 @@ describe('garminConnectionFlags', () => {
       oauth: {
         available: false,
         connected: false,
+        delivers: [],
         last_received_at: null,
         needs_reconnect: false,
         permissions: [],
@@ -121,6 +124,7 @@ describe('garminConnectionFlags', () => {
     const oauth = {
       available: true,
       connected: true,
+      delivers: [],
       last_received_at: null,
       needs_reconnect: false,
       permissions: ['HEALTH_EXPORT'],
@@ -226,6 +230,7 @@ describe('garminSwitchStep', () => {
   const oauth = (over: Partial<GarminOAuthStatus> = {}): GarminOAuthStatus => ({
     available: true,
     connected: false,
+    delivers: [],
     last_received_at: null,
     needs_reconnect: false,
     permissions: [],
@@ -310,5 +315,31 @@ describe('joinList', () => {
     expect(joinList(['a'])).toBe('a')
     expect(joinList(['a', 'b'])).toBe('a and b')
     expect(joinList(['a', 'b', 'c'])).toBe('a, b and c')
+  })
+})
+
+describe('garminDataTypeSourceNote', () => {
+  const both = { keyConnected: true, sessionConnected: true }
+
+  it('says nothing while Connect with Garmin delivers nothing', () => {
+    expect(garminDataTypeSourceNote('sleep', { delivers: [], ...both })).toBeUndefined()
+  })
+
+  it('names Connect with Garmin for a type it delivers', () => {
+    expect(garminDataTypeSourceNote('sleep', { delivers: ['sleep'], ...both })).toBe(
+      'Delivered by Connect with Garmin',
+    )
+  })
+
+  it('names the pull connection for the rest, the login first', () => {
+    expect(garminDataTypeSourceNote('trainingReadiness', { delivers: ['sleep'], ...both })).toBe(
+      'Fetched through the Garmin login',
+    )
+    expect(
+      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: true, sessionConnected: false }),
+    ).toBe('Fetched with the Personal API key')
+    expect(
+      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: false, sessionConnected: false }),
+    ).toBeUndefined()
   })
 })

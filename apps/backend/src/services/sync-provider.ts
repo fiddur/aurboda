@@ -16,8 +16,7 @@ import {
   type GarminDataType,
   hasGarminConnection,
   isRateLimited as isGarminRateLimited,
-  syncActivityDetails,
-  syncGarminDataType,
+  syncGarminDataTypeAutomatically,
 } from '../integrations/garmin/sync.ts'
 import {
   DEFAULT_SYNC_HISTORY_DAYS as GRAVL_HISTORY_DAYS,
@@ -218,16 +217,16 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
             return
           }
 
-          auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`)
-          const result = await syncGarminDataType(user, config.garmin, dataType as GarminDataType)
-
-          // After syncing activities, also fetch per-second detail data (GPS, HR, etc.)
-          if (dataType === 'activities') {
-            await syncActivityDetails(user, config.garmin, {
+          const result = await syncGarminDataTypeAutomatically(
+            user,
+            config.garmin,
+            dataType as GarminDataType,
+            {
               onDetailSynced: config.onActivityDetailSynced,
+              onPull: () => auditInfo(user, 'sync', `Auto-syncing Garmin ${dataType}`),
               onTrackWritten: config.onTrackWritten,
-            })
-          }
+            },
+          )
 
           triggerDeductionAfterSync(user, syncState, result)
         } catch (error) {
