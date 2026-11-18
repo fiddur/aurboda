@@ -99,6 +99,29 @@ export const syncGarminBodySchema = z
 
 export type SyncGarminBody = z.infer<typeof syncGarminBodySchema>
 
+export const reprocessGarminPushesBodySchema = z
+  .object({
+    since: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Process again what Connect with Garmin pushed since this time (default 7 days ago; at most 90 days back, an earlier time is taken as 90 days ago)',
+    }),
+  })
+  .meta({
+    description:
+      'Process the stored Connect with Garmin pushes again, the same way a fresh push is processed',
+    id: 'ReprocessGarminPushesBody',
+  })
+
+export type ReprocessGarminPushesBody = z.infer<typeof reprocessGarminPushesBodySchema>
+
+export const reprocessGarminPushesResponseSchema = baseResponseSchema
+  .extend({
+    queued: z.number().int().optional().meta({ description: 'How many stored push records were queued' }),
+  })
+  .meta({ id: 'ReprocessGarminPushesResponse' })
+
+export type ReprocessGarminPushesResponse = z.infer<typeof reprocessGarminPushesResponseSchema>
+
 export const connectGarminPersonalKeyBodySchema = z
   .object({
     api_key: z.string().trim().min(1).max(4096).meta({
@@ -146,18 +169,18 @@ export const oauthConnectUrlResponseSchema = authActionResponseSchema
 
 export type OAuthConnectUrlResponse = z.infer<typeof oauthConnectUrlResponseSchema>
 
-export const completeGarminOAuthBodySchema = z
+export const completeOAuthBodySchema = z
   .object({
-    code: z.string().min(1).max(2048).meta({ description: 'The authorization code Garmin returned' }),
-    state: z.string().min(1).max(4096).meta({ description: 'The sealed state Garmin returned with it' }),
+    code: z.string().min(1).max(2048).meta({ description: 'The authorization code the provider returned' }),
+    state: z.string().min(1).max(4096).meta({ description: 'The state the provider returned with it' }),
   })
   .meta({
     description:
-      'Finish Connect with Garmin as the signed-in user, who must be the user that started the sign-in',
-    id: 'CompleteGarminOAuthBody',
+      'Finish a Garmin, Oura, Strava or Gravl sign-in as the signed-in user, who must be the user that started it',
+    id: 'CompleteOAuthBody',
   })
 
-export type CompleteGarminOAuthBody = z.infer<typeof completeGarminOAuthBodySchema>
+export type CompleteOAuthBody = z.infer<typeof completeOAuthBodySchema>
 
 export const syncRescueTimeBodySchema = z
   .object({

@@ -23,6 +23,7 @@ import {
   type TrainingLoadDeps,
 } from './index.ts'
 import { IMPULSE_VERSION } from './recompute.ts'
+import { withDirtyMark } from './state.ts'
 
 describe('calculateTrimp', () => {
   test('computes classic Banister TRIMP for a typical workout', () => {
@@ -470,23 +471,30 @@ const makeActivity = (id: string, startStr: string, endStr: string, title?: stri
   title,
 })
 
-/** Settings that the stubbed `updateTrainingLoadSettings` writes to, as the real one does. */
-const statefulSettings = (training_load: TrainingLoadSettings) => {
-  const state = { training_load: { ...training_load } }
+/** Settings that the stubbed `mutateTrainingLoadSettings` changes atomically, as the real one does. */
+const statefulSettings = (training_load: TrainingLoadSettings = {}) => {
+  const state: { training_load: TrainingLoadSettings } = { training_load: structuredClone(training_load) }
   return {
     getUserSettings: async () => ({
       birth_date: '1985-06-15',
       sex: 'male' as const,
-      training_load: { ...state.training_load },
+      training_load: structuredClone(state.training_load),
     }),
-    state,
-    updateTrainingLoadSettings: vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(
-      async (_user, update) => {
-        state.training_load = { ...state.training_load, ...update }
+    mutateTrainingLoadSettings: vi.fn<TrainingLoadDeps['mutateTrainingLoadSettings']>(
+      async (_user, mutate) => {
+        state.training_load = mutate(structuredClone(state.training_load)) ?? {}
+        return structuredClone(state.training_load)
       },
     ),
+    state,
   }
 }
+
+/** The values a settings field took over the stubbed writes. */
+const writtenValues = <K extends keyof TrainingLoadSettings>(
+  mutate: { mock: { results: { value: unknown }[] } },
+  key: K,
+) => Promise.all(mutate.mock.results.map(async (r) => ((await r.value) as TrainingLoadSettings)[key]))
 
 /** The start of each recompute run: a training delete that does not continue where the previous one ended. */
 const runStarts = (deleteImpulseBuckets: {
@@ -498,10 +506,10 @@ const runStarts = (deleteImpulseBuckets: {
     .map(([, , , start]) => start)
 }
 
-const deferred = () => {
-  let resolve!: () => void
+const deferred = <T = void>() => {
+  let resolve!: (value: T) => void
   let reject!: (error: unknown) => void
-  const promise = new Promise<void>((res, rej) => {
+  const promise = new Promise<T>((res, rej) => {
     resolve = res
     reject = rej
   })
@@ -551,11 +559,11 @@ describe('summarizeImpulseBasis', () => {
 
 describe('computeTrainingLoad', () => {
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
-    bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
-    getActivityTypeDisplayNames: async () => new Map(),
+    getActivityTypeDefinitions: async () => [],
     getEarliestExerciseStart: async () => undefined,
+    getEarliestImpulseBucket: async () => undefined,
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
@@ -566,8 +574,9 @@ describe('computeTrainingLoad', () => {
     getUserSettings: async () => ({ birth_date: '1985-06-15', sex: 'male' as const }),
     onRecomputeError: vi.fn(),
     recomputeWaitMs: 5000,
+    leaseHolder: 'process-a',
+    mutateTrainingLoadSettings: async (_user, mutate) => mutate(undefined),
     recomputing: new Map(),
-    updateTrainingLoadSettings: async () => {},
     writeImpulseBuckets: async () => {},
     ...overrides,
   })
@@ -755,14 +764,14 @@ describe('computeTrainingLoad', () => {
   test('triggers recomputation when watermark is set', async () => {
     const writeImpulseBuckets = vi.fn(async () => {})
     const deleteImpulseBuckets = vi.fn(async () => 0)
-    const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+    const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
       impulse_watermark: '2024-01-02T00:00:00Z',
     })
 
     const deps = makeDeps({
       deleteImpulseBuckets,
       getUserSettings,
-      updateTrainingLoadSettings,
+      mutateTrainingLoadSettings,
       writeImpulseBuckets,
     })
 
@@ -812,12 +821,19 @@ describe('computeTrainingLoad', () => {
       },
     ]
     const deps = makeDeps({
-      getActivityTypeDisplayNames: async () =>
-        new Map([
+      getActivityTypeDefinitions: async () =>
+        [
           ['exercise', 'Exercise'],
           ['running', 'Running'],
           ['yoga', 'Yoga'],
-        ]),
+        ].map(([name, display_name]) => ({
+          color: '#000000',
+          display_category: 'exercise' as const,
+          display_name: display_name!,
+          is_builtin: true,
+          name: name!,
+          show_on_timeline: true,
+        })),
       getExercises: async () => exercises,
     })
 
@@ -849,26 +865,28 @@ describe('computeTrainingLoad', () => {
 
     test('behind: marks everything from the first workout dirty and recomputes from there', async () => {
       const earliest = new Date('2023-05-04T07:42:00Z')
-      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({ observed_hr_max: 190 })
       const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
       const deps = makeDeps({
         deleteImpulseBuckets,
         getEarliestExerciseStart: async () => earliest,
-        getUserSettings: settingsWith({ observed_hr_max: 190 }),
-        updateTrainingLoadSettings,
+        getUserSettings,
+        mutateTrainingLoadSettings,
       })
 
       await computeTrainingLoad(deps, 'testuser', ...range)
 
-      expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
+      expect(await mutateTrainingLoadSettings.mock.results[0]!.value).toEqual({
+        impulse_dirty_rev: 1,
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: earliest.toISOString(),
+        observed_hr_max: 190,
       })
       expect(trainingDeleteStarts(deleteImpulseBuckets)[0]).toBe(floorToHour(earliest).toISOString())
     })
 
     test('behind: an existing earlier watermark is kept', async () => {
-      const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
         impulse_watermark: '2023-01-02T03:00:00.000Z',
         observed_hr_max: 190,
       })
@@ -877,12 +895,12 @@ describe('computeTrainingLoad', () => {
         deleteImpulseBuckets,
         getEarliestExerciseStart: async () => new Date('2023-05-04T07:42:00Z'),
         getUserSettings,
-        updateTrainingLoadSettings,
+        mutateTrainingLoadSettings,
       })
 
       await computeTrainingLoad(deps, 'testuser', ...range)
 
-      expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
+      expect(await mutateTrainingLoadSettings.mock.results[0]!.value).toMatchObject({
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: '2023-01-02T03:00:00.000Z',
       })
@@ -890,38 +908,49 @@ describe('computeTrainingLoad', () => {
     })
 
     test('behind without any workout: only the version is written', async () => {
-      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
+        impulse_computed_from: '2020-01-01T00:00:00.000Z',
+        observed_hr_max: 190,
+      })
       const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
       const deps = makeDeps({
         deleteImpulseBuckets,
         getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
-        getUserSettings: settingsWith({ observed_hr_max: 190 }),
-        updateTrainingLoadSettings,
+        getUserSettings,
+        mutateTrainingLoadSettings,
       })
 
       await computeTrainingLoad(deps, 'testuser', ...range)
 
-      expect(updateTrainingLoadSettings).toHaveBeenCalledTimes(1)
-      const update = updateTrainingLoadSettings.mock.calls[0]![1]
-      expect(update).toEqual({ impulse_version: IMPULSE_VERSION })
-      expect('impulse_watermark' in update).toBe(false)
+      expect(mutateTrainingLoadSettings).toHaveBeenCalledTimes(1)
+      expect(await mutateTrainingLoadSettings.mock.results[0]!.value).toEqual({
+        impulse_computed_from: '2020-01-01T00:00:00.000Z',
+        impulse_version: IMPULSE_VERSION,
+        observed_hr_max: 190,
+      })
       expect(deleteImpulseBuckets).not.toHaveBeenCalled()
     })
 
     test('current: the earliest workout is not looked up', async () => {
       const getEarliestExerciseStart = vi.fn(async () => new Date('2023-05-04T07:42:00Z'))
-      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const mutateTrainingLoadSettings = vi.fn<TrainingLoadDeps['mutateTrainingLoadSettings']>(
+        async () => undefined,
+      )
       const deps = makeDeps({
         getEarliestExerciseStart,
         getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
-        getUserSettings: settingsWith({ impulse_version: IMPULSE_VERSION, observed_hr_max: 190 }),
-        updateTrainingLoadSettings,
+        getUserSettings: settingsWith({
+          impulse_computed_from: '2020-01-01T00:00:00.000Z',
+          impulse_version: IMPULSE_VERSION,
+          observed_hr_max: 190,
+        }),
+        mutateTrainingLoadSettings,
       })
 
       await computeTrainingLoad(deps, 'testuser', ...range)
 
       expect(getEarliestExerciseStart).not.toHaveBeenCalled()
-      expect(updateTrainingLoadSettings).not.toHaveBeenCalled()
+      expect(mutateTrainingLoadSettings).not.toHaveBeenCalled()
     })
   })
 
@@ -932,11 +961,11 @@ describe('computeTrainingLoad', () => {
 
     test('two reads at once run one recompute and both get the full result', async () => {
       const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
-      const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: recentWatermark(),
       })
-      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, updateTrainingLoadSettings })
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
 
       const results = await Promise.all([
         computeTrainingLoad(deps, 'testuser', ...range),
@@ -953,7 +982,7 @@ describe('computeTrainingLoad', () => {
 
     test('a recompute that outlasts the wait answers recomputing, then the full result', async () => {
       const gate = deferred()
-      const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: recentWatermark(),
       })
@@ -965,7 +994,7 @@ describe('computeTrainingLoad', () => {
         },
         getUserSettings,
         recomputeWaitMs: 20,
-        updateTrainingLoadSettings,
+        mutateTrainingLoadSettings,
       })
 
       const waiting = await computeTrainingLoad(deps, 'testuser', ...range)
@@ -988,13 +1017,16 @@ describe('computeTrainingLoad', () => {
     })
 
     test('a run in flight without a watermark is still waited for', async () => {
-      const gate = deferred()
+      const gate = deferred<boolean>()
       const deps = makeDeps({
         getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
         getUserSettings: async () => ({
           birth_date: '1985-06-15',
           sex: 'male' as const,
-          training_load: { impulse_version: IMPULSE_VERSION },
+          training_load: {
+            impulse_computed_from: '2020-01-01T00:00:00.000Z',
+            impulse_version: IMPULSE_VERSION,
+          },
         }),
         recomputeWaitMs: 20,
       })
@@ -1003,14 +1035,14 @@ describe('computeTrainingLoad', () => {
       const result = await computeTrainingLoad(deps, 'testuser', ...range)
 
       expect(result.recomputing).toBe(true)
-      gate.resolve()
+      gate.resolve(true)
     })
 
     test('a run that fails after the read gave up is reported and forgotten', async () => {
       const gate = deferred()
       const onRecomputeError = vi.fn()
       const failure = new Error('db gone')
-      const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: recentWatermark(),
       })
@@ -1022,7 +1054,7 @@ describe('computeTrainingLoad', () => {
         getUserSettings,
         onRecomputeError,
         recomputeWaitMs: 20,
-        updateTrainingLoadSettings,
+        mutateTrainingLoadSettings,
       })
 
       const result = await computeTrainingLoad(deps, 'testuser', ...range)
@@ -1039,7 +1071,7 @@ describe('computeTrainingLoad', () => {
     test('a run that fails within the wait fails the read', async () => {
       const failure = new Error('db gone')
       const onRecomputeError = vi.fn()
-      const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings } = statefulSettings({
         impulse_version: IMPULSE_VERSION,
         impulse_watermark: recentWatermark(),
       })
@@ -1049,7 +1081,7 @@ describe('computeTrainingLoad', () => {
         },
         getUserSettings,
         onRecomputeError,
-        updateTrainingLoadSettings,
+        mutateTrainingLoadSettings,
       })
 
       await expect(computeTrainingLoad(deps, 'testuser', ...range)).rejects.toBe(failure)
@@ -1071,111 +1103,225 @@ describe('computeTrainingLoad', () => {
 
       expect(result.recomputing).toBe(true)
       expect(result.points).toEqual([])
-      expect(deps.bootstrappedFrom.size).toBe(0)
 
       gate.resolve()
       await deps.recomputing.get('testuser')
     })
   })
 
-  describe('auto-bootstrap', () => {
+  describe('auto-bootstrap and older hours', () => {
     const deleteSpy = () => vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
-    const recomputeCount = (deleteImpulseBuckets: ReturnType<typeof deleteSpy>) =>
-      runStarts(deleteImpulseBuckets).length
+    const end = new Date('2024-01-07T00:00:00Z')
+    const shortStart = new Date('2024-01-01T00:00:00Z')
+    const longStart = new Date('2023-06-01T00:00:00Z')
+    const extendedStartOf = (start: Date) => floorToHour(new Date(start.getTime() - 126 * DAY_MS))
 
-    test('runs once for repeated reads of a user without data', async () => {
+    test('a user without data bootstraps once', async () => {
       const deleteImpulseBuckets = deleteSpy()
-      const deps = makeDeps({ deleteImpulseBuckets })
-      const start = new Date('2024-01-01T00:00:00Z')
-      const end = new Date('2024-01-07T00:00:00Z')
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_version: IMPULSE_VERSION,
+      })
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
 
-      await computeTrainingLoad(deps, 'testuser', start, end)
-      await computeTrainingLoad(deps, 'testuser', start, end)
+      await computeTrainingLoad(deps, 'testuser', shortStart, end)
+      await computeTrainingLoad(deps, 'testuser', shortStart, end)
       await computeTrainingLoad(deps, 'testuser', new Date('2024-02-01T00:00:00Z'), end)
 
-      expect(recomputeCount(deleteImpulseBuckets)).toBe(1)
+      expect(runStarts(deleteImpulseBuckets)).toHaveLength(1)
+      expect(state.training_load.impulse_computed_from).toBe(extendedStartOf(shortStart).toISOString())
     })
 
-    test('runs again, once, for a range older than the one covered', async () => {
+    test('stored buckets without the field set it from the earliest bucket and start no recompute', async () => {
       const deleteImpulseBuckets = deleteSpy()
-      const deps = makeDeps({ deleteImpulseBuckets })
-      const end = new Date('2024-01-07T00:00:00Z')
-
-      await computeTrainingLoad(deps, 'testuser', new Date('2024-01-01T00:00:00Z'), end)
-      await computeTrainingLoad(deps, 'testuser', new Date('2023-06-01T00:00:00Z'), end)
-      await computeTrainingLoad(deps, 'testuser', new Date('2023-06-01T00:00:00Z'), end)
-
-      const starts = runStarts(deleteImpulseBuckets)
-      expect(starts).toHaveLength(2)
-      expect(starts[1]!.getTime()).toBeLessThan(starts[0]!.getTime())
-    })
-
-    test('runs again once the memory is an hour old', async () => {
-      const deleteImpulseBuckets = deleteSpy()
-      const deps = makeDeps({ deleteImpulseBuckets })
-      const start = new Date('2024-01-01T00:00:00Z')
-      const end = new Date('2024-01-07T00:00:00Z')
-      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000_000_000)
-
-      try {
-        await computeTrainingLoad(deps, 'testuser', start, end)
-        now.mockReturnValue(1_000_000_000_000 + 59 * 60 * 1000)
-        await computeTrainingLoad(deps, 'testuser', start, end)
-        now.mockReturnValue(1_000_000_000_000 + 61 * 60 * 1000)
-        await computeTrainingLoad(deps, 'testuser', start, end)
-      } finally {
-        now.mockRestore()
-      }
-
-      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
-    })
-
-    test('drops expired entries when remembering a new one', async () => {
-      const deps = makeDeps({ deleteImpulseBuckets: deleteSpy() })
-      const start = new Date('2024-01-01T00:00:00Z')
-      const end = new Date('2024-01-07T00:00:00Z')
-      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000_000_000)
-
-      try {
-        await computeTrainingLoad(deps, 'alice', start, end)
-        now.mockReturnValue(1_000_000_000_000 + 30 * 60 * 1000)
-        await computeTrainingLoad(deps, 'bob', start, end)
-        now.mockReturnValue(1_000_000_000_000 + 61 * 60 * 1000)
-        await computeTrainingLoad(deps, 'carol', start, end)
-      } finally {
-        now.mockRestore()
-      }
-
-      expect([...deps.bootstrappedFrom.keys()].sort()).toEqual(['bob', 'carol'])
-    })
-
-    test('is remembered per user', async () => {
-      const deleteImpulseBuckets = deleteSpy()
-      const deps = makeDeps({ deleteImpulseBuckets })
-      const start = new Date('2024-01-01T00:00:00Z')
-      const end = new Date('2024-01-07T00:00:00Z')
-
-      await computeTrainingLoad(deps, 'alice', start, end)
-      await computeTrainingLoad(deps, 'bob', start, end)
-
-      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
-    })
-
-    test('does not stop the watermark recompute', async () => {
-      const deleteImpulseBuckets = deleteSpy()
-      const { getUserSettings, state, updateTrainingLoadSettings } = statefulSettings({
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
         impulse_version: IMPULSE_VERSION,
-        impulse_watermark: '2024-01-02T00:00:00Z',
       })
-      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, updateTrainingLoadSettings })
-      const start = new Date('2024-01-01T00:00:00Z')
-      const end = new Date('2024-01-07T00:00:00Z')
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getEarliestImpulseBucket: async () => new Date('2022-03-04T05:06:00Z'),
+        getUserSettings,
+        mutateTrainingLoadSettings,
+      })
 
-      await computeTrainingLoad(deps, 'testuser', start, end)
-      state.training_load.impulse_watermark = '2024-01-02T00:00:00Z'
-      await computeTrainingLoad(deps, 'testuser', start, end)
+      await computeTrainingLoad(deps, 'testuser', shortStart, end)
 
-      expect(recomputeCount(deleteImpulseBuckets)).toBe(2)
+      expect(deleteImpulseBuckets).not.toHaveBeenCalled()
+      expect(state.training_load.impulse_computed_from).toBe('2022-03-04T05:00:00.000Z')
+    })
+
+    test('a longer range fills in the older hours once, newest chunk first, without moving the watermark', async () => {
+      const deleteImpulseBuckets = deleteSpy()
+      const computedFrom = extendedStartOf(shortStart)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_computed_from: computedFrom.toISOString(),
+        impulse_version: IMPULSE_VERSION,
+      })
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
+
+      await computeTrainingLoad(deps, 'testuser', shortStart, end)
+      expect(deleteImpulseBuckets).not.toHaveBeenCalled()
+
+      await computeTrainingLoad(deps, 'testuser', longStart, end)
+      await computeTrainingLoad(deps, 'testuser', longStart, end)
+
+      const ranges = deleteImpulseBuckets.mock.calls
+        .filter(([, metric]) => metric === 'training_impulse')
+        .map(([, , , start, until]) => [start.getTime(), until.getTime()])
+      const longFrom = extendedStartOf(longStart)
+      expect(ranges[0]![1]).toBe(computedFrom.getTime())
+      expect(ranges.at(-1)![0]).toBe(longFrom.getTime())
+      for (let i = 1; i < ranges.length; i++) expect(ranges[i]![1]).toBe(ranges[i - 1]![0])
+      expect(state.training_load.impulse_computed_from).toBe(longFrom.toISOString())
+      expect(state.training_load.impulse_watermark).toBeUndefined()
+    })
+
+    test('an interrupted fill resumes from the lowered value', async () => {
+      const computedFrom = extendedStartOf(shortStart)
+      const longFrom = extendedStartOf(longStart)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_computed_from: computedFrom.toISOString(),
+        impulse_version: IMPULSE_VERSION,
+      })
+      const failure = new Error('db gone')
+      let calorieReads = 0
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getHourlyCalorieSums: async () => {
+          if (++calorieReads === 2) throw failure
+          return []
+        },
+        getUserSettings,
+        mutateTrainingLoadSettings,
+      })
+
+      await expect(computeTrainingLoad(deps, 'testuser', longStart, end)).rejects.toBe(failure)
+      const lowered = state.training_load.impulse_computed_from!
+      expect(new Date(lowered).getTime()).toBe(computedFrom.getTime() - 28 * DAY_MS)
+      expect(state.training_load.impulse_recompute_lease).toBeUndefined()
+
+      deleteImpulseBuckets.mockClear()
+      await computeTrainingLoad(deps, 'testuser', longStart, end)
+
+      const firstEnd = deleteImpulseBuckets.mock.calls.find(([, metric]) => metric === 'training_impulse')![4]
+      expect(firstEnd.toISOString()).toBe(lowered)
+      expect(state.training_load.impulse_computed_from).toBe(longFrom.toISOString())
+    })
+
+    test('a watermark recompute that starts before the stored hours lowers the field', async () => {
+      const computedFrom = getCurrentHourStart().getTime() - 5 * DAY_MS
+      const watermark = new Date(computedFrom - 10 * DAY_MS)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_computed_from: new Date(computedFrom).toISOString(),
+        impulse_version: IMPULSE_VERSION,
+        impulse_watermark: watermark.toISOString(),
+        tau_chronic: 1,
+      })
+      const deps = makeDeps({ getUserSettings, mutateTrainingLoadSettings })
+      const start = new Date(getCurrentHourStart().getTime() - DAY_MS)
+
+      await computeTrainingLoad(deps, 'testuser', start, getCurrentHourStart())
+
+      expect(state.training_load.impulse_computed_from).toBe(watermark.toISOString())
+      expect(state.training_load.impulse_watermark).toBeUndefined()
+    })
+  })
+
+  describe('recompute lease', () => {
+    const range = [new Date('2024-03-01T00:00:00Z'), new Date('2024-03-07T00:00:00Z')] as const
+    const recentWatermark = () => new Date(getCurrentHourStart().getTime() - 10 * DAY_MS).toISOString()
+
+    test('a second process does not start a run while the first holds the lease', async () => {
+      const gate = deferred()
+      const store = statefulSettings({
+        impulse_version: IMPULSE_VERSION,
+        impulse_watermark: recentWatermark(),
+      })
+      const deleteA = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deleteB = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const shared = {
+        getUserSettings: store.getUserSettings,
+        mutateTrainingLoadSettings: store.mutateTrainingLoadSettings,
+      }
+      const a = makeDeps({
+        ...shared,
+        deleteImpulseBuckets: deleteA,
+        getHourlyCalorieSums: async () => {
+          await gate.promise
+          return []
+        },
+        leaseHolder: 'process-a',
+        recomputeWaitMs: 20,
+      })
+      const b = makeDeps({
+        ...shared,
+        deleteImpulseBuckets: deleteB,
+        leaseHolder: 'process-b',
+        recomputeWaitMs: 20,
+      })
+
+      expect((await computeTrainingLoad(a, 'testuser', ...range)).recomputing).toBe(true)
+      expect(store.state.training_load.impulse_recompute_lease?.holder).toBe('process-a')
+
+      expect((await computeTrainingLoad(b, 'testuser', ...range)).recomputing).toBe(true)
+      expect(deleteB).not.toHaveBeenCalled()
+      expect(b.recomputing.size).toBe(0)
+
+      gate.resolve()
+      await a.recomputing.get('testuser')
+      expect(store.state.training_load.impulse_recompute_lease).toBeUndefined()
+      expect(store.state.training_load.impulse_watermark).toBeUndefined()
+
+      const done = await computeTrainingLoad(b, 'testuser', ...range)
+      expect('recomputing' in done).toBe(false)
+      expect(deleteB).not.toHaveBeenCalled()
+    })
+
+    test('an expired lease is taken over and the run resumes from the stored watermark', async () => {
+      const watermark = recentWatermark()
+      const store = statefulSettings({
+        impulse_computed_from: '2020-01-01T00:00:00.000Z',
+        impulse_recompute_lease: { holder: 'process-dead', until: new Date(Date.now() - 1000).toISOString() },
+        impulse_version: IMPULSE_VERSION,
+        impulse_watermark: watermark,
+      })
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getUserSettings: store.getUserSettings,
+        leaseHolder: 'process-b',
+        mutateTrainingLoadSettings: store.mutateTrainingLoadSettings,
+      })
+
+      const result = await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect('recomputing' in result).toBe(false)
+      expect(runStarts(deleteImpulseBuckets).map((d) => d.toISOString())).toEqual([watermark])
+      expect(store.state.training_load.impulse_recompute_lease).toBeUndefined()
+    })
+
+    test('a live lease of another process answers recomputing at once', async () => {
+      const store = statefulSettings({
+        impulse_recompute_lease: { holder: 'process-a', until: new Date(Date.now() + 60_000).toISOString() },
+        impulse_version: IMPULSE_VERSION,
+        impulse_watermark: recentWatermark(),
+      })
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getUserSettings: store.getUserSettings,
+        leaseHolder: 'process-b',
+        mutateTrainingLoadSettings: store.mutateTrainingLoadSettings,
+        recomputeWaitMs: 60_000,
+      })
+
+      const started = Date.now()
+      const result = await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect(result.recomputing).toBe(true)
+      expect(Date.now() - started).toBeLessThan(5_000)
+      expect(deleteImpulseBuckets).not.toHaveBeenCalled()
+      expect(store.state.training_load.impulse_recompute_lease?.holder).toBe('process-a')
     })
   })
 
@@ -1204,16 +1350,9 @@ describe('computeTrainingLoad', () => {
 
   test('falls back to expensive scan when no cached observed_hr_max', async () => {
     const getMaxObservedHr = vi.fn(async () => 195)
-    const updateTrainingLoadSettings = vi.fn(async () => {})
+    const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings()
 
-    const deps = makeDeps({
-      getMaxObservedHr,
-      getUserSettings: async () => ({
-        birth_date: '1985-06-15',
-        sex: 'male' as const,
-      }),
-      updateTrainingLoadSettings,
-    })
+    const deps = makeDeps({ getMaxObservedHr, getUserSettings, mutateTrainingLoadSettings })
 
     const result = await computeTrainingLoad(
       deps,
@@ -1226,21 +1365,14 @@ describe('computeTrainingLoad', () => {
     expect(result.settings.hr_max).toBe(195)
     // Wait a tick for the fire-and-forget to resolve
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
+    expect(state.training_load.observed_hr_max).toBe(195)
   })
 
   test('does not cache observed_hr_max when value is <= 100', async () => {
     const getMaxObservedHr = vi.fn(async () => 80)
-    const updateTrainingLoadSettings = vi.fn(async () => {})
+    const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings()
 
-    const deps = makeDeps({
-      getMaxObservedHr,
-      getUserSettings: async () => ({
-        birth_date: '1985-06-15',
-        sex: 'male' as const,
-      }),
-      updateTrainingLoadSettings,
-    })
+    const deps = makeDeps({ getMaxObservedHr, getUserSettings, mutateTrainingLoadSettings })
 
     await computeTrainingLoad(
       deps,
@@ -1251,20 +1383,17 @@ describe('computeTrainingLoad', () => {
 
     // Should NOT cache a low value (likely resting HR, not max)
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(updateTrainingLoadSettings).not.toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ observed_hr_max: expect.anything() }),
-    )
+    expect(state.training_load.observed_hr_max).toBeUndefined()
   })
 })
 
 describe('recomputeImpulseBuckets', () => {
   const makeDeps = (overrides: Partial<TrainingLoadDeps> = {}): TrainingLoadDeps => ({
-    bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
-    getActivityTypeDisplayNames: async () => new Map(),
+    getActivityTypeDefinitions: async () => [],
     getEarliestExerciseStart: async () => undefined,
+    getEarliestImpulseBucket: async () => undefined,
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
@@ -1275,8 +1404,9 @@ describe('recomputeImpulseBuckets', () => {
     getUserSettings: async () => ({ birth_date: '1985-06-15', sex: 'male' as const }),
     onRecomputeError: vi.fn(),
     recomputeWaitMs: 5000,
+    leaseHolder: 'process-a',
+    mutateTrainingLoadSettings: async (_user, mutate) => mutate(undefined),
     recomputing: new Map(),
-    updateTrainingLoadSettings: async () => {},
     writeImpulseBuckets: async () => {},
     ...overrides,
   })
@@ -1290,7 +1420,9 @@ describe('recomputeImpulseBuckets', () => {
 
   test('computes training impulse from exercises with per-exercise HR', async () => {
     const writtenPoints: TimeSeriesPoint[] = []
-    const updateSettings = vi.fn(async () => {})
+    const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+      impulse_watermark: '2024-01-03T00:00:00.000Z',
+    })
 
     const exerciseStart = new Date('2024-01-03T10:00:00Z')
     const exerciseEnd = new Date('2024-01-03T11:00:00Z')
@@ -1313,7 +1445,8 @@ describe('recomputeImpulseBuckets', () => {
         return []
       },
       getHrSamplesForWindows,
-      updateTrainingLoadSettings: updateSettings,
+      getUserSettings,
+      mutateTrainingLoadSettings,
       writeImpulseBuckets: async (_, points) => {
         writtenPoints.push(...points)
       },
@@ -1328,7 +1461,7 @@ describe('recomputeImpulseBuckets', () => {
     expect(trainingPoints.length).toBeGreaterThan(0)
     expect(trainingPoints.some((p) => p.value > 0)).toBe(true)
 
-    expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
+    expect(state.training_load.impulse_watermark).toBeUndefined()
     // One HR read for the chunk holding the exercise, none for chunks without exercises
     expect(getHrSamplesForWindows).toHaveBeenCalledTimes(1)
     expect(getHrSamplesForWindows).toHaveBeenCalledWith('testuser', [
@@ -1387,20 +1520,18 @@ describe('recomputeImpulseBuckets', () => {
   test('replaces each 28-day chunk and moves the watermark past it; the last one clears it', async () => {
     const fromHour = new Date(getCurrentHourStart().getTime() - 60 * DAY_MS)
     const events: string[] = []
-    const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
-      impulse_watermark: fromHour.toISOString(),
-      observed_hr_max: 190,
-    })
+    const store = statefulSettings({ impulse_watermark: fromHour.toISOString(), observed_hr_max: 190 })
     const deps = makeDeps({
       deleteImpulseBuckets: async (_user, metric, _source, start, end) => {
         if (metric === 'training_impulse') events.push(`delete ${start.toISOString()} ${end.toISOString()}`)
         return 0
       },
       getHourlyCalorieSums: async (_user, start) => [[start, 100]],
-      getUserSettings,
-      updateTrainingLoadSettings: async (user, update) => {
-        events.push(`watermark ${update.impulse_watermark}`)
-        await updateTrainingLoadSettings(user, update)
+      getUserSettings: store.getUserSettings,
+      mutateTrainingLoadSettings: async (user, mutate) => {
+        const stored = await store.mutateTrainingLoadSettings(user, mutate)
+        events.push(`watermark ${stored?.impulse_watermark}`)
+        return stored
       },
       writeImpulseBuckets: async (_user, points) => {
         events.push(`write ${points.map((p) => p.time.toISOString()).join(',')}`)
@@ -1425,46 +1556,124 @@ describe('recomputeImpulseBuckets', () => {
     expect(result.hours_computed).toBe(3)
   })
 
-  test('continues from a watermark moved back during the run and does not overwrite it', async () => {
-    const currentHour = getCurrentHourStart()
-    const fromHour = new Date(currentHour.getTime() - 40 * DAY_MS)
-    const movedBack = new Date(fromHour.getTime() - 10 * DAY_MS + 30 * 60_000)
-    const { getUserSettings, state, updateTrainingLoadSettings } = statefulSettings({
-      impulse_watermark: fromHour.toISOString(),
-      observed_hr_max: 190,
-    })
-    const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => {
-      if (deleteImpulseBuckets.mock.calls.length === 1) {
-        state.training_load.impulse_watermark = movedBack.toISOString()
+  describe('dirty marks made during a run', () => {
+    const markDuring = (
+      state: { training_load: TrainingLoadSettings },
+      callIndex: number,
+      from: Date,
+    ): TrainingLoadDeps['deleteImpulseBuckets'] => {
+      let calls = 0
+      return async (_user, metric) => {
+        if (metric === 'training_impulse' && calls++ === callIndex) {
+          state.training_load = withDirtyMark(state.training_load, from)
+        }
+        return 0
       }
-      return 0
+    }
+
+    test('one set before the chunk start moves the run back and is not overwritten', async () => {
+      const currentHour = getCurrentHourStart()
+      const fromHour = new Date(currentHour.getTime() - 40 * DAY_MS)
+      const movedBack = new Date(fromHour.getTime() - 10 * DAY_MS + 30 * 60_000)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_watermark: fromHour.toISOString(),
+        observed_hr_max: 190,
+      })
+      const deleteImpulseBuckets = vi.fn(markDuring(state, 0, movedBack))
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
+
+      const result = await recomputeImpulseBuckets(deps, 'testuser', fromHour)
+
+      const restart = floorToHour(movedBack)
+      expect(runStarts(deleteImpulseBuckets).map((d) => d.toISOString())).toEqual([
+        fromHour.toISOString(),
+        restart.toISOString(),
+      ])
+      expect(await writtenValues(mutateTrainingLoadSettings, 'impulse_watermark')).toEqual([
+        movedBack.toISOString(),
+        new Date(restart.getTime() + 28 * DAY_MS).toISOString(),
+        undefined,
+      ])
+      expect(state.training_load.impulse_watermark).toBeUndefined()
+      expect(result.covered_from).toEqual(restart)
     })
-    const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, updateTrainingLoadSettings })
 
-    await recomputeImpulseBuckets(deps, 'testuser', fromHour)
+    test('one set inside the chunk while it is computed is not overwritten: the chunk is redone', async () => {
+      const currentHour = getCurrentHourStart()
+      const fromHour = new Date(currentHour.getTime() - 40 * DAY_MS)
+      const inside = new Date(fromHour.getTime() + 5 * DAY_MS)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_watermark: fromHour.toISOString(),
+        observed_hr_max: 190,
+      })
+      const deleteImpulseBuckets = vi.fn(markDuring(state, 0, inside))
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
 
-    const restart = floorToHour(movedBack)
-    expect(runStarts(deleteImpulseBuckets).map((d) => d.toISOString())).toEqual([
-      fromHour.toISOString(),
-      restart.toISOString(),
-    ])
-    expect(updateTrainingLoadSettings.mock.calls.map(([, update]) => update.impulse_watermark)).toEqual([
-      new Date(restart.getTime() + 28 * DAY_MS).toISOString(),
-      undefined,
-    ])
-    expect(state.training_load.impulse_watermark).toBeUndefined()
+      await recomputeImpulseBuckets(deps, 'testuser', fromHour)
+
+      const firstStored = (await mutateTrainingLoadSettings.mock.results[0]!.value) as TrainingLoadSettings
+      expect(firstStored.impulse_watermark).toBe(fromHour.toISOString())
+      const trainingStarts = deleteImpulseBuckets.mock.calls
+        .filter(([, metric]) => metric === 'training_impulse')
+        .map(([, , , start]) => start.toISOString())
+      expect(trainingStarts.slice(0, 2)).toEqual([fromHour.toISOString(), fromHour.toISOString()])
+      expect(state.training_load.impulse_watermark).toBeUndefined()
+    })
+
+    test('one at exactly the stored watermark is still seen', async () => {
+      const currentHour = getCurrentHourStart()
+      const fromHour = new Date(currentHour.getTime() - 40 * DAY_MS)
+      const secondChunk = new Date(fromHour.getTime() + 28 * DAY_MS)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_watermark: fromHour.toISOString(),
+        observed_hr_max: 190,
+      })
+      const deleteImpulseBuckets = vi.fn(markDuring(state, 1, secondChunk))
+      const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
+
+      await recomputeImpulseBuckets(deps, 'testuser', fromHour)
+
+      const trainingStarts = deleteImpulseBuckets.mock.calls
+        .filter(([, metric]) => metric === 'training_impulse')
+        .map(([, , , start]) => start.toISOString())
+      expect(trainingStarts).toEqual([
+        fromHour.toISOString(),
+        secondChunk.toISOString(),
+        secondChunk.toISOString(),
+      ])
+      expect(state.training_load.impulse_watermark).toBeUndefined()
+    })
+
+    test('a redone chunk counts its hours once', async () => {
+      const currentHour = getCurrentHourStart()
+      const fromHour = new Date(currentHour.getTime() - 10 * DAY_MS)
+      const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+        impulse_watermark: fromHour.toISOString(),
+        observed_hr_max: 190,
+      })
+      const deps = makeDeps({
+        deleteImpulseBuckets: markDuring(state, 0, fromHour),
+        getHourlyCalorieSums: async (_user, start) => [[start, 100]],
+        getUserSettings,
+        mutateTrainingLoadSettings,
+      })
+
+      const result = await recomputeImpulseBuckets(deps, 'testuser', fromHour)
+
+      expect(result.hours_computed).toBe(1)
+    })
   })
 
   test('a fromHour in the current hour clears a set watermark', async () => {
-    const { getUserSettings, updateTrainingLoadSettings } = statefulSettings({
+    const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
       impulse_watermark: getCurrentHourStart().toISOString(),
     })
     const deleteImpulseBuckets = vi.fn(async () => 0)
-    const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, updateTrainingLoadSettings })
+    const deps = makeDeps({ deleteImpulseBuckets, getUserSettings, mutateTrainingLoadSettings })
 
     await recomputeImpulseBuckets(deps, 'testuser', getCurrentHourStart())
 
-    expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
+    expect(state.training_load.impulse_watermark).toBeUndefined()
     expect(deleteImpulseBuckets).not.toHaveBeenCalled()
   })
 
@@ -1487,22 +1696,16 @@ describe('recomputeImpulseBuckets', () => {
 
   test('caches observed_hr_max after expensive scan', async () => {
     const getMaxObservedHr = vi.fn(async () => 195)
-    const updateSettings = vi.fn(async () => {})
-
-    const deps = makeDeps({
-      getMaxObservedHr,
-      getUserSettings: async () => ({
-        birth_date: '1985-06-15',
-        sex: 'male' as const,
-      }),
-      updateTrainingLoadSettings: updateSettings,
+    const { getUserSettings, mutateTrainingLoadSettings, state } = statefulSettings({
+      impulse_watermark: '2024-01-03T00:00:00.000Z',
     })
+    const deps = makeDeps({ getMaxObservedHr, getUserSettings, mutateTrainingLoadSettings })
 
     await recomputeImpulseBuckets(deps, 'testuser', new Date('2024-01-03T00:00:00Z'))
 
     expect(getMaxObservedHr).toHaveBeenCalled()
-    expect(updateSettings).toHaveBeenCalledWith('testuser', { observed_hr_max: 195 })
-    expect(updateSettings).toHaveBeenCalledWith('testuser', { impulse_watermark: undefined })
+    expect(state.training_load.observed_hr_max).toBe(195)
+    expect(state.training_load.impulse_watermark).toBeUndefined()
   })
 })
 

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vit
 import { query } from '../../db/connection.ts'
 import {
   findActivityByGarminActivityId,
+  getRawRecordsByExternalIds,
   insertRawRecords,
   insertTimeSeries,
   markActivityDetailSynced,
@@ -18,7 +19,14 @@ import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { defaultGarminProcessDeps, processActivityFit, processGarminData } from './process.ts'
 import { syncPushedActivityFile } from './push-activity-file.ts'
-import { garminPushRecordType, garminPushToken, receiveGarminPush } from './push.ts'
+import {
+  type GarminPushJob,
+  type GarminPushProcessDeps,
+  garminPushRecordType,
+  garminPushToken,
+  processGarminPushJob,
+  receiveGarminPush,
+} from './push.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 const TOKEN = garminPushToken('fake-session-secret')
@@ -141,59 +149,71 @@ const pushBody = async (
   }),
 ) => {
   const onActivitySynced = vi.fn()
+  const jobs: GarminPushJob[] = []
   const result = await receiveGarminPush(
     {
       auditError,
       auditInfo,
       auditWarn,
+      enqueuePush: async (job) => {
+        jobs.push(job)
+      },
       forgetGrant: vi.fn(),
       getClientId: async () => 'fake-client-id',
       getDisabledDataTypes: async () => [],
       getUsernameByGarminUserId: async () => user,
       insertRawRecords,
-      insertTimeSeries,
       isReadOnly: async () => false,
       logWarn: vi.fn(),
       now: () => new Date('2026-11-17T10:00:00Z'),
-      onActivitySynced,
       probeGrant: vi.fn(),
-      processGarminData: (u, dataType, data) =>
-        processGarminData(u, dataType, data, {
-          ...defaultGarminProcessDeps,
-          insertRawRecord: async () => {},
-        }),
       pushToken: TOKEN,
-      syncActivityFile: (u, garminActivityId) =>
-        syncPushedActivityFile(
-          {
-            auditError,
-            auditInfo,
-            auditWarn,
-            download,
-            findActivityByGarminActivityId,
-            getAccessToken: async () => 'fake-access-token',
-            getFileNotice: async (owner, id) =>
-              (
-                await queryRawRecords(owner, {
-                  external_id: `file-${id}-fit`,
-                  limit: 1,
-                  record_type: garminPushRecordType('activityFiles'),
-                  source: 'garmin',
-                })
-              ).rows[0]?.data ?? null,
-            markActivityDetailSynced,
-            processActivityFit,
-          },
-          u,
-          garminActivityId,
-        ),
       updateGrantScopes: vi.fn(),
-      upsertSyncState,
     },
     { body, clientIdHeader: undefined, token: TOKEN },
   )
   expect(result.status).toBe(200)
-  await result.process!()
+  const processDeps: GarminPushProcessDeps = {
+    auditError,
+    getDisabledDataTypes: async () => [],
+    getPushRecords: (owner, recordType, externalIds) =>
+      getRawRecordsByExternalIds(owner, 'garmin', recordType, externalIds),
+    insertTimeSeries,
+    isReadOnly: async () => false,
+    now: () => new Date('2026-11-17T10:00:00Z'),
+    onActivitySynced,
+    processGarminData: (u, dataType, data) =>
+      processGarminData(u, dataType, data, {
+        ...defaultGarminProcessDeps,
+        insertRawRecord: async () => {},
+      }),
+    syncActivityFile: (u, garminActivityId) =>
+      syncPushedActivityFile(
+        {
+          auditError,
+          auditInfo,
+          auditWarn,
+          download,
+          findActivityByGarminActivityId,
+          getAccessToken: async () => 'fake-access-token',
+          getFileNotice: async (owner, id) =>
+            (
+              await queryRawRecords(owner, {
+                external_id: `file-${id}-fit`,
+                limit: 1,
+                record_type: garminPushRecordType('activityFiles'),
+                source: 'garmin',
+              })
+            ).rows[0]?.data ?? null,
+          markActivityDetailSynced,
+          processActivityFit,
+        },
+        u,
+        garminActivityId,
+      ),
+    upsertSyncState,
+  }
+  for (const job of jobs) await processGarminPushJob(processDeps, job)
   return { onActivitySynced }
 }
 
@@ -359,6 +379,24 @@ describe('Garmin push against the pull (integration)', () => {
       expect(download).toHaveBeenCalledTimes(1)
       expect(onActivitySynced).not.toHaveBeenCalled()
       await expectDetailWritten(user)
+    })
+
+    test('a manual edit without a name or duration keeps the stored title and end', async () => {
+      const user = getTestUser()
+      await pushBody(user, activities)
+      await pushBody(user, {
+        manuallyUpdatedActivities: [
+          {
+            activityId: ACTIVITY_ID,
+            activityType: 'RUNNING',
+            startTimeInSeconds: RUN_START,
+            summaryId: 'm-1',
+            userId: 'garmin-user-1',
+          },
+        ],
+      })
+      const rows = await query(user, `SELECT title, end_time FROM activities WHERE deleted_at IS NULL`, [])
+      expect(rows.rows).toEqual([{ end_time: at(1800), title: 'Morning run' }])
     })
 
     test('a file notice then its activity', async () => {

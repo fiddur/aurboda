@@ -80,7 +80,28 @@ interface MetricPickerProps {
   /** Also offer the catalogue metrics the user has not used yet; only where a value is written, since
    *  such a metric has no data. */
   includeCatalog?: boolean
+  /** Offer a button that clears the value (`onChange('')`), where no metric is a valid choice. */
+  clearable?: boolean
 }
+
+const showClear = (clearable: boolean | undefined, value: string, isOpen: boolean): boolean =>
+  Boolean(clearable && value && !isOpen)
+
+const pickerClass = (clearable: boolean | undefined, value: string): string =>
+  clearable && value ? 'metric-picker metric-picker-clearable' : 'metric-picker'
+
+const ClearButton = ({ shown, onClear }: { shown: boolean; onClear: () => void }) =>
+  shown ? (
+    <button
+      type="button"
+      class="metric-picker-clear"
+      aria-label="Clear metric"
+      title="Clear"
+      onClick={onClear}
+    >
+      ×
+    </button>
+  ) : null
 
 export function MetricPicker({
   value,
@@ -88,6 +109,7 @@ export function MetricPicker({
   placeholder = 'Search metrics...',
   builtinOnly = false,
   includeCatalog = false,
+  clearable,
 }: MetricPickerProps) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -157,7 +179,7 @@ export function MetricPicker({
   const shownValue = isOpen ? inputValue : displayNameForValue(value, customMetrics ?? [], catalogEntries)
 
   return (
-    <div class="metric-picker" ref={containerRef}>
+    <div class={pickerClass(clearable, value)} ref={containerRef}>
       <input
         ref={inputRef}
         type="text"
@@ -174,6 +196,7 @@ export function MetricPicker({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
       />
+      <ClearButton shown={showClear(clearable, value, isOpen)} onClear={() => selectMetric('')} />
       {isOpen && flatFiltered.length > 0 && (
         <ul class="metric-picker-dropdown">
           {groups.map(({ entries: groupEntries, group }) =>

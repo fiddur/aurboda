@@ -24,6 +24,7 @@ import {
   listSharedDashboards,
   updateSharedDashboard,
 } from '../db/index.ts'
+import { dashboardConfigError } from '../services/dashboard-config.ts'
 import { resolvePresetConfig } from '../services/dashboard-presets.ts'
 import { queryDataPresence } from '../services/data-presence.ts'
 import {
@@ -72,6 +73,8 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
     async (params) => {
       const config = await resolvePresetConfig(user, params)
       if (!config) return errorResponse('Give exactly one of config or preset')
+      const configError = params.config && dashboardConfigError(params.config)
+      if (configError) return errorResponse(configError)
       const lock = requestedPeriodLock(params) ?? defaultPeriodLock
       const lockError = validatePeriodLock(config, lock, new Date(), await getUserTimezone(user))
       if (lockError !== null) return errorResponse(lockError)
@@ -92,6 +95,8 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
     async ({ config, id, name, period_fixed, period_from, period_lock, visibility }) => {
       const stored = await getSharedDashboardById(user, id)
       if (!stored) return errorResponse('Shared dashboard not found')
+      const configError = config && dashboardConfigError(config)
+      if (configError) return errorResponse(configError)
       const lockUpdate = resolveLockUpdate(
         stored,
         { config, period_fixed, period_from, period_lock },

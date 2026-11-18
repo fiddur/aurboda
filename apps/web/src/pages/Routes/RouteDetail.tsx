@@ -12,7 +12,13 @@ import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusI
 import { deleteRoute, fetchRoute, fetchRoutes, mergeRoutes, updateRoute } from '../../state/api'
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
-import { cumulativeDistancesM, indexRangeForKm } from '../../utils/segmentCut'
+import {
+  clampStartKm,
+  cumulativeDistancesM,
+  endGapM,
+  indexRangeForKm,
+  pointAtM,
+} from '../../utils/segmentCut'
 import { formatDistance, formatPace } from '../EntityDetail/format-utils'
 import { CreateSegmentForm } from '../Segments/CreateSegmentForm'
 import { ActivityTypeName } from './ActivityTypeName'
@@ -37,20 +43,31 @@ const parseKm = (value: string): number => {
   return Number.isFinite(km) && km > 0 ? km : 0
 }
 
+const cutKms = (cut: KmCut, lengthM: number) => {
+  const endKm = parseKm(cut.end)
+  return { endKm, startKm: clampStartKm(parseKm(cut.start), endKm, lengthM) }
+}
+
 function RouteCutPanel({
   route,
+  points,
+  distancesM,
   cut,
   onCutChange,
   onCancel,
 }: {
   route: RouteDetailData
+  points: { lat: number; lon: number }[]
+  distancesM: number[]
   cut: KmCut
   onCutChange: (cut: KmCut) => void
   onCancel: () => void
 }) {
   const maxKm = Math.ceil(route.length_m / 100) / 10
-  const startKm = parseKm(cut.start)
-  const endKm = parseKm(cut.end)
+  const { endKm, startKm } = cutKms(cut, route.length_m)
+  const startPoint = pointAtM(points, distancesM, startKm * 1000)
+  const endPoint = pointAtM(points, distancesM, endKm * 1000)
+  const gapM = startPoint && endPoint ? endGapM(startPoint, endPoint) : undefined
   const lengthM = Math.max(0, Math.min(endKm * 1000, route.length_m) - startKm * 1000)
   const kmInput = (edge: keyof KmCut, label: string) => (
     <label class="segment-cut-km">
@@ -74,6 +91,7 @@ function RouteCutPanel({
       <CreateSegmentForm
         cut={{ end_km: endKm, route_id: route.id, start_km: startKm }}
         lengthM={lengthM}
+        endGapM={gapM}
         onCancel={onCancel}
       />
     </div>
@@ -277,6 +295,7 @@ export function RouteDetail() {
 
   const lowHr = effortsWithCategory(route.efforts, 'low_hr')
   const efforts = lowHrOnly && lowHr.length > 0 ? lowHr : route.efforts
+  const cutKm = kmCut && cutKms(kmCut, route.length_m)
 
   return (
     <div class="data-sources-page">
@@ -294,11 +313,18 @@ export function RouteDetail() {
       <RouteMap
         points={mapPoints}
         hoverTime={null}
-        highlight={kmCut && indexRangeForKm(distancesM, parseKm(kmCut.start), parseKm(kmCut.end))}
+        highlight={cutKm && indexRangeForKm(distancesM, cutKm.startKm, cutKm.endKm)}
       />
 
       {kmCut ? (
-        <RouteCutPanel route={route} cut={kmCut} onCutChange={setKmCut} onCancel={() => setKmCut(null)} />
+        <RouteCutPanel
+          route={route}
+          points={mapPoints}
+          distancesM={distancesM}
+          cut={kmCut}
+          onCutChange={setKmCut}
+          onCancel={() => setKmCut(null)}
+        />
       ) : (
         <div class="segment-create-open">
           <button

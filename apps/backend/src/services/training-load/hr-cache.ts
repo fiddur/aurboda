@@ -29,9 +29,10 @@ export const getOrCacheMaxObservedHr = async (
 
   const observed = await deps.getMaxObservedHr(user)
   if (observed && observed > 100 && observed !== cached) {
-    const writePromise = deps.updateTrainingLoadSettings(user, {
+    const writePromise = deps.mutateTrainingLoadSettings(user, (current) => ({
+      ...current,
       observed_hr_max: observed,
-    })
+    }))
     if (fireAndForget) writePromise.catch(() => {})
     else await writePromise
   }

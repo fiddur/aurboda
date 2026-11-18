@@ -172,6 +172,24 @@ describe('publishableArticle', () => {
     expect(!result.ok && result.error).toContain('Correlation block 1 needs both a trigger and an outcome')
   })
 
+  test('rejects a sensitivity selector in a correlation block', () => {
+    const result = publishableArticle(
+      complete({
+        blocks: [
+          {
+            outcome: { kind: 'metric', metric: 'hrv' },
+            trigger: { flag: 'gluten-id', kind: 'sensitivity' },
+            type: 'correlation',
+          },
+        ],
+      }),
+      'public',
+    )
+    expect(!result.ok && result.error).toContain(
+      'blocks.0.trigger: An article correlation block cannot use a sensitivity selector',
+    )
+  })
+
   test('rejects a challenge block without a URL', () => {
     const result = publishableArticle(complete({ blocks: [{ type: 'challenge' }] }), 'public')
     expect(!result.ok && result.error).toContain('Challenge block 1 has no challenge')

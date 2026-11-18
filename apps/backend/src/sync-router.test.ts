@@ -617,6 +617,46 @@ describe('sync router', () => {
       expect(response.status).toBe(200)
       expect(mockDeps.resetGarminSyncState).toHaveBeenCalledWith('testuser', 'dailySummary')
     })
+
+    describe('POST /sync/garmin/reprocess-pushes', () => {
+      const appWith = (reprocessGarminPushes?: SyncRouterDeps['reprocessGarminPushes']) => {
+        const app = express()
+        app.use(express.json())
+        app.use('/sync', createSyncRouter({ ...mockDeps, reprocessGarminPushes }, testAuthMiddleware))
+        return app
+      }
+
+      test('queues the pushes since the given time and answers the count', async () => {
+        const reprocess = vi.fn().mockResolvedValue(42)
+        const response = await request(appWith(reprocess))
+          .post('/sync/garmin/reprocess-pushes')
+          .send({ since: '2026-11-10T00:00:00Z' })
+
+        expect(response.status).toBe(200)
+        expect(response.body).toEqual({ queued: 42, success: true })
+        expect(reprocess).toHaveBeenCalledWith('testuser', new Date('2026-11-10T00:00:00Z'))
+      })
+
+      test('leaves the default start to the service', async () => {
+        const reprocess = vi.fn().mockResolvedValue(0)
+        await request(appWith(reprocess)).post('/sync/garmin/reprocess-pushes').send({})
+        expect(reprocess).toHaveBeenCalledWith('testuser', undefined)
+      })
+
+      test('refuses a since that is not a time', async () => {
+        const reprocess = vi.fn()
+        const response = await request(appWith(reprocess))
+          .post('/sync/garmin/reprocess-pushes')
+          .send({ since: 'last week' })
+        expect(response.status).toBe(400)
+        expect(reprocess).not.toHaveBeenCalled()
+      })
+
+      test('is 503 when push processing is not wired', async () => {
+        const response = await request(appWith()).post('/sync/garmin/reprocess-pushes').send({})
+        expect(response.status).toBe(503)
+      })
+    })
   })
 
   describe('calendar endpoints', () => {

@@ -287,6 +287,7 @@ fun AurbodaApp(
           if (event == Lifecycle.Event.ON_RESUME) {
             scope.launch { verifyStoredToken(context, ktorHttpClient) }
             scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+            scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
           }
         }
       lifecycleOwner.lifecycle.addObserver(observer)
@@ -315,9 +316,13 @@ fun AurbodaApp(
           currentTab = appState.currentTab,
           onTabSelected = { tab ->
             appState.selectTab(tab)
-            if (tab == MainTab.More) scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+            if (tab == MainTab.More) {
+              scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+              scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
+            }
           },
           unreadNotifications = appState.unreadNotifications,
+          hiddenPages = appState.hiddenPages,
           homeContent = { modifier ->
             key(appState.tabReselections) {
               net.aurboda.ui.screens.EmbeddedWebScreen(
@@ -366,9 +371,11 @@ fun AurbodaApp(
               onBack = {
                 appState.closeMoreDestination()
                 scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+                scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
               },
               onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
               unreadNotifications = appState.unreadNotifications,
+              hiddenPages = appState.hiddenPages,
               webPageLinks = appState.morePageLinks,
               onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
               onLogout = { appState.logout() },

@@ -1,13 +1,27 @@
-import type { FileIdMesg, LapMesg, Mesg, RecordMesg, SessionMesg } from '@garmin/fitsdk'
+import type { StoredExerciseCatalog } from '@aurboda/api-spec'
+import type {
+  ExerciseTitleMesg,
+  FileIdMesg,
+  LapMesg,
+  Mesg,
+  RecordMesg,
+  SessionMesg,
+  SetMesg,
+} from '@garmin/fitsdk'
 
-import { Decoder, Stream } from '@garmin/fitsdk'
+import { Decoder, Profile, Stream } from '@garmin/fitsdk'
 import { unzipSync } from 'fflate'
 
 import type { Location, TimeSeriesPoint } from '../../db/types.ts'
 import type { TrackPoint } from '../../services/tracks.ts'
 
+import { garminExercise, type GarminSet, garminSetMeasures, UNKNOWN_EXERCISE } from './exercise-names.ts'
+
 /** Inflated size above which a ZIP entry is not unpacked: Garmin's own recordings are a few MB at most. */
 export const MAX_FIT_ENTRY_BYTES = 100 * 1024 * 1024
+
+/** Inflated size across a ZIP's `.fit` entries above which the archive is refused. */
+export const MAX_FIT_TOTAL_BYTES = 4 * MAX_FIT_ENTRY_BYTES
 
 export interface FitActivity {
   fileIds: FileIdMesg[]
@@ -15,6 +29,8 @@ export interface FitActivity {
   laps: LapMesg[]
   /** Every record of every `.fit` entry that carries a timestamp, in time order. */
   records: RecordMesg[]
+  sets: SetMesg[]
+  exerciseTitles: ExerciseTitleMesg[]
 }
 
 export interface FitActivitySummary {
@@ -22,6 +38,8 @@ export interface FitActivitySummary {
   sessions: Record<string, unknown>[]
   laps: Record<string, unknown>[]
   record_count: number
+  sets: Record<string, unknown>[]
+  exercise_titles: Record<string, unknown>[]
 }
 
 export interface FitDetail {
@@ -40,10 +58,12 @@ const decodeFit = (bytes: Uint8Array): FitActivity | null => {
     const { messages, errors } = decoder.read({ includeUnknownData: false })
     if (errors.length > 0) return null
     return {
+      exerciseTitles: messages.exerciseTitleMesgs ?? [],
       fileIds: messages.fileIdMesgs ?? [],
       laps: messages.lapMesgs ?? [],
       records: messages.recordMesgs ?? [],
       sessions: messages.sessionMesgs ?? [],
+      sets: messages.setMesgs ?? [],
     }
   } catch {
     return null
@@ -69,28 +89,42 @@ const mergeDecoded = (decoded: FitActivity[]): FitActivity | null => {
     .map(({ record }) => record)
 
   return {
+    exerciseTitles: decoded.flatMap((fit) => fit.exerciseTitles),
     fileIds: decoded.flatMap((fit) => fit.fileIds),
     laps: decoded.flatMap((fit) => fit.laps),
     records,
     sessions: decoded.flatMap((fit) => fit.sessions),
+    sets: decoded.flatMap((fit) => fit.sets),
   }
 }
 
 /**
  * The activity in Garmin's download ZIP, or null when the archive holds no readable
- * `.fit` entry. Several entries are merged into one activity.
+ * `.fit` entry. Several entries are merged into one activity. Throws, inflating no further
+ * entry, when the `.fit` entries add up to more than `maxTotalBytes`.
  */
 export const parseActivityFit = (
   zipBytes: Uint8Array,
   maxEntryBytes: number = MAX_FIT_ENTRY_BYTES,
+  maxTotalBytes: number = MAX_FIT_TOTAL_BYTES,
 ): FitActivity | null => {
   let entries: Record<string, Uint8Array>
+  let total = 0
+  let tooLarge = false
   try {
     entries = unzipSync(zipBytes, {
-      filter: (file) => /\.fit$/i.test(file.name) && file.originalSize <= maxEntryBytes,
+      filter: (file) => {
+        if (tooLarge || !/\.fit$/i.test(file.name) || file.originalSize > maxEntryBytes) return false
+        total += file.originalSize
+        tooLarge = total > maxTotalBytes
+        return !tooLarge
+      },
     })
   } catch {
     return null
+  }
+  if (tooLarge) {
+    throw new Error(`The activity archive's FIT files inflate to more than ${maxTotalBytes} bytes`)
   }
 
   return mergeDecoded(
@@ -218,9 +252,68 @@ export const fitToDetail = (fit: FitActivity, activityStart: Date): FitDetail =>
     summary: {
       file_id: fit.fileIds.map(withoutDeveloperFields),
       laps: fit.laps.map(withoutDeveloperFields),
+      exercise_titles: fit.exerciseTitles.map(withoutDeveloperFields),
       record_count: fit.records.length,
       sessions: fit.sessions.map(withoutDeveloperFields),
+      sets: fit.sets.map(withoutDeveloperFields),
     },
     trackPoints,
   }
 }
+
+/** The SDK's camelCase enum spelling as the catalogue's FIT keys spell it: `30DegreeLatPulldown` is `_30_degree_lat_pulldown`. */
+export const fitEnumKey = (name: string): string => {
+  const snake = name
+    .replaceAll(/([a-z])([A-Z0-9])/g, '$1_$2')
+    .replaceAll(/([0-9])([A-Za-z])/g, '$1_$2')
+    .toLowerCase()
+  return /^[0-9]/.test(snake) ? `_${snake}` : snake
+}
+
+const setTime = (set: SetMesg): number => {
+  const time = set.startTime ?? set.timestamp
+  return time instanceof Date && Number.isFinite(time.getTime()) ? time.getTime() : Number.POSITIVE_INFINITY
+}
+
+const setCategory = (set: SetMesg): { category: string; subtype: number | null } | null => {
+  const categories = set.category ?? []
+  const index = categories.findIndex((category) => typeof category === 'string' && category !== 'unknown')
+  if (index < 0) return null
+  const subtype = set.categorySubtype?.[index]
+  return { category: categories[index] as string, subtype: typeof subtype === 'number' ? subtype : null }
+}
+
+const setExercise = (
+  set: SetMesg,
+  titles: ExerciseTitleMesg[],
+  catalog: StoredExerciseCatalog,
+): GarminSet => {
+  const found = setCategory(set)
+  if (!found) return { exercise: UNKNOWN_EXERCISE }
+  const { category, subtype } = found
+  const profileName = subtype === null ? undefined : Profile.types[`${category}ExerciseName`]?.[subtype]
+  const title =
+    titles.find((t) => t.exerciseCategory === category && t.exerciseName === subtype) ??
+    (set.wktStepIndex === undefined ? undefined : titles.find((t) => t.messageIndex === set.wktStepIndex))
+  return garminExercise(
+    catalog,
+    fitEnumKey(category),
+    profileName ? fitEnumKey(profileName) : '',
+    typeof title?.wktStepName === 'string' ? title.wktStepName : undefined,
+  )
+}
+
+/** The active sets of a FIT strength recording in time order, named by catalogue key where the FIT key is known. */
+export const fitToSets = (fit: FitActivity, catalog: StoredExerciseCatalog): GarminSet[] =>
+  fit.sets
+    .filter((set) => set.setType !== 'rest')
+    .map((set, order) => ({ order, set, time: setTime(set) }))
+    .sort((a, b) => a.time - b.time || a.order - b.order)
+    .flatMap(({ set }) => {
+      const measures = garminSetMeasures({
+        reps: set.repetitions,
+        seconds: set.duration,
+        weightKg: set.weight,
+      })
+      return measures ? [{ ...setExercise(set, fit.exerciseTitles, catalog), ...measures }] : []
+    })

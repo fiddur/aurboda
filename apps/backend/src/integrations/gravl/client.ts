@@ -33,6 +33,8 @@ import type {
 } from './types.ts'
 
 import { getOAuthToken, initializeSchema, schemaInitialized, upsertOAuthToken } from '../../db/index.ts'
+import { auditWarn } from '../../services/audit-log.ts'
+import { handOverOAuthCallback, type OAuthCompletion } from '../../services/oauth-completion.ts'
 import { createPkcePair, openState, sealState } from '../../services/oauth-state.ts'
 import { getSettings } from '../../services/settings.ts'
 
@@ -62,6 +64,7 @@ export interface GravlClientDeps {
   upsertOAuthToken: (user: string, token: OAuthToken) => Promise<void>
   getPersonalToken: (user: string) => Promise<string | null>
   ensureUserSchema: (user: string) => Promise<void>
+  auditWarn: typeof auditWarn
   http: AxiosInstance
   now: () => Date
 }
@@ -109,6 +112,7 @@ const toGravlError = (error: unknown): unknown => {
 }
 
 const defaultDeps = (): GravlClientDeps => ({
+  auditWarn,
   ensureUserSchema: async (user) => {
     if (!(await schemaInitialized(user))) await initializeSchema(user)
   },
@@ -260,17 +264,32 @@ export const gravlClient = (
       res.json({ success: true, url: location.toString() })
     },
 
+    /**
+     * Gravl's redirect carries no Aurboda login, so it only hands the code and state to the
+     * signed-in page, which finishes through `complete`.
+     */
     async authCb(req: Request, res: Response) {
-      const { code, state, error } = req.query as Record<string, string | undefined>
-      if (error || !state || !code) return res.redirect('/data-sources/gravl?error=auth_failed')
+      const target = await handOverOAuthCallback(req.query, 'gravl', async (state) => {
+        const credentials = await getCredentials()
+        if (!credentials) return 'not_configured'
+        return openState(state, credentials.clientSecret, deps.now()) ? null : 'invalid_state'
+      })
+      return res.redirect(target)
+    },
 
+    /** Links the Gravl account to `user`, who must be the user that started the sign-in. */
+    async complete(user: string, code: string, state: string): Promise<OAuthCompletion> {
       const credentials = await getCredentials()
-      if (!credentials) return res.redirect('/data-sources/gravl?error=not_configured')
+      if (!credentials) return { ok: false, reason: 'not_configured' }
 
       const opened = openState(state, credentials.clientSecret, deps.now())
-      if (!opened) return res.redirect('/data-sources/gravl?error=invalid_state')
+      if (!opened) return { ok: false, reason: 'invalid_state' }
+      if (opened.user !== user) {
+        await deps.auditWarn(user, 'auth', 'Gravl sign-in started by another account was refused')
+        return { ok: false, reason: 'wrong_user' }
+      }
 
-      await deps.ensureUserSchema(opened.user)
+      await deps.ensureUserSchema(user)
 
       try {
         const token = await tokenRequest({
@@ -281,10 +300,17 @@ export const gravlClient = (
           grant_type: 'authorization_code',
           redirect_uri: redirectUri,
         })
-        await storeGrant(opened.user, token)
-        return res.redirect('/data-sources/gravl?connected=true')
-      } catch {
-        return res.redirect('/data-sources/gravl?error=auth_failed')
+        await storeGrant(user, token)
+        return { ok: true }
+      } catch (failure) {
+        const message = failure instanceof Error ? failure.message : String(failure)
+        await deps.auditWarn(user, 'auth', 'Gravl OAuth connection failed', {
+          error: [credentials.clientSecret, code, opened.verifier].reduce(
+            (acc, secret) => acc.split(secret).join('[REDACTED]'),
+            message,
+          ),
+        })
+        return { ok: false, reason: 'auth_failed' }
       }
     },
 

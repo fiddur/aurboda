@@ -630,11 +630,6 @@ details.list-field-detail:not([open]) > summary h3 {
   color: white;
 }
 
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .notes-section {
   margin-top: 1.5rem;
   padding-top: 1.5rem;

@@ -1,3 +1,4 @@
+import type { StoredExerciseCatalog } from '@aurboda/api-spec'
 import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
 import type { GarminNapDTO, SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
 
@@ -20,14 +21,22 @@ import {
   activityTypeExists,
   adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
+  hasRawRecord,
   insertActivity,
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
+  setGarminActivityFitSets,
   softDeleteSupersededLocations,
   upsertActivityTrack,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import { loadExerciseCatalog } from '../../services/exercise-catalog.ts'
+import { aliasActivityData } from '../../services/item-value-aliases.ts'
+import { applyItemValueKeysForWrite } from '../../services/item-value-identities.ts'
+import { maxOf, minOf } from '../../services/numeric-extremes.ts'
 import {
   GARMIN_HC_ORIGIN,
   garminActivityExternalId,
@@ -36,7 +45,8 @@ import {
 import { buildTrack, type TrackPoint } from '../../services/tracks.ts'
 import { pushAll } from '../../utils.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
-import { type FitActivity, fitToDetail } from './fit.ts'
+import { type GarminSetNamingDeps, nameGarminSets } from './exercise-names.ts'
+import { type FitActivity, fitToDetail, fitToSets } from './fit.ts'
 import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
 
 export { garminSleepLevelsToStages } from './sleep-stages.ts'
@@ -68,6 +78,17 @@ export const garminDataTypes: GarminDataType[] = [
   'intensityMinutes',
 ]
 
+export interface GarminFitSetsDeps extends GarminSetNamingDeps {
+  loadExerciseCatalog: () => StoredExerciseCatalog
+  setGarminActivityFitSets: typeof setGarminActivityFitSets
+}
+
+/** What lets a FIT file's samples replace those its activity's JSON detail wrote. */
+export interface GarminFitReplaceDeps {
+  hasRawRecord: typeof hasRawRecord
+  replaceTimeSeriesInWindow: typeof replaceTimeSeriesInWindow
+}
+
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
   adoptLegacyActivity: typeof adoptLegacyActivity
@@ -75,6 +96,12 @@ export interface GarminProcessDeps {
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
+  /** Absent, a FIT file's strength sets are not stored. */
+  fitSets?: GarminFitSetsDeps
+  /** Absent, a FIT file's samples are written next to any the JSON detail left. */
+  fitReplace?: GarminFitReplaceDeps
+  /** The stored row, whose title and end an item without a name or duration keeps; absent, the fallbacks are written. */
+  findActivityByExternalId?: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
@@ -105,6 +132,14 @@ const defaultDeps: GarminProcessDeps = {
   auditInfo,
   auditWarn,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
+  /** Built on use, so importing this module reads no export of a test's partial `db` mock. */
+  get fitSets(): GarminFitSetsDeps {
+    return { aliasActivityData, applyItemValueKeysForWrite, loadExerciseCatalog, setGarminActivityFitSets }
+  },
+  get fitReplace(): GarminFitReplaceDeps {
+    return { hasRawRecord, replaceTimeSeriesInWindow }
+  },
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -567,6 +602,28 @@ const processBodyBattery = async (
   return count
 }
 
+/** An item without a name or a duration (a pushed manual edit) keeps the stored row's title and end. */
+const activityTitleAndEnd = async (
+  user: string,
+  act: IActivity,
+  startTime: Date,
+  deps: GarminProcessDeps,
+): Promise<{ title: string | undefined; end: Date }> => {
+  const durationSeconds = act.duration || act.elapsedDuration || 0
+  const computedEnd = new Date(startTime.getTime() + durationSeconds * 1000)
+  if (act.activityName && durationSeconds) return { end: computedEnd, title: act.activityName }
+  const stored = await deps.findActivityByExternalId?.(
+    user,
+    'garmin',
+    garminActivityExternalId(act.activityId),
+  )
+  const keepEnd = !durationSeconds && stored?.end_time !== undefined && stored.end_time > startTime
+  return {
+    end: keepEnd && stored?.end_time ? stored.end_time : computedEnd,
+    title: act.activityName || stored?.title,
+  }
+}
+
 const processActivity = async (
   user: string,
   act: IActivity,
@@ -575,14 +632,13 @@ const processActivity = async (
 ): Promise<void> => {
   const externalId = garminActivityExternalId(act.activityId)
   const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
-  const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
-  const endTime = new Date(startTime.getTime() + durationMs)
+  const { end: endTime, title } = await activityTitleAndEnd(user, act, startTime, deps)
 
   await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
 
   const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
   const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
-  const exerciseTitle = act.activityName || activityTypeKey
+  const exerciseTitle = title || activityTypeKey
 
   // Legacy rows (no external_id) with a different type are removed so a
   // re-sync after a type-mapping change doesn't leave a duplicate; keyed rows
@@ -968,6 +1024,8 @@ interface ExtractedDetail {
   gpsPoints: Location[]
   trackPoints: TrackPoint[]
   raw: RawRecord | null
+  /** The window whose earlier `garmin` samples of the points' metrics the points replace. */
+  replaceWindow?: { start: Date; end: Date } | null
 }
 
 /**
@@ -976,7 +1034,7 @@ interface ExtractedDetail {
  */
 const writeActivityDetail = async (
   user: string,
-  { garminActivityId, gpsPoints, points, raw, trackPoints }: ExtractedDetail,
+  { garminActivityId, gpsPoints, points, raw, replaceWindow, trackPoints }: ExtractedDetail,
   {
     activityId,
     activitySpan,
@@ -986,7 +1044,17 @@ const writeActivityDetail = async (
   }: ProcessActivityDetailOptions,
 ): Promise<number> => {
   if (raw) await deps.insertRawRecord(user, raw)
-  if (points.length > 0) await deps.insertTimeSeries(user, points)
+  if (points.length > 0 && replaceWindow && deps.fitReplace) {
+    await deps.fitReplace.replaceTimeSeriesInWindow(
+      user,
+      'garmin',
+      points,
+      replaceWindow.start,
+      replaceWindow.end,
+    )
+  } else if (points.length > 0) {
+    await deps.insertTimeSeries(user, points)
+  }
 
   if (gpsPoints.length > 0) {
     const span = gpsPrecedenceSpan(gpsPoints, activitySpan)
@@ -1062,6 +1130,29 @@ export const processActivityDetail = async (
   )
 
 /**
+ * When the activity was synced through its JSON detail before, the window its samples lie in:
+ * the activity's span widened to the file's samples. Null when there is nothing to replace.
+ */
+const jsonDetailWindow = async (
+  user: string,
+  garminActivityId: number,
+  points: TimeSeriesPoint[],
+  { activitySpan, deps = defaultDeps }: ProcessActivityDetailOptions,
+): Promise<{ start: Date; end: Date } | null> => {
+  if (points.length === 0 || !deps.fitReplace) return null
+  const synced = await deps.fitReplace.hasRawRecord(
+    user,
+    'garmin',
+    'garmin_activity_detail',
+    `garmin-activity-detail-${garminActivityId}`,
+  )
+  if (!synced) return null
+  const times = points.map((p) => p.time.getTime())
+  if (activitySpan) times.push(activitySpan.start.getTime(), activitySpan.end.getTime())
+  return { end: new Date(maxOf(times) ?? 0), start: new Date(minOf(times) ?? 0) }
+}
+
+/**
  * The activity's original FIT file in place of the JSON detail: the full recording. The raw
  * record keeps only its summary, under its own type, so the JSON detail's stays apart.
  */
@@ -1074,15 +1165,56 @@ export const processActivityFit = async (
     fit,
     options.activityStart ?? new Date(),
   )
-  return writeActivityDetail(
+  const count = await writeActivityDetail(
     user,
     {
       garminActivityId,
       gpsPoints,
       points,
       raw: makeRaw('garmin_activity_fit', `garmin-activity-fit-${garminActivityId}`, recordedAt, summary),
+      replaceWindow: await jsonDetailWindow(user, garminActivityId, points, options),
       trackPoints,
     },
     options,
   )
+  if (options.activityId) await storeFitSets(user, fit, garminActivityId, options.activityId, options.deps)
+  return count
+}
+
+/**
+ * The strength sets the file carries, stored on the row unless it is not strength training or the
+ * login's reader already wrote it. A failure is audited and leaves the detail as written.
+ */
+const storeFitSets = async (
+  user: string,
+  fit: FitActivity,
+  garminActivityId: number,
+  activityId: string,
+  deps: GarminProcessDeps = defaultDeps,
+): Promise<void> => {
+  const setDeps = deps.fitSets
+  if (!setDeps || fit.sets.length === 0) return
+  try {
+    const catalog = setDeps.loadExerciseCatalog()
+    const built = fitToSets(fit, catalog)
+    if (built.length === 0) return
+    const named = await nameGarminSets(user, built, catalog, setDeps)
+    if ('error' in named) {
+      deps.auditError(user, 'sync', `Could not name the FIT sets of Garmin activity ${garminActivityId}`, {
+        error: named.error,
+      })
+      return
+    }
+    if (await setDeps.setGarminActivityFitSets(user, activityId, named.sets)) {
+      deps.auditInfo(
+        user,
+        'sync',
+        `🏋️ Synced ${named.sets.length} sets for Garmin activity ${garminActivityId} from its FIT file`,
+      )
+    }
+  } catch (error) {
+    deps.auditError(user, 'sync', `Failed to store the FIT sets of Garmin activity ${garminActivityId}`, {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }

@@ -731,8 +731,14 @@ export function DashboardEditor({
             <div class="form-group">
               <label>Line</label>
               <MetricPicker
+                clearable
                 value={metrics[1] ?? ''}
-                onChange={(metric) => updateConfig('metrics', [metrics[0] ?? metric, metric])}
+                onChange={(metric) =>
+                  updateConfig(
+                    'metrics',
+                    metric ? [metrics[0] ?? metric, metric] : [metrics[0] ?? dayOverviewDefaultMetrics[0]],
+                  )
+                }
               />
             </div>
             <OptionalTextField

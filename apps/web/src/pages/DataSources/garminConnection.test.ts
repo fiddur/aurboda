@@ -10,15 +10,12 @@ import {
   garminDataTypeSourceNote,
   garminLastReceivedText,
   garminLoginOnlyData,
-  garminOAuthReturn,
   garminPermissionLabel,
   garminSwitchStep,
   joinList,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
-  oauthErrorText,
-  withoutGarminOAuthReturn,
 } from './garminConnection'
 
 describe('expiry quick choices', () => {
@@ -162,16 +159,6 @@ describe('garminDataTypeNote', () => {
   })
 })
 
-describe('oauthErrorText', () => {
-  it('explains each callback error code, and an unknown one as a failed connection', () => {
-    expect(oauthErrorText('auth_failed')).toBe('Garmin did not complete the connection. Try again.')
-    expect(oauthErrorText('not_configured')).toBe('This server has not set up Garmin sign-in.')
-    expect(oauthErrorText('invalid_state')).toBe('The connection attempt expired. Try again.')
-    expect(oauthErrorText('something_else')).toBe('Garmin did not complete the connection. Try again.')
-    expect(oauthErrorText(null)).toBeNull()
-  })
-})
-
 describe('garminLastReceivedText', () => {
   const now = new Date('2026-11-17T10:00:00Z')
 
@@ -195,34 +182,6 @@ describe('garminPermissionLabel', () => {
     expect(garminPermissionLabel('WORKOUT_IMPORT')).toBe('Sending workouts')
     expect(garminPermissionLabel('COURSE_IMPORT')).toBe('Sending courses')
     expect(garminPermissionLabel('NEW_THING')).toBe('NEW_THING')
-  })
-})
-
-describe('garminOAuthReturn', () => {
-  it('reads the code and state the callback hands over', () => {
-    expect(garminOAuthReturn('?garmin_code=fake-code&garmin_state=fake%2Bstate')).toEqual({
-      code: 'fake-code',
-      state: 'fake+state',
-    })
-  })
-
-  it('is null unless both are present and non-empty', () => {
-    expect(garminOAuthReturn('')).toBeNull()
-    expect(garminOAuthReturn('?garmin_code=fake-code')).toBeNull()
-    expect(garminOAuthReturn('?garmin_state=fake-state')).toBeNull()
-    expect(garminOAuthReturn('?garmin_code=&garmin_state=fake-state')).toBeNull()
-    expect(garminOAuthReturn('?error=auth_failed')).toBeNull()
-  })
-})
-
-describe('withoutGarminOAuthReturn', () => {
-  it('removes the code and state and keeps everything else', () => {
-    expect(withoutGarminOAuthReturn('?embed=1&garmin_code=fake-code&garmin_state=fake-state')).toBe(
-      '?embed=1',
-    )
-    expect(withoutGarminOAuthReturn('?garmin_code=fake-code&garmin_state=fake-state')).toBe('')
-    expect(withoutGarminOAuthReturn('')).toBe('')
-    expect(withoutGarminOAuthReturn('?embed=1')).toBe('?embed=1')
   })
 })
 
@@ -286,7 +245,6 @@ describe('garminLoginOnlyData', () => {
   it('lists what Connect with Garmin alone lacks', () => {
     expect(garminLoginOnlyData({ keyConnected: false, oauthConnected: true })).toEqual([
       'training readiness',
-      'strength sets',
       'data from before you connected',
       'syncing on demand',
     ])
@@ -297,15 +255,11 @@ describe('garminLoginOnlyData', () => {
       'stress',
       'the sleep stage timeline',
       'training readiness',
-      'strength sets',
     ])
   })
 
   it('lists what both together lack', () => {
-    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: true })).toEqual([
-      'training readiness',
-      'strength sets',
-    ])
+    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: true })).toEqual(['training readiness'])
   })
 })
 
@@ -319,27 +273,36 @@ describe('joinList', () => {
 })
 
 describe('garminDataTypeSourceNote', () => {
-  const both = { keyConnected: true, sessionConnected: true }
+  const loginAndKey = {
+    activities: 'personal_key',
+    dailySummary: 'push',
+    hrv: 'personal_key',
+    sleep: 'push',
+    stress: 'session',
+    trainingReadiness: 'session',
+  } as const
 
   it('says nothing while Connect with Garmin delivers nothing', () => {
-    expect(garminDataTypeSourceNote('sleep', { delivers: [], ...both })).toBeUndefined()
+    expect(
+      garminDataTypeSourceNote('sleep', { hrv: 'personal_key', sleep: 'session', stress: 'session' }),
+    ).toBeUndefined()
+    expect(garminDataTypeSourceNote('sleep', undefined)).toBeUndefined()
   })
 
   it('names Connect with Garmin for a type it delivers', () => {
-    expect(garminDataTypeSourceNote('sleep', { delivers: ['sleep'], ...both })).toBe(
-      'Delivered by Connect with Garmin',
+    expect(garminDataTypeSourceNote('sleep', loginAndKey)).toBe('Delivered by Connect with Garmin')
+  })
+
+  it('with a login and a key, names the key for the types the key serves and the login for the rest', () => {
+    expect(garminDataTypeSourceNote('hrv', loginAndKey)).toBe('Fetched with the Personal API key')
+    expect(garminDataTypeSourceNote('activities', loginAndKey)).toBe('Fetched with the Personal API key')
+    expect(garminDataTypeSourceNote('stress', loginAndKey)).toBe('Fetched through the Garmin login')
+    expect(garminDataTypeSourceNote('trainingReadiness', loginAndKey)).toBe(
+      'Fetched through the Garmin login',
     )
   })
 
-  it('names the pull connection for the rest, the login first', () => {
-    expect(garminDataTypeSourceNote('trainingReadiness', { delivers: ['sleep'], ...both })).toBe(
-      'Fetched through the Garmin login',
-    )
-    expect(
-      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: true, sessionConnected: false }),
-    ).toBe('Fetched with the Personal API key')
-    expect(
-      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: false, sessionConnected: false }),
-    ).toBeUndefined()
+  it('says nothing for a type no connection brings', () => {
+    expect(garminDataTypeSourceNote('stress', { sleep: 'push' })).toBeUndefined()
   })
 })

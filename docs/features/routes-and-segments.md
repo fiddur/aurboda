@@ -329,7 +329,8 @@ activity's (or the segment's) efforts are replaced in one transaction.
 
 **Where it runs**: the `track-analyse` job, after routes and features, against every segment
 for the written track (an activity that no longer covers a segment loses its efforts there);
-at creation against every track; `POST /segments/:id/match` / `match_segment` repeats that on
+the `track-backfill` job, after its route matching, for every track it wrote; at creation
+against every track; `POST /segments/:id/match` / `match_segment` repeats that on
 demand; and a retype drops the activity's efforts and times its tracks again under the new
 type, next to the route re-match.
 
@@ -355,8 +356,9 @@ length). A polyline-only Strava backfill is timed too, from its evenly spread M,
 A segment's efforts are listed newest first. Passes of one session recorded by two sources
 (the Garmin and Strava rows, or two tracks of one row, overlapping in time) are listed once,
 the non-approximate one kept, else the earliest activity. `is_best` marks the fastest
-non-approximate effort (the fastest of all when every one is approximate), `rank` orders them
-by elapsed time (1 = fastest).
+non-approximate effort (the fastest of all when every one is approximate), and `rank` orders
+them the same way (1 = the best effort): non-approximate efforts by elapsed time, then the
+approximate ones, so a shape-only pass never ranks ahead of a timed one.
 
 ### Tables
 
@@ -428,7 +430,9 @@ dropped, as it could not be timed.
 other's 25 m buffer, same direction) is not stored again: a similar segment, or a dismissed or
 promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also after the segment
 made from it is deleted); a similar pending one takes the larger activity count. Merging an
-activity type moves its suggestions with it.
+activity type moves its suggestions with it; deleting one deletes them, pending and decided.
+Promoting claims the suggestion first (it is marked promoted before the segment is made, and
+made pending again when no segment comes of it), so two promotes of it make one segment.
 
 **Where it runs**: the `track-analyse` job, after segment timing (a fourth step); the
 `track-backfill` job, one time-limited run (20 s) over tracked activities not looked at yet,

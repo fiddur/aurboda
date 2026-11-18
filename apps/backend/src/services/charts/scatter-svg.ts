@@ -44,7 +44,12 @@ export interface ScatterSvgData {
   } | null
   trigger: CorrelationSelector
   outcome: CorrelationSelector
+  /** Sensitivity flag names by id, for a sensitivity axis; a flag missing here reads generically. */
+  flag_names?: Record<string, string>
 }
+
+export const scatterAxisLabel = (selector: CorrelationSelector, flagNames?: Record<string, string>): string =>
+  describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames?.[selector.flag] : undefined)
 
 export interface ScatterSvgOptions {
   width?: number
@@ -106,8 +111,8 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
     )
     .join('')
 
-  const xAxis = describeSelectorAxis(data.trigger)
-  const yAxis = describeSelectorAxis(data.outcome)
+  const xAxis = scatterAxisLabel(data.trigger, data.flag_names)
+  const yAxis = scatterAxisLabel(data.outcome, data.flag_names)
   const yLabelX = 24
   const yLabelY = (pad.top + (height - pad.bottom)) / 2
   const plot = `<line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>

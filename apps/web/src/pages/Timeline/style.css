@@ -170,6 +170,22 @@
   margin-left: auto;
 }
 
+@media (max-width: 600px) {
+  .timeline-nav {
+    order: 0;
+  }
+
+  .timeline-orientation-toggle {
+    order: 1;
+  }
+
+  .timeline-range-presets,
+  .timeline-date-label,
+  .timeline-refresh-btn {
+    order: 2;
+  }
+}
+
 .timeline-fullscreen-btn {
   font-size: 1rem;
   padding: 0.2rem 0.4rem !important;

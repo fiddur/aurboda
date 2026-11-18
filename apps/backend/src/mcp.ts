@@ -78,7 +78,9 @@ import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
+import { registerReminderTools } from './mcp/reminder-tools.ts'
 import { registerReportTools } from './mcp/report-tools.ts'
+import { mcpRequestBudgetError } from './mcp/request-budget.ts'
 import { registerRouteTools } from './mcp/route-tools.ts'
 import { registerScreentimeCategoryTools } from './mcp/screentime-category-tools.ts'
 import { registerSegmentTools } from './mcp/segment-tools.ts'
@@ -174,6 +176,8 @@ interface McpDeps {
   /** The article preview (`preview_article`), shared with the REST route. */
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
+  /** `reprocess_garmin_pushes`: queues the stored Connect with Garmin pushes for processing again. */
+  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>
   /** The tag actor host (`tag_actor_host` server setting); its accounts' boosts are hashtag feeds, not people. */
   tagActorHost?: () => Promise<string>
   relayActions?: RelayActions
@@ -235,6 +239,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.onTrackWritten,
     deps.syncHomeAssistant,
     deps.homeAssistant,
+    deps.reprocessGarminPushes,
   )
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
@@ -249,6 +254,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.centralDb?.isAdmin ?? (async () => false),
     deps.runNotificationAction,
   )
+  registerReminderTools(server, user)
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {
@@ -327,6 +333,13 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       return
     }
 
+    if (mcpRequestBudgetError(req.body) !== null) {
+      res
+        .status(413)
+        .json({ error: { code: -32600, message: 'Request too large' }, id: null, jsonrpc: '2.0' })
+      return
+    }
+
     const tools = mcpToolCallNames(req.body)
     for (const tool of tools) {
       recordUsage(user, isMutatingMcpTool(tool) ? 'write' : 'read', 'mcp')
@@ -340,13 +353,16 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
       sessionIdGenerator: undefined,
     })
 
-    await server.connect(transport)
-    await transport.handleRequest(
-      req,
-      res,
-      req.body === undefined ? undefined : trimToolCallArguments(req.body),
-    )
-    await server.close()
+    try {
+      await server.connect(transport)
+      await transport.handleRequest(
+        req,
+        res,
+        req.body === undefined ? undefined : trimToolCallArguments(req.body),
+      )
+    } finally {
+      await server.close()
+    }
   })
 
   router.use(jsonRpcBodyError)

@@ -6,6 +6,7 @@ import type { GarminDataType } from './process.ts'
 import {
   chooseGarminSource,
   type GarminConnections,
+  garminDataSources,
   type GarminSourceTarget,
   garminRoutedClient,
   getGarminConnections,
@@ -247,5 +248,33 @@ describe('garminRoutedClient', () => {
     expect(await garmin.pushDelivers('alice', 'trainingReadiness')).toBe(false)
     expect(await garmin.pushDelivers('bob', 'sleep')).toBe(false)
     expect(getPushDelivered).toHaveBeenCalledWith('alice')
+  })
+})
+
+describe('garminDataSources', () => {
+  test('Connect with Garmin first, then the key for the types it serves, then the login', () => {
+    expect(
+      garminDataSources(['sleep', 'dailySummary'], connections({ key: true, session: true }), NOW),
+    ).toEqual({
+      activities: 'personal_key',
+      bodyBattery: 'personal_key',
+      dailySummary: 'push',
+      heartRate: 'personal_key',
+      hrv: 'personal_key',
+      intensityMinutes: 'personal_key',
+      respiration: 'personal_key',
+      sleep: 'push',
+      spo2: 'personal_key',
+      stress: 'session',
+      trainingReadiness: 'session',
+    })
+  })
+
+  test('leaves out a type no connection brings', () => {
+    const sources = garminDataSources(['sleep'], connections({ key: true }), NOW)
+    expect(sources).not.toHaveProperty('stress')
+    expect(sources).not.toHaveProperty('trainingReadiness')
+    expect(sources.hrv).toBe('personal_key')
+    expect(garminDataSources([], connections({}), NOW)).toEqual({})
   })
 })

@@ -21,6 +21,13 @@ export {
 
 export { createTrainingLoadDeps, type TrainingLoadDeps } from './deps.ts'
 
-export { recomputeImpulseBuckets } from './recompute.ts'
+export {
+  markImpulsesDirty,
+  markWorkoutHoursDirty,
+  trackWorkoutTypeChanges,
+  type WorkoutSession,
+} from './dirty.ts'
+
+export { fillImpulseBuckets, recomputeImpulseBuckets } from './recompute.ts'
 
 export { computeTrainingLoad } from './query.ts'

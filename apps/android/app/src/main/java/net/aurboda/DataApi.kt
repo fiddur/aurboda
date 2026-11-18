@@ -11,6 +11,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonObject
@@ -68,6 +69,29 @@ suspend fun fetchUserSettings(
         DataResult.Error(e.message ?: "Unknown error")
     }
 }
+
+/**
+ * The user's `hidden_pages` menu paths, or null when the call failed. Unlike [fetchUserSettings] it does
+ * not log the body, which holds stored keys. The generated model requires the field, so a server from
+ * before it existed counts as a failed call.
+ */
+suspend fun fetchHiddenPages(httpClient: HttpClient, apiUrl: String, authToken: String): List<String>? =
+    try {
+        val response = httpClient.get("$apiUrl/user/settings") {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+        if (response.status == HttpStatusCode.OK) {
+            appJson.decodeFromString<UserSettingsResponse>(response.bodyAsText()).hiddenPages
+        } else {
+            Log.w("DataApi", "User settings returned ${response.status}")
+            null
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("DataApi", "Fetching hidden pages failed: ${e.message}")
+        null
+    }
 
 suspend fun fetchGoalsProgress(
     httpClient: HttpClient,

@@ -1,8 +1,14 @@
-import type { DashboardConfig } from '@aurboda/api-spec'
-
+import {
+  type BarChartConfig,
+  type DashboardConfig,
+  MUSCLE_GROUP_FILTER_NEEDS_GROUP,
+  MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+  MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN,
+  MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH,
+} from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
-import { sanitizeConfig } from './dashboard-config.ts'
+import { dashboardConfigError, sanitizeConfig } from './dashboard-config.ts'
 
 describe('sanitizeConfig', () => {
   test('neutralizes quick-link hrefs and leaves other widgets untouched', () => {
@@ -77,5 +83,99 @@ describe('sanitizeConfig', () => {
       version: 1,
     }
     expect(sanitizeConfig(config).sections[0].widgets.map((w) => w.id)).toEqual(['mc'])
+  })
+})
+
+describe('dashboardConfigError', () => {
+  const muscleBars: BarChartConfig = {
+    bucket_size: '1w',
+    filter_field: 'sets.exercise.muscle_group',
+    filter_value: 'chest',
+    lookback_days: 90,
+    measure: 'set_count',
+    pattern: 'strength_training',
+    source_type: 'activity_type',
+  }
+
+  const withWidgets = (widgets: DashboardConfig['sections'][number]['widgets']): DashboardConfig => ({
+    sections: [{ id: 's', title: 'Strength', type: 'charts', widgets }],
+    version: 1,
+  })
+
+  const barWidget = (config: Partial<BarChartConfig>): DashboardConfig =>
+    withWidgets([{ config: { ...muscleBars, ...config }, id: 'bar', type: 'bar_chart' }])
+
+  test('accepts the bar charts the Chart Explorer saves', () => {
+    expect(dashboardConfigError(barWidget({}))).toBeUndefined()
+    expect(dashboardConfigError(barWidget({ breakdown_fields: ['sets.exercise'] }))).toBeUndefined()
+    expect(
+      dashboardConfigError(
+        barWidget({
+          breakdown_fields: ['sets.exercise.muscle_group'],
+          filter_field: undefined,
+          filter_value: undefined,
+        }),
+      ),
+    ).toBeUndefined()
+    expect(
+      dashboardConfigError(
+        barWidget({ filter_field: 'sets.exercise', filter_value: 'Bench', measure: 'e1rm' }),
+      ),
+    ).toBeUndefined()
+  })
+
+  test('refuses a muscle-group filter without a muscle group', () => {
+    expect(dashboardConfigError(barWidget({ filter_value: 'pecs' }))).toBe(MUSCLE_GROUP_FILTER_NEEDS_GROUP)
+  })
+
+  test('refuses a muscle-group filter without a summed measure', () => {
+    expect(dashboardConfigError(barWidget({ measure: 'e1rm' }))).toBe(
+      MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+    )
+    expect(dashboardConfigError(barWidget({ measure: undefined }))).toBe(
+      MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+    )
+  })
+
+  test('refuses a muscle-group filter with a muscle-group breakdown', () => {
+    expect(dashboardConfigError(barWidget({ breakdown_fields: ['sets.exercise.muscle_group'] }))).toBe(
+      MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN,
+    )
+  })
+
+  test('refuses a muscle-group filter with another item path breakdown', () => {
+    expect(dashboardConfigError(barWidget({ breakdown_fields: ['laps.name'] }))).toBe(
+      MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH,
+    )
+  })
+
+  test("checks a combined chart's bars layer", () => {
+    const combined = (bars: Partial<BarChartConfig>): DashboardConfig =>
+      withWidgets([
+        {
+          config: {
+            layers: [
+              {
+                bucket_size: '1w',
+                filter_field: 'sets.exercise.muscle_group',
+                filter_value: 'chest',
+                kind: 'bars',
+                measure: 'set_count',
+                pattern: 'strength_training',
+                source_type: 'activity_type',
+                ...bars,
+              },
+              { kind: 'trend', pattern: 'strength_training', source_type: 'activity_type' },
+            ],
+            lookback_days: 30,
+          },
+          id: 'combined',
+          type: 'combined_chart',
+        },
+      ])
+    expect(dashboardConfigError(combined({}))).toBeUndefined()
+    expect(dashboardConfigError(combined({ measure: 'max_weight' }))).toBe(
+      MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+    )
   })
 })

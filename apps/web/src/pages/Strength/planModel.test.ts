@@ -81,7 +81,7 @@ describe('blocksFromPlan', () => {
 })
 
 describe('liveBlocksFromPlan', () => {
-  it('turns the planned sets into prefills of empty blocks and keeps the key', () => {
+  it('turns the planned sets into prefills of empty blocks, with set type and cue, and keeps the key', () => {
     const blocks = liveBlocksFromPlan(
       [
         {
@@ -103,7 +103,7 @@ describe('liveBlocksFromPlan', () => {
         exercise: 'Squat',
         id: 'id1',
         planned: [
-          { reps: 5, weight: 60 },
+          { note: 'slow', reps: 5, set_type: 'warmup', weight: 60 },
           { reps: 5, weight: 100 },
         ],
         sets: [],

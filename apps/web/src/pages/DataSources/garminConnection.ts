@@ -1,4 +1,10 @@
-import type { GarminDataType, GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
+import type {
+  GarminDataSource,
+  GarminDataSources,
+  GarminDataType,
+  GarminOAuthStatus,
+  GarminPersonalKeyStatus,
+} from '@aurboda/api-spec'
 
 import { formatDistance } from 'date-fns'
 
@@ -61,19 +67,20 @@ export const garminDataTypeNote = (
   { keyOnly, pushOnly }: { keyOnly: boolean; pushOnly: boolean },
 ): string | undefined => (keyOnly ? key_note : pushOnly ? push_note : undefined)
 
+const SOURCE_NOTES: Record<GarminDataSource, string> = {
+  personal_key: 'Fetched with the Personal API key',
+  push: 'Delivered by Connect with Garmin',
+  session: 'Fetched through the Garmin login',
+}
+
 /** The line under a data type saying which connection brings it, once Connect with Garmin delivers something. */
 export const garminDataTypeSourceNote = (
   type: GarminDataType,
-  {
-    delivers,
-    keyConnected,
-    sessionConnected,
-  }: { delivers: readonly GarminDataType[]; sessionConnected: boolean; keyConnected: boolean },
+  sources: GarminDataSources | undefined,
 ): string | undefined => {
-  if (delivers.length === 0) return undefined
-  if (delivers.includes(type)) return 'Delivered by Connect with Garmin'
-  if (sessionConnected) return 'Fetched through the Garmin login'
-  return keyConnected ? 'Fetched with the Personal API key' : undefined
+  if (!sources || !Object.values(sources).includes('push')) return undefined
+  const source = sources[type]
+  return source ? SOURCE_NOTES[source] : undefined
 }
 
 const NO_OAUTH: GarminOAuthStatus = {
@@ -127,43 +134,16 @@ export const garminLoginOnlyData = ({
   oauthConnected: boolean
   keyConnected: boolean
 }): string[] | null => {
-  if (oauthConnected && keyConnected) return ['training readiness', 'strength sets']
+  if (oauthConnected && keyConnected) return ['training readiness']
   if (oauthConnected) {
-    return ['training readiness', 'strength sets', 'data from before you connected', 'syncing on demand']
+    return ['training readiness', 'data from before you connected', 'syncing on demand']
   }
-  if (keyConnected) return ['stress', 'the sleep stage timeline', 'training readiness', 'strength sets']
+  if (keyConnected) return ['stress', 'the sleep stage timeline', 'training readiness']
   return null
 }
 
 export const joinList = (items: readonly string[]): string =>
   items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
-
-const OAUTH_ERROR_TEXT: Record<string, string> = {
-  auth_failed: 'Garmin did not complete the connection. Try again.',
-  invalid_state: 'The connection attempt expired. Try again.',
-  not_configured: 'This server has not set up Garmin sign-in.',
-}
-
-/** The text for the `?error=` code the Connect with Garmin callback redirects with. */
-export const oauthErrorText = (code: string | null): string | null =>
-  code === null ? null : (OAUTH_ERROR_TEXT[code] ?? OAUTH_ERROR_TEXT.auth_failed)
-
-const OAUTH_RETURN_PARAMS = ['garmin_code', 'garmin_state'] as const
-
-/** The code and state Garmin's callback hands to the page, for the signed-in user to finish with. */
-export const garminOAuthReturn = (search: string): { code: string; state: string } | null => {
-  const params = new URLSearchParams(search)
-  const code = params.get('garmin_code')
-  const state = params.get('garmin_state')
-  return code && state ? { code, state } : null
-}
-
-export const withoutGarminOAuthReturn = (search: string): string => {
-  const params = new URLSearchParams(search)
-  for (const name of OAUTH_RETURN_PARAMS) params.delete(name)
-  const rest = params.toString()
-  return rest ? `?${rest}` : ''
-}
 
 const PERMISSION_LABELS: Record<string, string> = {
   ACTIVITY_EXPORT: 'Activities',

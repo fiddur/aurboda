@@ -71,6 +71,7 @@ interface SyncSetupDeps {
   activityNotifier: ActivityNotifier
   onActivityDetailSynced: DetailSyncedCallback
   onTrackWritten: TrackWrittenCallback
+  reprocessGarminPushes: (user: string, since?: Date) => Promise<number>
 }
 
 export const mountSyncRouter = ({
@@ -87,6 +88,7 @@ export const mountSyncRouter = ({
   activityNotifier,
   onActivityDetailSynced,
   onTrackWritten,
+  reprocessGarminPushes,
 }: SyncSetupDeps): void => {
   const transformSyncStates = async (user: string, provider: string) => {
     const states = await getVisibleSyncStates(user, provider)
@@ -154,6 +156,7 @@ export const mountSyncRouter = ({
         reportSyncFailure,
         requeueOutboundSync,
         resetCalendarSyncState: (user) => resetSyncState(user, 'calendar'),
+        reprocessGarminPushes,
         resetGarminSyncState: (user, dataType) => resetSyncState(user, 'garmin', dataType),
         resetLastFmSyncState: (user) => resetSyncState(user, 'lastfm'),
         resetOuraSyncState: (user, dataType) => resetSyncState(user, 'oura', dataType),

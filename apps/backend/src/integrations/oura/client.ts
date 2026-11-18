@@ -10,6 +10,8 @@ import {
   schemaInitialized,
   upsertOAuthToken,
 } from '../../db/index.ts'
+import { auditWarn } from '../../services/audit-log.ts'
+import { handOverOAuthCallback, type OAuthCompletion } from '../../services/oauth-completion.ts'
 import { signOAuthState, verifyOAuthState } from '../../services/signed-oauth-state.ts'
 import { redactSecret } from '../garmin/client.ts'
 
@@ -65,6 +67,7 @@ export type OuraSleepPeriodRaw = {
 export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
   now?: () => Date
+  auditWarn?: typeof auditWarn
 }
 
 export type OuraCredentialGetter = () => Promise<{ clientId: string; clientSecret: string }>
@@ -76,6 +79,15 @@ export const ouraClient = (
 ) => {
   const redirectUri = `${apiBaseUrl}/auth/ouracb`
   const now = options?.now ?? (() => new Date())
+  const audit = options?.auditWarn ?? auditWarn
+
+  const readCredentials = async () => {
+    try {
+      return await getCredentials()
+    } catch {
+      return null
+    }
+  }
 
   const getGeneric = async (type: string, start: Date, end: Date, token: string) => {
     const response = await axios.get(
@@ -98,64 +110,72 @@ export const ouraClient = (
   }
 
   return {
+    /**
+     * Oura's redirect carries no Aurboda login, so it only hands the code and state to the
+     * signed-in page, which finishes through `complete`.
+     */
     async authCb(req: Request, res: Response) {
-      const { code, scope, state, error } = req.query as Record<string, string | undefined>
+      const target = await handOverOAuthCallback(req.query, 'oura', async (state) => {
+        const credentials = await readCredentials()
+        if (!credentials) return 'not_configured'
+        return verifyOAuthState(state, { provider: 'oura' }, credentials.clientSecret, now())
+          ? null
+          : 'invalid_state'
+      })
+      return res.redirect(target)
+    },
 
-      if (error) {
-        res.statusCode = 500
-        return res.end('{"success":false}')
-      }
+    /** Links the Oura account to `user`, who must be the user that started the sign-in. */
+    async complete(user: string, code: string, state: string): Promise<OAuthCompletion> {
+      const credentials = await readCredentials()
+      if (!credentials) return { ok: false, reason: 'not_configured' }
+      const { clientId, clientSecret } = credentials
 
-      if (!code || !state) {
-        return res.status(400).json({ error: 'invalid_request', success: false })
-      }
-
-      let clientId: string
-      let clientSecret: string
-      try {
-        ;({ clientId, clientSecret } = await getCredentials())
-      } catch {
-        res.statusCode = 500
-        return res.end('{"success":false,"error":"Oura not configured"}')
-      }
-
-      const user = verifyOAuthState(state, { provider: 'oura' }, clientSecret, now())
-      if (!user) {
-        return res.status(400).json({ error: 'invalid_state', success: false })
+      const stateUser = verifyOAuthState(state, { provider: 'oura' }, clientSecret, now())
+      if (!stateUser) return { ok: false, reason: 'invalid_state' }
+      if (stateUser !== user) {
+        await audit(user, 'auth', 'Oura sign-in started by another account was refused')
+        return { ok: false, reason: 'wrong_user' }
       }
 
       if (!(await schemaInitialized(user))) {
         await initializeSchema(user)
       }
 
-      const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
-      tokenUrl.searchParams.append('grant_type', 'authorization_code')
-      tokenUrl.searchParams.append('client_id', clientId)
-      tokenUrl.searchParams.append('client_secret', clientSecret)
-      tokenUrl.searchParams.append('code', code)
-      tokenUrl.searchParams.append('redirect_uri', redirectUri)
+      try {
+        const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
+        tokenUrl.searchParams.append('grant_type', 'authorization_code')
+        tokenUrl.searchParams.append('client_id', clientId)
+        tokenUrl.searchParams.append('client_secret', clientSecret)
+        tokenUrl.searchParams.append('code', code)
+        tokenUrl.searchParams.append('redirect_uri', redirectUri)
 
-      const response = await axios.post(tokenUrl.toString())
+        const response = await axios.post(tokenUrl.toString())
+        const { access_token, refresh_token, expires_in, scope } = response.data
 
-      const { access_token, refresh_token, expires_in } = response.data
+        await upsertOAuthToken(user, {
+          access_token,
+          expires_at: addSeconds(now(), expires_in),
+          provider: 'oura',
+          refresh_token,
+          scopes: typeof scope === 'string' && scope !== '' ? scope.split(' ') : undefined,
+        })
 
-      await upsertOAuthToken(user, {
-        access_token,
-        expires_at: addSeconds(new Date(), expires_in),
-        provider: 'oura',
-        refresh_token,
-        scopes: scope ? scope.split(' ') : undefined,
-      })
-
-      // Store Oura user ID mapping for webhook notifications
-      if (options?.onUserAuthenticated) {
-        const personalInfo = await getPersonalInfo(access_token)
-        if (personalInfo?.id) {
-          await options.onUserAuthenticated(personalInfo.id, user)
+        // The Oura user id mapping routes webhook notifications to this user.
+        if (options?.onUserAuthenticated) {
+          const personalInfo = await getPersonalInfo(access_token)
+          if (personalInfo?.id) {
+            await options.onUserAuthenticated(personalInfo.id, user)
+          }
         }
+        return { ok: true }
+      } catch (failure) {
+        const message = failure instanceof Error ? failure.message : String(failure)
+        await audit(user, 'auth', 'Oura OAuth connection failed', {
+          error: [clientSecret, code].reduce((acc, secret) => redactSecret(acc, secret), message),
+        })
+        return { ok: false, reason: 'auth_failed' }
       }
-
-      res.end()
     },
 
     async disconnect(user: string): Promise<void> {

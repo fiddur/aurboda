@@ -23,6 +23,14 @@ export const codeFromHash = (hash: string): string | null => {
   return code ? code : null
 }
 
+/** The login page that comes back to this page, its link code in the fragment included, once signed in. */
+export const loginReturningTo = ({
+  pathname,
+  search,
+  hash,
+}: Pick<Location, 'pathname' | 'search' | 'hash'>) =>
+  `/login?next=${encodeURIComponent(pathname + search + hash)}`
+
 const VERIFIER_KEY = 'aurboda_oidc_verifier'
 
 type VerifierStorage = Pick<Storage, 'getItem' | 'removeItem' | 'setItem'>

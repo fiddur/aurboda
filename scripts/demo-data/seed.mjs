@@ -4,12 +4,14 @@
 // hand-logged habits, six friends in a step challenge, goals and a public
 // dashboard. Everything goes through the REST API (OwnTracks for GPS points).
 //
-//   node scripts/demo-data/seed.mjs http://127.0.0.1:8080
+//   node scripts/demo-data/seed.mjs http://127.0.0.1:8080/api
+//
+// The argument is the API's base URL as the web app reaches it: `<origin>/api`
+// behind the bundled image's proxy, the bare origin for a backend run directly.
 //
 // Run it once against an empty stack; it is not idempotent.
 
-const BASE = (process.argv[2] ?? 'http://127.0.0.1:8080').replace(/\/+$/, '')
-const API = `${BASE}/api`
+const API = (process.argv[2] ?? 'http://127.0.0.1:8080/api').replace(/\/+$/, '')
 const TZ = 'Europe/Stockholm'
 const PASSWORD = process.env.DEMO_PASSWORD ?? 'demo-password-2026'
 const DAYS = 70
@@ -1032,7 +1034,7 @@ const seedSocial = async ({ project, origin, maja, friendTokens }) => {
 const log = (msg) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`)
 
 const main = async () => {
-  log(`seeding ${BASE}, ${DAYS} days ending ${TODAY} (${TZ})`)
+  log(`seeding ${API}, ${DAYS} days ending ${TODAY} (${TZ})`)
   const version = await request('GET', '/version')
   log(`instance build ${version.build_sha ?? JSON.stringify(version)}`)
 
@@ -1043,7 +1045,8 @@ const main = async () => {
   log('signed up maja and friends')
 
   await maja.patch('/user/settings', { birth_date: '1991-05-14', sex: 'female' })
-  for (const t of CUSTOM_TYPES) await maja.post('/activity-types', { ...t, show_on_timeline: true })
+  for (const t of CUSTOM_TYPES)
+    await maja.post('/activity-types', { ...t, separate_type: true, show_on_timeline: true })
 
   const { days, rng } = buildMajaPlan()
   const metrics = majaMetrics(rng, days)
@@ -1260,7 +1263,7 @@ const main = async () => {
     .reverse()
     .find((d) => d.eveningRun && d.night && d.i < DAYS - 1 && d.i >= DAYS - LOCATION_DAYS && !d.alcohol)
   const summary = {
-    baseUrl: BASE,
+    apiUrl: API,
     challenge: { name: challenge.name, share_url: challenge.share_url, slug: challenge.slug },
     password: PASSWORD,
     shared_dashboard: dashboard.dashboard.share_url,

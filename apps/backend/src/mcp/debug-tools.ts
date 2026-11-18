@@ -62,6 +62,7 @@ Typical usage:
     'query_audit_log',
     `Query the user's audit log — per-user events (sync, auth, settings, data, deduction) written by the backend.
 Use to confirm whether something ran, what failed, or what was rate-limited. Filters can be combined freely.
+Write requests appear as the method and route template (e.g. "PUT /notes/:id") with the body's shape and, on failure, the status and a coarse error_type; request content is never stored.
 Results are ordered by timestamp DESC.`,
     {
       ...auditLogQuerySchema.shape,

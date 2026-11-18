@@ -93,6 +93,10 @@ class AppState(
     var unreadNotifications by mutableIntStateOf(0)
         private set
 
+    /** Menu paths the user hid from the menus (`hidden_pages`): the last list fetched, empty until one arrives. */
+    var hiddenPages by mutableStateOf<List<String>>(emptyList())
+        private set
+
     val credentials: CredentialsManager.Credentials?
         get() = CredentialsManager.getCredentials(context)
 
@@ -107,6 +111,7 @@ class AppState(
         loginNotice = notice
         currentTab = MainTab.Home
         moreDestination = null
+        hiddenPages = emptyList()
         currentScreen = AppScreen.Login
     }
 
@@ -148,6 +153,16 @@ class AppState(
     /** A null [count] (the server could not say) leaves the badge as it is. */
     fun setUnreadNotificationCount(count: Int?) {
         if (count != null) unreadNotifications = count
+    }
+
+    /** A null [pages] (the server could not say) keeps the last known list. */
+    fun setHiddenPagesFrom(pages: List<String>?) {
+        if (pages != null) hiddenPages = pages
+    }
+
+    suspend fun refreshHiddenPages(httpClient: HttpClient) {
+        val creds = credentials ?: return
+        setHiddenPagesFrom(fetchHiddenPages(httpClient, creds.apiUrl, creds.authToken))
     }
 
     suspend fun refreshUnreadNotifications(httpClient: HttpClient) {

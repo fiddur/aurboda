@@ -195,12 +195,40 @@ export interface UpsertActivityResult {
 }
 
 /**
+ * `overwrite` (the default) lets the incoming row replace type and title. `fill_in` is for a
+ * copy of another source's activity (a Health Connect session stored under the provider's
+ * identity, #1831): it may replace a generic `exercise` type with a specific one and fill an
+ * empty title, but never replaces what the provider wrote.
+ */
+export interface UpsertActivityOptions {
+  onConflict?: 'overwrite' | 'fill_in'
+}
+
+const conflictType = (mode: UpsertActivityOptions['onConflict']): string =>
+  mode === 'fill_in'
+    ? `CASE WHEN activities.activity_type = 'exercise' AND EXCLUDED.activity_type <> 'exercise'
+            THEN EXCLUDED.activity_type ELSE activities.activity_type END`
+    : 'EXCLUDED.activity_type'
+
+const conflictTitle = (mode: UpsertActivityOptions['onConflict']): string =>
+  mode === 'fill_in'
+    ? `CASE WHEN activities.title IS NULL OR activities.title = ''
+            THEN COALESCE(EXCLUDED.title, activities.title) ELSE activities.title END`
+    : 'EXCLUDED.title'
+
+/**
  * Upsert that reports whether it wrote anything. An identical re-upsert fails the
  * `IS DISTINCT FROM` guard, so it neither rewrites the row nor counts as a change:
  * deduction rules notify only on a change, so re-evaluating a settled window does not
  * re-trigger evaluation.
  */
-export const upsertActivity = async (user: string, activity: Activity): Promise<UpsertActivityResult> => {
+export const upsertActivity = async (
+  user: string,
+  activity: Activity,
+  { onConflict }: UpsertActivityOptions = {},
+): Promise<UpsertActivityResult> => {
+  const type = conflictType(onConflict)
+  const title = conflictTitle(onConflict)
   let writtenId: string | undefined
   if (activity.external_id) {
     // Upsert by external_id (for sourced data like calendar events, Oura tags, lastfm)
@@ -209,15 +237,15 @@ export const upsertActivity = async (user: string, activity: Activity): Promise<
       `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data)
        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
-         activity_type = EXCLUDED.activity_type,
+         activity_type = ${type},
          start_time = EXCLUDED.start_time,
          end_time = EXCLUDED.end_time,
-         title = EXCLUDED.title,
+         title = ${title},
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
          AND (activities.activity_type, activities.start_time, activities.end_time, activities.title, activities.data)
              IS DISTINCT FROM
-             (EXCLUDED.activity_type, EXCLUDED.start_time, EXCLUDED.end_time, EXCLUDED.title,
+             (${type}, EXCLUDED.start_time, EXCLUDED.end_time, ${title},
               COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
@@ -240,12 +268,12 @@ export const upsertActivity = async (user: string, activity: Activity): Promise<
        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
        ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
          end_time = EXCLUDED.end_time,
-         title = EXCLUDED.title,
+         title = ${title},
          data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
        WHERE activities.deleted_at IS NULL
          AND (activities.end_time, activities.title, activities.data)
              IS DISTINCT FROM
-             (EXCLUDED.end_time, EXCLUDED.title, COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
+             (EXCLUDED.end_time, ${title}, COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
        RETURNING id`,
       [
         activity.id,
@@ -288,8 +316,11 @@ const findLiveConflictingId = async (user: string, activity: Activity): Promise<
   return result.rows[0]?.id as string | undefined
 }
 
-export const insertActivity = async (user: string, activity: Activity): Promise<string> =>
-  (await upsertActivity(user, activity)).id as string
+export const insertActivity = async (
+  user: string,
+  activity: Activity,
+  options?: UpsertActivityOptions,
+): Promise<string> => (await upsertActivity(user, activity, options)).id as string
 
 /**
  * Bulk insert / upsert a batch of activities. Returns the persisted
@@ -300,8 +331,11 @@ export const insertActivity = async (user: string, activity: Activity): Promise<
 export const insertActivities = async (
   user: string,
   activities: Activity[],
+  { onConflict }: UpsertActivityOptions = {},
 ): Promise<InsertedActivityKey[]> => {
   if (activities.length === 0) return []
+  const type = conflictType(onConflict)
+  const title = conflictTitle(onConflict)
 
   // Split into external_id and non-external_id batches for different conflict targets
   const withExtIdAll = activities.filter((a) => a.external_id)
@@ -344,10 +378,10 @@ export const insertActivities = async (
                 v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.data::jsonb
          FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, data)
          ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
-           activity_type = EXCLUDED.activity_type,
+           activity_type = ${type},
            start_time = EXCLUDED.start_time,
            end_time = EXCLUDED.end_time,
-           title = EXCLUDED.title,
+           title = ${title},
            data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
          WHERE activities.deleted_at IS NULL
          RETURNING id, source, external_id, activity_type, start_time`,
@@ -378,7 +412,7 @@ export const insertActivities = async (
          FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, data)
          ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
            end_time = EXCLUDED.end_time,
-           title = EXCLUDED.title,
+           title = ${title},
            data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
          WHERE activities.deleted_at IS NULL
          RETURNING id, source, external_id, activity_type, start_time`,
@@ -618,10 +652,32 @@ export const setGarminActivitySets = async (
   await query(
     user,
     `UPDATE activities
-     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source') || $2::jsonb
+     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source' - 'garmin_sets_origin') || $2::jsonb
      WHERE id = $1`,
     [id, JSON.stringify(patch)],
   )
+}
+
+/**
+ * Store the sets read from the activity's FIT file, unless the login's reader has already written
+ * the row, whose result wins. The flag is left unset so that reader still visits the row.
+ */
+export const setGarminActivityFitSets = async (
+  user: string,
+  id: string,
+  sets: Record<string, unknown>[],
+): Promise<boolean> => {
+  if (sets.length === 0) return false
+  const result = await query(
+    user,
+    `UPDATE activities
+     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source') || $2::jsonb
+     WHERE id = $1
+       AND activity_type = 'strength_training'
+       AND (data->>'garmin_sets_synced') IS DISTINCT FROM 'true'`,
+    [id, JSON.stringify({ garmin_sets_origin: 'fit', sets, sets_source: 'garmin' })],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {

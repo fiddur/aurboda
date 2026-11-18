@@ -63,6 +63,12 @@ describe('postChartCaption', () => {
       'steps (count) vs sleep_score (score)',
     ])
     expect(postChartCaption({ series, type: 'line' })).toBe('Heart rate')
+    expect(
+      postChartCaption({
+        data: { ...scatter, flag_names: { f1: 'dairy' }, trigger: { flag: 'f1', kind: 'sensitivity' } },
+        type: 'scatter',
+      }),
+    ).toBe('Meals with dairy (count) vs sleep_score (score)')
   })
 })
 

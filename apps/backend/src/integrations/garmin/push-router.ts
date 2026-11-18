@@ -12,15 +12,34 @@ export interface GarminPushRouterDeps {
  * The large body limit Garmin's pushes need, granted only to a request that carries the
  * endpoint's token: anything else under the path is answered 404 before its body is read.
  */
-export const garminPushBodyParser = (pushToken: string): RequestHandler => {
-  const parse = json({ limit: '50mb' })
+export const garminPushBodyParser = (
+  pushToken: string,
+  {
+    limit = '50mb',
+    logWarn = (message: string) => console.warn(message),
+  }: { limit?: string; logWarn?: (message: string) => void } = {},
+): RequestHandler => {
+  const parse = json({ limit })
   return (req, res, next) => {
     const [token = '', ...rest] = req.path.split('/').filter(Boolean)
     if (rest.length > 0 || !isGarminPushToken(token, pushToken)) {
       res.status(404).end()
       return
     }
-    parse(req, res, next)
+    parse(req, res, (error?: unknown) => {
+      const type = (error as { type?: unknown } | undefined)?.type
+      // Garmin resends what was not answered 200, and an unreadable body reads no better the next time.
+      if (type === 'entity.parse.failed') {
+        logWarn('Garmin push: 1 unreadable body dropped')
+        res.status(200).end()
+        return
+      }
+      if (type === 'entity.too.large') {
+        res.status(413).end()
+        return
+      }
+      next(error)
+    })
   }
 }
 

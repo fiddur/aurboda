@@ -245,6 +245,10 @@ export const createWebAuthnRouter = ({
         return
       }
 
+      await centralDb
+        .setPasswordLogin(username, false)
+        .catch((e) => console.error(`⚠️ Failed to mark the password of ${username} unused:`, e))
+
       await saveSignupProfile(defaultSignupProfileDeps(centralDb, startEmailVerification), username, {
         display_name,
         email,

@@ -14,6 +14,7 @@ const emptyDeps = {
   getStravaCandidates: vi.fn(async () => []),
   listActivitiesWithoutFeatures: vi.fn(async (): Promise<{ activity_id: string }[]> => []),
   matchRoutes: vi.fn(async () => ({ created: 0, matched: 0 })),
+  matchSegments: vi.fn(async () => ({ efforts: 0 })),
   notify: vi.fn(),
   scanSuggestedSegments: vi.fn(async () => ({ remaining: 0, scanned: 0, suggested: 0 })),
   upsertActivityTrack: vi.fn(async () => undefined),
@@ -33,6 +34,7 @@ describe('runTrackBackfillJob', () => {
       features: { computed: 0 },
       garmin: 0,
       routes: { created: 0, matched: 0 },
+      segments: { efforts: 0 },
       skipped: 0,
       strava: 0,
       suggestions: NO_SUGGESTIONS,
@@ -56,6 +58,7 @@ describe('runTrackBackfillJob', () => {
       features: { computed: 0 },
       garmin: 0,
       routes: { created: 0, matched: 0 },
+      segments: { efforts: 0 },
       skipped: 0,
       strava: 1,
       suggestions: NO_SUGGESTIONS,
@@ -64,6 +67,35 @@ describe('runTrackBackfillJob', () => {
       garmin: 0,
       skipped: 0,
       strava: 1,
+    })
+  })
+
+  test('times segments for each track it wrote, after route matching, and audits a failure', async () => {
+    const order: string[] = []
+    const deps = {
+      ...emptyDeps,
+      getStravaCandidates: vi.fn(async () => [
+        { activity_id: 's1', elapsed_seconds: 60, polyline: '_p~iF~ps|U_ulLnnqC', start_time: new Date() },
+        { activity_id: 's2', elapsed_seconds: 60, polyline: '_p~iF~ps|U_ulLnnqC', start_time: new Date() },
+      ]),
+      matchRoutes: vi.fn(async () => {
+        order.push('routes')
+        return { created: 0, matched: 0 }
+      }),
+      matchSegments: vi.fn(async (_user: string, activityId: string) => {
+        order.push(`segments ${activityId}`)
+        if (activityId === 's2') throw new Error('boom')
+        return { efforts: 2 }
+      }),
+    }
+
+    const result = await runTrackBackfillJob({ user: 'alice' }, deps)
+
+    expect(order).toEqual(['routes', 'segments s1', 'segments s2'])
+    expect(result.segments).toEqual({ efforts: 2 })
+    expect(auditError).toHaveBeenCalledWith('alice', 'data', 'Segment matching failed', {
+      activity_id: 's2',
+      error: 'Error: boom',
     })
   })
 

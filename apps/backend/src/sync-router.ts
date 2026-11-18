@@ -9,6 +9,9 @@ import {
   outboundSyncAckBodySchema,
   outboundSyncFailBodySchema,
   outboundSyncRequeueBodySchema,
+  reprocessGarminPushesBodySchema,
+  type ReprocessGarminPushesBody,
+  type ReprocessGarminPushesResponse,
   type OutboundSyncFailBody,
   type OutboundSyncFailResponse,
   type OutboundSyncRequeueBody,
@@ -137,6 +140,8 @@ export interface SyncRouterDeps {
   ) => Promise<GarminSyncResult[]>
   getGarminSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   resetGarminSyncState: (user: string, dataType?: string) => Promise<void>
+  /** Queues the stored Connect with Garmin pushes for processing again; absent when not wired (tests). */
+  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>
   syncRescueTime: (
     user: string,
     apiKey: string,
@@ -372,6 +377,26 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       try {
         await deps.resetGarminSyncState(user, dataType)
         res.json({ success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.post<Record<string, never>, ReprocessGarminPushesResponse, ReprocessGarminPushesBody>(
+    '/garmin/reprocess-pushes',
+    authMiddleware,
+    validateBody(reprocessGarminPushesBodySchema),
+    async (req, res) => {
+      if (!deps.reprocessGarminPushes) {
+        res.status(503).json({ error: 'Garmin push processing is not available', success: false })
+        return
+      }
+      try {
+        const { since } = req.body
+        const queued = await deps.reprocessGarminPushes(req.user!, since ? new Date(since) : undefined)
+        res.json({ queued, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })

@@ -58,3 +58,42 @@ describe('MCP sync_lastfm tool', () => {
     expect(notifier).not.toHaveBeenCalled()
   })
 })
+
+describe('MCP reprocess_garmin_pushes tool', () => {
+  const register = (reprocess?: (user: string, since?: Date) => Promise<number>) => {
+    const { server, tools } = buildFakeServer()
+    registerSyncTools(
+      server,
+      'alice',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      reprocess,
+    )
+    return tools.get('reprocess_garmin_pushes')!
+  }
+
+  test('queues the pushes since the given time and answers the count', async () => {
+    const reprocess = vi.fn(async () => 12)
+    const result = await register(reprocess)({ since: '2026-11-10T00:00:00Z' })
+    expect(reprocess).toHaveBeenCalledWith('alice', new Date('2026-11-10T00:00:00Z'))
+    expect(JSON.parse(result.content[0]!.text)).toEqual({ queued: 12, success: true })
+  })
+
+  test('leaves the default start to the service', async () => {
+    const reprocess = vi.fn(async () => 0)
+    await register(reprocess)({})
+    expect(reprocess).toHaveBeenCalledWith('alice', undefined)
+  })
+
+  test('says so when push processing is not wired', async () => {
+    const result = await register()({})
+    expect(result.content[0]!.text).toContain('not available')
+  })
+})

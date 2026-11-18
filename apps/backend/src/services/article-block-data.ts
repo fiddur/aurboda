@@ -10,7 +10,7 @@ import type { MetricType } from '../schema.ts'
 import type { ImpactSvgData } from './charts/impact-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
 
-import { getUserSettings } from '../db/index.ts'
+import { getUserSettings, listSensitivityFlags } from '../db/index.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { queryMetricsBucketed } from './queries/index.ts'
@@ -74,7 +74,12 @@ export const getArticleCorrelationScatter = async (
     trigger,
   })
   if (c.n < 3) return null
+  const flagNames =
+    trigger.kind === 'sensitivity' || outcome.kind === 'sensitivity'
+      ? Object.fromEntries((await listSensitivityFlags(user)).map((f) => [f.id, f.name]))
+      : undefined
   return {
+    ...(flagNames ? { flag_names: flagNames } : {}),
     group_comparison: c.group_comparison,
     n: c.n,
     outcome,

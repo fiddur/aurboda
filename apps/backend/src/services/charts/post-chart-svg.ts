@@ -2,12 +2,12 @@
  * A feed post's chart as data, whichever kind it is, so the feed image routes and the post's
  * Open Graph card draw it from the same inputs with the same renderer per kind.
  */
-import { articleImpactLabel, describeSelectorAxis } from '@aurboda/api-spec'
+import { articleImpactLabel } from '@aurboda/api-spec'
 
 import { buildChartSvg, DEFAULT_CHART_LABEL } from './chart-svg.ts'
 import { buildImpactSvg, type ImpactSvgData } from './impact-svg.ts'
 import { buildRaceChartSvg, type RaceChartSvgData } from './race-chart-svg.ts'
-import { buildScatterSvg, type ScatterSvgData } from './scatter-svg.ts'
+import { buildScatterSvg, scatterAxisLabel, type ScatterSvgData } from './scatter-svg.ts'
 
 /** Optional line styling; an article block or exercise trend labels its chart. */
 export interface ChartRenderOpts {
@@ -47,7 +47,7 @@ export const postChartCaption = (chart: PostChart): string => {
     case 'race':
       return 'Standings'
     case 'scatter':
-      return `${describeSelectorAxis(chart.data.trigger)} vs ${describeSelectorAxis(chart.data.outcome)}`
+      return `${scatterAxisLabel(chart.data.trigger, chart.data.flag_names)} vs ${scatterAxisLabel(chart.data.outcome, chart.data.flag_names)}`
     case 'impact':
       return articleImpactLabel(chart.data)
   }

@@ -44,7 +44,8 @@ const db = await import('../db/index.ts')
 const backfill = await import('../services/backfill-screentime-activities.ts')
 const retype = await import('../services/retype-legacy-screentime.ts')
 const redact = await import('../services/redact-garmin-login-audit.ts')
-const { createAuthMiddleware } = await import('./middleware.ts')
+const auditLog = await import('../services/audit-log.ts')
+const { createAuditLogMiddleware, createAuthMiddleware } = await import('./middleware.ts')
 
 /** Tokens are `token-<user>`; anything else is rejected, as a bad token is. */
 const auth: Auth = {
@@ -242,5 +243,61 @@ describe('createAuthMiddleware with an account gate', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect((await supertest(buildGatedApp()).post('/activities').set(as('expired'))).status).toBe(200)
     errorSpy.mockRestore()
+  })
+})
+
+describe('createAuditLogMiddleware', () => {
+  const buildAuditedApp = () => {
+    const httpd = express()
+    httpd.use(express.json())
+    httpd.use(createAuditLogMiddleware(auth))
+    const notes = express.Router()
+    notes.put('/:id', (req, res) => {
+      if (req.params.id === 'missing') {
+        res.status(404).json({ error: `No note ${String(req.body.content)}`, success: false })
+        return
+      }
+      res.json({ success: true })
+    })
+    httpd.use('/notes', notes)
+    return httpd
+  }
+
+  const audited = (): string =>
+    JSON.stringify([
+      ...vi.mocked(auditLog.auditInfo).mock.calls,
+      ...vi.mocked(auditLog.auditWarn).mock.calls,
+      ...vi.mocked(auditLog.auditError).mock.calls,
+    ])
+
+  test('keeps the route template and body shape, not the content, keys or id', async () => {
+    const id = '7f3c2a10-5b8e-4d6f-9a21-0c4e8b7d1f93'
+    const res = await supertest(buildAuditedApp())
+      .put(`/notes/${id}`)
+      .set('Authorization', 'Bearer token-alice')
+      .send({ content: 'my private note', password: 'hunter2' })
+    expect(res.status).toBe(200)
+
+    expect(auditLog.auditInfo).toHaveBeenCalledWith('alice', 'data', 'PUT /notes/:id', {
+      body: { fields: 2, type: 'object' },
+    })
+    const row = audited()
+    for (const leaked of ['my private note', 'hunter2', 'content', 'password', id]) {
+      expect(row).not.toContain(leaked)
+    }
+  })
+
+  test('audits an error with its status and type, not the response body', async () => {
+    await supertest(buildAuditedApp())
+      .put('/notes/missing')
+      .set('Authorization', 'Bearer token-alice')
+      .send({ content: 'my private note' })
+
+    expect(auditLog.auditWarn).toHaveBeenCalledWith('alice', 'data', 'PUT /notes/:id', {
+      body: { fields: 1, type: 'object' },
+      error_type: 'not_found',
+      status: 404,
+    })
+    expect(audited()).not.toContain('my private note')
   })
 })

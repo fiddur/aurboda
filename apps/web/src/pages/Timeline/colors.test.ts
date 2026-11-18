@@ -1,15 +1,12 @@
-import type { ScreentimeCategory } from '@aurboda/api-spec'
-
 import { describe, expect, it } from 'vitest'
 
-import type { Activity, ProductivityRecord } from '../../state/api'
+import type { Activity } from '../../state/api'
 
 import {
   getActivityColor,
   getExerciseColor,
   getPlaceColor,
   getProductivityColor,
-  getResolvedColor,
   resolveCategoryIcon,
   tagSourceColors,
 } from './colors'
@@ -100,42 +97,6 @@ describe('getProductivityColor', () => {
 
   it('returns orange for score -1', () => {
     expect(getProductivityColor(-1)).toBe('#f97316')
-  })
-})
-
-describe('getResolvedColor', () => {
-  const categories: ScreentimeCategory[] = [
-    { id: '1', name: ['Work'], color: '#0000ff' } as ScreentimeCategory,
-    { id: '2', name: ['Work', 'Programming'], color: '#00ff00' } as ScreentimeCategory,
-  ]
-
-  const makeRecord = (overrides: Partial<ProductivityRecord> = {}): ProductivityRecord =>
-    ({
-      activity: 'vscode',
-      end_time: new Date('2026-01-01T09:00:00Z'),
-      productivity: 2,
-      start_time: new Date('2026-01-01T08:00:00Z'),
-      ...overrides,
-    }) as ProductivityRecord
-
-  it('returns category color for matching resolved_category', () => {
-    expect(getResolvedColor(makeRecord({ resolved_category: ['Work', 'Programming'] }), categories)).toBe(
-      '#00ff00',
-    )
-  })
-
-  it('walks up to parent category when no exact match', () => {
-    expect(getResolvedColor(makeRecord({ resolved_category: ['Work', 'Design'] }), categories)).toBe(
-      '#0000ff',
-    )
-  })
-
-  it('falls back to productivity color when no category match', () => {
-    expect(getResolvedColor(makeRecord({ resolved_category: ['Gaming'] }), categories)).toBe('#22c55e')
-  })
-
-  it('falls back to productivity color when no resolved_category', () => {
-    expect(getResolvedColor(makeRecord(), categories)).toBe('#22c55e')
   })
 })
 

@@ -136,6 +136,18 @@ Counts are aggregated in memory and written about once a minute and at shutdown,
 up to a minute of counts. Rows older than 400 days are deleted by the daily prune job (03:17 server
 time, alongside the audit-log prune).
 
+## Audit log
+
+Each account's audit log (the Audit Log page, `GET /user/audit-log`, the `query_audit_log` MCP tool) also
+records every authenticated write request: the method and the route template, such as
+`PUT /notes/:id` (never the path, which carries ids and names), and the request body's shape only
+(`{ "type": "object", "fields": 3 }`, `{ "type": "array", "items": 12 }`, or a scalar's type), never
+its values or keys. A failed request adds its `status` and a coarse `error_type` (`validation`,
+`unauthorized`, `forbidden`, `not_found`, `conflict`, `too_large`, `rate_limited`, `client_error`,
+`server_error`); an error that reaches the server's error handler adds the error's class name
+(`error_name`), while its message goes to the server console only. Entries written before this
+change are left as they were.
+
 ## Users page
 
 The web app's Admin Settings page links to **Users** (`/admin/users`), a table of every user on the

@@ -7,11 +7,15 @@ import type { GarminDataType } from './process.ts'
 import {
   createSerialQueue,
   garminPushExternalId,
+  type GarminPushJob,
+  type GarminPushProcessDeps,
   garminPushRecordType,
   garminPushToken,
+  garminPushTypeOfRecordType,
   garminPushUrl,
   type GarminPushDeps,
   isGarminPushToken,
+  processGarminPushJob,
   receiveGarminPush,
 } from './push.ts'
 
@@ -32,15 +36,36 @@ const makeDeps = (
   } = {},
 ) => {
   const users = options.users ?? { [GARMIN_USER]: 'alice' }
+  const rawStore = new Map<string, unknown>()
+  const jobs: GarminPushJob[] = []
   const deps = {
     auditError: vi.fn(async () => {}),
     auditInfo: vi.fn(async () => {}),
     auditWarn: vi.fn(async () => {}),
     forgetGrant: vi.fn(async () => {}),
     getClientId: vi.fn(async () => (options.clientId === undefined ? CLIENT_ID : options.clientId)),
-    getDisabledDataTypes: vi.fn(async () => options.disabled ?? []),
+    enqueuePush: vi.fn(async (job: GarminPushJob) => {
+      jobs.push(job)
+    }),
+    getDisabledDataTypes: vi.fn(
+      async (_user: string): Promise<readonly GarminDataType[]> => options.disabled ?? [],
+    ),
+    getPushRecords: vi.fn(async (user: string, recordType: string, externalIds: string[]) => {
+      const found = new Map<string, unknown>()
+      for (const id of externalIds) {
+        const data = rawStore.get(`${user}|${recordType}|${id}`)
+        if (data !== undefined) found.set(id, data)
+      }
+      return found
+    }),
     getUsernameByGarminUserId: vi.fn(async (id: string) => users[id] ?? null),
-    insertRawRecords: vi.fn(async (_user: string, _records: RawRecord[]) => {}),
+    insertRawRecords: vi.fn(async (user: string, records: RawRecord[]) => {
+      for (const record of records) {
+        rawStore.set(`${user}|${record.record_type}|${record.external_id}`, record.data)
+      }
+    }),
+    jobs,
+    rawStore,
     insertTimeSeries: vi.fn(async () => {}),
     isReadOnly: vi.fn(async (user: string) => (options.readOnly ?? []).includes(user)),
     logWarn: vi.fn(),
@@ -53,7 +78,7 @@ const makeDeps = (
     updateGrantScopes: vi.fn(async () => true),
     upsertSyncState: vi.fn(async (_user: string, _state: SyncState) => {}),
   }
-  return deps satisfies GarminPushDeps
+  return deps satisfies GarminPushDeps & GarminPushProcessDeps
 }
 
 type Deps = ReturnType<typeof makeDeps>
@@ -64,6 +89,11 @@ const receive = (deps: Deps, body: unknown, overrides: { token?: string; clientI
     clientIdHeader: overrides.clientIdHeader,
     token: overrides.token ?? TOKEN,
   })
+
+/** Runs every queued job as the queue's worker would, oldest first. */
+const processJobs = async (deps: Deps) => {
+  for (const job of deps.jobs.splice(0)) await processGarminPushJob(deps, job)
+}
 
 const storedRecords = (deps: Deps) => deps.insertRawRecords.mock.calls.flatMap((call) => call[1])
 
@@ -263,11 +293,11 @@ describe('storing', () => {
 
   test('keeps a type when only some of its feeds are disabled, and processes only the enabled ones', async () => {
     const deps = makeDeps({ disabled: ['heartRate'] })
-    const result = await receive(deps, {
+    await receive(deps, {
       dailies: [daily({ timeOffsetHeartRateSamples: { '0': 60 } })],
     })
     expect(storedRecords(deps)).toHaveLength(1)
-    await result.process!()
+    await processJobs(deps)
     expect(deps.processGarminData.mock.calls.map((call) => call[1])).toEqual(['dailySummary'])
   })
 
@@ -297,19 +327,122 @@ describe('storing', () => {
   })
 })
 
-describe('processing', () => {
-  test('happens only when the caller runs it, after the answer', async () => {
-    const deps = makeDeps()
-    const result = await receive(deps, { dailies: [daily()] })
-    expect(result.status).toBe(200)
+describe('queueing', () => {
+  test('enqueues one job per user naming the stored records, and processes nothing before the answer', async () => {
+    const deps = makeDeps({ users: { [GARMIN_USER]: 'alice', 'garmin-user-2': 'bob' } })
+    const result = await receive(deps, {
+      dailies: [daily(), daily({ summaryId: 'sd-2' }), daily({ summaryId: 'sd-2' })],
+      epochs: [daily({ summaryId: 'e-1' }), daily({ summaryId: 'e-2', userId: 'garmin-user-2' })],
+    })
+    expect(result).toEqual({ status: 200 })
     expect(deps.processGarminData).not.toHaveBeenCalled()
-    await result.process!()
+    expect(deps.enqueuePush.mock.calls.map((call) => call[0])).toEqual([
+      {
+        records: [
+          { external_id: 'sd-1', type: 'dailies' },
+          { external_id: 'sd-2', type: 'dailies' },
+          { external_id: 'e-1', type: 'epochs' },
+        ],
+        user: 'alice',
+      },
+      { records: [{ external_id: 'e-2', type: 'epochs' }], user: 'bob' },
+    ])
+  })
+
+  test('the job carries no item data, no Garmin user id and no token', async () => {
+    const deps = makeDeps()
+    await receive(deps, { dailies: [daily()] })
+    const job = JSON.stringify(deps.enqueuePush.mock.calls)
+    expect(job).not.toContain(GARMIN_USER)
+    expect(job).not.toContain(OLD_TOKEN)
+    expect(job).not.toContain('steps')
+  })
+
+  test('a failure to enqueue is a 500 so Garmin retries', async () => {
+    const deps = makeDeps()
+    deps.enqueuePush.mockRejectedValueOnce(new Error('queue down'))
+    expect(await receive(deps, { dailies: [daily()] })).toEqual({ status: 500 })
+    expect(deps.logWarn).toHaveBeenCalledWith(expect.stringContaining('queueing failed'))
+  })
+
+  test('nothing is enqueued for a read-only account or when nothing was stored', async () => {
+    const readOnly = makeDeps({ readOnly: ['alice'] })
+    await receive(readOnly, { dailies: [daily()] })
+    expect(readOnly.enqueuePush).not.toHaveBeenCalled()
+
+    const nothing = makeDeps()
+    await receive(nothing, { dailies: [{ steps: 1, userId: GARMIN_USER }] })
+    expect(nothing.enqueuePush).not.toHaveBeenCalled()
+  })
+})
+
+describe('processing a job', () => {
+  test('processes the stored records', async () => {
+    const deps = makeDeps()
+    await receive(deps, { dailies: [daily()] })
+    await processJobs(deps)
     expect(deps.processGarminData).toHaveBeenCalledWith('alice', 'dailySummary', expect.any(Object))
+  })
+
+  test('reads each record as it is stored now, not as it was pushed', async () => {
+    const deps = makeDeps()
+    await receive(deps, { dailies: [daily({ steps: 1000 })] })
+    await receive(deps, { dailies: [daily({ steps: 2500 })] })
+    await processJobs(deps)
+    expect(
+      deps.processGarminData.mock.calls.map((call) => (call[2] as { totalSteps: number }).totalSteps),
+    ).toEqual([2500, 2500])
+  })
+
+  test('skips a record that no longer exists', async () => {
+    const deps = makeDeps()
+    await processGarminPushJob(deps, {
+      records: [
+        { external_id: 'gone', type: 'dailies' },
+        { external_id: 'sd-1', type: 'dailies' },
+      ],
+      user: 'alice',
+    })
+    expect(deps.processGarminData).not.toHaveBeenCalled()
+
+    await receive(deps, { dailies: [daily()] })
+    deps.jobs.splice(0)
+    await processGarminPushJob(deps, {
+      records: [
+        { external_id: 'gone', type: 'dailies' },
+        { external_id: 'sd-1', type: 'dailies' },
+      ],
+      user: 'alice',
+    })
+    expect(deps.processGarminData).toHaveBeenCalledTimes(1)
+  })
+
+  test('respects the data types disabled by the time it runs', async () => {
+    const deps = makeDeps()
+    await receive(deps, {
+      dailies: [daily({ timeOffsetHeartRateSamples: { '0': 60 } })],
+      sleeps: [
+        { durationInSeconds: 3600, startTimeInSeconds: 1795305600, summaryId: 's-1', userId: GARMIN_USER },
+      ],
+    })
+    deps.getDisabledDataTypes.mockResolvedValue(['heartRate', 'sleep'])
+    await processJobs(deps)
+    expect(deps.processGarminData.mock.calls.map((call) => call[1])).toEqual(['dailySummary'])
+    expect(deps.upsertSyncState.mock.calls.map((call) => call[1].data_type)).toEqual(['dailies'])
+  })
+
+  test('does nothing for an account that became read-only', async () => {
+    const deps = makeDeps()
+    await receive(deps, { dailies: [daily()] })
+    deps.isReadOnly.mockResolvedValue(true)
+    await processJobs(deps)
+    expect(deps.getPushRecords).not.toHaveBeenCalled()
+    expect(deps.processGarminData).not.toHaveBeenCalled()
   })
 
   test('writes direct points and a garmin_push sync state per type', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, {
+    await receive(deps, {
       epochs: [daily({ summaryId: 'e-1' })],
       pulseox: [
         {
@@ -320,7 +453,7 @@ describe('processing', () => {
         },
       ],
     })
-    await result.process!()
+    await processJobs(deps)
     expect(deps.insertTimeSeries).toHaveBeenCalledWith('alice', [
       expect.objectContaining({ metric: 'spo2', value: 97 }),
     ])
@@ -340,11 +473,17 @@ describe('processing', () => {
     ])
   })
 
-  test('a processing error is audited for the user and does not reject', async () => {
+  test('a failing type is audited and marked, the others are still processed, and the job fails for a retry', async () => {
     const deps = makeDeps()
-    deps.processGarminData.mockRejectedValueOnce(new Error('boom'))
-    const result = await receive(deps, { dailies: [daily()] })
-    await expect(result.process!()).resolves.toBeUndefined()
+    deps.processGarminData.mockImplementation(async (_user, dataType) => {
+      if (dataType === 'dailySummary') throw new Error('boom')
+      return 1
+    })
+    await receive(deps, {
+      dailies: [daily()],
+      hrv: [{ calendarDate: '2026-11-16', lastNightAvg: 50, summaryId: 'h-1', userId: GARMIN_USER }],
+    })
+    await expect(processJobs(deps)).rejects.toThrow('dailies')
     expect(deps.auditError).toHaveBeenCalledWith(
       'alice',
       'sync',
@@ -353,10 +492,60 @@ describe('processing', () => {
         error: 'boom',
       },
     )
+    expect(deps.upsertSyncState.mock.calls.map((call) => [call[1].data_type, call[1].status])).toEqual([
+      ['dailies', 'error'],
+      ['hrv', 'idle'],
+    ])
     expect(deps.upsertSyncState).toHaveBeenCalledWith(
       'alice',
       expect.objectContaining({ error_message: 'boom', status: 'error' }),
     )
+  })
+})
+
+describe('a replay job', () => {
+  const sleep = {
+    durationInSeconds: 3600,
+    startTimeInSeconds: 1795305600,
+    summaryId: 's-1',
+    userId: GARMIN_USER,
+  }
+
+  test('processes the records and tells the notifier but writes no push sync state', async () => {
+    const deps = makeDeps()
+    await receive(deps, { dailies: [daily()], sleeps: [sleep] })
+    const [job] = deps.jobs.splice(0)
+    await processGarminPushJob(deps, { ...job!, replay: true })
+    expect(deps.processGarminData.mock.calls.map((call) => call[1])).toEqual(['dailySummary', 'sleep'])
+    expect(deps.onActivitySynced).toHaveBeenCalledTimes(1)
+    expect(deps.upsertSyncState).not.toHaveBeenCalled()
+  })
+
+  test('a failing type is audited and fails the job, still without a push sync state', async () => {
+    const deps = makeDeps()
+    deps.processGarminData.mockRejectedValueOnce(new Error('boom'))
+    await receive(deps, { dailies: [daily()] })
+    const [job] = deps.jobs.splice(0)
+    await expect(processGarminPushJob(deps, { ...job!, replay: true })).rejects.toThrow('dailies')
+    expect(deps.auditError).toHaveBeenCalledWith(
+      'alice',
+      'sync',
+      'Garmin: processing pushed dailies failed',
+      {
+        error: 'boom',
+      },
+    )
+    expect(deps.upsertSyncState).not.toHaveBeenCalled()
+  })
+})
+
+describe('reprocessing lookup', () => {
+  test('a stored record type maps back to its Garmin type key', () => {
+    expect(garminPushTypeOfRecordType('garmin_push_dailies')).toBe('dailies')
+    expect(garminPushTypeOfRecordType('garmin_push_move_iq_activities')).toBe('moveIQActivities')
+    expect(garminPushTypeOfRecordType('garmin_push_activity_files')).toBe('activityFiles')
+    expect(garminPushTypeOfRecordType('garmin_push_something_new')).toBeUndefined()
+    expect(garminPushTypeOfRecordType('garmin_sleep')).toBeUndefined()
   })
 })
 
@@ -390,8 +579,8 @@ describe('activities and their files', () => {
     deps.syncActivityFile.mockImplementation(async () => {
       order.push('file')
     })
-    const result = await receive(deps, { activityFiles: [fileNotice()], activities: [activity()] })
-    await result.process!()
+    await receive(deps, { activityFiles: [fileNotice()], activities: [activity()] })
+    await processJobs(deps)
     expect(order).toEqual(['activity', 'file', 'file'])
     expect(deps.upsertSyncState.mock.calls.map((call) => call[1].data_type)).toEqual([
       'activities',
@@ -401,8 +590,8 @@ describe('activities and their files', () => {
 
   test('an activity is processed as the pull reads it', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, { manuallyUpdatedActivities: [activity()] })
-    await result.process!()
+    await receive(deps, { manuallyUpdatedActivities: [activity()] })
+    await processJobs(deps)
     expect(deps.processGarminData).toHaveBeenCalledWith('alice', 'activities', [
       expect.objectContaining({ activityId: 4242, activityType: { typeKey: 'running' } }),
     ])
@@ -410,7 +599,7 @@ describe('activities and their files', () => {
 
   test('the file is asked for once per activity item and per FIT notice, not for a TCX one', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, {
+    await receive(deps, {
       activities: [activity(), activity({ activityId: '4243', summaryId: 'a-2' })],
       activityFiles: [
         fileNotice(),
@@ -419,7 +608,7 @@ describe('activities and their files', () => {
       ],
       manuallyUpdatedActivities: [activity({ activityId: 4246, summaryId: 'm-1' })],
     })
-    await result.process!()
+    await processJobs(deps)
     expect(deps.syncActivityFile.mock.calls).toEqual([
       ['alice', 4242],
       ['alice', 4243],
@@ -444,19 +633,19 @@ describe('activities and their files', () => {
 
   test('activity details are kept raw only', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, { activityDetails: [activity({ summaryId: 'd-1' })] })
+    await receive(deps, { activityDetails: [activity({ summaryId: 'd-1' })] })
     expect(storedRecords(deps)).toHaveLength(1)
-    await result.process!()
+    await processJobs(deps)
     expect(deps.processGarminData).not.toHaveBeenCalled()
     expect(deps.syncActivityFile).not.toHaveBeenCalled()
     expect(deps.onActivitySynced).not.toHaveBeenCalled()
   })
 
-  test('a failing file sync is audited under its type', async () => {
+  test('a failing file sync is audited under its type and fails the job', async () => {
     const deps = makeDeps()
     deps.syncActivityFile.mockRejectedValueOnce(new Error('boom'))
-    const result = await receive(deps, { activityFiles: [fileNotice()] })
-    await expect(result.process!()).resolves.toBeUndefined()
+    await receive(deps, { activityFiles: [fileNotice()] })
+    await expect(processJobs(deps)).rejects.toThrow()
     expect(deps.auditError).toHaveBeenCalledWith(
       'alice',
       'sync',
@@ -469,7 +658,7 @@ describe('activities and their files', () => {
 
   test('tells the activity notifier the span of pushed sleeps and activities, not of dailies', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, {
+    await receive(deps, {
       activities: [
         activity(),
         activity({
@@ -489,7 +678,7 @@ describe('activities and their files', () => {
         },
       ],
     })
-    await result.process!()
+    await processJobs(deps)
     expect(deps.onActivitySynced.mock.calls).toEqual(
       expect.arrayContaining([
         ['alice', new Date(START * 1000), new Date((START + 7800) * 1000)],
@@ -501,18 +690,18 @@ describe('activities and their files', () => {
 
   test('without a usable time the notifier gets the last day', async () => {
     const deps = makeDeps()
-    const result = await receive(deps, {
+    await receive(deps, {
       sleeps: [{ calendarDate: '2026-11-16', summaryId: 's-1', userId: GARMIN_USER }],
     })
-    await result.process!()
+    await processJobs(deps)
     expect(deps.onActivitySynced).toHaveBeenCalledWith('alice', new Date(NOW.getTime() - 86_400_000), NOW)
   })
 
   test('the notifier is not told about a type that failed', async () => {
     const deps = makeDeps()
     deps.processGarminData.mockRejectedValueOnce(new Error('boom'))
-    const result = await receive(deps, { activities: [activity()] })
-    await result.process!()
+    await receive(deps, { activities: [activity()] })
+    await expect(processJobs(deps)).rejects.toThrow()
     expect(deps.onActivitySynced).not.toHaveBeenCalled()
   })
 })
@@ -599,6 +788,7 @@ describe('what is said', () => {
     })
     deps.processGarminData.mockRejectedValueOnce(new Error('boom'))
     await result.process!()
+    await expect(processJobs(deps)).rejects.toThrow()
     const said = everythingSaid(deps)
     expect(said).not.toContain(TOKEN)
     expect(said).not.toContain('webhooks/garmin')

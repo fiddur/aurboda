@@ -58,11 +58,24 @@ export const promoteTrim = (
 /** A suggestion's whole length in km as the "To km" field shows it: rounded up to 0.1. */
 export const lengthKm = (lengthM: number): number => Math.ceil(lengthM / 100) / 10
 
-/** Whether to run another scan: more is left and the last run got through something. */
-export const shouldScanAgain = (result: SuggestedSegmentScanResult): boolean =>
-  result.remaining > 0 && result.scanned > 0
+export const MAX_SCAN_ROUNDS = 10
 
-export const formatScanTotals = ({ scanned, suggested }: { scanned: number; suggested: number }): string =>
-  scanned === 0
-    ? 'Nothing new to look through.'
-    : `Looked through ${plural(scanned, 'activity', 'activities')} and found ${plural(suggested, 'new suggestion', 'new suggestions')}.`
+/** Whether to run another scan: more is left, the last run got through something, and the rounds are not used up. */
+export const shouldScanAgain = (result: SuggestedSegmentScanResult, rounds: number): boolean =>
+  rounds < MAX_SCAN_ROUNDS && result.remaining > 0 && result.scanned > 0
+
+export const formatScanTotals = ({
+  scanned,
+  suggested,
+  more = false,
+}: {
+  scanned: number
+  suggested: number
+  more?: boolean
+}): string => {
+  const found =
+    scanned === 0
+      ? 'Nothing new to look through.'
+      : `Looked through ${plural(scanned, 'activity', 'activities')} and found ${plural(suggested, 'new suggestion', 'new suggestions')}.`
+  return more ? `${found} There is more to look through: press again to go on.` : found
+}

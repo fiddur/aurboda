@@ -311,7 +311,8 @@ orientation is applied and the picture turned upright; its longest edge is shrun
 stored as WebP (quality 82) with **no metadata** — no camera, no GPS position. An upload is at
 most 10 MB and at most 16383×16383 pixels (about 268 megapixels, sharp's own default, so a
 200-megapixel phone photo is taken), and a small file declaring more is refused before it is
-decoded (the same limit holds for avatars and challenge banners).
+decoded (the same limit holds for avatars and challenge banners). An upload over the size
+limit is answered 413; a request with a second file or more form fields than the route takes, 400.
 
 Pictures live in the writer's own database, in `feed_image` (`id`, `content_type`, `data`
 BYTEA, `width`, `height`, `byte_size`, `created_at`), so the [data export](../data-export.md)
@@ -409,8 +410,14 @@ the bell in the Followed tags block. With it on, a new post arriving through the
 `feed_post` notification ("Carol posted in #running", naming the post's author, linking to the
 timeline filtered to the tag), once per post however many followed tags it carries (the key is the
 announced post's id, so a followee delivering the same post directly does not raise a second one).
-A post already in the timeline from a followee gets no boost card from the tag, and so nothing
-through it. The Android fallback notifier for servers without `/notifications` still reads only the
+A reply arriving through a followed tag is a card like any other but raises no `feed_post`; a
+person's boost of a reply still does. A post already in the timeline from a followee gets no boost
+card from the tag, and so nothing through it. A post carrying several followed tags shows **once**
+(#1767): the first tag's `Announce` makes the card, every further tag's joins it as a carrier
+(`timeline_entry.boost_carriers`), and the card shows the first tag. It stays while any of those
+tags is followed: an `Undo{Announce}` or an unfollow of one tag drops only that carrier (the card
+then shows the next one), and only the last one removes the card. A person's boost of the same post
+is still its own card. The Android fallback notifier for servers without `/notifications` still reads only the
 people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The tag accounts also boost each of
 the user's own public posts back to them; those are not counted as boosts (see

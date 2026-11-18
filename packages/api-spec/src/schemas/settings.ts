@@ -212,6 +212,22 @@ const timelineDailyMetricsSchema = z
     message: 'Timeline daily metrics must not repeat',
   })
 
+export const maxHiddenPages = 200
+
+export const hiddenPagesSchema = z
+  .array(
+    z.string().startsWith('/', 'A hidden page is a menu path starting with /').max(200).meta({
+      description: 'A menu path, e.g. /meals',
+      example: '/meals',
+    }),
+  )
+  .max(maxHiddenPages)
+  .meta({
+    description:
+      "Menu paths the user hid from the menus (web sidebar and phone menu, the Android app's More tab and bottom bar). Hiding only removes the menu link: the page, its data and the API stay. Home, Settings, Help, Notifications and the admin pages are always shown, whatever the list says; unknown paths are kept.",
+    id: 'HiddenPages',
+  })
+
 export const updateSettingsInputSchema = z
   .object({
     birth_date: birthDateSchema.nullable().optional().meta({
@@ -229,6 +245,10 @@ export const updateSettingsInputSchema = z
     }),
     goals: goalsSchema.nullable().optional().meta({
       description: 'Goals (set to null to reset to defaults, empty array to clear all)',
+    }),
+    hidden_pages: hiddenPagesSchema.nullable().optional().meta({
+      description:
+        'Menu paths to leave out of the menus, e.g. ["/meals", "/strength"]; the whole list is replaced (set to null or [] to show every page again)',
     }),
     hr_zone_start: hrZoneThresholdsSchema.nullable().optional().meta({
       description: 'Custom HR zone thresholds (set to null to clear)',
@@ -269,6 +289,10 @@ export const updateSettingsInputSchema = z
     onboarding_manual_done: z.array(onboardingStepIdSchema).nullable().optional().meta({
       description:
         'Get-started steps the user marked as done by hand, for steps Aurboda cannot detect by itself (set to null to clear)',
+    }),
+    report_import_mapping: reportImportMappingSchema.nullable().optional().meta({
+      description:
+        'The column mapping the lab report import remembers from the last import (set to null to forget it)',
     }),
     rescue_time_key: rescueTimeKeySchema.nullable().optional().meta({
       description: 'RescueTime API key (set to null to clear)',
@@ -368,6 +392,22 @@ export const garminOAuthStatusSchema = z
 
 export type GarminOAuthStatus = z.infer<typeof garminOAuthStatusSchema>
 
+export const garminDataSourceSchema = z.enum(['push', 'session', 'personal_key']).meta({
+  description:
+    'The connection a Garmin data type comes through: push (Connect with Garmin delivers it), session (fetched through the Garmin login) or personal_key (fetched with the Personal API key)',
+  id: 'GarminDataSource',
+})
+
+export type GarminDataSource = z.infer<typeof garminDataSourceSchema>
+
+export const garminDataSourcesSchema = z.partialRecord(garminDataTypeSchema, garminDataSourceSchema).meta({
+  description:
+    'For each Garmin data type, the connection it comes through right now; a type no connection brings is left out',
+  id: 'GarminDataSources',
+})
+
+export type GarminDataSources = z.infer<typeof garminDataSourcesSchema>
+
 export const userSettingsResponseSchema = baseResponseSchema
   .extend({
     birth_date: z.string().nullable().default(null).meta({ description: 'Birth date in YYYY-MM-DD format' }),
@@ -416,7 +456,12 @@ export const userSettingsResponseSchema = baseResponseSchema
       .array(garminDataTypeSchema)
       .default([])
       .meta({ description: 'Garmin data types currently disabled for sync' }),
+    garmin_data_sources: garminDataSourcesSchema.default({}),
     goals: goalsSchema.meta({ description: 'User goals for tracking metrics' }),
+    hidden_pages: hiddenPagesSchema.default([]).meta({
+      description:
+        'Menu paths hidden from the menus (empty = every page shows); Home, Settings, Help, Notifications and the admin pages always show',
+    }),
     hr_zone_start: hrZoneThresholdsSchema.meta({ description: 'Effective HR zone thresholds' }),
     hr_zone_start_source: hrZoneSourceSchema.default('default').meta({
       description: 'Source of HR zone thresholds',

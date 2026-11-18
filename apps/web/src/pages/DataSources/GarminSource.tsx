@@ -1,4 +1,5 @@
 import type {
+  GarminDataSources,
   GarminDataType,
   GarminOAuthStatus,
   GarminPersonalKeyStatus,
@@ -23,7 +24,6 @@ import {
   garminDataTypeNote,
   garminDataTypeSourceNote,
   garminLoginOnlyData,
-  garminOAuthReturn,
   type GarminSwitchStep,
   garminSwitchStep,
   joinList,
@@ -33,7 +33,7 @@ import { GarminPersonalKey } from './GarminPersonalKey'
 import {
   type DataTypeItem,
   DataTypesList,
-  LoginRequired,
+  LoginRequiredToFinish,
   StatusBanner,
   SyncIntervalField,
   SyncStatusBar,
@@ -76,8 +76,8 @@ const GARMIN_DATA_TYPES: GarminDataTypeInfo[] = [
     type: 'activities',
     label: 'Activities (exercise with HR, VO2 max)',
     hc_note: 'Also available via Health Connect. Garmin adds VO2 max, activity type detail.',
-    key_note: 'Per-second detail and GPS from the FIT file; strength sets need the Garmin login',
-    push_note: 'Per-second detail and GPS from the FIT file; strength sets need the Garmin login',
+    key_note: 'Per-second detail, GPS and strength sets from the FIT file',
+    push_note: 'Per-second detail, GPS and strength sets from the FIT file',
   },
   { type: 'spo2', label: 'SpO2 (blood oxygen)', href: '/metric/spo2' },
   { type: 'respiration', label: 'Respiration rate', href: '/metric/respiratory_rate' },
@@ -226,12 +226,6 @@ function GarminLoginForm({ onMfaRequired, onSuccess }: { onMfaRequired: () => vo
   )
 }
 
-interface GarminDataTypeSources {
-  delivers: readonly GarminDataType[]
-  sessionConnected: boolean
-  keyConnected: boolean
-}
-
 function GarminDataTypeRow({
   dt,
   enabled,
@@ -274,7 +268,7 @@ function GarminDataTypeToggles({
   disabledTypes: GarminDataType[]
   keyOnly: boolean
   pushOnly: boolean
-  sources: GarminDataTypeSources
+  sources: GarminDataSources | undefined
   onToggle: (disabledTypes: GarminDataType[]) => Promise<void>
 }) {
   // Optimistic local state — updates immediately on click
@@ -340,7 +334,7 @@ function GarminDataTypesSection({
   isConnected: boolean
   keyOnly: boolean
   pushOnly: boolean
-  sources: GarminDataTypeSources
+  sources: GarminDataSources | undefined
   disabledTypes: GarminDataType[]
   queryClient: ReturnType<typeof useQueryClient>
 }) {
@@ -643,19 +637,7 @@ export function GarminSource() {
     }
   }, [queryClient])
 
-  if (!isLoggedIn) {
-    const { pathname, search } = window.location
-    if (!garminOAuthReturn(search)) return <LoginRequired />
-    return (
-      <div class="data-sources-page">
-        <p>
-          <a href={`/login?next=${encodeURIComponent(pathname + search)}`}>
-            Log in to finish connecting Garmin
-          </a>
-        </p>
-      </div>
-    )
-  }
+  if (!isLoggedIn) return <LoginRequiredToFinish provider="garmin" providerName="Garmin" />
 
   return (
     <div class="data-sources-page">
@@ -706,11 +688,7 @@ export function GarminSource() {
           isConnected={isConnected}
           keyOnly={keyOnly}
           pushOnly={oauth.connected && !canPull}
-          sources={{
-            delivers: oauth.delivers,
-            keyConnected: personalKey?.connected ?? false,
-            sessionConnected,
-          }}
+          sources={userSettings?.garmin_data_sources}
           disabledTypes={userSettings?.garmin_disabled_data_types ?? []}
           queryClient={queryClient}
         />

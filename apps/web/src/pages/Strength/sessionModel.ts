@@ -29,7 +29,9 @@ export const makeBlockId: MakeId = () => `b${Date.now().toString(36)}${(blockCou
 
 const PREFILL_FIELDS = ['weight', 'reps', 'time'] as const
 
-export type SetPrefill = Partial<Record<(typeof PREFILL_FIELDS)[number], number>>
+export type SetPrefill = Partial<Record<(typeof PREFILL_FIELDS)[number], number>> & { set_type?: string }
+
+export type PlannedSet = SetPrefill & { note?: string }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
@@ -143,11 +145,24 @@ export const prefillOf = (set: SetRow | undefined): SetPrefill =>
     ? Object.fromEntries(PREFILL_FIELDS.flatMap((f) => (num(set[f]) === undefined ? [] : [[f, num(set[f])]])))
     : {}
 
+const CARRIED_SET_TYPES = new Set(['warmup', 'drop_set', 'failure'])
+
+const setTypeOf = (set: SetRow | undefined): { set_type?: string } =>
+  typeof set?.set_type === 'string' && CARRIED_SET_TYPES.has(set.set_type) ? { set_type: set.set_type } : {}
+
+export const plannedOf = (set: SetRow, { withNote }: { withNote: boolean }): PlannedSet => {
+  const note = typeof set.note === 'string' ? set.note.trim() : ''
+  return { ...prefillOf(set), ...setTypeOf(set), ...(withNote && note !== '' ? { note } : {}) }
+}
+
 export const nextSetPrefill = (block: ExerciseBlock, lastTime: SetRow[] = []): SetPrefill => {
   const index = block.sets.length
   const source = block.sets.at(-1) ?? block.planned[0] ?? lastTime[index]
-  return prefillOf(source)
+  return { ...prefillOf(source), ...setTypeOf(block.planned[0]) }
 }
+
+export const plannedNote = (set: SetRow): string | undefined =>
+  typeof set.note === 'string' && set.note !== '' ? set.note : undefined
 
 const isTimed = (set: SetRow | undefined): boolean =>
   set !== undefined && num(set.time) !== undefined && num(set.reps) === undefined
@@ -207,7 +222,11 @@ export const exerciseNames = (sets: SetRow[]): string[] =>
   }, [])
 
 export const planFromSession = (sets: SetRow[], makeId: MakeId = makeBlockId): ExerciseBlock[] =>
-  blocksFromSets(sets, makeId).map((b) => ({ ...b, planned: b.sets.map(prefillOf), sets: [] }))
+  blocksFromSets(sets, makeId).map((b) => ({
+    ...b,
+    planned: b.sets.map((s) => plannedOf(s, { withNote: false })),
+    sets: [],
+  }))
 
 export const newLiveDraft = (
   startTime: string,

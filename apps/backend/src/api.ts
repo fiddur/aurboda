@@ -6,6 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
+import { unhandledErrorAudit } from './api/audit-body.ts'
 import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
@@ -20,7 +21,12 @@ import {
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
-import { setupGarminPush, setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
+import {
+  createGarminPushProcessor,
+  setupGarminPush,
+  setupOuraWebhook,
+  setupStravaWebhook,
+} from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
@@ -43,6 +49,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   listChallengesAwaitingResult,
+  listRawRecordKeysReceivedSince,
   listPublicFeedPosts,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
@@ -188,6 +195,12 @@ import {
   unfollowActor,
   unfollowTag,
 } from './services/following.ts'
+import {
+  createGarminPushQueue,
+  type GarminPushQueue,
+  inProcessGarminPushQueue,
+  reprocessGarminPushes,
+} from './services/garmin-push-queue.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
@@ -224,6 +237,8 @@ import {
   relayRecipients,
   retryErroredRelays,
 } from './services/relays.ts'
+import { createReminderScheduler } from './services/reminder-scheduler.ts'
+import { raiseDueReminders, reminderDeps } from './services/reminders.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -658,6 +673,7 @@ const main = async () => {
     createSessionToken: (user) => auth.createToken(user),
     isValidUsername,
     mailer,
+    pruneAuditLog: async (user) => pruneAuditLog(user, await centralDb.getAuditLogRetentionDays()),
     recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
     setPassword: async (user, password) => {
       await setUserPassword(userDb, user, password)
@@ -692,8 +708,13 @@ const main = async () => {
       },
     }),
     service: createOidcService({
+      audit: (user, message, details) => auditError(user, 'auth', message, details),
       createAccount: (input) => createAccount(signupDeps, input),
       createSessionToken: (user) => auth.createToken(user),
+      discardAccount: async (user) => {
+        await dropUserDb(userDb, user)
+        await centralDb.deleteAllCentralUserData(user)
+      },
       discover: createDiscoveryCache(oidcClient),
       invitationAuth,
       loginMethods,
@@ -1072,6 +1093,37 @@ const main = async () => {
     )
   }
 
+  // Garmin pushes (#1806) are processed from a durable queue, so a restart between the answer
+  // and the processing loses nothing. Without pg-boss they are processed in this process.
+  const processGarminPush = createGarminPushProcessor({
+    garminOAuth,
+    isReadOnly,
+    onActivityDetailSynced,
+    onActivitySynced: activityNotifier,
+    onTrackWritten,
+  })
+  const onGarminPushError = (error: unknown) =>
+    console.error('Garmin push: processing failed:', error instanceof Error ? error.message : error)
+  let garminPushQueue: GarminPushQueue = inProcessGarminPushQueue(processGarminPush, onGarminPushError)
+  if (boss) {
+    try {
+      garminPushQueue = await createGarminPushQueue(boss, processGarminPush)
+    } catch (error) {
+      console.error('Failed to initialize the Garmin push queue:', error)
+    }
+  }
+  const reprocessGarminPushesForUser = (user: string, since?: Date) =>
+    reprocessGarminPushes(
+      {
+        enqueue: (job) => garminPushQueue.enqueue(job),
+        listPushRecordKeys: (owner, from) =>
+          listRawRecordKeysReceivedSince(owner, 'garmin', 'garmin_push_', from),
+        now: () => new Date(),
+      },
+      user,
+      since,
+    )
+
   // Background polling (#1042): every 5 minutes, sync whatever each user's
   // `sync_intervals` says is due, through the same sync provider queries use.
   if (boss) {
@@ -1086,6 +1138,19 @@ const main = async () => {
     } catch (error) {
       console.error('Failed to initialize sync scheduler:', error)
     }
+  }
+
+  if (boss) {
+    try {
+      await createReminderScheduler(boss, {
+        listUsers: () => listUserNames(userDb),
+        raiseDue: (user) => raiseDueReminders(reminderDeps, user),
+      })
+    } catch (error) {
+      console.error('Failed to initialize reminder scheduler:', error)
+    }
+  } else {
+    console.warn('⚠️ Reminders disabled (no job queue)')
   }
 
   // Challenge completion: a scheduled sweep over every user's hosted challenges
@@ -1220,6 +1285,7 @@ const main = async () => {
       onTrackWritten,
       oura,
       reactionActions,
+      reprocessGarminPushes: reprocessGarminPushesForUser,
       retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
@@ -1298,6 +1364,7 @@ const main = async () => {
     activityNotifier,
     onActivityDetailSynced,
     onTrackWritten,
+    reprocessGarminPushes: reprocessGarminPushesForUser,
   })
 
   registerOAuthRoutes({
@@ -1330,9 +1397,7 @@ const main = async () => {
     garminOAuth,
     httpd,
     isReadOnly,
-    onActivityDetailSynced,
-    onActivitySynced: activityNotifier,
-    onTrackWritten,
+    pushQueue: garminPushQueue,
     sessionSecret,
   })
 
@@ -1450,10 +1515,8 @@ const main = async () => {
     if (status >= 500) console.error(err)
 
     if (req.user) {
-      auditError(req.user, 'system', `${req.method} ${req.path}: ${err.message}`, {
-        status,
-        ...(status >= 500 && { stack: err.stack }),
-      })
+      const { details, message } = unhandledErrorAudit(req, err, status)
+      auditError(req.user, 'system', message, details)
     }
 
     res.status(status).json(errorResponseBody(err, status))

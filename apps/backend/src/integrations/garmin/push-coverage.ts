@@ -24,6 +24,21 @@ const DELIVERING_PUSH_TYPES = [
   'activities',
 ] as const
 
+/**
+ * The push types that arrive every day. One whose own last push is older than this no longer
+ * vouches for its feeds, even while other types keep the connection fresh: Garmin may have
+ * stopped sending it alone, and the pull takes those data types back.
+ */
+const DAILY_PUSH_TYPES = new Set(['dailies', 'sleeps', 'hrv', 'stressDetails'])
+export const GARMIN_DAILY_PUSH_STALE_MS = 3 * 24 * 60 * 60 * 1000
+
+const vouches = ({ data_type, last_sync_time, status }: SyncState, now: Date): boolean => {
+  if (status !== 'idle' || !last_sync_time) return false
+  return (
+    !DAILY_PUSH_TYPES.has(data_type) || now.getTime() - last_sync_time.getTime() <= GARMIN_DAILY_PUSH_STALE_MS
+  )
+}
+
 const permissionFor = (dataType: GarminDataType): string =>
   dataType === 'activities' ? 'ACTIVITY_EXPORT' : 'HEALTH_EXPORT'
 
@@ -49,7 +64,7 @@ export const garminPushDelivered = (
   const delivering = new Set<string>(DELIVERING_PUSH_TYPES)
   const fed = new Set(
     pushStates
-      .filter((state) => delivering.has(state.data_type) && state.status === 'idle' && state.last_sync_time)
+      .filter((state) => delivering.has(state.data_type) && vouches(state, now))
       .flatMap((state) => garminPushFeeds(state.data_type)),
   )
   return garminDataTypeSchema.options.filter((dataType) => fed.has(dataType) && permitted(dataType))

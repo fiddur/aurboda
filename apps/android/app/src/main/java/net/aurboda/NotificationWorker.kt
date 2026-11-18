@@ -20,6 +20,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.ktor.client.HttpClient
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -65,6 +66,7 @@ class NotificationWorker(
                         }
                     }
                     decision.newHighWater?.let { setCentralNotifyHighWater(ctx, it) }
+                    scheduleNextReminderPoll(ctx, httpClient, credentials.apiUrl, credentials.authToken)
                     Result.success()
                 }
             }
@@ -73,6 +75,19 @@ class NotificationWorker(
             return Result.retry()
         } finally {
             httpClient.close()
+        }
+    }
+
+    /**
+     * The periodic poll runs every 15 minutes; a reminder should arrive on time, so one extra poll
+     * runs just after the next one is due. A failed read schedules nothing and never fails the run.
+     */
+    private suspend fun scheduleNextReminderPoll(ctx: Context, httpClient: HttpClient, apiUrl: String, authToken: String) {
+        try {
+            val nextDueAt = fetchReminders(httpClient, apiUrl, authToken)?.nextDueAt
+            reminderPollDelaySeconds(nextDueAt, Instant.now())?.let { scheduleReminderPoll(ctx, it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Reminder poll scheduling failed: ${e.message}")
         }
     }
 
@@ -203,6 +218,7 @@ class NotificationWorker(
         private const val TAG = "NotificationWorker"
         private const val WORK_NAME = "post_notifications_poll"
         private const val CHECK_SOON_WORK_NAME = "notifications_check_soon"
+        private const val REMINDER_POLL_WORK_NAME = "notifications_reminder_poll"
         private const val CHANNEL_ID = "post_notifications"
         private const val GROUP_KEY = "net.aurboda.POSTS"
         private const val MAX_PER_RUN = 8
@@ -274,6 +290,19 @@ class NotificationWorker(
                 .build()
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(CHECK_SOON_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        /** One extra poll just after the next reminder is due; its own unique work, so it and [checkSoon] never cancel each other. */
+        fun scheduleReminderPoll(context: Context, delaySeconds: Long) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = OneTimeWorkRequestBuilder<NotificationWorker>()
+                .setConstraints(constraints)
+                .setInitialDelay(delaySeconds, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(REMINDER_POLL_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
         }
 
         fun cancel(context: Context) {

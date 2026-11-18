@@ -3,7 +3,7 @@ import type { DataSource } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getActivities, getActivityById, insertActivity } from './activities/index.ts'
+import { getActivities, getActivityById, insertActivity, upsertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import {
   deleteHealthConnectRecords,
@@ -596,6 +596,188 @@ describe('Health Connect Integration Tests', () => {
       const user = getTestUser()
       await processHealthConnectBatch(user, 'ExerciseSessionRecord', [session(0)])
       expect(await storedTypes(user)).toEqual(['exercise'])
+    })
+  })
+
+  describe('a copy under a provider identity fills in type and title (#1831)', () => {
+    const START = '2026-09-03T05:16:21Z'
+    const END = '2026-09-03T05:43:57Z'
+    const providers = [
+      {
+        clientRecordId: '24218667980',
+        dataOrigin: 'com.garmin.android.apps.connectmobile',
+        externalId: 'garmin-activity-24218667980',
+        name: 'garmin',
+        source: 'garmin' as DataSource,
+      },
+      {
+        clientRecordId: 'gravl-session-6F1C2A3B-0000-4000-8000-000000000001',
+        dataOrigin: 'com.liteup.getgains',
+        externalId: 'gravl-workout-6f1c2a3b-0000-4000-8000-000000000001',
+        name: 'gravl',
+        source: 'gravl' as DataSource,
+      },
+    ]
+
+    const copy = (
+      p: (typeof providers)[number],
+      exerciseType: number,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      endTime: END,
+      exerciseType,
+      metadata: { clientRecordId: p.clientRecordId, dataOrigin: p.dataOrigin, id: `hc-${p.name}` },
+      startTime: START,
+      ...extra,
+    })
+
+    const providerUpsert = (user: string, p: (typeof providers)[number]) =>
+      upsertActivity(user, {
+        activity_type: 'running',
+        data: { provider_field: 1 },
+        end_time: new Date(END),
+        external_id: p.externalId,
+        source: p.source,
+        start_time: new Date(START),
+        title: 'Morning Run',
+      })
+
+    const stored = async (user: string) => {
+      const rows = (
+        await query(
+          user,
+          `SELECT source, external_id, activity_type, title FROM activities WHERE deleted_at IS NULL`,
+        )
+      ).rows
+      expect(rows).toHaveLength(1)
+      return rows[0]
+    }
+
+    describe.each(providers)('$name identity', (p) => {
+      test('the provider sync replaces a generic copy that arrived first', async () => {
+        const user = getTestUser()
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0))
+        expect(await stored(user)).toMatchObject({ activity_type: 'exercise', title: null })
+
+        await providerUpsert(user, p)
+
+        expect(await stored(user)).toMatchObject({
+          activity_type: 'running',
+          external_id: p.externalId,
+          source: p.source,
+          title: 'Morning Run',
+        })
+      })
+
+      test.each([
+        [
+          'single',
+          (user: string, data: Record<string, unknown>) =>
+            processHealthConnectData(user, 'ExerciseSessionRecord', data),
+        ],
+        [
+          'batch',
+          (user: string, data: Record<string, unknown>) =>
+            processHealthConnectBatch(user, 'ExerciseSessionRecord', [data]),
+        ],
+      ])('a copy after the provider keeps its type and title (%s path)', async (_, store) => {
+        const user = getTestUser()
+        await providerUpsert(user, p)
+
+        await store(user, copy(p, 0))
+        await store(user, copy(p, 70))
+
+        expect(await stored(user)).toMatchObject({ activity_type: 'running', title: 'Morning Run' })
+      })
+
+      test('a re-sent copy changes nothing and reports no change', async () => {
+        const user = getTestUser()
+        await providerUpsert(user, p)
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0))
+        const before = await stored(user)
+
+        const resent = await upsertActivity(
+          user,
+          {
+            activity_type: 'exercise',
+            data: (await query(user, `SELECT data FROM activities`)).rows[0].data,
+            end_time: new Date(END),
+            external_id: p.externalId,
+            source: p.source,
+            start_time: new Date(START),
+          },
+          { onConflict: 'fill_in' },
+        )
+
+        expect(resent.changed).toBe(false)
+        expect(await stored(user)).toEqual(before)
+      })
+
+      test('a specific type from the copy is not replaced by another copy', async () => {
+        const user = getTestUser()
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 2))
+        await processHealthConnectBatch(user, 'ExerciseSessionRecord', [copy(p, 70)])
+
+        expect((await stored(user)).activity_type).toBe('badminton')
+      })
+
+      test('a specific type from the copy replaces a stored generic one', async () => {
+        const user = getTestUser()
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0))
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 2))
+
+        expect((await stored(user)).activity_type).toBe('badminton')
+      })
+
+      test('a copy fills an empty title', async () => {
+        const user = getTestUser()
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0))
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0, { title: 'Lunch session' }))
+        await processHealthConnectData(user, 'ExerciseSessionRecord', copy(p, 0, { title: 'Other' }))
+
+        expect((await stored(user)).title).toBe('Lunch session')
+      })
+    })
+
+    test('a batch mixing a plain row and a provider row applies each its own rule', async () => {
+      const user = getTestUser()
+      const garmin = providers[0]
+      const plain = (exerciseType: number, title: string) => ({
+        endTime: '2026-09-04T10:30:00Z',
+        exerciseType,
+        metadata: { dataOrigin: 'com.example.app', id: 'hc-plain' },
+        notes: 'plain note',
+        startTime: '2026-09-04T10:00:00Z',
+        title,
+      })
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [plain(2, 'First')])
+      await providerUpsert(user, garmin)
+
+      await processHealthConnectBatch(user, 'ExerciseSessionRecord', [
+        plain(2, 'Second'),
+        copy(garmin, 70, { notes: 'garmin note', title: 'From HC' }),
+      ])
+
+      const rows = (
+        await query(
+          user,
+          `SELECT id, source, activity_type, title FROM activities WHERE deleted_at IS NULL ORDER BY source`,
+        )
+      ).rows
+      expect(rows).toMatchObject([
+        { activity_type: 'running', source: 'garmin', title: 'Morning Run' },
+        { activity_type: 'badminton', source: 'health_connect', title: 'Second' },
+      ])
+      const notes = (
+        await query(
+          user,
+          `SELECT entity_id, content FROM notes WHERE source = 'health_connect' ORDER BY content`,
+        )
+      ).rows
+      expect(notes).toEqual([
+        { content: 'garmin note', entity_id: rows[0].id },
+        { content: 'plain note', entity_id: rows[1].id },
+      ])
     })
   })
 

@@ -41,6 +41,7 @@ import {
   type FeedQuoteAuthorizationRecord,
   countFeedFollowers,
   countPublicFeedPosts,
+  addTagBoostCarrier,
   deleteBoostEntry,
   deleteFeedQuoteAuthorizationsByActor,
   deleteFeedQuoteAuthorizationsByQuote,
@@ -419,7 +420,9 @@ const resolveBoostAuthor = async (
  * **fetched from their own ids**, never taken from the activity body (see
  * `resolveAnnouncedNote`); the Note must be on the same host as the announced id
  * and declare `attributedTo`; and a post ALREADY in this timeline directly gets
- * no boost card (Mastodon hides a reblog of a post you have).
+ * no boost card (Mastodon hides a reblog of a post you have). A followed tag's
+ * `Announce` of a Note another followed tag already carded joins that card as a
+ * carrier (`addTagBoostCarrier`): one card, no second notification.
  */
 const ingestBoostedNote = async (
   ctx: InboxContext<void>,
@@ -437,14 +440,18 @@ const ingestBoostedNote = async (
     const announced = await resolveAnnouncedNote(ctx, me, valid.objectId)
     if (announced == null) return
     if ((await getTimelineEntryByObjectUri(me, announced.uri)) != null) return
+    const carrier = {
+      actor_uri: booster.actor_uri,
+      announce_uri: valid.announceUri,
+      display_name: booster.display_name,
+      handle: booster.handle,
+    }
+    if (booster.tag != null && (await addTagBoostCarrier(me, announced.uri, carrier))) return
     const author = await resolveBoostAuthor(ctx, me, announced.attributionId)
     if (author == null) return
     await ingestNoteForRecipient(me, announced.note, author, enrich, origin, {
       boost: {
-        actor_uri: booster.actor_uri,
-        announce_uri: valid.announceUri,
-        display_name: booster.display_name,
-        handle: booster.handle,
+        ...carrier,
         tag: booster.tag,
         published_at: announce.published == null ? new Date() : temporalInstantToDate(announce.published),
       },

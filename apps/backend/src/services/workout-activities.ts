@@ -1,3 +1,5 @@
+import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+
 import type { ActivityType } from '../schema.ts'
 
 import {
@@ -18,8 +20,9 @@ export const getWorkoutActivities = async (
   user: string,
   start: Date,
   end: Date,
+  definitions?: ActivityTypeDefinition[],
 ): Promise<MergedActivity[]> => {
-  const definitions = await getActivityTypeDefinitions(user)
+  definitions ??= await getActivityTypeDefinitions(user)
   const categoryMap = new Map(definitions.map((d) => [d.name, d.display_category as string]))
   const workoutTypes = new Set(workoutTypeNames(definitions))
   const mergePartners = definitions
@@ -37,5 +40,8 @@ export const getWorkoutActivities = async (
   return merged.filter((a) => workoutTypes.has(a.activity_type))
 }
 
-export const getEarliestWorkoutStart = async (user: string): Promise<Date | undefined> =>
-  getEarliestActivityStart(user, workoutTypeNames(await getActivityTypeDefinitions(user)))
+export const getEarliestWorkoutStart = async (
+  user: string,
+  definitions?: ActivityTypeDefinition[],
+): Promise<Date | undefined> =>
+  getEarliestActivityStart(user, workoutTypeNames(definitions ?? (await getActivityTypeDefinitions(user))))

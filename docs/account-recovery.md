@@ -47,7 +47,7 @@ and REST only, like `/login`.
 
 5. A short notice goes to the address afterwards: "Your Aurboda password was reset", or "Your Aurboda
    account was signed in to with a recovery link". It carries no link. The account's audit log records
-   "Password reset by email" or "Recovery sign-in".
+   "Password reset by email" or "Recovery sign-in", and is trimmed to its retention as on any sign-in.
 
 Over the API, both steps are public and REST only, like `/login`, and limited per client IP like it
 (see [admin.md](admin.md#rate-limits)): `POST /account/recovery/request` `{ identifier }` and
@@ -64,4 +64,5 @@ you reset the password because someone else may know it, also tell the server ad
 
 Links are single-use random tokens; the server keeps only their SHA-256 hash, and nothing about a
 mail's recipient, content or link is logged beyond the kind of mail sent. The mails carry no images
-or tracking. Deleting the account deletes its tokens.
+or tracking. Deleting the account deletes its tokens. A new password reaches the database as a SCRAM-SHA-256 verifier
+computed by the server, never in the statement text, so a statement log does not show it.

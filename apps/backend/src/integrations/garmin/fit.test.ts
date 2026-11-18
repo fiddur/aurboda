@@ -2,7 +2,15 @@ import { Encoder, Profile } from '@garmin/fitsdk'
 import { zipSync } from 'fflate'
 import { describe, expect, test } from 'vitest'
 
-import { type FitActivity, fitToDetail, parseActivityFile, parseActivityFit } from './fit.ts'
+import { loadExerciseCatalog } from '../../services/exercise-catalog.ts'
+import {
+  type FitActivity,
+  fitEnumKey,
+  fitToDetail,
+  fitToSets,
+  parseActivityFile,
+  parseActivityFit,
+} from './fit.ts'
 
 const semicircles = (degrees: number): number => Math.round((degrees * 2 ** 31) / 180)
 
@@ -208,6 +216,14 @@ describe('parseActivityFit', () => {
     expect(parseActivityFit(zip({ 'a.fit': fit }), fit.length)).not.toBeNull()
   })
 
+  test('throws when the entries together inflate past the total limit', () => {
+    const fit = encodeFit({ records: [record(1, { heartRate: 120 })] })
+    const twoEntries = zip({ 'a.fit': fit, 'b.fit': fit })
+
+    expect(() => parseActivityFit(twoEntries, fit.length, 2 * fit.length - 1)).toThrow(/more than/)
+    expect(parseActivityFit(twoEntries, fit.length, 2 * fit.length)).not.toBeNull()
+  })
+
   test('ignores developer fields, also one named like a profile field', () => {
     const bytes = zip({
       'a.fit': encodeFit({
@@ -254,20 +270,24 @@ describe('parseActivityFile', () => {
 
 describe('fitToDetail', () => {
   const fit = (records: FitActivity['records']): FitActivity => ({
+    exerciseTitles: [{ exerciseCategory: 'plank', exerciseName: 2, messageIndex: 0, wktStepName: 'Hold' }],
     fileIds: [{ manufacturer: 'garmin', type: 'activity' }],
     laps: [{ developerFields: { 0: 1 }, totalElapsedTime: 60 }],
     records,
     sessions: [{ sport: 'running', totalElapsedTime: 60 }],
+    sets: [{ developerFields: { 0: 1 }, repetitions: 8, setType: 'active' }],
   })
 
-  test('the summary holds the file id, sessions, laps and the record count only', () => {
+  test('the summary holds the file id, sessions, laps, sets, exercise titles and the record count only', () => {
     const { summary } = fitToDetail(fit([{ heartRate: 120, timestamp: at(1) }]), start)
 
     expect(summary).toEqual({
+      exercise_titles: [{ exerciseCategory: 'plank', exerciseName: 2, messageIndex: 0, wktStepName: 'Hold' }],
       file_id: [{ manufacturer: 'garmin', type: 'activity' }],
       laps: [{ totalElapsedTime: 60 }],
       record_count: 1,
       sessions: [{ sport: 'running', totalElapsedTime: 60 }],
+      sets: [{ repetitions: 8, setType: 'active' }],
     })
   })
 
@@ -283,5 +303,251 @@ describe('fitToDetail', () => {
     )
 
     expect(points.map((p) => p.metric)).toEqual(['heart_rate'])
+  })
+})
+
+const catalog = loadExerciseCatalog()
+
+const subtype = (category: string, name: string): number => {
+  const names = Profile.types[`${category}ExerciseName`] ?? {}
+  const found = Object.entries(names).find(([, value]) => value === name)
+  if (!found) throw new Error(`no ${category} exercise ${name} in the profile`)
+  return Number(found[0])
+}
+
+type FitSet = FitActivity['sets'][number]
+
+const activeSet = (
+  seconds: number,
+  category: string,
+  name: string | null,
+  extra: Partial<FitSet> = {},
+): FitSet => ({
+  category: [category] as FitSet['category'],
+  categorySubtype: [name === null ? (null as unknown as number) : subtype(category, name)],
+  duration: 30,
+  repetitions: 8,
+  setType: 'active',
+  startTime: at(seconds),
+  timestamp: at(seconds + 30),
+  weight: 60,
+  ...extra,
+})
+
+const strength = (sets: FitSet[], exerciseTitles: FitActivity['exerciseTitles'] = []): FitActivity => ({
+  exerciseTitles,
+  fileIds: [],
+  laps: [],
+  records: [],
+  sessions: [{ sport: 'training' }],
+  sets,
+})
+
+describe('fitEnumKey', () => {
+  test.each([
+    ['benchPress', 'bench_press'],
+    ['barbellBenchPress', 'barbell_bench_press'],
+    ['pullUp', 'pull_up'],
+    ['30DegreeLatPulldown', '_30_degree_lat_pulldown'],
+    ['3WayCalfRaise', '_3_way_calf_raise'],
+    ['weighted45DegreePlank', 'weighted_45_degree_plank'],
+    ['stretch90_90', 'stretch_90_90'],
+  ])('%s is %s', (name, key) => {
+    expect(fitEnumKey(name)).toBe(key)
+  })
+})
+
+describe('fitToSets', () => {
+  test.each([
+    ['benchPress', 'barbellBenchPress', 'barbell_bench_press'],
+    ['squat', 'barbellBackSquat', 'barbell_squat'],
+    ['deadlift', 'barbellDeadlift', 'deadlift'],
+    ['row', 'alternatingDumbbellRow', 'alternating_dumbbell_row'],
+    ['curl', 'barbellBicepsCurl', 'standing_barbell_bicep_curl'],
+    ['pullUp', 'chinUp', 'chin_up'],
+    ['plank', 'plank', 'plank'],
+    ['pullUp', '30DegreeLatPulldown', 'degree_lat_pull_down_30'],
+    ['calfRaise', '3WayCalfRaise', 'way_calf_raise_3'],
+    ['plank', 'weighted45DegreePlank', 'degree_plank_45'],
+    ['warmUp', 'stretch90_90', 'stretch_90_90'],
+  ])('%s/%s names the catalogue entry %s', (category, name, key) => {
+    expect(fitToSets(strength([activeSet(0, category, name)]), catalog)).toEqual([
+      { exercise_key: key, reps: 8, weight: 60 },
+    ])
+  })
+
+  test('reps and weight in kg to two decimals; the time only for a set without reps', () => {
+    const sets = fitToSets(
+      strength([
+        activeSet(0, 'benchPress', 'barbellBenchPress', { weight: 62.5625 }),
+        activeSet(60, 'plank', 'plank', { duration: 45.4, repetitions: undefined, weight: undefined }),
+        activeSet(120, 'plank', 'plank', { duration: 30, repetitions: 0, weight: 0 }),
+      ]),
+      catalog,
+    )
+
+    expect(sets).toEqual([
+      { exercise_key: 'barbell_bench_press', reps: 8, weight: 62.56 },
+      { exercise_key: 'plank', time: 45 },
+      { exercise_key: 'plank', time: 30 },
+    ])
+  })
+
+  test('skips rest sets and sets with neither reps nor duration', () => {
+    const sets = fitToSets(
+      strength([
+        activeSet(0, 'benchPress', 'barbellBenchPress'),
+        { duration: 60, setType: 'rest', startTime: at(30) },
+        activeSet(90, 'benchPress', 'barbellBenchPress', { duration: undefined, repetitions: undefined }),
+      ]),
+      catalog,
+    )
+
+    expect(sets).toEqual([{ exercise_key: 'barbell_bench_press', reps: 8, weight: 60 }])
+  })
+
+  test("a custom exercise takes its exercise title's step name", () => {
+    const custom = activeSet(0, 'cardio', 'jumpingJacks', { weight: undefined, wktStepIndex: 3 })
+    const byName = fitToSets(
+      strength(
+        [custom],
+        [
+          {
+            exerciseCategory: 'cardio',
+            exerciseName: subtype('cardio', 'jumpingJacks'),
+            wktStepName: 'Star jumps',
+          },
+        ],
+      ),
+      catalog,
+    )
+    const byStep = fitToSets(strength([custom], [{ messageIndex: 3, wktStepName: 'Star jumps ' }]), catalog)
+
+    expect(byName).toEqual([{ exercise: 'Star jumps', reps: 8 }])
+    expect(byStep).toEqual([{ exercise: 'Star jumps', reps: 8 }])
+  })
+
+  test('a catalogue hit wins over the exercise title', () => {
+    const sets = fitToSets(
+      strength(
+        [activeSet(0, 'benchPress', 'barbellBenchPress')],
+        [{ exerciseCategory: 'benchPress', exerciseName: 1, wktStepName: 'Bench' }],
+      ),
+      catalog,
+    )
+
+    expect(sets).toEqual([{ exercise_key: 'barbell_bench_press', reps: 8, weight: 60 }])
+  })
+
+  test('outside the catalogue the profile name is title-cased, else the category', () => {
+    const sets = fitToSets(
+      strength([
+        activeSet(0, 'cardio', 'jumpingJacks', { weight: undefined }),
+        activeSet(60, 'cardio', null, { weight: undefined }),
+        activeSet(120, 'cardio', null, { categorySubtype: [60000], weight: undefined }),
+      ]),
+      catalog,
+    )
+
+    expect(sets).toEqual([
+      { exercise: 'Jumping Jacks', reps: 8 },
+      { exercise: 'Cardio', reps: 8 },
+      { exercise: 'Cardio', reps: 8 },
+    ])
+  })
+
+  test('takes the first category that is not unknown, with its subtype', () => {
+    const set = activeSet(0, 'benchPress', 'barbellBenchPress', {
+      category: ['unknown', 'squat'],
+      categorySubtype: [null as unknown as number, subtype('squat', 'barbellBackSquat')],
+    })
+
+    expect(fitToSets(strength([set]), catalog)).toEqual([
+      { exercise_key: 'barbell_squat', reps: 8, weight: 60 },
+    ])
+  })
+
+  test('a set without a usable category is an unknown exercise', () => {
+    const sets = fitToSets(
+      strength([
+        activeSet(0, 'unknown', null),
+        activeSet(60, 'benchPress', null, { category: undefined, categorySubtype: undefined }),
+        activeSet(120, 'benchPress', null, { category: [99] }),
+      ]),
+      catalog,
+    )
+
+    expect(sets.map((set) => set.exercise)).toEqual([
+      'Unknown exercise',
+      'Unknown exercise',
+      'Unknown exercise',
+    ])
+  })
+
+  test('decodes the sets of two .fit entries in time order', () => {
+    const file = (sets: Record<string, unknown>[], titles: Record<string, unknown>[] = []): Uint8Array => {
+      const encoder = new Encoder()
+      encoder.onMesg(Profile.MesgNum.FILE_ID, {
+        manufacturer: 'development',
+        product: 1,
+        timeCreated: at(0),
+        type: 'activity',
+      } as never)
+      for (const set of sets) encoder.onMesg(Profile.MesgNum.SET, set as never)
+      for (const title of titles) encoder.onMesg(Profile.MesgNum.EXERCISE_TITLE, title as never)
+      encoder.onMesg(Profile.MesgNum.SESSION, {
+        sport: 'training',
+        startTime: at(0),
+        timestamp: at(600),
+        totalElapsedTime: 600,
+      } as never)
+      return encoder.close()
+    }
+    const bytes = zip({
+      'a.fit': file(
+        [
+          {
+            category: ['squat'],
+            categorySubtype: [subtype('squat', 'barbellBackSquat')],
+            duration: 40,
+            messageIndex: 0,
+            repetitions: 5,
+            setType: 'active',
+            startTime: at(300),
+            timestamp: at(340),
+            weight: 100,
+          },
+          { duration: 90, messageIndex: 1, setType: 'rest', startTime: at(340), timestamp: at(430) },
+        ],
+        [],
+      ),
+      'b.fit': file(
+        [
+          {
+            category: ['cardio'],
+            categorySubtype: [subtype('cardio', 'jumpingJacks')],
+            duration: 30,
+            messageIndex: 0,
+            repetitions: 20,
+            setType: 'active',
+            startTime: at(10),
+            timestamp: at(40),
+            wktStepIndex: 0,
+          },
+        ],
+        [{ messageIndex: 0, wktStepName: 'Star jumps' }],
+      ),
+    })
+
+    const fit = parseActivityFile(bytes)!
+
+    expect(fit.sets).toHaveLength(3)
+    expect(fitToSets(fit, catalog)).toEqual([
+      { exercise: 'Star jumps', reps: 20 },
+      { exercise_key: 'barbell_squat', reps: 5, weight: 100 },
+    ])
+    expect(fitToDetail(fit, start).summary.exercise_titles).toEqual([
+      { messageIndex: 0, wktStepName: 'Star jumps' },
+    ])
   })
 })

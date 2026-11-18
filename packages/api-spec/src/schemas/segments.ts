@@ -197,10 +197,10 @@ export const activitySegmentEffortSchema = z
     elapsed_s: z.number().meta({ description: 'Seconds from entering the segment to leaving it' }),
     is_best: z.boolean().meta({ description: "The segment's best effort" }),
     pace_s_per_km: z.number().meta({ description: 'Seconds per km over the segment' }),
-    rank: z
-      .number()
-      .int()
-      .meta({ description: "Position among the segment's efforts by elapsed time, 1 = fastest" }),
+    rank: z.number().int().meta({
+      description:
+        "Position among the segment's efforts, 1 = the best effort: non-approximate efforts by elapsed time first, then approximate ones by elapsed time, so an approximate effort never ranks ahead of a timed one (the order is_best picks from)",
+    }),
     segment_id: z.string().uuid().meta({ description: 'Segment ID' }),
     segment_name: z.string().meta({ description: 'Segment name' }),
     start_offset_s: z
@@ -237,7 +237,7 @@ export const suggestedSegmentSchema = z
   .object({
     activity_count: z.number().int().meta({
       description:
-        'Activities that pass the stretch in the same direction (not counting runs of one route twice)',
+        "Activities that pass the stretch in the same direction: the source activity plus the others, one per session (a session recorded by two sources counts once). Runs on the source's own route are left out; runs of any other route each count",
     }),
     activity_type: z.string().meta({ description: 'Activity type of the activities that pass it' }),
     created_at: iso8601DateTimeSchema,

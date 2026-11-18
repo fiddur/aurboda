@@ -4,6 +4,7 @@ import {
   cumulativeDistancesM,
   cutBounds,
   cutLengthM,
+  endGapM,
   type IndexRange,
   indexRangeForOffsets,
   moveCutEdge,
@@ -27,6 +28,7 @@ const initialCut = ({ min, max }: Bounds): Cut => {
 interface CutPanelProps {
   activityId: string
   offsetsS: number[]
+  points: { lat: number; lon: number }[]
   distancesM: number[]
   bounds: Bounds
   cut: Cut
@@ -37,13 +39,16 @@ interface CutPanelProps {
 const CutPanel = ({
   activityId,
   offsetsS,
+  points,
   distancesM,
   bounds,
   cut,
   onCutChange,
   onCancel,
 }: CutPanelProps) => {
-  const lengthM = cutLengthM(distancesM, indexRangeForOffsets(offsetsS, cut.start, cut.end))
+  const range = indexRangeForOffsets(offsetsS, cut.start, cut.end)
+  const lengthM = cutLengthM(distancesM, range)
+  const gapM = range ? endGapM(points[range.from], points[range.to]) : undefined
   const slider = (edge: 'start' | 'end', label: string) => (
     <label class="segment-cut-slider">
       <span>
@@ -68,6 +73,7 @@ const CutPanel = ({
       <CreateSegmentForm
         cut={{ activity_id: activityId, end_offset_s: cut.end, start_offset_s: cut.start }}
         lengthM={lengthM}
+        endGapM={gapM}
         durationS={cut.end - cut.start}
         onCancel={onCancel}
       />
@@ -94,8 +100,8 @@ export const ActivityMapWithSegmentCreator = ({
   const { data } = useActivityMapPoints(span)
   const [cut, setCut] = useState<Cut | null>(null)
   const offsetsS = data?.track_offsets_s ?? null
-  const points = data?.points
-  const distancesM = useMemo(() => (points ? cumulativeDistancesM(points) : []), [points])
+  const points = useMemo(() => data?.points ?? [], [data?.points])
+  const distancesM = useMemo(() => cumulativeDistancesM(points), [points])
   const activityId = span.activityId?.replace(/^merged:/, '')
   const bounds = canCreate && activityId ? cutBounds(offsetsS) : null
   const panel = bounds && cut && offsetsS && activityId ? { activityId, bounds, cut, offsetsS } : null
@@ -114,7 +120,13 @@ export const ActivityMapWithSegmentCreator = ({
         </div>
       )}
       {panel && (
-        <CutPanel {...panel} distancesM={distancesM} onCutChange={setCut} onCancel={() => setCut(null)} />
+        <CutPanel
+          {...panel}
+          points={points}
+          distancesM={distancesM}
+          onCutChange={setCut}
+          onCancel={() => setCut(null)}
+        />
       )}
     </>
   )

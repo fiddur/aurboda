@@ -7,15 +7,18 @@
 import type { Express } from 'express'
 
 import type { GarminOAuthClient } from '../integrations/garmin/oauth-client.ts'
+import type { GarminPushJob, GarminPushProcessDeps } from '../integrations/garmin/push.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
 import type { OuraDataType } from '../integrations/oura/sync.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
+import type { GarminPushQueue } from '../services/garmin-push-queue.ts'
 import type { OuraWebhookManager } from '../services/oura-webhook-manager.ts'
 import type { StravaQueue } from '../services/strava-queue.ts'
 
 import {
   findActivityByGarminActivityId,
+  getRawRecordsByExternalIds,
   insertRawRecords,
   insertTimeSeries,
   markActivityDetailSynced,
@@ -37,6 +40,7 @@ import {
   createSerialQueue,
   garminPushRecordType,
   garminPushToken,
+  processGarminPushJob,
   receiveGarminPush,
 } from '../integrations/garmin/push.ts'
 import { syncOuraDataType } from '../integrations/oura/sync.ts'
@@ -173,12 +177,8 @@ export const setupOuraWebhook = async ({
   return ouraWebhookManager
 }
 
-interface GarminPushSetupDeps {
-  httpd: Express
-  sessionSecret: string
-  centralDb: CentralDb
+interface GarminPushProcessSetupDeps {
   garminOAuth: GarminOAuthClient
-  /** Pushes for a read-only account are acknowledged but not stored. */
   isReadOnly?: (user: string) => Promise<boolean>
   onActivitySynced: ActivityNotifier
   onActivityDetailSynced: (user: string, activityId: string) => void
@@ -188,21 +188,14 @@ interface GarminPushSetupDeps {
 /** The pull's raw records hold the pull's shapes: the push stores its own and never overwrites them. */
 const pushProcessDeps = { ...defaultGarminProcessDeps, insertRawRecord: async () => {} }
 
-/** Mounts the endpoint Garmin pushes every summary type to (`garminPushUrl`). */
-export const setupGarminPush = ({
-  httpd,
-  sessionSecret,
-  centralDb,
+/** The worker of the Garmin push queue: processes the stored records a job names. */
+export const createGarminPushProcessor = ({
   garminOAuth,
   isReadOnly = async () => false,
   onActivitySynced,
   onActivityDetailSynced,
   onTrackWritten,
-}: GarminPushSetupDeps): void => {
-  const enqueue = createSerialQueue((error) => {
-    console.error('Garmin push: processing failed:', error instanceof Error ? error.message : error)
-  })
-  const pushToken = garminPushToken(sessionSecret)
+}: GarminPushProcessSetupDeps): ((job: GarminPushJob) => Promise<void>) => {
   const fileDeps = {
     auditError,
     auditInfo,
@@ -224,11 +217,53 @@ export const setupGarminPush = ({
     onTrackWritten,
     processActivityFit,
   }
+  const deps: GarminPushProcessDeps = {
+    auditError,
+    getDisabledDataTypes: async (user) => (await getSettings(user)).garmin_disabled_data_types ?? [],
+    getPushRecords: (user, recordType, externalIds) =>
+      getRawRecordsByExternalIds(user, 'garmin', recordType, externalIds),
+    insertTimeSeries,
+    isReadOnly,
+    now: () => new Date(),
+    onActivitySynced: (user, start, end) => onActivitySynced(user, '*', start, end),
+    processGarminData: (user, dataType, data) => processGarminData(user, dataType, data, pushProcessDeps),
+    syncActivityFile: (user, garminActivityId) => syncPushedActivityFile(fileDeps, user, garminActivityId),
+    upsertSyncState,
+  }
+  return (job) => processGarminPushJob(deps, job)
+}
+
+interface GarminPushSetupDeps {
+  httpd: Express
+  sessionSecret: string
+  centralDb: CentralDb
+  garminOAuth: GarminOAuthClient
+  pushQueue: GarminPushQueue
+  /** Pushes for a read-only account are acknowledged but not stored. */
+  isReadOnly?: (user: string) => Promise<boolean>
+}
+
+/** Mounts the endpoint Garmin pushes every summary type to (`garminPushUrl`). */
+export const setupGarminPush = ({
+  httpd,
+  sessionSecret,
+  centralDb,
+  garminOAuth,
+  pushQueue,
+  isReadOnly = async () => false,
+}: GarminPushSetupDeps): void => {
+  const handleNotices = createSerialQueue((error) => {
+    console.error(
+      'Garmin push: handling a connection notice failed:',
+      error instanceof Error ? error.message : error,
+    )
+  })
+  const pushToken = garminPushToken(sessionSecret)
 
   httpd.use(
     '/webhooks/garmin',
     createGarminPushRouter({
-      enqueue,
+      enqueue: handleNotices,
       logError: (message) => console.error(message),
       receive: (request) =>
         receiveGarminPush(
@@ -236,24 +271,18 @@ export const setupGarminPush = ({
             auditError,
             auditInfo,
             auditWarn,
+            enqueuePush: (job) => pushQueue.enqueue(job),
             forgetGrant: (user) => garminOAuth.forget(user),
             getClientId: () => centralDb.getServerSetting('garmin_client_id'),
             getDisabledDataTypes: async (user) => (await getSettings(user)).garmin_disabled_data_types ?? [],
             getUsernameByGarminUserId: (garminUserId) => centralDb.getUsernameByGarminUserId(garminUserId),
             insertRawRecords,
-            insertTimeSeries,
             isReadOnly,
             logWarn: (message) => console.warn(message),
             now: () => new Date(),
-            onActivitySynced: (user, start, end) => onActivitySynced(user, '*', start, end),
             probeGrant: (user) => garminOAuth.probeGrant(user),
-            processGarminData: (user, dataType, data) =>
-              processGarminData(user, dataType, data, pushProcessDeps),
             pushToken,
-            syncActivityFile: (user, garminActivityId) =>
-              syncPushedActivityFile(fileDeps, user, garminActivityId),
             updateGrantScopes: (user, scopes) => updateOAuthTokenScopes(user, GARMIN_OAUTH_PROVIDER, scopes),
-            upsertSyncState,
           },
           request,
         ),

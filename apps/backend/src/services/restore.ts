@@ -8,6 +8,7 @@ import {
   restoreProductivityRecord as dbRestoreProductivityRecord,
 } from '../db/index.ts'
 import { reanalyseOverrideTargets } from './track-analyse.ts'
+import { markWorkoutHoursDirty } from './training-load/dirty.ts'
 
 export interface RestoreResult {
   success: boolean
@@ -22,6 +23,7 @@ export async function restoreActivity(user: string, id: string): Promise<Restore
     if (activity) {
       await materializeSuperseded(user, activity.start_time)
       await reanalyseOverrideTargets(user, activity)
+      await markWorkoutHoursDirty(user, [activity])
     }
   }
   return { id, restored, success: restored }

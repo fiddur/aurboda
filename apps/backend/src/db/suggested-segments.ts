@@ -253,6 +253,40 @@ export const suggestedSegmentLine = async (
   return lineResult(result.rows[0])
 }
 
+/**
+ * Marks a pending suggestion promoted before its segment exists, so a second promote finds it
+ * taken; null when there is none pending with this id. `settleSuggestedSegmentClaim` finishes it.
+ */
+export const claimSuggestedSegment = async (
+  user: string,
+  id: string,
+): Promise<SuggestedSegmentRecord | null> => {
+  const result = await query(
+    user,
+    `UPDATE suggested_segments SET status = 'promoted', decided_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING ${SUGGESTION_COLUMNS}`,
+    [id],
+  )
+  return result.rows[0] ? mapSuggestion(result.rows[0]) : null
+}
+
+/** Links a claimed suggestion to the segment made from it, or with null makes it pending again. */
+export const settleSuggestedSegmentClaim = async (
+  user: string,
+  id: string,
+  segmentId: string | null,
+): Promise<void> => {
+  await query(
+    user,
+    segmentId
+      ? `UPDATE suggested_segments SET segment_id = $2 WHERE id = $1 AND status = 'promoted'`
+      : `UPDATE suggested_segments SET status = 'pending', decided_at = NULL
+         WHERE id = $1 AND status = 'promoted' AND segment_id IS NULL`,
+    segmentId ? [id, segmentId] : [id],
+  )
+}
+
 /** Dismisses or promotes a pending suggestion; false when there is none pending with this id. */
 export const decideSuggestedSegment = async (
   user: string,

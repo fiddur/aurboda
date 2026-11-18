@@ -1,3 +1,5 @@
+import { type GarminDataSources, garminDataTypeSchema } from '@aurboda/api-spec'
+
 import type { OAuthToken } from '../../db/types.ts'
 import type { CentralDb } from '../../services/central-db.ts'
 import type { GarminSessionClient } from './client.ts'
@@ -81,6 +83,19 @@ export const chooseGarminSource = (
   }
   return connections.session ? 'session' : null
 }
+
+/** For each data type, the connection that brings it: Connect with Garmin where it delivers, else the pull's choice. */
+export const garminDataSources = (
+  delivers: readonly GarminDataType[],
+  connections: GarminConnections,
+  now: Date = new Date(),
+): GarminDataSources =>
+  Object.fromEntries(
+    garminDataTypeSchema.options.flatMap((type) => {
+      const source = delivers.includes(type) ? 'push' : chooseGarminSource(type, connections, now)
+      return source ? [[type, source]] : []
+    }),
+  )
 
 export interface GarminConnectionDeps {
   getOAuthToken: (user: string, provider: string) => Promise<OAuthToken | null>

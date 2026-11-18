@@ -114,6 +114,16 @@ describe('get_activity_impact', () => {
     expect(getActivityImpact).not.toHaveBeenCalled()
   })
 
+  test('a duration breakdown of meal_sensitivity is an error', async () => {
+    const result = await impactTool()({
+      activity: 'flag-1',
+      activity_type: 'meal_sensitivity',
+      breakdown: 'duration',
+    })
+    expect(result.content[0].text).toMatch(/meal is a point in time/)
+    expect(getActivityImpact).not.toHaveBeenCalled()
+  })
+
   test('one bound alone or a reversed period is an error', async () => {
     const onlyEnd = await impactTool()({
       activity: 'yoga',

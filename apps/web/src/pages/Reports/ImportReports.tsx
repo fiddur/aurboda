@@ -11,13 +11,14 @@ import {
   type ColumnRole,
   mappingFromRoles,
   type MappingState,
+  nextStepMapping,
   missingRoles,
   ROLE_LABELS,
   rolesForLayout,
   setRole,
   sortRows,
-  startingMapping,
   STATUS_LABELS,
+  type StepMapping,
   summaryText,
   switchLayout,
 } from './import-mapping'
@@ -380,7 +381,8 @@ export function ImportReports() {
     report_type: 'blood_panel',
     text: '',
   })
-  const [mapping, setMapping] = useState<MappingState | undefined>()
+  const [stepMapping, setStepMapping] = useState<StepMapping | undefined>()
+  const mapping = stepMapping?.mapping
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<ImportReportsResult | undefined>()
   const [done, setDone] = useState<ImportReportsResult | undefined>()
@@ -389,8 +391,15 @@ export function ImportReports() {
   const records = useMemo(() => (step === 'input' ? [] : parseTable(source.text)), [step, source.text])
 
   useEffect(() => {
-    if (step === 'mapping' && !mapping) setMapping(startingMapping(records, settings?.report_import_mapping))
-  }, [step, mapping, records, settings?.report_import_mapping])
+    if (step !== 'mapping') return
+    const next = nextStepMapping(
+      stepMapping,
+      records,
+      settings !== undefined,
+      settings?.report_import_mapping,
+    )
+    if (next) setStepMapping(next)
+  }, [step, stepMapping, records, settings])
 
   const body = (dryRun: boolean) => {
     const built = mapping && mappingFromRoles(mapping.roles, mapping)
@@ -433,7 +442,7 @@ export function ImportReports() {
       setError('The table is empty. Paste a few rows from your spreadsheet first.')
       return
     }
-    setMapping(undefined)
+    setStepMapping(undefined)
     setStep('mapping')
   }
 
@@ -460,7 +469,7 @@ export function ImportReports() {
         <MappingStep
           records={records}
           state={mapping}
-          onChange={setMapping}
+          onChange={(next) => setStepMapping({ changed: true, mapping: next, withSettings: true })}
           onBack={() => setStep('input')}
           onNext={() => previewMutation.mutate()}
           pending={previewMutation.isPending}

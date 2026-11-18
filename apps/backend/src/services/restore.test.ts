@@ -5,6 +5,11 @@ import type { Activity } from '../db/types.ts'
 import * as db from '../db/index.ts'
 import { deleteProductivity, restoreActivity, restoreProductivity } from './restore.ts'
 import { reanalyseOverrideTargets } from './track-analyse.ts'
+import { markWorkoutHoursDirty } from './training-load/dirty.ts'
+
+vi.mock('./training-load/dirty.ts', () => ({
+  markWorkoutHoursDirty: vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock('./track-analyse.ts', () => ({
   reanalyseOverrideTargets: vi.fn().mockResolvedValue(undefined),
@@ -57,6 +62,7 @@ describe('restoreActivity', () => {
     await restoreActivity('testuser', 'override-1')
 
     expect(reanalyseOverrideTargets).toHaveBeenCalledExactlyOnceWith('testuser', override)
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('testuser', [override])
   })
 
   test('returns failure when activity not found', async () => {

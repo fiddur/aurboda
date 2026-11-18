@@ -28,6 +28,7 @@ import {
   upsertOAuthToken,
 } from '../../db/index.ts'
 import { auditInfo, auditWarn } from '../../services/audit-log.ts'
+import { handOverOAuthCallback, type OAuthCompletion } from '../../services/oauth-completion.ts'
 import { createPkcePair, openState, sealState } from '../../services/oauth-state.ts'
 import { redactSecret } from './client.ts'
 import {
@@ -51,8 +52,6 @@ const TOKEN_EXPIRY_BUFFER_SECONDS = 600
 /** How long `keepFresh` leaves a user alone after a failed refresh, so a lasting fault is not audited on every tick. */
 const KEEP_FRESH_RETRY_SECONDS = 3600
 
-const DATA_SOURCE_PAGE = '/data-sources/garmin'
-
 /**
  * What a check of the stored grant found: `alive` with the Garmin user id it answers for, `gone`
  * when there is no grant or Garmin refuses it, `unknown` when Garmin could not be asked.
@@ -61,10 +60,6 @@ export type GarminGrantProbe =
   | { status: 'alive'; garminUserId: string }
   | { status: 'gone' }
   | { status: 'unknown'; error: string }
-
-export type GarminOAuthCompletion =
-  | { ok: true }
-  | { ok: false; reason: 'not_configured' | 'invalid_state' | 'wrong_user' | 'auth_failed' }
 
 export interface GarminOAuthCredentials {
   clientId: string
@@ -493,21 +488,16 @@ export const garminOAuthClient = (
      * signed-in page, which finishes through `complete`.
      */
     async authCb(req: Request, res: Response) {
-      const { code, state, error } = req.query as Record<string, string | undefined>
-      if (error || !state || !code) return res.redirect(`${DATA_SOURCE_PAGE}?error=auth_failed`)
-
-      const credentials = await getCredentials()
-      if (!credentials) return res.redirect(`${DATA_SOURCE_PAGE}?error=not_configured`)
-
-      if (!openState(state, credentials.clientSecret, deps.now())) {
-        return res.redirect(`${DATA_SOURCE_PAGE}?error=invalid_state`)
-      }
-      const params = new URLSearchParams({ garmin_code: code, garmin_state: state })
-      return res.redirect(`${DATA_SOURCE_PAGE}?${params.toString()}`)
+      const target = await handOverOAuthCallback(req.query, 'garmin', async (state) => {
+        const credentials = await getCredentials()
+        if (!credentials) return 'not_configured'
+        return openState(state, credentials.clientSecret, deps.now()) ? null : 'invalid_state'
+      })
+      return res.redirect(target)
     },
 
     /** Links the Garmin account to `user`, who must be the user that started the sign-in. */
-    async complete(user: string, code: string, state: string): Promise<GarminOAuthCompletion> {
+    async complete(user: string, code: string, state: string): Promise<OAuthCompletion> {
       const credentials = await getCredentials()
       if (!credentials) return { ok: false, reason: 'not_configured' }
 

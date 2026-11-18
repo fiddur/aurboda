@@ -110,11 +110,12 @@ describe('deduction-rules db', () => {
   })
 
   test('deleteStaleRuleActivities excludes keepIds', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })
+    const deleted = { activity_type: 'sauna', start_time: new Date('2024-01-15T10:00:00Z') }
+    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [deleted] })
     const start = new Date('2024-01-15T00:00:00Z')
     const end = new Date('2024-01-15T23:59:59Z')
     const result = await deleteStaleRuleActivities(user, 'rule-1', start, end, ['id-1', 'id-2'])
-    expect(result).toBe(1)
+    expect(result).toEqual([deleted])
     expect(mockQuery).toHaveBeenCalledWith(user, expect.stringContaining('ALL'), expect.any(Array))
   })
 

@@ -23,6 +23,7 @@ vi.mock('../../db/index.ts', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  findActivityByExternalId: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getGarminActivitiesNeedingSets: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn().mockResolvedValue({ access_token: '{"oauth1":{},"oauth2":{}}', provider: 'garmin' }),
@@ -610,6 +611,26 @@ describe('syncActivityDetails from the FIT file', () => {
 
     expect(processActivityFit).not.toHaveBeenCalled()
     expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 12345)
+  })
+
+  test('an archive over the total size limit fails the activity with an audited error', async () => {
+    const garmin = garminWith({ session: false })
+    vi.mocked(parseActivityFit).mockImplementationOnce(() => {
+      throw new Error("The activity archive's FIT files inflate to more than 419430400 bytes")
+    })
+
+    await syncActivityDetails(user, garmin as never)
+
+    expect(processActivityFit).not.toHaveBeenCalled()
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalled()
+    expect(auditError).toHaveBeenCalledWith(
+      user,
+      'sync',
+      'Failed to sync FIT file for Garmin activity 12345',
+      {
+        error: "The activity archive's FIT files inflate to more than 419430400 bytes",
+      },
+    )
   })
 
   test('a missing file without a session marks the activity done once, with an audit line', async () => {

@@ -30,8 +30,13 @@ import {
   garminPushLastReceivedAt,
 } from '../integrations/garmin/oauth-status.ts'
 import { garminPushDelivered } from '../integrations/garmin/push-coverage.ts'
-import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
+import {
+  garminDataSources,
+  getGarminConnections,
+  readGarminPersonalKeyEnabled,
+} from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
+import { dashboardConfigError } from './dashboard-config.ts'
 
 export type { HrZoneSecs, HrZoneSource, HrZoneThresholds }
 
@@ -199,6 +204,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   feed_type_tag: true,
   food_sensitivity_map: true,
   garmin_disabled_data_types: true,
+  hidden_pages: true,
   home_assistant_entity_id: true,
   home_assistant_url: true,
   item_icons: true,
@@ -278,16 +284,19 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
       : settings.gravl_api_token
         ? 'token'
         : null
+  const now = new Date()
+  const delivers = garminPushDelivered(garminOAuthToken, garminPushStates, now)
   const garminOAuth = {
     available: !!garminClientId && !!garminClientSecret,
     ...garminOAuthStatusFromToken(garminOAuthToken),
-    delivers: garminPushDelivered(garminOAuthToken, garminPushStates, new Date()),
+    delivers,
     last_received_at: garminPushLastReceivedAt(garminPushStates),
   }
 
   return {
     ...withDefaults(settings),
     garmin_connected: garmin.session || garmin.personal_key.connected || garminOAuth.connected,
+    garmin_data_sources: garminDataSources(delivers, garmin, now),
     garmin_oauth: garminOAuth,
     garmin_personal_key: {
       available: garminPersonalKeyEnabled,
@@ -340,6 +349,7 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     lastfm_configured: !!lastFmApiKey,
     oura_configured: !!ouraClientId && !!ouraClientSecret,
     garmin_connected: false,
+    garmin_data_sources: {},
     garmin_oauth: {
       available: !!garminClientId && !!garminClientSecret,
       connected: false,
@@ -470,6 +480,8 @@ export const validateAndUpdateSettings = async (
   if (!parsed.success) {
     return buildErrorSettingsResponse(parsed.error.issues.map((e) => e.message).join('; '))
   }
+  const configError = parsed.data.dashboard && dashboardConfigError(parsed.data.dashboard)
+  if (configError) return buildErrorSettingsResponse(configError)
 
   if (parsed.data.goals !== undefined) {
     const newGoals = parsed.data.goals === null ? [] : parsed.data.goals

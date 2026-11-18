@@ -42,6 +42,7 @@ export type {
 
 export {
   _setDbForUser,
+  createUserRole,
   dropUserDb,
   getDbForUser,
   initializeSchema,
@@ -63,9 +64,12 @@ export { type Queryable, type UserDb } from './pool.ts'
 
 export {
   getAllScrobbles,
+  getRawRecordsByExternalIds,
+  hasRawRecord,
   getScrobbles,
   insertRawRecord,
   insertRawRecords,
+  listRawRecordKeysReceivedSince,
   queryRawRecords,
   type QueryRawRecordsParams,
   type RawRecordRow,
@@ -88,6 +92,7 @@ export {
   getSourceFilter,
   getLatestMetricValuesMulti,
   getLatestTimeSeriesValue,
+  getMetricTimeRange,
   getTimeSeries,
   getTimeSeriesBucketed,
   getTimeSeriesBucketedAvgForWindows,
@@ -99,6 +104,7 @@ export {
   hasTimeSeries,
   type HrZoneBucket,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
 } from './time-series.ts'
 
 export {
@@ -190,6 +196,7 @@ export {
   insertMergedActivity,
   insertOverride,
   markActivityDetailSynced,
+  setGarminActivityFitSets,
   setGarminActivitySets,
   materializeSuperseded,
   rematerializeSupersededOnce,
@@ -439,6 +446,7 @@ export {
   deleteBoostCardsOf,
   getBoostCardAuthor,
   updateBoostCardsOf,
+  addTagBoostCarrier,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
@@ -701,7 +709,13 @@ export {
   type UserNutrientRecommendationRow,
 } from './user-nutrient-recommendations.ts'
 
-export { claimSettingsFlag, claimSettingsFlagIn, getUserSettings, upsertUserSettings } from './settings.ts'
+export {
+  claimSettingsFlag,
+  claimSettingsFlagIn,
+  getUserSettings,
+  mutateTrainingLoadSettings,
+  upsertUserSettings,
+} from './settings.ts'
 
 export { deleteGoal, getGoals, insertGoal, replaceGoals } from './goals.ts'
 
@@ -854,6 +868,7 @@ export {
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationsReadByType,
+  markReminderNotificationsRead,
   type NotificationCursor,
   type NotificationInsert,
   type NotificationPreferencePatch,
@@ -864,6 +879,17 @@ export {
   reviseOpenNotifications,
   upsertNotificationPreference,
 } from './notifications.ts'
+export {
+  deleteReminder,
+  getReminder,
+  insertReminder,
+  listReminders,
+  normalizeWeekdays,
+  type ReminderInsert,
+  type ReminderPatch,
+  type ReminderRecord,
+  updateReminder,
+} from './reminders.ts'
 
 export {
   deleteItemValueIdentity,

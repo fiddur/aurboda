@@ -281,6 +281,42 @@ describe('timelineEntryNotification', () => {
     })
   })
 
+  describe('a followed tag and replies', () => {
+    const tagCard = (in_reply_to_uri: string | null) =>
+      event({
+        entry: {
+          boost_of_uri: NOTE,
+          boosted_by_actor_uri: 'https://tags.pub/user/running',
+          in_reply_to_uri,
+          object_uri: 'https://tags.pub/user/running/announces/2',
+        },
+        source: { notify_on_post: true, tag: 'running' },
+      })
+
+    test('a followed tag boosting a reply raises nothing', () => {
+      expect(timelineEntryNotification(tagCard('https://x.example/notes/1'))).toBeNull()
+    })
+
+    test('a followed tag boosting a top-level post notifies', () => {
+      expect(timelineEntryNotification(tagCard(null))).toMatchObject({ type: 'feed_post' })
+    })
+
+    test('a person boosting a reply still notifies', () => {
+      expect(
+        timelineEntryNotification(
+          event({
+            entry: {
+              boost_of_uri: NOTE,
+              boosted_by_actor_uri: BOB.actor_uri,
+              in_reply_to_uri: 'https://x.example/notes/1',
+              object_uri: 'https://m.example/users/bob/statuses/10/activity',
+            },
+          }),
+        ),
+      ).toMatchObject({ type: 'feed_post' })
+    })
+  })
+
   test('a boost card from a muted booster raises nothing', () => {
     expect(
       timelineEntryNotification(

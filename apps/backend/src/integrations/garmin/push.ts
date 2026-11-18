@@ -1,8 +1,8 @@
 /**
  * The receiving end of the Garmin Developer Program's push: Garmin POSTs each user's new
- * summaries to one secret URL. Every item is kept as a raw record before the answer, and
- * turned into rows after it, on one serial queue, so Garmin's 30 s deadline never waits on
- * processing and a burst of pushes never writes concurrently.
+ * summaries to one secret URL. Every item is kept as a raw record and a job naming those
+ * records is put on a durable queue before the answer, so Garmin's 30 s deadline never waits
+ * on processing and a restart between the answer and the processing loses nothing.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
@@ -16,6 +16,7 @@ import { GARMIN_PUSH_PROVIDER } from './oauth-status.ts'
 import {
   adaptGarminPushItem,
   garminPushFeeds,
+  garminPushTypes,
   isCalendarDate,
   isPlainObject,
   noonUtc,
@@ -35,6 +36,23 @@ export const isGarminPushToken = (given: string, expected: string): boolean => {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+/** One stored push item: Garmin's type key and the raw record's external id. */
+export interface GarminPushRecordRef {
+  type: string
+  external_id: string
+}
+
+/** What the queue carries: no item data, no Garmin user id, no token. */
+export interface GarminPushJob {
+  user: string
+  records: GarminPushRecordRef[]
+  /**
+   * Stored pushes processed again: no push sync state is written, so a replay never makes
+   * Connect with Garmin look like it delivers (`garminPushDelivered`) when Garmin stopped pushing.
+   */
+  replay?: boolean
+}
+
 export interface GarminPushDeps {
   pushToken: string
   /** The configured `garmin_client_id`; without one the endpoint does not exist. */
@@ -43,22 +61,33 @@ export interface GarminPushDeps {
   isReadOnly: (user: string) => Promise<boolean>
   getDisabledDataTypes: (user: string) => Promise<readonly GarminDataType[]>
   insertRawRecords: (user: string, records: RawRecord[]) => Promise<void>
-  /** `processGarminData` with raw records left out: the push keeps its own. */
-  processGarminData: (user: string, dataType: GarminDataType, data: unknown) => Promise<number>
-  insertTimeSeries: (user: string, points: TimeSeriesPoint[]) => Promise<unknown>
-  upsertSyncState: (user: string, state: SyncState) => Promise<void>
+  /** Puts the processing of stored records on the durable queue; a failure is answered 500. */
+  enqueuePush: (job: GarminPushJob) => Promise<void>
   probeGrant: (user: string) => Promise<GarminGrantProbe>
   /** Drops the grant, the mapping and the push sync states without calling Garmin. */
   forgetGrant: (user: string) => Promise<void>
   updateGrantScopes: (user: string, scopes: string[]) => Promise<unknown>
-  /** Fetches and processes the activity's pushed FIT file once both it and its notice are here. */
-  syncActivityFile: (user: string, garminActivityId: number) => Promise<void>
-  onActivitySynced: (user: string, start: Date, end: Date) => void
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   auditError: typeof auditError
   /** Server log, for what belongs to no user. Counts only. */
   logWarn: (message: string) => void
+  now: () => Date
+}
+
+export interface GarminPushProcessDeps {
+  isReadOnly: (user: string) => Promise<boolean>
+  getDisabledDataTypes: (user: string) => Promise<readonly GarminDataType[]>
+  /** The stored data of each found record by external id; a missing one is left out. */
+  getPushRecords: (user: string, recordType: string, externalIds: string[]) => Promise<Map<string, unknown>>
+  /** `processGarminData` with raw records left out: the push keeps its own. */
+  processGarminData: (user: string, dataType: GarminDataType, data: unknown) => Promise<number>
+  insertTimeSeries: (user: string, points: TimeSeriesPoint[]) => Promise<unknown>
+  upsertSyncState: (user: string, state: SyncState) => Promise<void>
+  /** Fetches and processes the activity's pushed FIT file once both it and its notice are here. */
+  syncActivityFile: (user: string, garminActivityId: number) => Promise<void>
+  onActivitySynced: (user: string, start: Date, end: Date) => void
+  auditError: typeof auditError
   now: () => Date
 }
 
@@ -70,7 +99,7 @@ export interface GarminPushRequest {
 
 export interface GarminPushResult {
   status: 200 | 403 | 404 | 500
-  /** Runs after the answer is sent; never throws. */
+  /** The connection notices, handled after the answer is sent; never throws. */
   process?: () => Promise<void>
 }
 
@@ -83,6 +112,14 @@ export const garminPushRecordType = (type: string): string =>
     .replaceAll(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replaceAll(/([A-Z])([A-Z][a-z])/g, '$1_$2')
     .toLowerCase()}`
+
+const pushTypeByRecordType = new Map(
+  Object.keys(garminPushTypes).map((type) => [garminPushRecordType(type), type] as const),
+)
+
+/** The Garmin type key of a stored push record; undefined for a type nothing processes. */
+export const garminPushTypeOfRecordType = (recordType: string): string | undefined =>
+  pushTypeByRecordType.get(recordType)
 
 const idPart = (value: unknown): string | undefined =>
   typeof value === 'string' && value !== ''
@@ -141,7 +178,6 @@ interface StoredItem {
 interface UserPush {
   user: string
   garminUserId: string
-  stored: Map<string, StoredItem[]>
   lifecycle: Map<string, Item[]>
 }
 
@@ -197,7 +233,12 @@ const pushedSpan = (items: Item[], now: Date): { start: Date; end: Date } => {
   }
 }
 
-const processItem = async (deps: GarminPushDeps, user: string, type: string, { feeds, item }: StoredItem) => {
+const processItem = async (
+  deps: GarminPushProcessDeps,
+  user: string,
+  type: string,
+  { feeds, item }: StoredItem,
+) => {
   const adapted = adaptGarminPushItem(type, item)
   for (const { data, dataType } of adapted.garmin) {
     if (feeds.includes(dataType)) await deps.processGarminData(user, dataType, data)
@@ -209,18 +250,27 @@ const processItem = async (deps: GarminPushDeps, user: string, type: string, { f
   if (activityId !== undefined) await deps.syncActivityFile(user, activityId)
 }
 
-const processData = async (deps: GarminPushDeps, { stored, user }: UserPush): Promise<void> => {
+/** Every type is processed; the ones that failed are answered. */
+const processData = async (
+  deps: GarminPushProcessDeps,
+  user: string,
+  stored: Map<string, StoredItem[]>,
+  replay: boolean,
+): Promise<string[]> => {
+  const failed: string[] = []
   for (const [type, entries] of processingOrder(stored)) {
     try {
       for (const entry of entries) await processItem(deps, user, type, entry)
-      await deps.upsertSyncState(user, {
-        data_type: type,
-        error_message: undefined,
-        last_sync_time: deps.now(),
-        provider: GARMIN_PUSH_PROVIDER,
-        retry_after: undefined,
-        status: 'idle',
-      })
+      if (!replay) {
+        await deps.upsertSyncState(user, {
+          data_type: type,
+          error_message: undefined,
+          last_sync_time: deps.now(),
+          provider: GARMIN_PUSH_PROVIDER,
+          retry_after: undefined,
+          status: 'idle',
+        })
+      }
       if (ACTIVITY_WRITING_TYPES.has(type)) {
         const { end, start } = pushedSpan(
           entries.map((entry) => entry.item),
@@ -229,9 +279,13 @@ const processData = async (deps: GarminPushDeps, { stored, user }: UserPush): Pr
         deps.onActivitySynced(user, start, end)
       }
     } catch (error) {
-      await deps.auditError(user, 'sync', `Garmin: processing pushed ${type} failed`, {
-        error: errorText(error),
-      })
+      failed.push(type)
+      await deps
+        .auditError(user, 'sync', `Garmin: processing pushed ${type} failed`, {
+          error: errorText(error),
+        })
+        .catch(() => {})
+      if (replay) continue
       await deps
         .upsertSyncState(user, {
           data_type: type,
@@ -244,6 +298,48 @@ const processData = async (deps: GarminPushDeps, { stored, user }: UserPush): Pr
         .catch(() => {})
     }
   }
+  return failed
+}
+
+const groupRefsByType = (records: GarminPushRecordRef[]): Map<string, string[]> => {
+  const byType = new Map<string, Set<string>>()
+  for (const { external_id, type } of records) {
+    byType.set(type, (byType.get(type) ?? new Set()).add(external_id))
+  }
+  return new Map([...byType].map(([type, ids]) => [type, [...ids]]))
+}
+
+const uniqueRefs = (refs: GarminPushRecordRef[]): GarminPushRecordRef[] =>
+  [...groupRefsByType(refs)].flatMap(([type, ids]) => ids.map((external_id) => ({ external_id, type })))
+
+/**
+ * Processes the newest stored version of each named record, so the order of two jobs for one
+ * record does not matter. Throws when a type failed, for the queue to retry the job: processing
+ * is idempotent upserts, so the types that succeeded are harmless to run again.
+ */
+export const processGarminPushJob = async (
+  deps: GarminPushProcessDeps,
+  { records, replay, user }: GarminPushJob,
+): Promise<void> => {
+  if (records.length === 0 || (await deps.isReadOnly(user))) return
+  const disabled = await deps.getDisabledDataTypes(user)
+  const stored = new Map<string, StoredItem[]>()
+
+  for (const [type, externalIds] of groupRefsByType(records)) {
+    if (isLifecycle(type) || !PUSH_TYPE.test(type)) continue
+    const feeds = garminPushFeeds(type)
+    const enabled = feeds.filter((feed) => !disabled.includes(feed))
+    if (feeds.length > 0 && enabled.length === 0) continue
+    const found = await deps.getPushRecords(user, garminPushRecordType(type), externalIds)
+    const entries = externalIds.flatMap((id) => {
+      const item = found.get(id)
+      return isPlainObject(item) ? [{ feeds: enabled, item }] : []
+    })
+    if (entries.length > 0) stored.set(type, entries)
+  }
+
+  const failed = await processData(deps, user, stored, replay === true)
+  if (failed.length > 0) throw new Error(`Garmin push: processing ${failed.join(', ')} failed`)
 }
 
 const handleDeregistration = async (deps: GarminPushDeps, { garminUserId, user }: UserPush) => {
@@ -291,11 +387,14 @@ const processLifecycle = async (deps: GarminPushDeps, push: UserPush): Promise<v
   }
 }
 
-const countsOf = (stored: Map<string, StoredItem[]>) =>
-  Object.fromEntries([...stored].map(([type, entries]) => [type, entries.length]))
+const countsOf = (refs: GarminPushRecordRef[]) => {
+  const counts: Record<string, number> = {}
+  for (const { type } of refs) counts[type] = (counts[type] ?? 0) + 1
+  return counts
+}
 
-/** Stores what is needed for the 200 and answers how to process it afterwards. */
-// eslint-disable-next-line complexity -- one pass over Garmin's envelope: gate, group, resolve, store
+/** Stores and enqueues what is needed for the 200, and answers how to handle the connection notices afterwards. */
+// eslint-disable-next-line complexity -- one pass over Garmin's envelope: gate, group, resolve, store, enqueue
 export const receiveGarminPush = async (
   deps: GarminPushDeps,
   { body, clientIdHeader, token }: GarminPushRequest,
@@ -318,7 +417,7 @@ export const receiveGarminPush = async (
       unmapped += [...types.values()].reduce((sum, items) => sum + items.length, 0)
       continue
     }
-    const push: UserPush = { garminUserId, lifecycle: new Map(), stored: new Map(), user }
+    const push: UserPush = { garminUserId, lifecycle: new Map(), user }
     // A read-only account stores nothing, but Garmin withdrawing its access is still acted on.
     if (await deps.isReadOnly(user)) {
       for (const [type, items] of types) if (isLifecycle(type)) push.lifecycle.set(type, items)
@@ -329,6 +428,7 @@ export const receiveGarminPush = async (
     const disabled = dataTypes.length > 0 ? await deps.getDisabledDataTypes(user) : []
     const skipped: Record<string, number> = {}
     const records: RawRecord[] = []
+    const refs: GarminPushRecordRef[] = []
 
     for (const [type, items] of types) {
       if (isLifecycle(type)) {
@@ -336,8 +436,7 @@ export const receiveGarminPush = async (
         continue
       }
       const feeds = garminPushFeeds(type)
-      const enabled = feeds.filter((feed) => !disabled.includes(feed))
-      if (feeds.length > 0 && enabled.length === 0) {
+      if (feeds.length > 0 && feeds.every((feed) => disabled.includes(feed))) {
         skipped[type] = items.length
         continue
       }
@@ -347,15 +446,14 @@ export const receiveGarminPush = async (
           unidentified++
           continue
         }
-        const data = stripped(item)
         records.push({
-          data,
+          data: stripped(item),
           external_id: externalId,
           record_type: garminPushRecordType(type),
           recorded_at: garminPushRecordedAt(item, now),
           source: 'garmin',
         })
-        push.stored.set(type, [...(push.stored.get(type) ?? []), { feeds: enabled, item: data }])
+        refs.push({ external_id: externalId, type })
       }
     }
 
@@ -365,16 +463,24 @@ export const receiveGarminPush = async (
       deps.logWarn(`Garmin push: storing failed, Garmin will retry: ${errorText(error)}`)
       return { status: 500 }
     }
+    if (refs.length > 0) {
+      try {
+        await deps.enqueuePush({ records: uniqueRefs(refs), user })
+      } catch (error) {
+        deps.logWarn(`Garmin push: queueing failed, Garmin will retry: ${errorText(error)}`)
+        return { status: 500 }
+      }
+    }
 
-    if (push.stored.size > 0 || Object.keys(skipped).length > 0) {
+    if (refs.length > 0 || Object.keys(skipped).length > 0) {
       void deps
         .auditInfo(user, 'sync', 'Garmin: data received', {
-          counts: countsOf(push.stored),
+          counts: countsOf(refs),
           ...(Object.keys(skipped).length > 0 ? { skipped_disabled: skipped } : {}),
         })
         .catch(() => {})
     }
-    if (push.stored.size > 0 || push.lifecycle.size > 0) pushes.push(push)
+    if (push.lifecycle.size > 0) pushes.push(push)
   }
 
   if (unmapped > 0) {
@@ -387,10 +493,7 @@ export const receiveGarminPush = async (
   if (pushes.length === 0) return { status: 200 }
   return {
     process: async () => {
-      for (const push of pushes) {
-        await processData(deps, push)
-        if (push.lifecycle.size > 0) await processLifecycle(deps, push)
-      }
+      for (const push of pushes) await processLifecycle(deps, push)
     },
     status: 200,
   }

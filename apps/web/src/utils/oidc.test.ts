@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   codeFromHash,
   isLastLoginMethod,
+  loginReturningTo,
   oidcErrorMessage,
   parseEmailDomains,
   rememberOidcVerifier,
@@ -98,5 +99,15 @@ describe('rememberOidcVerifier and takeOidcVerifier', () => {
     expect(takeOidcVerifier(throwing)).toBeNull()
     rememberOidcVerifier('v', null)
     expect(takeOidcVerifier(null)).toBeNull()
+  })
+})
+
+describe('loginReturningTo', () => {
+  test('carries the path, query and the fragment with the link code through the login', () => {
+    const href = loginReturningTo({ hash: '#code=abc', pathname: '/settings/oidc-link', search: '?x=1' })
+    expect(href).toBe('/login?next=%2Fsettings%2Foidc-link%3Fx%3D1%23code%3Dabc')
+    expect(new URL(href, 'https://example.org').searchParams.get('next')).toBe(
+      '/settings/oidc-link?x=1#code=abc',
+    )
   })
 })

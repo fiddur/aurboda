@@ -14,6 +14,10 @@ import {
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 
+vi.mock('./training-load/dirty.ts', () => ({
+  trackWorkoutTypeChanges: <T>(_user: string, change: () => Promise<T>) => change(),
+}))
+
 vi.mock('../db', () => ({
   adoptCatalogActivityType: vi.fn(),
   deleteActivityTypeDefinition: vi.fn(),

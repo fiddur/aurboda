@@ -630,3 +630,42 @@
   width: 1.1rem;
   height: 1.1rem;
 }
+
+.menu-show-all {
+  margin-bottom: 0.75rem;
+}
+
+.menu-group + .menu-group {
+  margin-top: 1.25rem;
+}
+
+.menu-group-title {
+  margin: 0 0 0.25rem;
+}
+
+.menu-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.menu-setting-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.menu-setting-description {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.menu-setting-switch {
+  width: 1.1rem;
+  height: 1.1rem;
+}

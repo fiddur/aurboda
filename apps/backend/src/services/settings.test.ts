@@ -1,4 +1,4 @@
-import { defaultGoals } from '@aurboda/api-spec'
+import { defaultGoals, MUSCLE_GROUP_FILTER_NEEDS_GROUP } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
@@ -497,6 +497,17 @@ describe('validateAndUpdateSettings', () => {
     ])
   })
 
+  test('forgets the remembered report import mapping with null', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { report_import_mapping: null })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['report_import_mapping'])
+  })
+
   test('stores maf_hr and clears it with null', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({})
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})
@@ -507,6 +518,39 @@ describe('validateAndUpdateSettings', () => {
 
     await validateAndUpdateSettings('testuser', { maf_hr: null })
     expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['maf_hr'])
+  })
+
+  test('refuses a dashboard whose bar chart breaks a chart filter rule, without saving', async () => {
+    const result = await validateAndUpdateSettings('testuser', {
+      dashboard: {
+        sections: [
+          {
+            id: 's',
+            title: 'Strength',
+            type: 'charts',
+            widgets: [
+              {
+                config: {
+                  bucket_size: '1w',
+                  filter_field: 'sets.exercise.muscle_group',
+                  lookback_days: 90,
+                  measure: 'set_count',
+                  pattern: 'strength_training',
+                  source_type: 'activity_type',
+                },
+                id: 'bar',
+                type: 'bar_chart',
+              },
+            ],
+          },
+        ],
+        version: 1,
+      },
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toBe(MUSCLE_GROUP_FILTER_NEEDS_GROUP)
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
   })
 
   test('stores the timeline daily metrics and resets them to the default with null', async () => {

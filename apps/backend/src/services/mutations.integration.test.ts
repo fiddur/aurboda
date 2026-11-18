@@ -10,6 +10,7 @@ import {
 import { getActivityTypeDefinition } from '../db/activity-type-definitions.ts'
 import { query } from '../db/connection.ts'
 import { getPendingOutboundSync } from '../db/outbound-sync.ts'
+import { getUserSettings, mutateTrainingLoadSettings } from '../db/settings.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { addActivity, deleteActivity, updateActivity } from './mutations.ts'
 
@@ -216,6 +217,32 @@ describe('updateActivity on a merged view (integration)', () => {
     expect(second.success).toBe(false)
     expect(second.error).toContain('deleted activity')
     expect(second.id).toBeUndefined()
+  })
+
+  test('adding, retyping and deleting a workout mark the training load hours dirty', async () => {
+    const user = getTestUser()
+    const watermark = async () => (await getUserSettings(user))?.training_load?.impulse_watermark
+    const added = await addActivity(user, {
+      activity_type: 'strength_training',
+      end_time: new Date('2026-11-11T18:00:00Z'),
+      start_time: new Date('2026-11-11T17:20:00Z'),
+    })
+    expect(await watermark()).toBe('2026-11-11T17:00:00.000Z')
+
+    await mutateTrainingLoadSettings(user, () => undefined)
+    await updateActivity(user, added.id!, { activity_type: 'sauna' })
+    expect(await watermark()).toBe('2026-11-11T17:00:00.000Z')
+
+    await mutateTrainingLoadSettings(user, () => undefined)
+    await deleteActivity(user, added.id!)
+    expect(await watermark()).toBeUndefined()
+
+    const sauna = await addActivity(user, {
+      activity_type: 'sauna',
+      start_time: new Date('2026-11-12T08:00:00Z'),
+    })
+    expect(sauna.success).toBe(true)
+    expect(await watermark()).toBeUndefined()
   })
 
   describe('a built-in catalogue type not used yet', () => {

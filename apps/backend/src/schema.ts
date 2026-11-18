@@ -15,6 +15,7 @@ import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
 import { notificationsTables } from './schema/notifications.ts'
 import { productivityTables } from './schema/productivity.ts'
+import { remindersTables } from './schema/reminders.ts'
 import { reportsTables } from './schema/reports.ts'
 import { socialTables } from './schema/social.ts'
 import { systemTables } from './schema/system.ts'
@@ -59,6 +60,7 @@ export const createTableStatements: Record<string, string> = {
   ...metricsTables,
   ...notificationsTables,
   ...productivityTables,
+  ...remindersTables,
   ...reportsTables,
   ...socialTables,
   ...systemTables,
@@ -228,6 +230,7 @@ export const tableCreationOrder = [
   'timeline_entry_reply_checked',
   'timeline_entry_reply_checked_backstamp',
   'timeline_entry_boost',
+  'timeline_entry_boost_carriers',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
   'timeline_entry_reply_target_indexes',
@@ -255,6 +258,7 @@ export const tableCreationOrder = [
   'notifications_actions',
   'notifications_indexes',
   'notification_preferences',
+  'reminders',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

@@ -49,7 +49,7 @@ export const registerAdminOidcTools = (
 
   server.tool(
     'update_oidc_provider',
-    'Change a single sign-on provider. An omitted field, the client secret included, keeps its value; a new issuer is checked like on add. Admin-only.',
+    'Change a single sign-on provider. An omitted field, the client secret included, keeps its value; a new issuer is checked like on add, and refused while accounts are linked to the provider (their links are keyed on the issuer). Admin-only.',
     {
       id: oidcProviderIdSchema.describe('Provider id, from list_oidc_providers'),
       ...updateOidcProviderBodySchema.shape,

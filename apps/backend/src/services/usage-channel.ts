@@ -43,6 +43,7 @@ export const MUTATING_MCP_TOOL_PREFIXES = [
   'remove_',
   'rename_',
   'reply_',
+  'reprocess_',
   'requeue_',
   'resend_',
   'reset_',

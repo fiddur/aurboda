@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { GarminActivityDetailResponse } from './client.ts'
 import type { FitActivity } from './fit.ts'
-import type { GarminProcessDeps } from './process.ts'
+import type { GarminFitSetsDeps, GarminProcessDeps } from './process.ts'
 
+import { loadExerciseCatalog } from '../../services/exercise-catalog.ts'
 import { activityTrackSources } from '../gps-precedence.ts'
 import {
   extractNumericValue,
@@ -981,6 +982,58 @@ describe('processGarminData', () => {
       const result = await processGarminData(user, 'activities', data, mockDeps)
       expect(result).toBe(1)
       expect(mockDeps.insertRawRecord).toHaveBeenCalledTimes(1)
+    })
+
+    describe('an item without a name or a duration', () => {
+      const START = new Date('2025-01-15T07:00:00.000')
+      const storedRow = {
+        activity_type: 'running',
+        end_time: new Date(START.getTime() + 2400 * 1000),
+        start_time: START,
+        title: 'Lunch run',
+      }
+      const bare = makeActivity({ activityName: undefined, duration: undefined, elapsedDuration: undefined })
+
+      test('a new row gets the type key as title and ends at its start', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(null)
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        expect(findActivityByExternalId).toHaveBeenCalledWith(user, 'garmin', 'garmin-activity-12345')
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('running')
+        expect(activityArg.end_time).toEqual(START)
+      })
+
+      test('an existing row keeps its title and end', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(storedRow)
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('Lunch run')
+        expect(activityArg.end_time).toEqual(storedRow.end_time)
+      })
+
+      test('a name and a duration the item has win over the stored row, which is not looked up', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(storedRow)
+        await processGarminData(user, 'activities', [makeActivity()], {
+          ...mockDeps,
+          findActivityByExternalId,
+        })
+
+        expect(findActivityByExternalId).not.toHaveBeenCalled()
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('Morning Run')
+        expect(activityArg.end_time).toEqual(new Date(START.getTime() + 1800 * 1000))
+      })
+
+      test('a stored end before the start is not kept', async () => {
+        const findActivityByExternalId = vi
+          .fn()
+          .mockResolvedValue({ ...storedRow, end_time: new Date(START.getTime() - 1000) })
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        expect(vi.mocked(mockDeps.insertActivity).mock.calls[0]![1].end_time).toEqual(START)
+      })
     })
 
     test('calculates end time from duration', async () => {
@@ -2096,6 +2149,7 @@ describe('processActivityFit', () => {
   })
 
   const fit: FitActivity = {
+    exerciseTitles: [],
     fileIds: [{ manufacturer: 'garmin', type: 'activity' }],
     laps: [{ totalElapsedTime: 2 }],
     records: [
@@ -2116,6 +2170,7 @@ describe('processActivityFit', () => {
       },
     ],
     sessions: [{ sport: 'cycling', totalElapsedTime: 2 }],
+    sets: [],
   }
 
   test('writes the time series, GPS with precedence over the span, the track and the callback', async () => {
@@ -2174,9 +2229,11 @@ describe('processActivityFit', () => {
     expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
       data: {
         file_id: [{ manufacturer: 'garmin', type: 'activity' }],
+        exercise_titles: [],
         laps: [{ totalElapsedTime: 2 }],
         record_count: 2,
         sessions: [{ sport: 'cycling', totalElapsedTime: 2 }],
+        sets: [],
       },
       external_id: 'garmin-activity-fit-4242',
       record_type: 'garmin_activity_fit',
@@ -2189,6 +2246,126 @@ describe('processActivityFit', () => {
     await processActivityFit(user, { fit, garminActivityId: 4242 }, { activityStart: start, deps: mockDeps })
 
     expect(mockDeps.upsertActivityTrack).not.toHaveBeenCalled()
+  })
+
+  describe('strength sets', () => {
+    const catalog = loadExerciseCatalog()
+    const strengthFit: FitActivity = {
+      ...fit,
+      exerciseTitles: [{ messageIndex: 0, wktStepName: 'Star jumps' }],
+      sets: [
+        {
+          category: ['benchPress'],
+          categorySubtype: [1],
+          repetitions: 8,
+          setType: 'active',
+          startTime: new Date(1700000010000),
+          weight: 60,
+        },
+        { duration: 60, setType: 'rest', startTime: new Date(1700000040000) },
+        {
+          category: ['cardio'],
+          categorySubtype: [60000],
+          repetitions: 20,
+          setType: 'active',
+          startTime: new Date(1700000100000),
+          wktStepIndex: 0,
+        },
+      ],
+    }
+
+    const setDeps = (overrides: Partial<GarminFitSetsDeps> = {}): GarminFitSetsDeps => ({
+      aliasActivityData: vi.fn(async (_user, data) => data),
+      applyItemValueKeysForWrite: vi.fn(async (_user, _type, data) => ({
+        data: { data, mappings: [] },
+        success: true as const,
+      })),
+      loadExerciseCatalog: () => catalog,
+      setGarminActivityFitSets: vi.fn().mockResolvedValue(true),
+      ...overrides,
+    })
+
+    const run = (fitSets: GarminFitSetsDeps, file: FitActivity = strengthFit) =>
+      processActivityFit(
+        user,
+        { fit: file, garminActivityId: 4242 },
+        { activityId: 'act-1', activityStart: start, deps: { ...mockDeps, fitSets } },
+      )
+
+    test('stores the named active sets on the row and audits the count', async () => {
+      const fitSets = setDeps()
+
+      expect(await run(fitSets)).toBe(5)
+
+      expect(fitSets.applyItemValueKeysForWrite).toHaveBeenCalledWith(user, 'strength_training', {
+        sets: [
+          { exercise_key: 'barbell_bench_press', reps: 8, weight: 60 },
+          { exercise: 'Star jumps', reps: 20 },
+        ],
+      })
+      expect(fitSets.setGarminActivityFitSets).toHaveBeenCalledWith(user, 'act-1', [
+        { exercise: 'Barbell Bench Press', reps: 8, weight: 60 },
+        { exercise: 'Star jumps', reps: 20 },
+      ])
+      expect(mockDeps.auditInfo).toHaveBeenCalledWith(
+        user,
+        'sync',
+        '🏋️ Synced 2 sets for Garmin activity 4242 from its FIT file',
+      )
+    })
+
+    test('audits nothing when the row refused the sets', async () => {
+      const fitSets = setDeps({ setGarminActivityFitSets: vi.fn().mockResolvedValue(false) })
+
+      await run(fitSets)
+
+      expect(fitSets.setGarminActivityFitSets).toHaveBeenCalled()
+      expect(mockDeps.auditInfo).not.toHaveBeenCalledWith(user, 'sync', expect.stringContaining('sets'))
+    })
+
+    test('does nothing for a file without sets, or without an activity id', async () => {
+      const fitSets = setDeps()
+
+      await run(fitSets, fit)
+      await processActivityFit(
+        user,
+        { fit: strengthFit, garminActivityId: 4242 },
+        { activityStart: start, deps: { ...mockDeps, fitSets } },
+      )
+
+      expect(fitSets.applyItemValueKeysForWrite).not.toHaveBeenCalled()
+      expect(fitSets.setGarminActivityFitSets).not.toHaveBeenCalled()
+    })
+
+    test('a naming failure is audited and the detail is still written', async () => {
+      const fitSets = setDeps({
+        applyItemValueKeysForWrite: vi.fn().mockResolvedValue({ error: 'no identity', success: false }),
+      })
+
+      expect(await run(fitSets)).toBe(5)
+
+      expect(mockDeps.insertTimeSeries).toHaveBeenCalled()
+      expect(fitSets.setGarminActivityFitSets).not.toHaveBeenCalled()
+      expect(mockDeps.auditError).toHaveBeenCalledWith(
+        user,
+        'sync',
+        'Could not name the FIT sets of Garmin activity 4242',
+        { error: 'no identity' },
+      )
+    })
+
+    test('a thrown error while storing is audited and does not fail the detail', async () => {
+      const fitSets = setDeps({ setGarminActivityFitSets: vi.fn().mockRejectedValue(new Error('db down')) })
+
+      expect(await run(fitSets)).toBe(5)
+
+      expect(mockDeps.auditError).toHaveBeenCalledWith(
+        user,
+        'sync',
+        'Failed to store the FIT sets of Garmin activity 4242',
+        { error: 'db down' },
+      )
+    })
   })
 })
 
