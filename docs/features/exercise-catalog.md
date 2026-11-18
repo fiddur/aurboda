@@ -161,7 +161,7 @@ the set, not to the exercise), with no alias; every other one becomes its own en
 display name. Garmin's muscle data is not taken: the muscles and equipment of the Garmin-only entries
 are Aurboda's own, assigned by movement at muscle-group level (primary 1, secondary 0.5), and
 whole-body or conditioning exercises (burpees, battle rope, sled, ladder) have none. The Garmin sync names the
-sets it imports from strength activities through this FIT lookup (see
+sets it imports from strength activities, through the login or from the activity's FIT file, through this FIT lookup (see
 [Garmin → Strength sets](../garmin.md#strength-sets)).
 `apps/backend/src/catalog/exercises/NOTICE.md` has the attribution and what was changed.
 

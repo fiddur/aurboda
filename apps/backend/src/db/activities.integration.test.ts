@@ -32,6 +32,7 @@ import {
   restoreActivity,
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,
+  setGarminActivityFitSets,
   setGarminActivitySets,
   softDeleteActivityByExternalId,
   updateActivity,
@@ -2130,6 +2131,95 @@ describe('Activities Integration Tests', () => {
         sets,
         sets_source: 'garmin',
       })
+    })
+
+    test("replaces the FIT file's sets and clears their origin", async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+      await setGarminActivityFitSets(user, id, [{ exercise: 'Squat', reps: 5 }])
+
+      await setGarminActivitySets(user, id, sets)
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 110,
+        garmin_activity_id: 77,
+        garmin_sets_synced: true,
+        sets,
+        sets_source: 'garmin',
+      })
+    })
+  })
+
+  describe('setGarminActivityFitSets', () => {
+    const summary: Activity = {
+      activity_type: 'strength_training',
+      data: { average_hr: 110, garmin_activity_id: 78 },
+      external_id: 'garmin-78',
+      source: 'garmin',
+      start_time: new Date('2026-10-11T07:00:00Z'),
+      title: 'Strength',
+    }
+    const sets = [{ exercise: 'Bench Press', reps: 8, weight: 60 }]
+
+    test('writes the sets, their source and origin on a fresh strength row, without the flag', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+
+      expect(await setGarminActivityFitSets(user, id, sets)).toBe(true)
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 110,
+        garmin_activity_id: 78,
+        garmin_sets_origin: 'fit',
+        sets,
+        sets_source: 'garmin',
+      })
+      expect((await getGarminActivitiesNeedingSets(user)).map((a) => a.id)).toEqual([id])
+    })
+
+    test('replaces sets an earlier FIT read wrote', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+      await setGarminActivityFitSets(user, id, [{ exercise: 'Squat', reps: 5 }])
+
+      await setGarminActivityFitSets(user, id, sets)
+
+      expect((await getActivityById(user, id))?.data?.sets).toEqual(sets)
+    })
+
+    test("leaves a row the login's reader already wrote", async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+      const fromLogin = [{ exercise: 'Deadlift', reps: 3, weight: 140 }]
+      await setGarminActivitySets(user, id, fromLogin)
+
+      expect(await setGarminActivityFitSets(user, id, sets)).toBe(false)
+
+      expect((await getActivityById(user, id))?.data).toEqual({
+        average_hr: 110,
+        garmin_activity_id: 78,
+        garmin_sets_synced: true,
+        sets: fromLogin,
+        sets_source: 'garmin',
+      })
+    })
+
+    test('leaves a row that is not strength training', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, { ...summary, activity_type: 'running' })
+
+      expect(await setGarminActivityFitSets(user, id, sets)).toBe(false)
+
+      expect((await getActivityById(user, id))?.data).toEqual({ average_hr: 110, garmin_activity_id: 78 })
+    })
+
+    test('an empty list writes nothing', async () => {
+      const user = getTestUser()
+      const id = await insertActivity(user, summary)
+
+      expect(await setGarminActivityFitSets(user, id, [])).toBe(false)
+
+      expect((await getActivityById(user, id))?.data).toEqual({ average_hr: 110, garmin_activity_id: 78 })
     })
   })
 })

@@ -29,6 +29,7 @@ import { activityTypeTitleNames, ruleTitleChange } from './deduction-title.ts'
 import { getPlaceVisits } from './locations.ts'
 import { updateActivity } from './mutations.ts'
 import { categoryPathMatchSql } from './screentime-sql.ts'
+import { markWorkoutHoursDirty } from './training-load/dirty.ts'
 
 const DEFAULT_SPAN_MS = 60 * 60 * 1000
 
@@ -531,8 +532,20 @@ const getEarliestActivityTime = async (user: string): Promise<Date | null> => {
   return (result.rows[0]?.earliest as Date) ?? null
 }
 
-export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionEngineDeps => ({
-  deleteStaleRuleActivities,
+/**
+ * `markWorkoutHours` marks the training load hours of a rule's output dirty when the evaluation
+ * really inserts, changes or removes one; retypes and retitles go through `updateActivity`, which
+ * marks them itself.
+ */
+export const createDefaultEngineDeps = (
+  notifier?: ActivityNotifier,
+  markWorkoutHours: typeof markWorkoutHoursDirty = markWorkoutHoursDirty,
+): DeductionEngineDeps => ({
+  deleteStaleRuleActivities: async (user, ruleId, windowStart, windowEnd, keepIds) => {
+    const deleted = await deleteStaleRuleActivities(user, ruleId, windowStart, windowEnd, keepIds)
+    await markWorkoutHours(user, deleted)
+    return deleted.length
+  },
   enrichActivities,
   getActivities,
   getActivitiesWithData,
@@ -550,6 +563,7 @@ export const createDefaultEngineDeps = (notifier?: ActivityNotifier): DeductionE
     // An unchanged re-upsert must not notify: the notification re-runs the other rules,
     // whose own unchanged re-upserts would notify back, forever.
     const { changed, id } = await upsertActivity(user, activity)
+    if (changed) await markWorkoutHours(user, [activity])
     if (notifier && changed) {
       const ruleIdValue = activity.data?.rule_id
       const ruleId = typeof ruleIdValue === 'string' ? ruleIdValue : undefined

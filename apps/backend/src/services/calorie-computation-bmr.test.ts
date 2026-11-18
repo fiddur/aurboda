@@ -7,6 +7,7 @@ import { computeAndStoreCalories } from './calorie-computation.ts'
 vi.mock('../db/index.ts', () => ({
   enqueueOutboundSync: vi.fn(),
   getUserSettings: vi.fn(),
+  mutateTrainingLoadSettings: vi.fn(),
   upsertUserSettings: vi.fn(),
 }))
 

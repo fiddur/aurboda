@@ -245,7 +245,6 @@ describe('garminLoginOnlyData', () => {
   it('lists what Connect with Garmin alone lacks', () => {
     expect(garminLoginOnlyData({ keyConnected: false, oauthConnected: true })).toEqual([
       'training readiness',
-      'strength sets',
       'data from before you connected',
       'syncing on demand',
     ])
@@ -256,15 +255,11 @@ describe('garminLoginOnlyData', () => {
       'stress',
       'the sleep stage timeline',
       'training readiness',
-      'strength sets',
     ])
   })
 
   it('lists what both together lack', () => {
-    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: true })).toEqual([
-      'training readiness',
-      'strength sets',
-    ])
+    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: true })).toEqual(['training readiness'])
   })
 })
 

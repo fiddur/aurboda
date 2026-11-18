@@ -1,3 +1,4 @@
+import type { StoredExerciseCatalog } from '@aurboda/api-spec'
 import type { IActivity } from '@fiddur/garmin-connect/dist/garmin/types/activity'
 import type { GarminNapDTO, SleepData } from '@fiddur/garmin-connect/dist/garmin/types/sleep'
 
@@ -25,10 +26,14 @@ import {
   insertLocations,
   insertRawRecord,
   insertTimeSeries,
+  setGarminActivityFitSets,
   softDeleteSupersededLocations,
   upsertActivityTrack,
 } from '../../db/index.ts'
 import { auditError, auditInfo, auditWarn } from '../../services/audit-log.ts'
+import { loadExerciseCatalog } from '../../services/exercise-catalog.ts'
+import { aliasActivityData } from '../../services/item-value-aliases.ts'
+import { applyItemValueKeysForWrite } from '../../services/item-value-identities.ts'
 import {
   GARMIN_HC_ORIGIN,
   garminActivityExternalId,
@@ -37,7 +42,8 @@ import {
 import { buildTrack, type TrackPoint } from '../../services/tracks.ts'
 import { pushAll } from '../../utils.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
-import { type FitActivity, fitToDetail } from './fit.ts'
+import { type GarminSetNamingDeps, nameGarminSets } from './exercise-names.ts'
+import { type FitActivity, fitToDetail, fitToSets } from './fit.ts'
 import { garminSleepLevelsToStages, parseGarminGmt } from './sleep-stages.ts'
 
 export { garminSleepLevelsToStages } from './sleep-stages.ts'
@@ -69,6 +75,11 @@ export const garminDataTypes: GarminDataType[] = [
   'intensityMinutes',
 ]
 
+export interface GarminFitSetsDeps extends GarminSetNamingDeps {
+  loadExerciseCatalog: () => StoredExerciseCatalog
+  setGarminActivityFitSets: typeof setGarminActivityFitSets
+}
+
 export interface GarminProcessDeps {
   activityTypeExists: typeof activityTypeExists
   adoptLegacyActivity: typeof adoptLegacyActivity
@@ -76,6 +87,8 @@ export interface GarminProcessDeps {
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
+  /** Absent, a FIT file's strength sets are not stored. */
+  fitSets?: GarminFitSetsDeps
   /** The stored row, whose title and end an item without a name or duration keeps; absent, the fallbacks are written. */
   findActivityByExternalId?: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
@@ -109,6 +122,10 @@ const defaultDeps: GarminProcessDeps = {
   auditWarn,
   deleteGarminActivityWithWrongType,
   findActivityByExternalId,
+  /** Built on use, so importing this module reads no export of a test's partial `db` mock. */
+  get fitSets(): GarminFitSetsDeps {
+    return { aliasActivityData, applyItemValueKeysForWrite, loadExerciseCatalog, setGarminActivityFitSets }
+  },
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -1099,7 +1116,7 @@ export const processActivityFit = async (
     fit,
     options.activityStart ?? new Date(),
   )
-  return writeActivityDetail(
+  const count = await writeActivityDetail(
     user,
     {
       garminActivityId,
@@ -1110,4 +1127,44 @@ export const processActivityFit = async (
     },
     options,
   )
+  if (options.activityId) await storeFitSets(user, fit, garminActivityId, options.activityId, options.deps)
+  return count
+}
+
+/**
+ * The strength sets the file carries, stored on the row unless it is not strength training or the
+ * login's reader already wrote it. A failure is audited and leaves the detail as written.
+ */
+const storeFitSets = async (
+  user: string,
+  fit: FitActivity,
+  garminActivityId: number,
+  activityId: string,
+  deps: GarminProcessDeps = defaultDeps,
+): Promise<void> => {
+  const setDeps = deps.fitSets
+  if (!setDeps || fit.sets.length === 0) return
+  try {
+    const catalog = setDeps.loadExerciseCatalog()
+    const built = fitToSets(fit, catalog)
+    if (built.length === 0) return
+    const named = await nameGarminSets(user, built, catalog, setDeps)
+    if ('error' in named) {
+      deps.auditError(user, 'sync', `Could not name the FIT sets of Garmin activity ${garminActivityId}`, {
+        error: named.error,
+      })
+      return
+    }
+    if (await setDeps.setGarminActivityFitSets(user, activityId, named.sets)) {
+      deps.auditInfo(
+        user,
+        'sync',
+        `🏋️ Synced ${named.sets.length} sets for Garmin activity ${garminActivityId} from its FIT file`,
+      )
+    }
+  } catch (error) {
+    deps.auditError(user, 'sync', `Failed to store the FIT sets of Garmin activity ${garminActivityId}`, {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }

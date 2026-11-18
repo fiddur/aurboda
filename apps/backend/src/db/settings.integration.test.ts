@@ -2,7 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { query } from './connection.ts'
-import { claimSettingsFlag, getUserSettings, upsertUserSettings } from './settings.ts'
+import {
+  claimSettingsFlag,
+  getUserSettings,
+  mutateTrainingLoadSettings,
+  upsertUserSettings,
+} from './settings.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -52,6 +57,63 @@ describe('Settings Integration Tests', () => {
         lastfm_username: 'me',
         run_category_rules_seeded: true,
       })
+    })
+  })
+
+  describe('training_load internal fields', () => {
+    test('a stale copy written back changes the time constant and keeps the dirty mark and lease', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { training_load: { tau_acute: 7 } })
+      const stale = (await getUserSettings(user))!.training_load!
+      const marked = await mutateTrainingLoadSettings(user, (current) => ({
+        ...current,
+        impulse_dirty_rev: 1,
+        impulse_recompute_lease: { holder: 'process-a', until: '2026-11-18T12:02:00.000Z' },
+        impulse_watermark: '2026-11-17T08:00:00.000Z',
+      }))
+
+      await upsertUserSettings(user, { training_load: { ...stale, tau_chronic: 50 } })
+
+      expect((await getUserSettings(user))?.training_load).toEqual({ ...marked, tau_chronic: 50 })
+    })
+
+    test('the clear list still removes training_load', async () => {
+      const user = getTestUser()
+      await mutateTrainingLoadSettings(user, () => ({ impulse_watermark: '2026-11-17T08:00:00.000Z' }))
+      await upsertUserSettings(user, {}, ['training_load'])
+      expect(await getUserSettings(user)).not.toHaveProperty('training_load')
+    })
+  })
+
+  describe('mutateTrainingLoadSettings', () => {
+    test('concurrent changes to training_load are all kept, along with the other settings', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { sex: 'female', training_load: { tau_acute: 7 } })
+      await Promise.all(
+        Array.from({ length: 10 }, () =>
+          mutateTrainingLoadSettings(user, (current) => ({
+            ...current,
+            impulse_dirty_rev: (current?.impulse_dirty_rev ?? 0) + 1,
+          })),
+        ),
+      )
+      expect(await getUserSettings(user)).toMatchObject({
+        sex: 'female',
+        training_load: { impulse_dirty_rev: 10, tau_acute: 7 },
+      })
+    })
+
+    test('returns what it stored, creates a first row, and undefined removes training_load', async () => {
+      const user = getTestUser()
+      expect(
+        await mutateTrainingLoadSettings(user, () => ({ impulse_watermark: undefined, tau_acute: 5 })),
+      ).toEqual({
+        tau_acute: 5,
+      })
+      expect((await getUserSettings(user))?.training_load).toEqual({ tau_acute: 5 })
+
+      expect(await mutateTrainingLoadSettings(user, () => undefined)).toBeUndefined()
+      expect(await getUserSettings(user)).not.toHaveProperty('training_load')
     })
   })
 

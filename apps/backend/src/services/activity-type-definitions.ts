@@ -27,6 +27,7 @@ import {
   toActivityTypeCatalogEntry,
 } from './activity-type-catalog.ts'
 import { validatePartialActivityData } from './data-schema-validation.ts'
+import { trackWorkoutTypeChanges } from './training-load/dirty.ts'
 
 export interface ActivityTypeDefinitionResult {
   success: boolean
@@ -41,10 +42,17 @@ export const listActivityTypeDefinitions = async (user: string): Promise<Activit
   dbList(user)
 
 /** A catalogue type takes every field the caller leaves out from its catalogue definition. */
-export const addActivityTypeDefinition = async (
+export const addActivityTypeDefinition = (
+  user: string,
+  input: AddActivityTypeDefinitionBody,
+  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<ActivityTypeDefinitionResult> =>
+  trackWorkoutTypeChanges(user, () => addDefinition(user, input, catalog))
+
+const addDefinition = async (
   user: string,
   { separate_type, ...input }: AddActivityTypeDefinitionBody,
-  catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+  catalog: StoredActivityTypeCatalog,
 ): Promise<ActivityTypeDefinitionResult> => {
   const existing = await dbGet(user, input.name)
   if (existing?.is_builtin) {
@@ -134,7 +142,7 @@ export const updateActivityTypeDefinition = async (
     return { error: `Activity type "${name}" not found`, success: false }
   }
 
-  const updated = await dbUpdate(user, name, updates)
+  const updated = await trackWorkoutTypeChanges(user, () => dbUpdate(user, name, updates))
   if (!updated) {
     return { error: 'Failed to update activity type definition', success: false }
   }
@@ -172,7 +180,7 @@ export const deleteActivityTypeDefinition = async (
     return { error: `Cannot delete built-in activity type "${name}"`, success: false }
   }
 
-  const deleted = await dbDelete(user, name)
+  const deleted = await trackWorkoutTypeChanges(user, () => dbDelete(user, name))
   if (!deleted) {
     return { error: `Activity type "${name}" not found`, success: false }
   }
@@ -205,7 +213,10 @@ export const renameActivityTypeDefinition = async (
     return { error: `Cannot rename to built-in activity type name "${newName}".`, success: false }
   }
 
-  const result = await dbRename(user, oldName, newName)
+  const result = await trackWorkoutTypeChanges(user, () => dbRename(user, oldName, newName), {
+    from: oldName,
+    to: newName,
+  })
   if (!result) {
     return { error: `Activity type "${oldName}" not found or "${newName}" already exists.`, success: false }
   }
@@ -265,12 +276,24 @@ const mergeTargetSchema = (
  * `setData` names that it lacks. `setData` fills those fields on the moved activities that have no value
  * for them.
  */
-export const mergeActivityType = async (
+export const mergeActivityType = (
   user: string,
   source: string,
   target: string,
   setData?: Record<string, unknown>,
   catalog: StoredActivityTypeCatalog = loadActivityTypeCatalog(),
+): Promise<MergeActivityTypeResult> =>
+  trackWorkoutTypeChanges(user, () => mergeType(user, source, target, setData, catalog), {
+    from: source,
+    to: target,
+  })
+
+const mergeType = async (
+  user: string,
+  source: string,
+  target: string,
+  setData: Record<string, unknown> | undefined,
+  catalog: StoredActivityTypeCatalog,
 ): Promise<MergeActivityTypeResult> => {
   if (source === target) {
     return { error: 'Source and target cannot be the same activity type.', success: false }

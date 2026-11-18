@@ -134,11 +134,11 @@ export const garminLoginOnlyData = ({
   oauthConnected: boolean
   keyConnected: boolean
 }): string[] | null => {
-  if (oauthConnected && keyConnected) return ['training readiness', 'strength sets']
+  if (oauthConnected && keyConnected) return ['training readiness']
   if (oauthConnected) {
-    return ['training readiness', 'strength sets', 'data from before you connected', 'syncing on demand']
+    return ['training readiness', 'data from before you connected', 'syncing on demand']
   }
-  if (keyConnected) return ['stress', 'the sleep stage timeline', 'training readiness', 'strength sets']
+  if (keyConnected) return ['stress', 'the sleep stage timeline', 'training readiness']
   return null
 }
 

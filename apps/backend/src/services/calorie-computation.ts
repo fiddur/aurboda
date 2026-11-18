@@ -14,7 +14,7 @@ import type { BiologicalSex } from '@aurboda/api-spec'
 import type { TimeSeriesPoint, UserSettings } from '../db/types.ts'
 
 import { localMidnightToUtc } from '../db/health-connect.ts'
-import { enqueueOutboundSyncInsertsIfChanged, getUserSettings, upsertUserSettings } from '../db/index.ts'
+import { enqueueOutboundSyncInsertsIfChanged, getUserSettings } from '../db/index.ts'
 import {
   deleteTimeSeriesBySource,
   getMetricTimeRange,
@@ -30,7 +30,8 @@ import {
   type ZoneMetsCaloriePoint,
   type ZoneMetsContext,
 } from './calories.ts'
-import { calculateDefaultHrZones, getSettings } from './settings.ts'
+import { calculateDefaultHrZones } from './settings.ts'
+import { markImpulsesDirty } from './training-load/dirty.ts'
 
 const calculateAge = (birthDate: string): number => {
   const birth = new Date(birthDate)
@@ -96,25 +97,10 @@ export const enqueueCalorieSync = async (
   }
 }
 
-/**
- * Invalidate training load impulse buckets so they get recomputed from
- * the updated calorie data on next query.
- *
- * Sets impulse_watermark to the earliest of the given time and any existing
- * watermark, ensuring recomputation covers the full affected range.
- */
+/** The training load impulses from `fromTime` on are recomputed from the new calories on the next read. */
 const invalidateTrainingLoadImpulses = async (user: string, fromTime: Date): Promise<void> => {
   try {
-    const settings = await getSettings(user)
-    const existingWatermark = settings.training_load?.impulse_watermark
-    const existingTime = existingWatermark ? new Date(existingWatermark) : null
-    const effectiveTime = existingTime && existingTime < fromTime ? existingTime : fromTime
-    await upsertUserSettings(user, {
-      training_load: {
-        ...settings.training_load,
-        impulse_watermark: effectiveTime.toISOString(),
-      },
-    })
+    await markImpulsesDirty(user, fromTime)
   } catch (err) {
     auditError(user, 'data', 'Failed to invalidate training load impulses', { error: String(err) })
   }

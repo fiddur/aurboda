@@ -58,6 +58,7 @@ import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
 import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
+import { markWorkoutHoursDirty } from './training-load/dirty.ts'
 
 export interface AddMetricInput {
   metric: string
@@ -409,6 +410,7 @@ export async function addActivity(
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
       await storeItemValueMappings(user, mappings)
+      await markWorkoutHoursDirty(user, [existing])
 
       onMutated?.(user, existing.activity_type, existing.start_time, newEndTime)
 
@@ -448,6 +450,7 @@ export async function addActivity(
     await replaceUserNotes(user, 'activity', id, input.notes, input.start_time, input.end_time)
   }
 
+  await markWorkoutHoursDirty(user, [input])
   onMutated?.(user, input.activity_type, input.start_time, input.end_time ?? input.start_time)
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
@@ -513,6 +516,7 @@ export async function deleteActivity(user: string, id: string): Promise<DeleteAc
   if (deleted && activity) {
     await materializeSuperseded(user, activity.start_time)
     await reanalyseOverrideTargets(user, activity)
+    await markWorkoutHoursDirty(user, [activity])
   }
 
   // Enqueue outbound delete if this was an aurboda-owned HC-syncable activity (best-effort)
@@ -784,6 +788,12 @@ export async function updateActivity(
     const trackOwnerIds = [...new Set([target.id!, updated.id!, ...(updated.override_target_ids ?? [])])]
     await reanalyseActivities(user, trackOwnerIds)
   }
+  const changesWorkoutHours =
+    input.activity_type !== undefined ||
+    input.start_time !== undefined ||
+    input.end_time !== undefined ||
+    input.data !== undefined
+  if (changesWorkoutHours) await markWorkoutHoursDirty(user, [before, updated])
   onMutated?.(user, updated.activity_type, updated.start_time, updated.end_time ?? updated.start_time)
   if (isTypeChanging) {
     onMutated?.(user, before.activity_type, before.start_time, before.end_time ?? before.start_time)
@@ -916,9 +926,11 @@ export async function mergeActivities(
     getActivityById: (user: string, id: string) => Promise<Activity | null>
     insertMergedActivity: (user: string, merged: Activity, sourceIds: string[]) => Promise<string>
     materializeSuperseded: (user: string, aroundTime: Date) => Promise<void>
+    markWorkoutHoursDirty: (user: string, sessions: Activity[]) => Promise<void>
   } = {
     getActivityById: dbGetActivityById,
     insertMergedActivity: dbInsertMergedActivity,
+    markWorkoutHoursDirty,
     materializeSuperseded,
   },
   onMutated?: ActivityNotifier,
@@ -973,6 +985,7 @@ export async function mergeActivities(
 
   // After the soft-delete + merged aurboda row, recompute supersession once.
   await deps.materializeSuperseded(user, merged.start_time)
+  await deps.markWorkoutHoursDirty(user, sorted)
 
   onMutated?.(user, sorted[0].activity_type, merged.start_time, merged.end_time ?? merged.start_time)
 
