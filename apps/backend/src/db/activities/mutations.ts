@@ -652,10 +652,32 @@ export const setGarminActivitySets = async (
   await query(
     user,
     `UPDATE activities
-     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source') || $2::jsonb
+     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source' - 'garmin_sets_origin') || $2::jsonb
      WHERE id = $1`,
     [id, JSON.stringify(patch)],
   )
+}
+
+/**
+ * Store the sets read from the activity's FIT file, unless the login's reader has already written
+ * the row, whose result wins. The flag is left unset so that reader still visits the row.
+ */
+export const setGarminActivityFitSets = async (
+  user: string,
+  id: string,
+  sets: Record<string, unknown>[],
+): Promise<boolean> => {
+  if (sets.length === 0) return false
+  const result = await query(
+    user,
+    `UPDATE activities
+     SET data = (COALESCE(data, '{}'::jsonb) - 'sets' - 'sets_source') || $2::jsonb
+     WHERE id = $1
+       AND activity_type = 'strength_training'
+       AND (data->>'garmin_sets_synced') IS DISTINCT FROM 'true'`,
+    [id, JSON.stringify({ garmin_sets_origin: 'fit', sets, sets_source: 'garmin' })],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 export const hardDeleteActivitiesBySource = async (user: string, source: string): Promise<number> => {

@@ -28,6 +28,7 @@ export {
   restoreEmptyImportTombstone,
   restoreSetlessTombstone,
   rewriteItemValue,
+  setGarminActivityFitSets,
   setGarminActivitySets,
   softDeleteActivityByExternalId,
   updateActivity,

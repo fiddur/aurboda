@@ -193,6 +193,7 @@ export {
   insertMergedActivity,
   insertOverride,
   markActivityDetailSynced,
+  setGarminActivityFitSets,
   setGarminActivitySets,
   materializeSuperseded,
   rematerializeSupersededOnce,

@@ -16,7 +16,7 @@ const NotConnectedText = ({ hasLogin }: { hasLogin: boolean }) => (
       watch syncs with Garmin Connect. Aurboda never sees your password.
     </p>
     <p class="field-description">
-      Not included: data from before you connect, training readiness and strength sets.
+      Not included: data from before you connect and training readiness.
       {hasLogin ? ' Your Garmin login below keeps adding those.' : ' Add the Garmin login below for those.'}
     </p>
   </>
@@ -35,8 +35,8 @@ const ConnectedLines = ({ status, hasLogin }: { status: GarminOAuthStatus; hasLo
     <p class="field-description">{garminLastReceivedText(status.last_received_at)}</p>
     {!hasLogin && (
       <p class="field-description">
-        Not included: data from before you connected, training readiness and strength sets. Add the Garmin
-        login below for those.
+        Not included: data from before you connected and training readiness. Add the Garmin login below for
+        those.
       </p>
     )}
   </>
