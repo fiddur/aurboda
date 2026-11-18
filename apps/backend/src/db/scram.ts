@@ -4,18 +4,22 @@ export const SCRAM_ITERATIONS = 4096
 const SALT_BYTES = 16
 
 /**
+ * SASLprep reduced to NFKC, its common case. The verifier is computed over this form, and `pg`
+ * proves the string it is given without preparing it, so a login must offer this form too.
+ */
+export const preparedPassword = (password: string): string => password.normalize('NFKC')
+
+/**
  * PostgreSQL's stored form of a SCRAM-SHA-256 password. Sent as the password of `CREATE USER` /
  * `ALTER USER`, it is stored as given, so the clear password never appears in a statement (and so
- * never in a statement log). SASLprep is reduced to NFKC for non-ASCII passwords, its common case.
+ * never in a statement log).
  */
 export const scramSha256Verifier = (
   password: string,
   salt: Buffer = randomBytes(SALT_BYTES),
   iterations: number = SCRAM_ITERATIONS,
 ): string => {
-  const isAscii = [...password].every((char) => char.charCodeAt(0) < 0x80)
-  const prepared = isAscii ? password : password.normalize('NFKC')
-  const salted = pbkdf2Sync(Buffer.from(prepared, 'utf8'), salt, iterations, 32, 'sha256')
+  const salted = pbkdf2Sync(Buffer.from(preparedPassword(password), 'utf8'), salt, iterations, 32, 'sha256')
   const clientKey = createHmac('sha256', salted).update('Client Key').digest()
   const storedKey = createHash('sha256').update(clientKey).digest()
   const serverKey = createHmac('sha256', salted).update('Server Key').digest()

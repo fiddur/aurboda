@@ -250,17 +250,17 @@ This starts:
 
 Navigate to http://localhost:8080 and create your account through the web interface. **The first account created on a fresh instance is automatically granted admin rights** -- it's the account you'll use to invite others, configure shared integrations (Oura, Strava, etc.), and manage signup mode.
 
-After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings (or set `ALLOW_SIGNUP=false` in docker-compose.yml as a legacy fallback) to disallow other signups.
+After creating your user, switch signup to `invite_only` or `closed` from the in-app admin settings to disallow other signups. `ALLOW_SIGNUP=false` only starts a fresh install closed; once the instance has started, the admin setting decides and the variable is ignored.
 
 To give your instance a blog, choose its users and hashtags under **Official Feed** in the admin settings: their public posts with one of those tags (all their public posts when no tags are set) are listed at `/blog`, linked from the front page and footer, with an Atom feed. See [Official feed](docs/features/feed.md#official-feed).
 
 ### Environment Variables
 
-| Variable         | Description                                | Default  |
-| ---------------- | ------------------------------------------ | -------- |
-| `SESSION_SECRET` | Secret for session tokens (32+ characters) | Required |
-| `PGPASSWORD`     | PostgreSQL password                        | Required |
-| `ALLOW_SIGNUP`   | Enable user registration endpoint          | `true`   |
+| Variable         | Description                                                                   | Default  |
+| ---------------- | ----------------------------------------------------------------------------- | -------- |
+| `SESSION_SECRET` | Secret for session tokens (32+ characters)                                    | Required |
+| `PGPASSWORD`     | PostgreSQL password                                                           | Required |
+| `ALLOW_SIGNUP`   | Initial signup mode of a fresh install (`false` = closed); ignored afterwards | `true`   |
 
 ### Port Configuration
 

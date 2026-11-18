@@ -8,6 +8,7 @@ import {
   type CentralDb,
   getCentralDb,
   type SignupMode,
+  signupModeFromEnv,
 } from './central-db.ts'
 
 const poolEnd = vi.hoisted(() => vi.fn())
@@ -70,8 +71,28 @@ describe('central-db', () => {
       expect(mockClient.query).toHaveBeenCalledWith(
         expect.stringContaining('CREATE TABLE IF NOT EXISTS admins'),
       )
-      // Should insert default signup_mode (third call, no params array)
-      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'))
+      expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO server_settings'), [
+        '"open"',
+      ])
+    })
+
+    test('seeds signup_mode with the given initial mode, never overwriting a stored one', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 1, rows: [] })
+
+      const seeded = await centralDb.initializeCentralDb('closed')
+
+      const insert = mockClient.query.mock.calls.find(([sql]) =>
+        String(sql).includes("VALUES ('signup_mode', $1)"),
+      )
+      expect(insert?.[0]).toContain('ON CONFLICT (key) DO NOTHING')
+      expect(insert?.[1]).toEqual(['"closed"'])
+      expect(seeded).toBe(true)
+    })
+
+    test('reports no seeding when signup_mode is already stored', async () => {
+      mockClient.query.mockResolvedValue({ rowCount: 0, rows: [] })
+
+      expect(await centralDb.initializeCentralDb('closed')).toBe(false)
     })
 
     test('seeds nutrient recommendations inside a transaction, under the advisory lock', async () => {
@@ -90,6 +111,17 @@ describe('central-db', () => {
           /pg_advisory_xact_lock|INSERT INTO shared_nutrient_recommendations/.test(String(sql)),
         ),
       ).toBe(false)
+    })
+  })
+
+  describe('signupModeFromEnv', () => {
+    test.each([
+      ['false', 'closed'],
+      ['0', 'closed'],
+      ['true', 'open'],
+      [undefined, 'open'],
+    ] as const)('ALLOW_SIGNUP=%s starts a fresh install %s', (env, mode) => {
+      expect(signupModeFromEnv(env)).toBe(mode)
     })
   })
 
