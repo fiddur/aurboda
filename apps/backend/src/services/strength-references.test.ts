@@ -58,4 +58,14 @@ describe('the built-in strength references', () => {
     expect(references.liftByCatalogKey.get('bench_press')?.id).toBe('barbell_bench_press')
     expect(references.liftByCatalogKey.get('barbell_squat')?.id).toBe('back_squat')
   })
+
+  test('the glutes score from dumbbell and kettlebell lifts too', () => {
+    expect(references.liftByCatalogKey.get('dumbbell_deadlift')?.group).toBe('glutes')
+    for (const key of ['single_leg_glute_bridge', 'single_leg_hip_raise']) {
+      expect(references.liftByCatalogKey.get(key)).toMatchObject({
+        group: 'glutes',
+        id: 'weighted_single_leg_glute_bridge',
+      })
+    }
+  })
 })

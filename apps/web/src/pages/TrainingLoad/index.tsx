@@ -12,6 +12,7 @@ import {
   newestFirst,
   RECOVERY_ZONE_LABELS,
   RECOVERY_ZONES,
+  recomputePollMs,
   type RecoveryZone,
   recoveryZone,
   zoneSegments,
@@ -262,6 +263,7 @@ export function TrainingLoad() {
     enabled: isLoggedIn,
     queryFn: () => fetchTrainingLoad(startOfDay(subDays(new Date(), days)), new Date(), '1d'),
     queryKey: ['trainingLoadPage', days],
+    refetchInterval: (query) => recomputePollMs(query.state.data),
     staleTime: 5 * 60 * 1000,
   })
 
@@ -304,7 +306,14 @@ export function TrainingLoad() {
 
       {data && (
         <>
-          <LoadOverview key={days} data={data} />
+          {data.recomputing ? (
+            <p class="tl-note">
+              Recalculating your training load history. This can take a few minutes for many years of data.
+              The page updates by itself.
+            </p>
+          ) : (
+            <LoadOverview key={days} data={data} />
+          )}
           <section class="tl-section">
             <h2>Workouts</h2>
             <WorkoutsTable workouts={data.workouts} />

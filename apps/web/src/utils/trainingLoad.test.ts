@@ -6,6 +6,7 @@ import {
   formState,
   newestFirst,
   parseTimeConstant,
+  recomputePollMs,
   recoveryZone,
   withTimeConstant,
   zoneSegments,
@@ -119,5 +120,17 @@ describe('withTimeConstant', () => {
   test('starts from nothing', () => {
     expect(withTimeConstant(undefined, 'tau_acute', 9)).toEqual({ tau_acute: 9 })
     expect(withTimeConstant(null, 'tau_acute', 9)).toEqual({ tau_acute: 9 })
+  })
+})
+
+describe('recomputePollMs', () => {
+  test('polls every five seconds while the server recomputes', () => {
+    expect(recomputePollMs({ recomputing: true })).toBe(5000)
+  })
+
+  test('does not poll otherwise', () => {
+    expect(recomputePollMs({})).toBe(false)
+    expect(recomputePollMs({ recomputing: false })).toBe(false)
+    expect(recomputePollMs(undefined)).toBe(false)
   })
 })

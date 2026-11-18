@@ -28,6 +28,7 @@ import {
 import { browserTz } from '../../state/api/client'
 import { parseBucketedResponse } from '../../utils/chart'
 import { packLanes } from '../../utils/lanePacking'
+import { recomputePollMs } from '../../utils/trainingLoad'
 import {
   ACTIVITY_LANE_CATEGORIES,
   buildActivityColumnItems,
@@ -201,6 +202,7 @@ export const useTimelineData = ({
     placeholderData: keepPreviousData,
     queryFn: () => fetchTrainingLoad(paddedStart, paddedEnd, barBucketSize),
     queryKey: ['timeline-training-load', fromDateKey, toDateKey, barBucketSize],
+    refetchInterval: (query) => recomputePollMs(query.state.data),
     staleTime: 5 * 60 * 1000,
   })
 

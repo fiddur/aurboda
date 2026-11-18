@@ -52,7 +52,11 @@ scores 119, the biceps 108 and the overall score is their mean, 114.
 | Triceps    | Close-grip bench press, EZ-bar skullcrusher, Lying dumbbell triceps extension, One-arm dumbbell triceps extension, Two-hand dumbbell triceps extension |
 | Quadriceps | Back squat, Front squat, Goblet squat, Dumbbell split squat, Dumbbell lunge                                                                            |
 | Hamstrings | Romanian deadlift, Stiff-legged deadlift, Dumbbell Romanian deadlift                                                                                   |
-| Glutes     | Deadlift, Barbell hip thrust, Barbell glute bridge                                                                                                     |
+| Glutes     | Deadlift, Barbell hip thrust, Barbell glute bridge, Dumbbell deadlift, Weighted single-leg glute bridge                                                |
+
+The single-leg glute bridge is a bodyweight exercise in the catalogue ("Single Leg Glute Bridge",
+"Single-leg Hip Raise"): a set scores only when it has a logged weight, the load lying on the hip,
+whether that is a kettlebell, a dumbbell, a plate or a barbell.
 
 The ratios, the catalogue entries that count as each lift and where the numbers come from are in
 `apps/backend/src/catalog/strength/strength-references.json` and its `NOTICE.md`.
@@ -110,6 +114,7 @@ MCP tools take the same parameters plus `activity_type`.
 ## Limits
 
 - Free-weight lifts only: a machine's or a cable stack's numbers differ from one make to the next,
-  and a bodyweight exercise has no logged weight to estimate from.
+  and a bodyweight exercise has no logged weight to estimate from (the single-leg glute bridge
+  counts with an added weight).
 - No score for the abdominals, calves, forearms or neck.
 - No adjustment for age.

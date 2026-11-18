@@ -49,6 +49,12 @@ export interface TrainingLoadDeps {
    * without this every read would bootstrap again.
    */
   bootstrappedFrom: Map<string, { at: number; fromHour: number }>
+  /** Per user, the impulse recompute running in this process; a read joins it rather than starting another. */
+  recomputing: Map<string, Promise<void>>
+  /** How long (ms) a read waits for a recompute before answering with `recomputing: true`. */
+  recomputeWaitMs: number
+  /** Reports a recompute that failed; one that no read waits for any more fails nowhere else. */
+  onRecomputeError: (user: string, error: unknown) => void
 }
 
 import {
@@ -62,10 +68,12 @@ import {
   insertTimeSeries,
 } from '../../db/index.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
+import { auditError } from '../audit-log.ts'
 import { getSettings } from '../settings.ts'
 import { getEarliestWorkoutStart, getWorkoutActivities } from '../workout-activities.ts'
 
 const processBootstrappedFrom: TrainingLoadDeps['bootstrappedFrom'] = new Map()
+const processRecomputing: TrainingLoadDeps['recomputing'] = new Map()
 
 export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
   bootstrappedFrom: processBootstrappedFrom,
@@ -125,6 +133,14 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
       training_load: s.training_load,
     }
   },
+
+  onRecomputeError: (user, error) => {
+    auditError(user, 'data', 'Training load recompute failed', { error: String(error) })
+  },
+
+  recomputeWaitMs: 5000,
+
+  recomputing: processRecomputing,
 
   updateTrainingLoadSettings: async (user, update) => {
     const current = await getSettings(user)

@@ -1,4 +1,10 @@
-import type { RecoveryZones, TrainingLoadPoint, TrainingLoadSettings, WorkoutTrimp } from '@aurboda/api-spec'
+import type {
+  RecoveryZones,
+  TrainingLoadPoint,
+  TrainingLoadResult,
+  TrainingLoadSettings,
+  WorkoutTrimp,
+} from '@aurboda/api-spec'
 
 export type RecoveryZone = 'undertrained' | 'balanced' | 'strained' | 'very_strained'
 
@@ -68,3 +74,7 @@ export const withTimeConstant = (
   const { [key]: _previous, ...rest } = current ?? {}
   return days === null ? rest : { ...rest, [key]: days }
 }
+
+/** While the server recomputes the stored hours, ask again every few seconds; otherwise not at all. */
+export const recomputePollMs = (data: Pick<TrainingLoadResult, 'recomputing'> | undefined): number | false =>
+  data?.recomputing ? 5000 : false
