@@ -121,6 +121,8 @@ A custom activity profile made on the watch (a copy of a built-in profile with a
 
 A degraded type is recorded in the audit log as a warning (once per distinct key per sync), so new Garmin sports surface there rather than only in `data.garmin_type_key`. A failure on one activity is logged as an error and does not stop the remaining activities in the batch.
 
+Garmin's sync sets the type and title of an activity that also arrives through Health Connect, and the Health Connect copy no longer replaces them (see [Health Connect → Source identity](./health-connect.md#source-identity)). Rows that a Health Connect copy turned into a generic `exercise` without a title before that rule ([#1831](https://github.com/fiddur/aurboda/issues/1831)) get Garmin's type and title back with a **Full Re-sync**.
+
 ## GPS
 
 Activity GPS comes from the activity's FIT file through a usable key, else from the activity detail API (see [Activity detail](#activity-detail-from-the-fit-file)), every sample kept (`geoPolylineDTO` is the fallback when the JSON detail's per-second metrics carry no coordinates). It supersedes coarser tracking from other sources (e.g. OwnTracks phone positions) for the activity's whole span -- see [GPS Precedence](./data-sources.md#gps-precedence).
