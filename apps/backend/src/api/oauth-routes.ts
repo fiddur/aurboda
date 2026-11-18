@@ -2,15 +2,15 @@ import type { Express } from 'express'
 
 import {
   type AuthActionResponse,
-  type CompleteGarminOAuthBody,
-  completeGarminOAuthBodySchema,
+  type CompleteOAuthBody,
+  completeOAuthBodySchema,
   type ConnectGarminPersonalKeyBody,
   connectGarminPersonalKeyBodySchema,
   type GarminLoginResponse,
   type OAuthConnectUrlResponse,
 } from '@aurboda/api-spec'
 
-import type { GarminOAuthClient, GarminOAuthCompletion } from '../integrations/garmin/oauth-client.ts'
+import type { GarminOAuthClient } from '../integrations/garmin/oauth-client.ts'
 import type { GarminClient } from '../integrations/garmin/source.ts'
 import type { GravlClient } from '../integrations/gravl/client.ts'
 import type { ouraClient } from '../integrations/oura/client.ts'
@@ -22,23 +22,23 @@ import { readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 import type { CentralDb } from '../services/central-db.ts'
+import type { OAuthCompletion, OAuthRefusal } from '../services/oauth-completion.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
 import { markNotificationsReadByType, resetSyncState, upsertOAuthToken } from '../db/index.ts'
 import { auditError, auditInfo } from '../services/audit-log.ts'
 import { validateBody } from '../validation.ts'
 
-type GarminOAuthRefusal = Extract<GarminOAuthCompletion, { ok: false }>['reason']
-
-const garminOAuthRefusals: Record<GarminOAuthRefusal, { status: number; error: string }> = {
-  auth_failed: { error: 'Garmin did not complete the connection. Try again.', status: 400 },
-  invalid_state: { error: 'The Garmin sign-in expired. Start it again.', status: 400 },
-  not_configured: { error: 'Garmin sign-in is not set up on this server.', status: 400 },
+/** What the signed-in page is told when a provider's sign-in cannot be finished. */
+const oauthRefusals = (provider: string): Record<OAuthRefusal, { status: number; error: string }> => ({
+  auth_failed: { error: `${provider} did not complete the connection. Try again.`, status: 400 },
+  invalid_state: { error: `The ${provider} sign-in expired. Start it again.`, status: 400 },
+  not_configured: { error: `${provider} sign-in is not set up on this server.`, status: 400 },
   wrong_user: {
-    error: 'This Garmin sign-in was started from another Aurboda account. Start it again from this account.',
+    error: `This ${provider} sign-in was started from another Aurboda account. Start it again from this account.`,
     status: 403,
   },
-}
+})
 
 interface OAuthRoutesDeps {
   httpd: Express
@@ -65,6 +65,29 @@ export const registerOAuthRoutes = ({
   strava,
   markNotificationsReadByType: markReadByType = (user, type) => markNotificationsReadByType(user, type),
 }: OAuthRoutesDeps): void => {
+  const completeRoute = (
+    path: string,
+    provider: string,
+    complete: (user: string, code: string, state: string) => Promise<OAuthCompletion>,
+  ) => {
+    const refusals = oauthRefusals(provider)
+    httpd.post<Record<string, never>, AuthActionResponse, CompleteOAuthBody>(
+      path,
+      authMiddleware,
+      validateBody(completeOAuthBodySchema),
+      async (req, res) => {
+        const { code, state } = req.body
+        const completion = await complete(req.user!, code, state)
+        if (completion.ok) {
+          res.json({ success: true })
+          return
+        }
+        const { error, status } = refusals[completion.reason]
+        res.status(status).json({ error, success: false })
+      },
+    )
+  }
+
   const clearGarminKeyReminders = async (user: string): Promise<void> => {
     try {
       await markReadByType(user, 'garmin_key_expiring')
@@ -75,6 +98,7 @@ export const registerOAuthRoutes = ({
 
   httpd.get('/auth/oura/connect', authMiddleware, oura.getAuthorizeUrl)
   httpd.get('/auth/ouracb', oura.authCb)
+  completeRoute('/auth/oura/complete', 'Oura', (user, code, state) => oura.complete(user, code, state))
 
   httpd.post<Record<string, never>, AuthActionResponse>(
     '/auth/oura/disconnect',
@@ -224,20 +248,8 @@ export const registerOAuthRoutes = ({
   )
   httpd.get('/auth/garmincb', garminOAuth.authCb)
 
-  httpd.post<Record<string, never>, AuthActionResponse, CompleteGarminOAuthBody>(
-    '/auth/garmin/oauth/complete',
-    authMiddleware,
-    validateBody(completeGarminOAuthBodySchema),
-    async (req, res) => {
-      const { code, state } = req.body
-      const completion = await garminOAuth.complete(req.user!, code, state)
-      if (completion.ok) {
-        res.json({ success: true })
-        return
-      }
-      const { error, status } = garminOAuthRefusals[completion.reason]
-      res.status(status).json({ error, success: false })
-    },
+  completeRoute('/auth/garmin/oauth/complete', 'Garmin', (user, code, state) =>
+    garminOAuth.complete(user, code, state),
   )
 
   httpd.post<Record<string, never>, AuthActionResponse>(
@@ -258,6 +270,7 @@ export const registerOAuthRoutes = ({
   // Strava (always registered — credentials checked dynamically)
   httpd.get('/auth/strava/connect', authMiddleware, strava.getAuthorizeUrl)
   httpd.get('/auth/stravacb', strava.authCb)
+  completeRoute('/auth/strava/complete', 'Strava', (user, code, state) => strava.complete(user, code, state))
 
   httpd.post<Record<string, never>, AuthActionResponse>(
     '/auth/strava/disconnect',
@@ -279,6 +292,7 @@ export const registerOAuthRoutes = ({
   // A personal token needs no route: it is a plain user setting.
   httpd.get('/auth/gravl/connect', authMiddleware, gravl.getAuthorizeUrl)
   httpd.get('/auth/gravlcb', gravl.authCb)
+  completeRoute('/auth/gravl/complete', 'Gravl', (user, code, state) => gravl.complete(user, code, state))
 
   httpd.post<Record<string, never>, AuthActionResponse>(
     '/auth/gravl/disconnect',

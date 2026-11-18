@@ -45,12 +45,15 @@ const makeClient = (overrides: {
   http?: Partial<AxiosInstance>
 }) => {
   const upsert = vi.fn()
+  const auditWarn = vi.fn()
+  const ensureUserSchema = vi.fn()
   const http = { get: vi.fn(), post: vi.fn(), ...overrides.http } as unknown as AxiosInstance
   const client = gravlClient(
     async () => (overrides.configured === false ? null : credentials),
     'https://api.example.test',
     {
-      ensureUserSchema: vi.fn(),
+      auditWarn,
+      ensureUserSchema,
       getOAuthToken: async () => overrides.grant ?? null,
       getPersonalToken: async () => overrides.personal ?? null,
       http,
@@ -58,7 +61,16 @@ const makeClient = (overrides: {
       upsertOAuthToken: upsert,
     },
   )
-  return { client, http, upsert }
+  return { auditWarn, client, ensureUserSchema, http, upsert }
+}
+
+const sealedFor = (user: string, iat = NOW.getTime()) =>
+  sealState({ iat, user, verifier: 'the-verifier' }, 'gcs_secret')
+
+const callback = async (client: ReturnType<typeof makeClient>['client'], query: Record<string, unknown>) => {
+  const redirect = vi.fn()
+  await client.authCb({ query } as unknown as Request, { redirect } as unknown as Response)
+  return redirect.mock.calls[0]?.[0] as string
 }
 
 describe('getAccessToken', () => {
@@ -162,38 +174,114 @@ describe('OAuth round trip', () => {
     expect(json.mock.calls[0][0]).toMatchObject({ success: false })
   })
 
-  it('exchanges the code with the verifier from the state on callback', async () => {
+  it('hands the code and state to the page on callback, with no token request and no write', async () => {
+    const { client, ensureUserSchema, http, upsert } = makeClient({})
+    const state = sealedFor('alice')
+    const target = new URL(await callback(client, { code: 'gac_1', state }), 'https://web.example.test')
+    expect(target.pathname).toBe('/data-sources/gravl')
+    expect(target.searchParams.get('gravl_code')).toBe('gac_1')
+    expect(target.searchParams.get('gravl_state')).toBe(state)
+    expect(http.post).not.toHaveBeenCalled()
+    expect(ensureUserSchema).not.toHaveBeenCalled()
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
+  it('bounces an invalid or expired state without touching the token endpoint', async () => {
+    const { client, http } = makeClient({})
+    expect(await callback(client, { code: 'gac_1', state: 'garbage' })).toBe(
+      '/data-sources/gravl?error=invalid_state',
+    )
+    expect(
+      await callback(client, { code: 'gac_1', state: sealedFor('alice', NOW.getTime() - 11 * 60_000) }),
+    ).toBe('/data-sources/gravl?error=invalid_state')
+    expect(http.post).not.toHaveBeenCalled()
+  })
+
+  it('answers auth_failed for a repeated code or state, and not_configured without credentials', async () => {
+    const { client, http } = makeClient({})
+    const state = sealedFor('alice')
+    expect(await callback(client, { code: ['gac_1', 'gac_2'], state })).toBe(
+      '/data-sources/gravl?error=auth_failed',
+    )
+    expect(await callback(client, { code: 'gac_1', state: [state, state] })).toBe(
+      '/data-sources/gravl?error=auth_failed',
+    )
+    expect(http.post).not.toHaveBeenCalled()
+    const { client: unconfigured } = makeClient({ configured: false })
+    expect(await callback(unconfigured, { code: 'gac_1', state })).toBe(
+      '/data-sources/gravl?error=not_configured',
+    )
+  })
+})
+
+describe('complete', () => {
+  it('exchanges the code with the verifier from the state and stores the grant', async () => {
     const post = vi.fn().mockResolvedValue({
       data: { access_token: 'gat_1', expires_in: 21600, refresh_token: 'grt_1', scope: 'workouts:read' },
     })
-    const { client, upsert } = makeClient({ http: { post } })
-    const state = sealState({ iat: NOW.getTime(), user: 'alice', verifier: 'the-verifier' }, 'gcs_secret')
-    const redirect = vi.fn()
-    await client.authCb(
-      { query: { code: 'gac_1', state } } as unknown as Request,
-      { redirect } as unknown as Response,
-    )
+    const { client, ensureUserSchema, upsert } = makeClient({ http: { post } })
+    expect(await client.complete('alice', 'gac_1', sealedFor('alice'))).toEqual({ ok: true })
     const body = post.mock.calls[0][1] as URLSearchParams
     expect(body.get('grant_type')).toBe('authorization_code')
     expect(body.get('code')).toBe('gac_1')
     expect(body.get('code_verifier')).toBe('the-verifier')
     expect(body.get('redirect_uri')).toBe('https://api.example.test/auth/gravlcb')
-    expect(upsert).toHaveBeenCalledWith(
-      'alice',
-      expect.objectContaining({ access_token: 'gat_1', provider: 'gravl' }),
-    )
-    expect(redirect).toHaveBeenCalledWith('/data-sources/gravl?connected=true')
+    expect(ensureUserSchema).toHaveBeenCalledWith('alice')
+    expect(upsert).toHaveBeenCalledWith('alice', {
+      access_token: 'gat_1',
+      expires_at: new Date('2026-09-03T16:00:00Z'),
+      provider: 'gravl',
+      refresh_token: 'grt_1',
+      scopes: ['workouts:read'],
+    })
   })
 
-  it('bounces an invalid state without touching the token endpoint', async () => {
-    const { client, http } = makeClient({})
-    const redirect = vi.fn()
-    await client.authCb(
-      { query: { code: 'gac_1', state: 'garbage' } } as unknown as Request,
-      { redirect } as unknown as Response,
-    )
+  it('refuses a sign-in started by another account before any request', async () => {
+    const { auditWarn, client, ensureUserSchema, http, upsert } = makeClient({})
+    expect(await client.complete('alice', 'gac_1', sealedFor('bob'))).toEqual({
+      ok: false,
+      reason: 'wrong_user',
+    })
     expect(http.post).not.toHaveBeenCalled()
-    expect(redirect).toHaveBeenCalledWith('/data-sources/gravl?error=invalid_state')
+    expect(ensureUserSchema).not.toHaveBeenCalled()
+    expect(upsert).not.toHaveBeenCalled()
+    expect(auditWarn.mock.calls).toEqual([
+      ['alice', 'auth', 'Gravl sign-in started by another account was refused'],
+    ])
+  })
+
+  it('answers invalid_state for an expired or tampered state, and not_configured without credentials', async () => {
+    const { client, http } = makeClient({})
+    expect(await client.complete('alice', 'gac_1', sealedFor('alice', NOW.getTime() - 11 * 60_000))).toEqual({
+      ok: false,
+      reason: 'invalid_state',
+    })
+    expect(await client.complete('alice', 'gac_1', 'garbage')).toEqual({ ok: false, reason: 'invalid_state' })
+    expect(http.post).not.toHaveBeenCalled()
+    const { client: unconfigured } = makeClient({ configured: false })
+    expect(await unconfigured.complete('alice', 'gac_1', sealedFor('alice'))).toEqual({
+      ok: false,
+      reason: 'not_configured',
+    })
+  })
+
+  it('answers auth_failed when the exchange fails, storing nothing and auditing no secret', async () => {
+    const post = vi.fn().mockRejectedValue(axiosFailure(400, { title: 'invalid_grant', detail: 'gac_1' }))
+    const { auditWarn, client, upsert } = makeClient({ http: { post } })
+    expect(await client.complete('alice', 'gac_1', sealedFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+    expect(upsert).not.toHaveBeenCalled()
+    expect(auditWarn).toHaveBeenCalledWith(
+      'alice',
+      'auth',
+      'Gravl OAuth connection failed',
+      expect.anything(),
+    )
+    const audited = JSON.stringify(auditWarn.mock.calls)
+    expect(audited).not.toContain('gac_1')
+    expect(audited).not.toContain('gcs_secret')
   })
 })
 

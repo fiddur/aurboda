@@ -1,13 +1,21 @@
 const FULL_DETAIL_MAX_CHARS = 4096
 const SUMMARY_STRING_MAX_CHARS = 200
 
-/** `code` and `state` are an OAuth sign-in's, which finish through an authenticated POST. */
-const SECRET_KEYS = new Set(['code', 'state'])
+/** These routes finish an OAuth sign-in: their `code` and `state` are the provider's authorization code and state. */
+const OAUTH_COMPLETION_PATHS = new Set([
+  '/auth/garmin/oauth/complete',
+  '/auth/gravl/complete',
+  '/auth/oura/complete',
+  '/auth/strava/complete',
+])
+const OAUTH_COMPLETION_KEYS = new Set(['code', 'state'])
 
 /** By suffix, so a credential added to a settings form later is redacted without a change here. */
 const SECRET_KEY_PATTERN = /(^|_)(api_key|password|secret|token)$/
 
-const isSecretKey = (key: string): boolean => SECRET_KEYS.has(key) || SECRET_KEY_PATTERN.test(key)
+const isSecretKey = (key: string, path: string | undefined): boolean =>
+  SECRET_KEY_PATTERN.test(key) ||
+  (path !== undefined && OAUTH_COMPLETION_PATHS.has(path) && OAUTH_COMPLETION_KEYS.has(key))
 
 const summarizeValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return { count: value.length }
@@ -35,13 +43,13 @@ const certainlyOverLimit = (values: unknown[]): boolean =>
  * bulk uploads (sync chunks up to 10 MB) are reduced to a shallow summary so
  * the audit log does not store every upload a second time.
  */
-export const summarizeAuditBody = (body: unknown): Record<string, unknown> | undefined => {
+export const summarizeAuditBody = (body: unknown, path?: string): Record<string, unknown> | undefined => {
   if (Array.isArray(body)) return { items: body.length }
   if (body === null || typeof body !== 'object') return undefined
 
   const redacted = Object.fromEntries(
     Object.entries(body as Record<string, unknown>).map(([k, v]) =>
-      isSecretKey(k) ? [k, '[REDACTED]'] : [k, v],
+      isSecretKey(k, path) ? [k, '[REDACTED]'] : [k, v],
     ),
   )
   if (

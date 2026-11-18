@@ -75,9 +75,16 @@ The flow is authorization-code + PKCE (S256). Access tokens live six hours and a
 Go to **Data Sources → Gravl**. Two ways in, and the OAuth grant wins when both exist:
 
 - **Personal access token.** Create one at [gravl.ai/developers/personal-tokens](https://gravl.ai/developers/personal-tokens) with the `workouts:read` scope and paste it into the token field. Works on any deployment, no admin involvement.
-- **Connect Gravl (OAuth).** Available when the admin has configured an app. Click the button and grant access on Gravl.
+- **Connect Gravl (OAuth).** Available when the admin has configured an app. Click the button and grant access on Gravl. The PKCE verifier and the user travel in the `state`, sealed under the client secret and valid for ten minutes.
 
 Then **Sync Now**, or wait for the background poll.
+
+**Two-step finish.** Gravl's redirect carries no Aurboda login, so the sign-in finishes the way [Connect with Garmin's round trip](garmin.md#connect-with-garmin) does, and for the same reason:
+
+1. **Hand-over.** Gravl redirects to `GET /api/auth/gravlcb`, which links nothing and sends nothing to Gravl. It checks that the state verifies and redirects to `/data-sources/gravl?gravl_code=<code>&gravl_state=<state>`, or to `/data-sources/gravl?error=<code>` with `auth_failed` (Gravl answered an error, or no code or state, or one of them repeated), `not_configured` or `invalid_state`.
+2. **Completion by the signed-in page.** The Gravl page removes the two parameters from the address and sends them to `POST /api/auth/gravl/complete` (`{ code, state }`, behind the login). A sign-in started from another Aurboda account answers `403` before anything is sent to Gravl, and is audited on the signed-in user only. Otherwise it exchanges the code, stores the grant and answers `{ success: true }`. An expired or tampered state, a server without credentials and a failed exchange answer `400` with a message the page shows.
+
+A sign-in started in the Android app consents in the phone's browser, so it finishes in that browser, which must be signed in to the same Aurboda account. Without a login there the page offers **Log in to finish connecting Gravl**, which comes back to the page after the login.
 
 ## How Sync Works
 

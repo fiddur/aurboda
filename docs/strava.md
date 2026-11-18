@@ -51,10 +51,17 @@ If these are not set, the "Connect Strava" button will be disabled with a messag
 1. Go to **Data Sources > Strava**
 2. Click **Connect Strava**
 3. Authorize Aurboda on the Strava website
-4. You'll be redirected back. The page will show "Connected" when successful.
+4. You'll be redirected back, and the page finishes the connection. It shows "Connected" when successful.
 
 This uses a standard OAuth 2.0 authorization code flow. Access tokens (6-hour expiry) are automatically refreshed using the stored refresh token.
 The `state` parameter is signed with the Strava client secret and expires after ten minutes, so a connect started more than ten minutes ago must be restarted.
+
+**Two-step finish.** Strava's redirect carries no Aurboda login, so the sign-in finishes the way [Connect with Garmin's round trip](garmin.md#connect-with-garmin) does, and for the same reason:
+
+1. **Hand-over.** Strava redirects to `GET /api/auth/stravacb`, which links nothing and sends nothing to Strava. It checks that the state verifies and redirects to `/data-sources/strava?strava_code=<code>&strava_state=<state>`, or to `/data-sources/strava?error=<code>` with `auth_failed` (Strava answered an error, or no code or state, or one of them repeated), `not_configured` or `invalid_state`.
+2. **Completion by the signed-in page.** The Strava page removes the two parameters from the address and sends them to `POST /api/auth/strava/complete` (`{ code, state }`, behind the login). A sign-in started from another Aurboda account answers `403` before anything is sent to Strava, and is audited on the signed-in user only. Otherwise it exchanges the code, stores the grant and maps the Strava athlete id for webhooks and answers `{ success: true }`. An expired or tampered state, a server without credentials and a failed exchange answer `400` with a message the page shows.
+
+A sign-in started in the Android app consents in the phone's browser, so it finishes in that browser, which must be signed in to the same Aurboda account. Without a login there the page offers **Log in to finish connecting Strava**, which comes back to the page after the login.
 
 ## Sync
 

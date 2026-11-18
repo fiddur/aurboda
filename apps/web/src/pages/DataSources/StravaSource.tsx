@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
 import {
+  completeOAuth,
   disconnectStrava,
   fetchStravaSyncStatus,
   fetchUserSettings,
@@ -11,7 +12,15 @@ import {
   syncStrava,
 } from '../../state/api'
 import { auth } from '../../state/auth'
-import { type DataTypeItem, DataTypesList, LoginRequired, StatusBanner, SyncStatusBar } from './shared'
+import { callbackErrorText, useOAuthCompletion } from './oauthReturn'
+import {
+  type DataTypeItem,
+  DataTypesList,
+  LoginRequiredToFinish,
+  OAuthFinishLines,
+  StatusBanner,
+  SyncStatusBar,
+} from './shared'
 import './style.css'
 
 const DATA_TYPES: DataTypeItem[] = [
@@ -21,6 +30,8 @@ const DATA_TYPES: DataTypeItem[] = [
   { label: 'Cadence and power data' },
   { label: 'Suffer score and activity stats' },
 ]
+
+const completeStrava = (code: string, state: string) => completeOAuth('strava', code, state)
 
 function StravaConnection({
   isConnected,
@@ -40,6 +51,20 @@ function StravaConnection({
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [syncMessage, setSyncMessage] = useState('')
   const [disconnecting, setDisconnecting] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(() => callbackErrorText('Strava'))
+
+  const refreshConnection = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await queryClient.invalidateQueries({ queryKey: ['stravaSyncStatus'] })
+  }, [queryClient])
+
+  const finishing = useOAuthCompletion({
+    complete: completeStrava,
+    onChanged: refreshConnection,
+    provider: 'strava',
+    providerName: 'Strava',
+    setError: setConnectError,
+  })
 
   const isSyncing = syncStates?.some((s) => s.status === 'syncing') ?? false
 
@@ -158,6 +183,7 @@ function StravaConnection({
             </p>
           </>
         )}
+        <OAuthFinishLines error={connectError} finishing={finishing} providerName="Strava" />
       </section>
     </>
   )
@@ -184,7 +210,7 @@ export function StravaSource() {
     refetchInterval: shouldPoll ? 5000 : false,
   })
 
-  if (!isLoggedIn) return <LoginRequired />
+  if (!isLoggedIn) return <LoginRequiredToFinish provider="strava" providerName="Strava" />
 
   return (
     <div class="data-sources-page">

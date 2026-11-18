@@ -23,7 +23,6 @@ import {
   garminDataTypeNote,
   garminDataTypeSourceNote,
   garminLoginOnlyData,
-  garminOAuthReturn,
   type GarminSwitchStep,
   garminSwitchStep,
   joinList,
@@ -33,7 +32,7 @@ import { GarminPersonalKey } from './GarminPersonalKey'
 import {
   type DataTypeItem,
   DataTypesList,
-  LoginRequired,
+  LoginRequiredToFinish,
   StatusBanner,
   SyncIntervalField,
   SyncStatusBar,
@@ -643,19 +642,7 @@ export function GarminSource() {
     }
   }, [queryClient])
 
-  if (!isLoggedIn) {
-    const { pathname, search } = window.location
-    if (!garminOAuthReturn(search)) return <LoginRequired />
-    return (
-      <div class="data-sources-page">
-        <p>
-          <a href={`/login?next=${encodeURIComponent(pathname + search)}`}>
-            Log in to finish connecting Garmin
-          </a>
-        </p>
-      </div>
-    )
-  }
+  if (!isLoggedIn) return <LoginRequiredToFinish provider="garmin" providerName="Garmin" />
 
   return (
     <div class="data-sources-page">

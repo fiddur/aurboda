@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 
 import {
+  completeOAuth,
   disconnectGravl,
   fetchGravlSyncStatus,
   fetchUserSettings,
@@ -12,10 +13,12 @@ import {
   updateUserSettings,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { callbackErrorText, useOAuthCompletion } from './oauthReturn'
 import {
   type DataTypeItem,
   DataTypesList,
-  LoginRequired,
+  LoginRequiredToFinish,
+  OAuthFinishLines,
   type SaveStatus,
   SaveStatusIndicator,
   StatusBanner,
@@ -34,6 +37,8 @@ const DATA_TYPES: DataTypeItem[] = [
 
 type GravlConnection = 'oauth' | 'token' | null
 
+const completeGravl = (code: string, state: string) => completeOAuth('gravl', code, state)
+
 const connectionLabel = (connection: GravlConnection): string => {
   if (connection === 'oauth') return 'Gravl is connected (OAuth)'
   if (connection === 'token') return 'Gravl is connected (personal token)'
@@ -43,14 +48,21 @@ const connectionLabel = (connection: GravlConnection): string => {
 function GravlOAuthSection({
   connection,
   isConfigured,
-  onDisconnected,
+  onChanged,
 }: {
   connection: GravlConnection
   isConfigured: boolean
-  onDisconnected: () => Promise<void>
+  onChanged: () => Promise<void>
 }) {
-  const [error, setError] = useState('')
+  const [error, setError] = useState<string | null>(() => callbackErrorText('Gravl'))
   const [disconnecting, setDisconnecting] = useState(false)
+  const finishing = useOAuthCompletion({
+    complete: completeGravl,
+    onChanged,
+    provider: 'gravl',
+    providerName: 'Gravl',
+    setError,
+  })
 
   const handleConnect = useCallback(async () => {
     try {
@@ -65,13 +77,13 @@ function GravlOAuthSection({
     setDisconnecting(true)
     try {
       await disconnectGravl()
-      await onDisconnected()
+      await onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disconnect')
     } finally {
       setDisconnecting(false)
     }
-  }, [onDisconnected])
+  }, [onChanged])
 
   return (
     <section class="settings-section">
@@ -109,7 +121,7 @@ function GravlOAuthSection({
           </p>
         </>
       )}
-      {error && <p class="garmin-sync-message error">{error}</p>}
+      <OAuthFinishLines error={error} finishing={finishing} providerName="Gravl" />
     </section>
   )
 }
@@ -264,7 +276,7 @@ export function GravlSource() {
     await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
   }, [queryClient])
 
-  if (!isLoggedIn) return <LoginRequired />
+  if (!isLoggedIn) return <LoginRequiredToFinish provider="gravl" providerName="Gravl" />
 
   return (
     <div class="data-sources-page">
@@ -316,7 +328,7 @@ export function GravlSource() {
             <GravlOAuthSection
               connection={connection}
               isConfigured={isConfigured}
-              onDisconnected={refreshSettings}
+              onChanged={refreshSettings}
             />
             <GravlTokenSection connection={connection} />
             <SyncIntervalField provider="gravl" />

@@ -10,15 +10,12 @@ import {
   garminDataTypeSourceNote,
   garminLastReceivedText,
   garminLoginOnlyData,
-  garminOAuthReturn,
   garminPermissionLabel,
   garminSwitchStep,
   joinList,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
-  oauthErrorText,
-  withoutGarminOAuthReturn,
 } from './garminConnection'
 
 describe('expiry quick choices', () => {
@@ -162,16 +159,6 @@ describe('garminDataTypeNote', () => {
   })
 })
 
-describe('oauthErrorText', () => {
-  it('explains each callback error code, and an unknown one as a failed connection', () => {
-    expect(oauthErrorText('auth_failed')).toBe('Garmin did not complete the connection. Try again.')
-    expect(oauthErrorText('not_configured')).toBe('This server has not set up Garmin sign-in.')
-    expect(oauthErrorText('invalid_state')).toBe('The connection attempt expired. Try again.')
-    expect(oauthErrorText('something_else')).toBe('Garmin did not complete the connection. Try again.')
-    expect(oauthErrorText(null)).toBeNull()
-  })
-})
-
 describe('garminLastReceivedText', () => {
   const now = new Date('2026-11-17T10:00:00Z')
 
@@ -195,34 +182,6 @@ describe('garminPermissionLabel', () => {
     expect(garminPermissionLabel('WORKOUT_IMPORT')).toBe('Sending workouts')
     expect(garminPermissionLabel('COURSE_IMPORT')).toBe('Sending courses')
     expect(garminPermissionLabel('NEW_THING')).toBe('NEW_THING')
-  })
-})
-
-describe('garminOAuthReturn', () => {
-  it('reads the code and state the callback hands over', () => {
-    expect(garminOAuthReturn('?garmin_code=fake-code&garmin_state=fake%2Bstate')).toEqual({
-      code: 'fake-code',
-      state: 'fake+state',
-    })
-  })
-
-  it('is null unless both are present and non-empty', () => {
-    expect(garminOAuthReturn('')).toBeNull()
-    expect(garminOAuthReturn('?garmin_code=fake-code')).toBeNull()
-    expect(garminOAuthReturn('?garmin_state=fake-state')).toBeNull()
-    expect(garminOAuthReturn('?garmin_code=&garmin_state=fake-state')).toBeNull()
-    expect(garminOAuthReturn('?error=auth_failed')).toBeNull()
-  })
-})
-
-describe('withoutGarminOAuthReturn', () => {
-  it('removes the code and state and keeps everything else', () => {
-    expect(withoutGarminOAuthReturn('?embed=1&garmin_code=fake-code&garmin_state=fake-state')).toBe(
-      '?embed=1',
-    )
-    expect(withoutGarminOAuthReturn('?garmin_code=fake-code&garmin_state=fake-state')).toBe('')
-    expect(withoutGarminOAuthReturn('')).toBe('')
-    expect(withoutGarminOAuthReturn('?embed=1')).toBe('?embed=1')
   })
 })
 
