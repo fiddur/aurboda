@@ -19,6 +19,7 @@ import {
   summarizeImpulseBasis,
   type TrainingLoadDeps,
 } from './index.ts'
+import { IMPULSE_VERSION } from './recompute.ts'
 
 describe('calculateTrimp', () => {
   test('computes classic Banister TRIMP for a typical workout', () => {
@@ -815,7 +816,7 @@ describe('computeTrainingLoad', () => {
       await computeTrainingLoad(deps, 'testuser', ...range)
 
       expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
-        impulse_version: 2,
+        impulse_version: IMPULSE_VERSION,
         impulse_watermark: earliest.toISOString(),
       })
       expect(trainingDeleteStarts(deleteImpulseBuckets)[0]).toBe(floorToHour(earliest).toISOString())
@@ -837,7 +838,7 @@ describe('computeTrainingLoad', () => {
       await computeTrainingLoad(deps, 'testuser', ...range)
 
       expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
-        impulse_version: 2,
+        impulse_version: IMPULSE_VERSION,
         impulse_watermark: '2023-01-02T03:00:00.000Z',
       })
       expect(trainingDeleteStarts(deleteImpulseBuckets)[0]).toBe('2023-01-02T03:00:00.000Z')
@@ -857,7 +858,7 @@ describe('computeTrainingLoad', () => {
 
       expect(updateTrainingLoadSettings).toHaveBeenCalledTimes(1)
       const update = updateTrainingLoadSettings.mock.calls[0]![1]
-      expect(update).toEqual({ impulse_version: 2 })
+      expect(update).toEqual({ impulse_version: IMPULSE_VERSION })
       expect('impulse_watermark' in update).toBe(false)
       expect(deleteImpulseBuckets).not.toHaveBeenCalled()
     })
@@ -868,7 +869,7 @@ describe('computeTrainingLoad', () => {
       const deps = makeDeps({
         getEarliestExerciseStart,
         getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
-        getUserSettings: settingsWith({ impulse_version: 2, observed_hr_max: 190 }),
+        getUserSettings: settingsWith({ impulse_version: IMPULSE_VERSION, observed_hr_max: 190 }),
         updateTrainingLoadSettings,
       })
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { insertActivities } from '../db/activities/index.ts'
+import { insertActivities, insertActivity, insertOverride } from '../db/activities/index.ts'
 import { insertActivityTypeDefinition } from '../db/activity-type-definitions.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getEarliestWorkoutStart, getWorkoutActivities } from './workout-activities.ts'
@@ -85,5 +85,70 @@ describe('workout activities (integration)', () => {
     ])
 
     expect(await getEarliestWorkoutStart(user)).toEqual(at(4, 10))
+  })
+
+  test('a synced workout retyped to a non-workout type does not count (#1830)', async () => {
+    const user = getTestUser()
+    await insertActivityTypeDefinition(user, {
+      display_category: 'other',
+      display_name: 'Pipe Ceremony',
+      name: 'pipe_ceremony',
+    })
+    const garminId = await insertActivity(user, {
+      activity_type: 'other_workout',
+      end_time: at(2, 11),
+      source: 'garmin',
+      start_time: at(2, 10),
+    })
+    await insertOverride(user, [garminId], {
+      activity_type: 'pipe_ceremony',
+      end_time: at(2, 11),
+      start_time: at(2, 10),
+    })
+
+    expect(await getWorkoutActivities(user, ...RANGE)).toEqual([])
+  })
+
+  test('a session retyped into a workout type counts once, under the new type (#1830)', async () => {
+    const user = getTestUser()
+    const garminId = await insertActivity(user, {
+      activity_type: 'meditation',
+      end_time: at(2, 11),
+      source: 'garmin',
+      start_time: at(2, 10),
+    })
+    const override = await insertOverride(user, [garminId], {
+      activity_type: 'yoga',
+      end_time: at(2, 11),
+      start_time: at(2, 10),
+    })
+
+    const workouts = await getWorkoutActivities(user, ...RANGE)
+    expect(workouts.map((w) => [w.id, w.activity_type])).toEqual([[override!.id, 'yoga']])
+  })
+
+  test('a meditation logged by hand over a synced workout wins (#1830)', async () => {
+    const user = getTestUser()
+    await insertActivities(user, [
+      { activity_type: 'other_workout', end_time: at(2, 11), source: 'garmin', start_time: at(2, 10) },
+      {
+        activity_type: 'meditation',
+        end_time: at(2, 11),
+        source: 'manual',
+        start_time: new Date(at(2, 10).getTime() + 30_000),
+      },
+    ])
+
+    expect(await getWorkoutActivities(user, ...RANGE)).toEqual([])
+  })
+
+  test('a generic exercise inside a meditation is absorbed (#1830)', async () => {
+    const user = getTestUser()
+    await insertActivities(user, [
+      { activity_type: 'exercise', end_time: at(2, 10, 30), source: 'health_connect', start_time: at(2, 10) },
+      { activity_type: 'meditation', end_time: at(2, 10, 40), source: 'oura', start_time: at(2, 10, 5) },
+    ])
+
+    expect(await getWorkoutActivities(user, ...RANGE)).toEqual([])
   })
 })

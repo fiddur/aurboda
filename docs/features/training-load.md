@@ -34,6 +34,8 @@ When a workout has no usable heart rate (none recorded during it, or an average 
 
 A workout is any session whose activity type is `exercise`, one of its subtypes (running, yoga, strength training, walking and the other built-in exercise types, and custom subtypes of them), or a custom type in the Exercise category. Meditation, sleep and wellness sessions do not count. The same workout recorded by several sources (say Garmin and a live-logged session) counts once.
 
+A session counts under the type it has after merges and rules, as the day view shows it. One that a rule or an edit retyped to a non-workout type does not count, one retyped into a workout type does, and a meditation logged over a synced workout is a meditation.
+
 ### Activity Impulse
 
 Training stress from general daily movement (active calories). Converted from calories using a scale factor (default: 100 active calories = 10 impulse units). This captures non-workout activity like walking and housework.
