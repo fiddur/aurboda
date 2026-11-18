@@ -110,6 +110,25 @@ val moreGroups: List<MoreGroup> = listOf(
     ),
 )
 
+/** Menu paths never hidden, whatever `hidden_pages` says, and everything under /admin; twin of the web's MENU_ALWAYS_SHOWN. */
+val MENU_ALWAYS_SHOWN: List<String> = listOf("/", "/settings", "/help", "/notifications", "/admin")
+
+fun isPageHidden(path: String, hiddenPages: Collection<String>): Boolean =
+    path !in MENU_ALWAYS_SHOWN && !path.startsWith("/admin/") && path in hiddenPages
+
+/** [groups] without the web pages in [hiddenPages] and without groups left empty; native screens always stay. */
+fun visibleMoreGroups(groups: List<MoreGroup>, hiddenPages: Collection<String>): List<MoreGroup> =
+    groups
+        .map { group ->
+            group.copy(
+                items = group.items.filterNot { item ->
+                    val destination = item.destination
+                    destination is MoreDestination.Web && isPageHidden(destination.path, hiddenPages)
+                },
+            )
+        }
+        .filter { it.items.isNotEmpty() }
+
 /**
  * The "More" tab: a hub listing every screen not on the bottom bar. Selecting an
  * entry pushes it in place (embedded web page, or the native Live / Account
@@ -134,6 +153,7 @@ fun MoreScreen(
     modifier: Modifier = Modifier,
     onOpenWebPage: (String) -> Unit = {},
     unreadNotifications: Int = 0,
+    hiddenPages: List<String> = emptyList(),
     webPageLinks: Int = 0,
     webPage: @Composable (url: String, modifier: Modifier) -> Unit = { url, pageModifier ->
         EmbeddedWebScreen(
@@ -146,7 +166,13 @@ fun MoreScreen(
     },
 ) {
     when (val dest = destination) {
-        null -> MoreHub(onSelect = onSelect, unreadNotifications = unreadNotifications, modifier = modifier)
+        null ->
+            MoreHub(
+                onSelect = onSelect,
+                unreadNotifications = unreadNotifications,
+                hiddenPages = hiddenPages,
+                modifier = modifier,
+            )
         else -> {
             BackHandler { onBack() }
             when (dest) {
@@ -175,6 +201,7 @@ fun MoreScreen(
 private fun MoreHub(
     onSelect: (MoreDestination) -> Unit,
     unreadNotifications: Int,
+    hiddenPages: List<String>,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -182,7 +209,7 @@ private fun MoreHub(
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
     ) {
-        moreGroups.forEach { group ->
+        visibleMoreGroups(moreGroups, hiddenPages).forEach { group ->
             Text(
                 text = group.header,
                 style = MaterialTheme.typography.titleSmall,

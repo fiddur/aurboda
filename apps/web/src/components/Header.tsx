@@ -10,8 +10,10 @@ import {
   NAV_LINKS_SECONDARY,
   pageTitleForPath,
   SHARING_LINKS,
+  visibleLinks,
 } from './nav-links'
 import { NotificationBellLink } from './NotificationBell'
+import { useHiddenPages } from './useHiddenPages'
 
 // eslint-disable-next-line complexity -- navigation component with many branches
 export function Header() {
@@ -19,6 +21,9 @@ export function Header() {
   const isLoggedIn = auth.value.token
   const isAdmin = auth.value.is_admin
   const canSignup = signupMode.value === 'open'
+  const hidden = useHiddenPages()
+  const sharingLinks = visibleLinks(SHARING_LINKS, hidden)
+  const dataSourceLinks = visibleLinks(DATA_SOURCE_LINKS, hidden)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [dsExpandedInDrawer, setDsExpandedInDrawer] = useState(false)
@@ -91,25 +96,29 @@ export function Header() {
             <a href="/" class={url === '/' ? 'active' : undefined} onClick={closeDrawer}>
               Home
             </a>
-            {NAV_LINKS_PRIMARY.filter((l) => l.href !== '/').map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                class={url === link.href ? 'active' : undefined}
-                onClick={closeDrawer}
+            {visibleLinks(NAV_LINKS_PRIMARY, hidden)
+              .filter((l) => l.href !== '/')
+              .map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  class={url === link.href ? 'active' : undefined}
+                  onClick={closeDrawer}
+                >
+                  {link.label}
+                </a>
+              ))}
+            {sharingLinks.length > 0 && (
+              <button
+                class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
+                onClick={() => setSharingExpandedInDrawer((v) => !v)}
+                type="button"
               >
-                {link.label}
-              </a>
-            ))}
-            <button
-              class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
-              onClick={() => setSharingExpandedInDrawer((v) => !v)}
-              type="button"
-            >
-              Sharing <span class="dropdown-arrow">{sharingExpandedInDrawer ? '▴' : '▾'}</span>
-            </button>
+                Sharing <span class="dropdown-arrow">{sharingExpandedInDrawer ? '▴' : '▾'}</span>
+              </button>
+            )}
             {sharingExpandedInDrawer &&
-              SHARING_LINKS.map((link) => (
+              sharingLinks.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
@@ -119,7 +128,7 @@ export function Header() {
                   {link.label}
                 </a>
               ))}
-            {NAV_LINKS_SECONDARY.map((link) => (
+            {visibleLinks(NAV_LINKS_SECONDARY, hidden).map((link) => (
               <a
                 key={link.href}
                 href={link.href}
@@ -129,15 +138,17 @@ export function Header() {
                 {link.label}
               </a>
             ))}
-            <button
-              class={`drawer-section-toggle${isDataSourcesActive ? ' active' : ''}`}
-              onClick={() => setDsExpandedInDrawer((v) => !v)}
-              type="button"
-            >
-              Data Sources <span class="dropdown-arrow">{dsExpandedInDrawer ? '\u25B4' : '\u25BE'}</span>
-            </button>
+            {dataSourceLinks.length > 0 && (
+              <button
+                class={`drawer-section-toggle${isDataSourcesActive ? ' active' : ''}`}
+                onClick={() => setDsExpandedInDrawer((v) => !v)}
+                type="button"
+              >
+                Data Sources <span class="dropdown-arrow">{dsExpandedInDrawer ? '\u25B4' : '\u25BE'}</span>
+              </button>
+            )}
             {dsExpandedInDrawer &&
-              DATA_SOURCE_LINKS.map((link) => (
+              dataSourceLinks.map((link) => (
                 <a
                   key={link.path}
                   href={link.path}

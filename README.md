@@ -61,6 +61,7 @@ Everything above feeds a common data model, so every feature works across every 
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
 - **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
 - **Stay informed** -- [notifications](docs/features/notifications.md) under a 🛎 bell, with per-type in-app and push switches, and your own recurring [reminders](docs/features/reminders.md)
+- **Make it yours** -- [choose which pages show in the menu](docs/features/menu.md), so the menu holds only what you use
 - **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
 
 Each links to detailed docs, and the sections below walk through the highlights with screenshots.

@@ -9,6 +9,7 @@ import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
 import { LinkedProvidersSettings } from '../../components/LinkedProvidersSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
+import { MenuSettings } from '../../components/MenuSettings'
 import { NotificationSettings } from '../../components/NotificationSettings'
 import { PasskeySettings } from '../../components/PasskeySettings'
 import { PlanSettings } from '../../components/PlanSettings'
@@ -357,6 +358,8 @@ export function Settings() {
           </p>
         </div>
       </SettingsSection>
+
+      <MenuSettings />
 
       <NotificationSettings />
 

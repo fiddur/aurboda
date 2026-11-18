@@ -51,6 +51,18 @@ tapping **More** on the bottom bar again. The pushed sub-page lives in
 clear it — otherwise the hub would be unreachable from a sub-page. Keep
 `moreGroups` in sync with the web navigation (`apps/web/src/components/nav-links.ts`).
 
+Both the hub and the bottom bar follow the [pages the user hid from the menu](features/menu.md)
+(`hidden_pages` in the user settings). `visibleMoreGroups` leaves out each web entry whose path is
+hidden and any group left empty; the native Live and Account screens and the never-hidden pages
+(`MENU_ALWAYS_SHOWN`: Notifications, Settings, Help, …) always stay. The More hub's single **Data
+sources** entry is the web's Data sources overview (`/data-sources`), so it follows that switch. On
+the bottom bar each embedded tab maps to its web page (`tabWebPath`: Home `/`, Add `/add`, Feed
+`/feed`) and `visibleMainTabs` drops the hidden ones; Home, Sync and More always stay. Hiding only
+removes the entry: a notification or widget link still opens the page. The app holds the last list
+it fetched in `AppState.hiddenPages`, fetched with `GET /user/settings` when the main screen starts
+or resumes, when More is tapped and when an embedded page (such as Settings, where the switches
+are) is closed; a failed fetch keeps the last list, and before the first one nothing is hidden.
+
 Tapping **Home** or **Feed** while already on it reloads that tab's root page in
 a fresh WebView (with fresh history): `selectTab` bumps `AppState.tabReselections`
 when the current tab is tapped again, and both embedded tabs are wrapped in

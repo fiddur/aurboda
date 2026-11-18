@@ -1,0 +1,66 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import type { McpServer } from './helpers.ts'
+
+import { registerSettingsTools } from './settings-tools.ts'
+
+type ToolHandler = (params: Record<string, unknown>) => Promise<{ content: Array<{ text: string }> }>
+
+const store = vi.hoisted(() => ({ settings: {} as Record<string, unknown> }))
+
+vi.mock('../db/index.ts', () => ({
+  getActivityTypeNames: async () => [],
+  getAllSyncStates: async () => [],
+  getGoals: async () => [],
+  getOAuthToken: async () => null,
+  getUserSettings: async () => store.settings,
+  replaceGoals: async () => {},
+  upsertUserSettings: async (_user: string, updates: Record<string, unknown>, clear: string[] = []) => {
+    const next = { ...store.settings, ...updates }
+    for (const key of clear) delete next[key]
+    store.settings = next
+    return next
+  },
+}))
+
+vi.mock('../services/central-db.ts', () => ({
+  getCentralDb: () => ({
+    getLastFmApiKey: async () => null,
+    getServerSetting: async () => null,
+  }),
+}))
+
+const setup = () => {
+  const tools = new Map<string, ToolHandler>()
+  const server = {
+    tool: (name: string, _description: string, _shape: unknown, handler: ToolHandler) =>
+      tools.set(name, handler),
+  } as unknown as McpServer
+  registerSettingsTools(server, 'alice')
+  return async (name: string, params: Record<string, unknown> = {}) =>
+    JSON.parse((await tools.get(name)!(params)).content[0]!.text) as Record<string, unknown>
+}
+
+beforeEach(() => {
+  store.settings = {}
+})
+
+describe('hidden_pages through the settings MCP tools', () => {
+  test('get_user_settings lists none until set', async () => {
+    const call = setup()
+    expect((await call('get_user_settings')).hidden_pages).toEqual([])
+  })
+
+  test('update_user_settings stores the list, an unknown path included, and get reads it back', async () => {
+    const call = setup()
+    const hidden = ['/strength', '/no-such-page']
+
+    const updated = await call('update_user_settings', { hidden_pages: hidden })
+    expect(updated.success).toBe(true)
+    expect(updated.hidden_pages).toEqual(hidden)
+    expect((await call('get_user_settings')).hidden_pages).toEqual(hidden)
+
+    await call('update_user_settings', { hidden_pages: [] })
+    expect((await call('get_user_settings')).hidden_pages).toEqual([])
+  })
+})

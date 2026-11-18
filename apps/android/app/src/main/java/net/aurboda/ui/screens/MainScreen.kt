@@ -26,6 +26,19 @@ data class BottomNavItem(
     val icon: ImageVector
 )
 
+/** The web page a bottom-bar tab stands for; null for native tabs, which are never hidden. */
+fun tabWebPath(tab: MainTab): String? =
+    when (tab) {
+        MainTab.Home -> "/"
+        MainTab.Add -> "/add"
+        MainTab.Feed -> "/feed"
+        MainTab.Sync, MainTab.More -> null
+    }
+
+/** The bottom-bar tabs left after [hiddenPages]; Home, Sync and More always stay. */
+fun visibleMainTabs(hiddenPages: Collection<String>): List<MainTab> =
+    MainTab.entries.filter { tab -> tabWebPath(tab)?.let { !isPageHidden(it, hiddenPages) } ?: true }
+
 @Composable
 fun MainScreen(
     currentTab: MainTab,
@@ -35,7 +48,8 @@ fun MainScreen(
     feedContent: @Composable (Modifier) -> Unit,
     syncContent: @Composable (Modifier) -> Unit,
     moreContent: @Composable (Modifier) -> Unit,
-    unreadNotifications: Int = 0
+    unreadNotifications: Int = 0,
+    hiddenPages: List<String> = emptyList()
 ) {
     val navItems = listOf(
         BottomNavItem(MainTab.Home, "Home", Icons.Default.Home),
@@ -43,7 +57,7 @@ fun MainScreen(
         BottomNavItem(MainTab.Feed, "Feed", Icons.AutoMirrored.Filled.List),
         BottomNavItem(MainTab.Sync, "Sync", Icons.Default.Refresh),
         BottomNavItem(MainTab.More, "More", Icons.Default.Menu)
-    )
+    ).filter { it.tab in visibleMainTabs(hiddenPages) }
 
     Scaffold(
         bottomBar = {
