@@ -262,6 +262,41 @@ a.garmin-data-type-label:hover {
   color: #854d0e;
 }
 
+.data-sources-page .garmin-switch-guide {
+  display: block;
+  box-sizing: border-box;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  color: #1e3a8a;
+  font-size: 0.9rem;
+}
+
+.data-sources-page .garmin-switch-guide h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  color: inherit;
+}
+
+.data-sources-page .garmin-switch-guide p {
+  margin: 0;
+}
+
+.data-sources-page .garmin-recommended {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: normal;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent-border);
+}
+
 .data-source-detail .setup-instructions {
   margin-bottom: 1.5rem;
 }
@@ -795,6 +830,12 @@ a.garmin-data-type-label:hover {
 
   .garmin-data-type-note {
     color: #9ca3af;
+  }
+
+  .data-sources-page .garmin-switch-guide {
+    background: #172554;
+    border-color: #1e40af;
+    color: #bfdbfe;
   }
 }
 

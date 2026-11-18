@@ -178,7 +178,9 @@ The login and the key need no server-side configuration: they use per-user crede
 
 Data arrives the next time your watch syncs with Garmin Connect; the page shows when it last did. Data from before you connect is not included: add the login or a Personal API key for history.
 
-### Garmin Connect login
+### Garmin login
+
+The page calls it **Garmin login (email and password)**.
 
 1. Go to **Data Sources > Garmin**
 2. Enter your Garmin Connect **email** and **password**
@@ -187,6 +189,20 @@ Data arrives the next time your watch syncs with Garmin Connect; the page shows 
 5. If successful, Settings will show "Connected"
 
 **Important:** Your Garmin credentials are used only for the initial authentication and are **never stored** on the server. Only the resulting OAuth session tokens are persisted, which allow continued access without re-entering credentials.
+
+### Switching from the login to Connect with Garmin
+
+When the login is connected and the server offers Connect with Garmin, the Garmin page shows a **Switching to Connect with Garmin** note that follows you through the switch:
+
+1. Click **Connect with Garmin** and finish the sign-in at Garmin.
+2. Wait for the first data: it arrives the next time your watch syncs, and the page then shows when data was last received.
+3. Disconnect the login, or keep both. Aurboda never disconnects the login by itself. The connections fill the same records, so keeping both counts nothing twice.
+
+What stops when the login is disconnected depends on what else is connected:
+
+- Connect with Garmin only: training readiness, strength sets, data from before you connected, and **Sync now** and **Full Re-sync**.
+- A Personal API key only: stress, the sleep stage timeline, training readiness and strength sets.
+- Both: training readiness and strength sets.
 
 ### Personal API key
 
@@ -241,7 +257,7 @@ When an activity's detail lands for the first time (the poll, a manual sync, the
 The three connections are disconnected separately:
 
 - **Connect with Garmin:** `POST /api/auth/garmin/oauth/disconnect`, or **Disconnect** under Connect with Garmin on the Garmin page. Aurboda deregisters with Garmin (`DELETE https://apis.garmin.com/wellness-api/rest/user/registration`, best effort: a failure is audited and the rest goes ahead), deletes the grant, removes the Garmin user id mapping and clears the `garmin_push` sync states. Deleting the Aurboda account does the same. Removing Aurboda from the connected apps in Garmin Connect is handled through Garmin's deregistration notice (see [Data pushed by Garmin](#data-pushed-by-garmin)).
-- **Login:** `POST /api/auth/garmin/disconnect`, or **Disconnect** under the login on the Garmin page. This removes the stored session tokens; you'll need to re-enter your credentials to reconnect.
+- **Login:** `POST /api/auth/garmin/disconnect`, or **Disconnect** under the login on the Garmin page. This removes the stored session tokens; you'll need to re-enter your credentials to reconnect. When another connection is also connected, the page lists what stops arriving without the login (see [Switching from the login to Connect with Garmin](#switching-from-the-login-to-connect-with-garmin)).
 - **Key:** `POST /api/auth/garmin/personal-key/disconnect`, or **Disconnect key** on the Garmin page. This deletes the stored key. Revoke it in Garmin Connect too if you no longer use it.
 
 ## Limitations
