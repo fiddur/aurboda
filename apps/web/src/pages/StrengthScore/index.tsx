@@ -7,8 +7,8 @@ import { fetchActivityTypeDefinitions } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { unmappedSectionId } from '../ActivityTypeMeta/UnmappedItemValuesSection'
 import { GroupSection } from './GroupSection'
-import { useStrengthScore } from './queries'
-import { ScoreHistory, useStrengthScoreHistory } from './ScoreHistory'
+import { useStrengthScore, useStrengthScoreHistory } from './queries'
+import { ScoreHistory } from './ScoreHistory'
 import {
   averageLabel,
   changeLabel,
@@ -24,7 +24,7 @@ const FIVE_MIN = 5 * 60 * 1000
 const CHANGE_DAYS = 30
 
 const CAPTION =
-  "A lift's points compare your best estimated one-rep max of the last 90 days (working sets of 1 to 12 reps) with a reference for your sex and bodyweight; 100 is a solid recreational lifter. A muscle group is the average of its best three lifts, the score the average of the groups. Dumbbell lifts count per dumbbell, as logged. Only exercises matched to the catalogue count:"
+  "A lift's points compare your best estimated one-rep max of the last 90 days (working sets with a weight; reps above 12 count as 12) with a reference for your sex and bodyweight; 100 is a solid recreational lifter. A muscle group is the average of its best three lifts, the score the average of the groups. Dumbbell lifts count per dumbbell, as logged. Only exercises matched to the catalogue count:"
 
 const MissingNotice = ({ missing }: { missing: StrengthScoreMissing[] }) => {
   const text = missingText(missing)

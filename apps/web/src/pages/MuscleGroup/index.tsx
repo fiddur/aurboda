@@ -23,6 +23,7 @@ import {
   setsThisWeek,
 } from './muscleGroupView'
 import { RecoverySection } from './RecoverySection'
+import { ScoreSection } from './ScoreSection'
 import '../ActivityTypeItem/style.css'
 import './style.css'
 
@@ -146,7 +147,8 @@ const History = ({
   return (
     <>
       <Cards field={field} group={group} history={history} name={name} periodDays={periodDays} />
-      <RecoverySection field={field} group={group} name={name} />
+      <ScoreSection field={field} group={group} name={name} periodDays={periodDays} />
+      <RecoverySection field={field} group={group} name={name} periodDays={periodDays} />
       <MuscleGroupChart
         field={field}
         group={group}

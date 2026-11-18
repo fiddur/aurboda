@@ -80,7 +80,9 @@ export const GroupSection = ({
       </div>
       <MuscleLinks field={field} group={group} name={name} />
       {done.length === 0 && (
-        <p class="activity-type-item-empty">No lift for {group.name} in the last 90 days.</p>
+        <p class="activity-type-item-empty">
+          No weighted set of a lift that counts toward {group.name} in the last 90 days.
+        </p>
       )}
       {done.length > 0 && (
         <ul class="strength-score-lifts">

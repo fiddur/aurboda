@@ -6,14 +6,14 @@ import type {
   MuscleRecoverySource,
 } from '@aurboda/api-spec'
 
-import { addHours, differenceInCalendarDays, format, startOfHour, subDays } from 'date-fns'
+import { addHours, differenceInCalendarDays, endOfDay, format, startOfHour, subDays } from 'date-fns'
 
 import { formatSetCount } from '../../utils/measures'
 
 const HOUR_MS = 3_600_000
 const RECOVERING_FROM = 50
-const PERIOD_DAYS = 14
 const PERIOD_STEP_HOURS = 6
+const DAILY_FROM_DAYS = 90
 
 export type RecoveryLevel = 'ready' | 'recovering' | 'fatigued'
 
@@ -51,11 +51,15 @@ export interface RecoveryPeriod {
   step_hours: number
 }
 
-export const recoveryPeriod = (now: Date): RecoveryPeriod => {
+export const recoveryPeriod = (now: Date, days: number): RecoveryPeriod => {
+  if (days > DAILY_FROM_DAYS) {
+    const end = endOfDay(now)
+    return { end: end.toISOString(), start: subDays(end, days).toISOString(), step_hours: 24 }
+  }
   const end = addHours(startOfHour(now), 1)
   return {
     end: end.toISOString(),
-    start: subDays(end, PERIOD_DAYS).toISOString(),
+    start: subDays(end, days).toISOString(),
     step_hours: PERIOD_STEP_HOURS,
   }
 }
