@@ -326,6 +326,62 @@ describe('Hierarchical activity types', () => {
       expect(child?.parent_type).toBeUndefined()
     })
 
+    test('its suggested segments, pending or decided, go with it', async () => {
+      const user = getTestUser()
+      await insertActivityTypeDefinition(user, {
+        name: 'trail_loop',
+        display_name: 'Trail loop',
+        display_category: 'exercise',
+      })
+      const line = `ST_GeomFromText('LINESTRING(18.07 59.3, 18.08 59.3)', 4326)`
+      await query(
+        user,
+        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count, status, decided_at)
+         VALUES ('trail_loop', ${line}, 500, 3, 'pending', NULL),
+                ('trail_loop', ${line}, 500, 3, 'dismissed', NOW()),
+                ('trail_loop', ${line}, 500, 3, 'promoted', NOW()),
+                ('running', ${line}, 500, 3, 'dismissed', NOW())`,
+      )
+
+      expect(await deleteActivityTypeDefinition(user, 'trail_loop')).toBe(true)
+
+      expect(await getActivityTypeDefinition(user, 'trail_loop')).toBeNull()
+      const left = await query(user, `SELECT activity_type FROM suggested_segments`)
+      expect(left.rows).toEqual([{ activity_type: 'running' }])
+    })
+
+    test('a delete that fails keeps the suggestions and the children', async () => {
+      const user = getTestUser()
+      await insertActivityTypeDefinition(user, {
+        name: 'hill_rep',
+        display_name: 'Hill rep',
+        display_category: 'exercise',
+      })
+      await insertActivityTypeDefinition(user, {
+        name: 'hill_rep_child',
+        display_name: 'Child',
+        display_category: 'exercise',
+        parent_type: 'hill_rep',
+      })
+      const line = `ST_GeomFromText('LINESTRING(18.07 59.3, 18.08 59.3)', 4326)`
+      await query(
+        user,
+        `INSERT INTO segments (name, activity_type, geom, buffer, length_m)
+         VALUES ('Hill', 'hill_rep', ${line}, ST_Buffer(${line}::geography, 25)::geometry, 500)`,
+      )
+      await query(
+        user,
+        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count)
+         VALUES ('hill_rep', ${line}, 500, 3)`,
+      )
+
+      await expect(deleteActivityTypeDefinition(user, 'hill_rep')).rejects.toThrow()
+
+      const left = await query(user, `SELECT count(*)::int AS n FROM suggested_segments`)
+      expect(left.rows[0]?.n).toBe(1)
+      expect((await getActivityTypeDefinition(user, 'hill_rep_child'))?.parent_type).toBe('hill_rep')
+    })
+
     test('refusing to delete a builtin does not reparent its children', async () => {
       // Regression test: the delete guard must refuse builtin types *before*
       // reparenting, or the hierarchy gets silently flattened on a failed delete.

@@ -116,6 +116,31 @@ describe('planImport', () => {
     expect(refused[0].error).toContain('furlongs')
   })
 
+  test('an existing report of the same type that is itself refused is named in the error', () => {
+    const existing: ExistingReport[] = [
+      {
+        date: '2026-03-01',
+        entries: [{ metric: 'LDL', unit: 'furlongs', value: 3 }],
+        id: 'r1',
+        report_type: 'blood_panel',
+      },
+    ]
+    const plan = planImport(
+      table([cell(2, '2026-03-01', 'Hb', 145, 'g/L')]),
+      existing,
+      'blood_panel',
+      [],
+      catalog,
+    )
+    expect(plan.dates).toEqual([])
+    expect(plan.rows).toHaveLength(1)
+    expect(plan.rows[0].status).toBe('error')
+    expect(plan.rows[0].error).toMatch(
+      /^The existing blood_panel report of 2026-03-01 \(id r1\) cannot take new results: /,
+    )
+    expect(plan.rows[0].error).toContain('furlongs')
+  })
+
   test('the same catalogue metric twice on a date refuses that date', () => {
     const plan = planImport(
       table([cell(2, '2026-03-01', 'Hb', 145, 'g/L'), cell(3, '2026-03-01', 'hemoglobin', 140, 'g/L')]),

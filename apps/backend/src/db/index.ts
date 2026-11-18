@@ -65,6 +65,7 @@ export { type Queryable, type UserDb } from './pool.ts'
 export {
   getAllScrobbles,
   getRawRecordsByExternalIds,
+  hasRawRecord,
   getScrobbles,
   insertRawRecord,
   insertRawRecords,
@@ -103,6 +104,7 @@ export {
   hasTimeSeries,
   type HrZoneBucket,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
 } from './time-series.ts'
 
 export {

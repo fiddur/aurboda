@@ -13,6 +13,7 @@ import {
   locationsQuerySchema,
   locationSummaryQuerySchema,
   mediaPlaysQuerySchema,
+  metricsBucketedTzNote,
   type MetricType,
   overnightStaysQuerySchema,
   placesSummaryQuerySchema,
@@ -105,6 +106,8 @@ Use exclude to skip specific metrics when fetching all.
 
 Bucket size format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days), M (months).
 Examples: 10s, 5m, 1h, 1d, 1M
+
+tz: ${metricsBucketedTzNote}
 
 Use cases:
 - Daily timeline analysis: "Show me HR/HRV patterns across the day"

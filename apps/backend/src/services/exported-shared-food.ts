@@ -18,6 +18,13 @@ import { getCentralDb } from './central-db.ts'
 export const EXPORTED_SHARED_FOOD_TABLE = 'exported_shared_food_items'
 const QUALIFIED_TABLE = `public.${EXPORTED_SHARED_FOOD_TABLE}`
 
+/** Added after the first exports: a dumped database may hold an unreconciled table without them. */
+const LATER_COLUMNS: [string, string][] = [
+  ['default_log_quantity', 'double precision'],
+  ['nutrient_data_incomplete', 'boolean'],
+  ['last_fetched_at', 'timestamptz'],
+]
+
 const EXPORTED_COLUMNS: [string, string][] = [
   ['id', 'uuid PRIMARY KEY'],
   ['name', 'text NOT NULL'],
@@ -30,6 +37,7 @@ const EXPORTED_COLUMNS: [string, string][] = [
   ['icon', 'text'],
   ['created_at', 'timestamptz'],
   ['updated_at', 'timestamptz'],
+  ...LATER_COLUMNS,
 ]
 
 const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
@@ -103,6 +111,9 @@ export const exportedSharedFoodTrailer = (items: SharedFoodItemEntity[]): string
     `CREATE TABLE IF NOT EXISTS ${QUALIFIED_TABLE} (`,
     EXPORTED_COLUMNS.map(([name, type]) => `    ${name} ${type}`).join(',\n'),
     ');',
+    ...LATER_COLUMNS.map(
+      ([name, type]) => `ALTER TABLE ${QUALIFIED_TABLE} ADD COLUMN IF NOT EXISTS ${name} ${type};`,
+    ),
   ]
   for (const batch of chunks(items, INSERT_BATCH)) {
     const rows = batch.map((item) => names.map((name) => literalValue(item[name])))
@@ -302,7 +313,7 @@ const COPY_COLUMNS = [
 const copyAsOwn = async (tx: Queryable, row: ExportedSharedFoodRow, name: string, override?: OverrideRow) => {
   const values: Record<string, unknown> = {
     ...row,
-    default_log_quantity: override?.default_log_quantity ?? null,
+    default_log_quantity: override?.default_log_quantity ?? row.default_log_quantity ?? null,
     default_portion_id: override?.default_portion_id ?? null,
     icon: override?.icon_overridden ? override.icon : row.icon,
     name,

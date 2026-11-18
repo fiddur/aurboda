@@ -82,10 +82,10 @@ const segmentDeps = (): SegmentDeps => ({
 })
 
 const makeDeps = (overrides: Partial<SuggestedSegmentDeps> = {}): SuggestedSegmentDeps => ({
+  claimSuggestedSegment: vi.fn(async () => suggestion({ status: 'promoted' })),
   countUnscannedTrackedActivities: vi.fn(async () => 0),
   decideSuggestedSegment: vi.fn(async () => true),
   findNearbyNamedLocation: vi.fn(async () => null),
-  getSuggestedSegment: vi.fn(async () => suggestion()),
   getSuggestionInput: vi.fn(async () => ({
     activity_type: 'running',
     candidates: [candidate('b', 1), candidate('c', 3), candidate('c-strava', 3)],
@@ -96,6 +96,7 @@ const makeDeps = (overrides: Partial<SuggestedSegmentDeps> = {}): SuggestedSegme
   markSuggestionsScanned: vi.fn(async () => undefined),
   now: () => 0,
   segment: segmentDeps(),
+  settleSuggestedSegmentClaim: vi.fn(async () => undefined),
   suggestedSegmentLine: vi.fn(async () => ({ line: segmentLine(), ok: true as const })),
   upsertSuggestion: vi.fn(async () => 'inserted' as const),
   ...overrides,
@@ -234,7 +235,7 @@ describe('listSuggestedSegmentsWithNames', () => {
 })
 
 describe('promoteSuggestedSegment', () => {
-  test('creates the segment from the (trimmed) line and marks the suggestion promoted', async () => {
+  test('claims the suggestion, creates the segment from the (trimmed) line and links it', async () => {
     const deps = makeDeps()
     const result = await promoteSuggestedSegment(
       'u',
@@ -250,20 +251,25 @@ describe('promoteSuggestedSegment', () => {
       name: 'Hill',
       wkt: segmentLine().wkt,
     })
-    expect(deps.decideSuggestedSegment).toHaveBeenCalledWith('u', 'sug1', 'promoted', 'seg1')
+    expect(deps.claimSuggestedSegment).toHaveBeenCalledWith('u', 'sug1')
+    expect(deps.settleSuggestedSegmentClaim).toHaveBeenCalledWith('u', 'sug1', 'seg1')
   })
 
-  test('not found when unknown or no longer pending', async () => {
-    expect(
-      await promoteSuggestedSegment('u', 'x', {}, makeDeps({ getSuggestedSegment: vi.fn(async () => null) })),
-    ).toBe(null)
-    const dismissed = makeDeps({
-      getSuggestedSegment: vi.fn(async () => suggestion({ status: 'dismissed' })),
-    })
-    expect(await promoteSuggestedSegment('u', 'sug1', {}, dismissed)).toBeNull()
+  test('not found, and nothing created, when the suggestion is not pending (or another promote claimed it)', async () => {
+    const taken = makeDeps({ claimSuggestedSegment: vi.fn(async () => null) })
+    expect(await promoteSuggestedSegment('u', 'sug1', {}, taken)).toBeNull()
+    expect(taken.suggestedSegmentLine).not.toHaveBeenCalled()
+    expect(taken.segment.insertSegment).not.toHaveBeenCalled()
+    expect(taken.settleSuggestedSegmentClaim).not.toHaveBeenCalled()
   })
 
-  test('refusals carry the sentence and leave the suggestion pending', async () => {
+  test('a failure while creating gives the claim back and rethrows', async () => {
+    const deps = makeDeps({ suggestedSegmentLine: vi.fn(async () => Promise.reject(new Error('db down'))) })
+    await expect(promoteSuggestedSegment('u', 'sug1', {}, deps)).rejects.toThrow('db down')
+    expect(deps.settleSuggestedSegmentClaim).toHaveBeenCalledWith('u', 'sug1', null)
+  })
+
+  test('refusals carry the sentence and make the suggestion pending again', async () => {
     const outside = makeDeps({
       suggestedSegmentLine: vi.fn(async () => ({ ok: false as const, reason: 'out_of_range' as const })),
     })
@@ -275,7 +281,8 @@ describe('promoteSuggestedSegment', () => {
       suggestedSegmentLine: vi.fn(async () => ({ line: segmentLine({ length_m: 80 }), ok: true as const })),
     })
     expect(await promoteSuggestedSegment('u', 'sug1', {}, short)).toMatchObject({ ok: false })
-    expect(short.decideSuggestedSegment).not.toHaveBeenCalled()
+    expect(short.settleSuggestedSegmentClaim).toHaveBeenCalledWith('u', 'sug1', null)
+    expect(outside.settleSuggestedSegmentClaim).toHaveBeenCalledWith('u', 'sug1', null)
   })
 
   test('a near-closed line is refused', async () => {

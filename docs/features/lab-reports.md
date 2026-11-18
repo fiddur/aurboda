@@ -92,7 +92,8 @@ range). `has_header` (default true) says whether the first row holds names, and 
 default, or `mdy`) how to read an ambiguous date. The web page guesses the columns from their names in
 English or Swedish (date/datum, test/analys/komponent, value/resultat/värde, unit/enhet,
 reference/referens, low/high/min/max), and starts the next import from the mapping used last, which is
-kept in the user settings as `report_import_mapping`.
+kept in the user settings as `report_import_mapping`. A settings update with `report_import_mapping: null`
+(`PATCH /user/settings`, or `update_user_settings` over MCP) forgets it.
 
 ### Parsing rules
 

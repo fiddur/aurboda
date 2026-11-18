@@ -20,6 +20,9 @@ import { garminExercise, type GarminSet, garminSetMeasures, UNKNOWN_EXERCISE } f
 /** Inflated size above which a ZIP entry is not unpacked: Garmin's own recordings are a few MB at most. */
 export const MAX_FIT_ENTRY_BYTES = 100 * 1024 * 1024
 
+/** Inflated size across a ZIP's `.fit` entries above which the archive is refused. */
+export const MAX_FIT_TOTAL_BYTES = 4 * MAX_FIT_ENTRY_BYTES
+
 export interface FitActivity {
   fileIds: FileIdMesg[]
   sessions: SessionMesg[]
@@ -97,19 +100,31 @@ const mergeDecoded = (decoded: FitActivity[]): FitActivity | null => {
 
 /**
  * The activity in Garmin's download ZIP, or null when the archive holds no readable
- * `.fit` entry. Several entries are merged into one activity.
+ * `.fit` entry. Several entries are merged into one activity. Throws, inflating no further
+ * entry, when the `.fit` entries add up to more than `maxTotalBytes`.
  */
 export const parseActivityFit = (
   zipBytes: Uint8Array,
   maxEntryBytes: number = MAX_FIT_ENTRY_BYTES,
+  maxTotalBytes: number = MAX_FIT_TOTAL_BYTES,
 ): FitActivity | null => {
   let entries: Record<string, Uint8Array>
+  let total = 0
+  let tooLarge = false
   try {
     entries = unzipSync(zipBytes, {
-      filter: (file) => /\.fit$/i.test(file.name) && file.originalSize <= maxEntryBytes,
+      filter: (file) => {
+        if (tooLarge || !/\.fit$/i.test(file.name) || file.originalSize > maxEntryBytes) return false
+        total += file.originalSize
+        tooLarge = total > maxTotalBytes
+        return !tooLarge
+      },
     })
   } catch {
     return null
+  }
+  if (tooLarge) {
+    throw new Error(`The activity archive's FIT files inflate to more than ${maxTotalBytes} bytes`)
   }
 
   return mergeDecoded(

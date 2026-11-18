@@ -144,6 +144,20 @@ export const queryRawRecords = async (
   return { rows: dataResult.rows, total }
 }
 
+export const hasRawRecord = async (
+  user: string,
+  source: string,
+  recordType: string,
+  externalId: string,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `SELECT 1 FROM raw_records WHERE source = $1 AND record_type = $2 AND external_id = $3 LIMIT 1`,
+    [source, recordType, externalId],
+  )
+  return result.rows.length > 0
+}
+
 /** The stored data of each found record of one type, by external id. */
 export const getRawRecordsByExternalIds = async (
   user: string,

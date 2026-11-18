@@ -311,7 +311,7 @@ describe('Segments integration', () => {
       expect(await listActivitySegmentEfforts(user, [strava])).toEqual([])
     })
 
-    test('the best effort is the fastest non-approximate one; rank counts every kept effort', async () => {
+    test('the best effort is the fastest non-approximate one, and rank puts it first', async () => {
       const user = getTestUser()
       const segment = await cutFirstLeg(await addTrackedActivity(L_SHAPE))
       const other = await addTrackedActivity(L_SHAPE, { fullResolution: false, source: 'strava' })
@@ -329,9 +329,9 @@ describe('Segments integration', () => {
 
       const efforts = await listSegmentEfforts(user, segment.id)
       expect(efforts.map((e) => [e.elapsed_s, e.rank, e.is_best])).toEqual([
-        [90, 2, false],
-        [80, 1, false],
-        [expect.closeTo(100, 0), 3, true],
+        [90, 3, false],
+        [80, 2, false],
+        [expect.closeTo(100, 0), 1, true],
       ])
       expect((await getSegmentById(user, segment.id))!.best_elapsed_s).toBeCloseTo(100, 0)
     })

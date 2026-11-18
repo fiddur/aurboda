@@ -32,6 +32,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   getLeftChallengeToken: vi.fn(),
   getParticipationById: vi.fn(),
   getParticipationByUrl: vi.fn(),
+  listChallengeParticipations: vi.fn(),
   removeChallengeMember: vi.fn(),
   upsertChallengeMember: vi.fn(),
 }))
@@ -248,6 +249,7 @@ const aurbodaWellKnown = {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(db.getParticipationByUrl).mockResolvedValue(null)
+  vi.mocked(db.listChallengeParticipations).mockResolvedValue([])
   vi.mocked(db.createChallengeParticipation).mockImplementation(async (_user, input) =>
     participationRecord({ ...input }),
   )
@@ -432,6 +434,34 @@ describe('joinChallenge on a QuantPub host', () => {
         join_token: 'jt',
       }),
     )
+  })
+})
+
+describe('joinChallenge idempotency', () => {
+  const deps = {
+    apiBaseUrl: 'https://home.example/api',
+    challengeUrl: 'https://qs.example/u/freja/nov?embed=1',
+    user: 'ola',
+    webHost: 'https://home.example',
+  }
+
+  test('returns the participation stored under the canonical URL', async () => {
+    const stored = participationRecord()
+    vi.mocked(db.getParticipationByUrl).mockResolvedValue(stored)
+    expect(await joinChallenge(deps)).toBe(stored)
+    expect(db.getParticipationByUrl).toHaveBeenCalledWith('ola', 'https://qs.example/u/freja/nov')
+    expect(db.createChallengeParticipation).not.toHaveBeenCalled()
+  })
+
+  test('finds a participation stored under an older spelling of the URL', async () => {
+    const stored = participationRecord({ challenge_url: 'https://qs.example/u/freja/nov/?embed=1' })
+    vi.mocked(db.listChallengeParticipations).mockResolvedValue([
+      participationRecord({ challenge_url: 'https://qs.example/u/freja/dec' }),
+      stored,
+    ])
+    expect(await joinChallenge(deps)).toBe(stored)
+    expect(db.createChallengeParticipation).not.toHaveBeenCalled()
+    expect(safeFetch.safeFetchPost).not.toHaveBeenCalled()
   })
 })
 

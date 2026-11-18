@@ -13,6 +13,7 @@ import {
 import { extractTrackPoints } from '../integrations/garmin/process.ts'
 import { auditError } from './audit-log.ts'
 import { defaultRouteMatchDeps, matchUnroutedTracks } from './routes.ts'
+import { defaultSegmentDeps, matchActivitySegments } from './segments.ts'
 import { defaultSuggestedSegmentDeps, scanSuggestedSegments } from './suggested-segments.ts'
 import { defaultFeatureBackfillDeps, type FeatureBackfillDeps } from './track-analyse.ts'
 import { buildTrack, decodePolyline, polylineToTrackPoints, type TrackPoint } from './tracks.ts'
@@ -31,11 +32,12 @@ export const defaultTrackBackfillDeps: TrackBackfillDeps = {
 
 /**
  * The queued backfill also matches routes for the tracks it wrote (and any left unmatched),
- * runs one time-limited segment suggestion scan, then computes features for tracked
- * activities that have none.
+ * times the segments each written track covers, runs one time-limited segment suggestion
+ * scan, then computes features for tracked activities that have none.
  */
 export interface TrackBackfillJobDeps extends TrackBackfillDeps, FeatureBackfillDeps {
   matchRoutes: (user: string) => Promise<{ matched: number; created: number }>
+  matchSegments: (user: string, activityId: string) => Promise<{ efforts: number }>
   scanSuggestedSegments: (user: string) => Promise<{ scanned: number; suggested: number; remaining: number }>
 }
 
@@ -43,6 +45,7 @@ export const defaultTrackBackfillJobDeps: Omit<TrackBackfillJobDeps, 'notify'> =
   ...defaultTrackBackfillDeps,
   ...defaultFeatureBackfillDeps,
   matchRoutes: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
+  matchSegments: (user, activityId) => matchActivitySegments(user, activityId, defaultSegmentDeps),
   scanSuggestedSegments: (user) => scanSuggestedSegments(user, defaultSuggestedSegmentDeps),
 }
 
@@ -64,8 +67,8 @@ const backfillSource = async <C extends { activity_id: string; start_time: Date 
   fullResolution: boolean,
   upsert: TrackBackfillDeps['upsertActivityTrack'],
   batch: number,
-): Promise<{ written: number; skipped: number }> => {
-  let written = 0
+): Promise<{ written: string[]; skipped: number }> => {
+  const written: string[] = []
   let skipped = 0
   let after: Date | undefined
   for (;;) {
@@ -83,7 +86,7 @@ const backfillSource = async <C extends { activity_id: string; start_time: Date 
           full_resolution: fullResolution,
           source,
         })
-        written++
+        written.push(candidate.activity_id)
       } catch (error) {
         skipped++
         auditError(user, 'data', `Track backfill failed for ${source} activity ${candidate.activity_id}`, {
@@ -98,11 +101,11 @@ const backfillSource = async <C extends { activity_id: string; start_time: Date 
   return { skipped, written }
 }
 
-export const backfillUserTracks = async (
+export const backfillUserTracksWithIds = async (
   user: string,
   deps: TrackBackfillDeps,
   batch = 50,
-): Promise<TrackBackfillResult> => {
+): Promise<TrackBackfillResult & { activity_ids: string[] }> => {
   const garmin = await backfillSource(
     user,
     'garmin',
@@ -121,5 +124,19 @@ export const backfillUserTracks = async (
     deps.upsertActivityTrack,
     batch,
   )
-  return { garmin: garmin.written, skipped: garmin.skipped + strava.skipped, strava: strava.written }
+  return {
+    activity_ids: [...garmin.written, ...strava.written],
+    garmin: garmin.written.length,
+    skipped: garmin.skipped + strava.skipped,
+    strava: strava.written.length,
+  }
+}
+
+export const backfillUserTracks = async (
+  user: string,
+  deps: TrackBackfillDeps,
+  batch = 50,
+): Promise<TrackBackfillResult> => {
+  const { activity_ids: _written, ...counts } = await backfillUserTracksWithIds(user, deps, batch)
+  return counts
 }

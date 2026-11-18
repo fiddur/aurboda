@@ -671,18 +671,21 @@ export const deleteActivityTypeDefinition = async (user: string, name: string): 
 
   // Reparent children to the deleted type's parent (may be null, which makes them top-level).
   const grandparent = (parentResult.rows[0].parent_type as string | null) ?? null
-  await query(
-    user,
-    `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
-    [grandparent, name],
-  )
-
-  const result = await query(
-    user,
-    `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`,
-    [name],
-  )
-  return (result.rowCount ?? 0) > 0
+  return withUserTransaction(user, async (tx) => {
+    await query(
+      tx,
+      `UPDATE activity_type_definitions SET parent_type = $1, updated_at = NOW() WHERE parent_type = $2`,
+      [grandparent, name],
+    )
+    // Suggestions are derived from the tracks and hold nothing the user entered, so they go with the type.
+    await query(tx, `DELETE FROM suggested_segments WHERE activity_type = $1`, [name])
+    const result = await query(
+      tx,
+      `DELETE FROM activity_type_definitions WHERE name = $1 AND is_builtin = false`,
+      [name],
+    )
+    return (result.rowCount ?? 0) > 0
+  })
 }
 
 /** Get all activity type names (for quick validation lookups). */

@@ -109,5 +109,8 @@ describe('exportedSharedFoodTrailer', () => {
     expect(sql).toContain('    calories double precision')
     expect(sql.match(/^INSERT INTO /gm)).toHaveLength(2)
     expect(sql).toContain("'Item 200'")
+    for (const column of ['default_log_quantity', 'nutrient_data_incomplete', 'last_fetched_at']) {
+      expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column} `)
+    }
   })
 })

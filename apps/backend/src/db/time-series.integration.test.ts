@@ -18,6 +18,7 @@ import {
   getTimeSeriesWithSource,
   hasTimeSeries,
   insertTimeSeries,
+  replaceTimeSeriesInWindow,
 } from './time-series.ts'
 
 // Increase timeout for container startup
@@ -765,6 +766,42 @@ describe('Time Series Integration Tests', () => {
       )
       expect(data).toHaveLength(1)
       expect(data[0].source).toBe('garmin')
+    })
+  })
+
+  describe('replaceTimeSeriesInWindow', () => {
+    test("replaces the source's samples of the points' metrics in the window, keeping tombstones", async () => {
+      const user = getTestUser()
+      const t = (minute: number) => new Date(Date.UTC(2024, 0, 15, 10, minute))
+      await insertTimeSeries(user, [
+        { metric: 'heart_rate', source: 'garmin', time: t(0), value: 60 },
+        { metric: 'heart_rate', source: 'garmin', time: t(5), value: 65 },
+        { metric: 'heart_rate', source: 'garmin', time: t(10), value: 70 },
+        { metric: 'heart_rate', source: 'garmin', time: t(30), value: 90 },
+        { metric: 'heart_rate', source: 'oura', time: t(6), value: 66 },
+        { metric: 'stress_level', source: 'garmin', time: t(5), value: 30 },
+      ])
+      await deleteTimeSeriesPoint(user, 'heart_rate', t(10), 'garmin')
+
+      const deleted = await replaceTimeSeriesInWindow(
+        user,
+        'garmin',
+        [
+          { metric: 'heart_rate', source: 'garmin', time: t(2), value: 120 },
+          { metric: 'heart_rate', source: 'garmin', time: t(10), value: 130 },
+        ],
+        t(0),
+        t(20),
+      )
+
+      expect(deleted).toBe(2)
+      const hr = await getTimeSeriesWithSource(user, 'heart_rate', t(0), t(59))
+      expect(hr.map((p) => [p.time.getUTCMinutes(), p.value, p.source])).toEqual([
+        [2, 120, 'garmin'],
+        [6, 66, 'oura'],
+        [30, 90, 'garmin'],
+      ])
+      expect((await getTimeSeries(user, 'stress_level', t(0), t(59))).map(([, v]) => v)).toEqual([30])
     })
   })
 

@@ -21,8 +21,12 @@ The seed signs up its own users, so it needs a stack that has never seen them.
 ## Seed
 
 ```sh
-DEMO_COMPOSE_PROJECT=aurboda-tryout-cloud node scripts/demo-data/seed.mjs http://127.0.0.1:8080
+DEMO_COMPOSE_PROJECT=aurboda-tryout-cloud node scripts/demo-data/seed.mjs http://127.0.0.1:8080/api
 ```
+
+The argument is the API's base URL, taken as given: `<origin>/api` for the image (its proxy serves
+the API there), the bare origin (`http://localhost:3000`, say) for a backend started with
+`node src/api.ts`.
 
 Everything goes through the REST API except the social graph. Users on one instance cannot follow
 each other over federation (the lookup refuses loopback hosts), so with `DEMO_COMPOSE_PROJECT` set

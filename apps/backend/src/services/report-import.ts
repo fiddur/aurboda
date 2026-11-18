@@ -132,6 +132,19 @@ const classifyCells = (
   return out
 }
 
+/** Why the stored report the new results would be added to is itself refused, naming that report. */
+const existingReportError = (
+  update: ExistingReport | undefined,
+  date: string,
+  customMetrics: CustomMetricDefinition[],
+  catalog: StoredMetricCatalog,
+): string | undefined => {
+  if (!update) return undefined
+  const prepared = prepareReportEntries(update.entries, customMetrics, catalog)
+  if (!('errors' in prepared)) return undefined
+  return `The existing ${update.report_type} report of ${date} (id ${update.id}) cannot take new results: ${prepared.errors.join('\n')}`
+}
+
 const planDate = (
   date: string,
   cells: ImportCell[],
@@ -147,7 +160,7 @@ const planDate = (
   const entries = [...(update?.entries ?? []), ...newCells.map((c) => c.entry)]
   const prepared = prepareReportEntries(entries, customMetrics, catalog)
   if ('errors' in prepared) {
-    const error = prepared.errors.join('\n')
+    const error = existingReportError(update, date, customMetrics, catalog) ?? prepared.errors.join('\n')
     return {
       rows: rows.map((r): ReportImportRow => (r.status === 'new' ? { ...r, error, status: 'error' } : r)),
     }

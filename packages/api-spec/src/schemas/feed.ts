@@ -28,7 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { articleImpactTypeSchema, selectorSchema } from './correlations.ts'
+import { articleImpactTypeSchema, articleSelectorSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -454,11 +454,16 @@ export const articleCorrelationBlockSchema = z
       .int()
       .optional()
       .meta({ description: 'Days the outcome lags the trigger (default: 0)' }),
-    outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
+    outcome: articleSelectorSchema.meta({
+      description: 'Outcome dimension; sensitivity is not offered, as its flag id means nothing to a reader',
+    }),
     start: iso8601DateTimeSchema
       .optional()
       .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
-    trigger: selectorSchema.meta({ description: 'Trigger / predictor dimension' }),
+    trigger: articleSelectorSchema.meta({
+      description:
+        'Trigger / predictor dimension; sensitivity is not offered, as its flag id means nothing to a reader',
+    }),
     type: z.literal('correlation'),
   })
   .meta({ description: 'A correlation scatter over a locked window', id: 'ArticleCorrelationBlock' })
