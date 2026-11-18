@@ -100,7 +100,7 @@ export const registerSyncTools = (
 
   server.tool(
     'sync_garmin',
-    'Sync data from Garmin, through the Garmin Connect login, a Personal API key, or both. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes. Stress, training readiness, the sleep stage timeline and per-activity detail (per-second metrics, GPS) need the Garmin Connect login; with only a Personal API key, stress and training readiness are skipped.',
+    'Sync data from Garmin, through the Garmin Connect login, a Personal API key, or both. Fetches daily summary, heart rate, HRV, sleep, stress, body battery, activities, SpO2, respiration, training readiness, and intensity minutes. Stress, training readiness, the sleep stage timeline and per-activity detail (per-second metrics, GPS) need the Garmin Connect login; with only a Personal API key, stress and training readiness are skipped. The background sync leaves to Connect with Garmin the data types it delivers, while this tool fetches everything the login or key serves.',
     { ...syncGarminBodySchema.shape },
     async ({ full_resync, start_date }) => {
       if (!garmin) {

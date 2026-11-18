@@ -78,7 +78,9 @@ const ConnectedLines = ({ status, hasLogin }: { status: GarminOAuthStatus; hasLo
     <p class="field-description">
       {status.permissions.length > 0
         ? `You share: ${status.permissions.map(garminPermissionLabel).join(', ')}`
-        : 'Garmin reported no shared data. Change what you share in your Garmin Connect account, under connected apps.'}
+        : status.last_received_at
+          ? 'Garmin has not told Aurboda what you share, but your data is arriving.'
+          : 'Garmin reported no shared data. Change what you share in your Garmin Connect account, under connected apps.'}
     </p>
     <p class="field-description">{garminLastReceivedText(status.last_received_at)}</p>
     {!hasLogin && (

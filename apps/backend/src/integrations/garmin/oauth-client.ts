@@ -24,6 +24,7 @@ import {
   markOAuthTokenRefused,
   resetSyncState,
   schemaInitialized,
+  updateOAuthTokenScopes,
   upsertOAuthToken,
 } from '../../db/index.ts'
 import { auditInfo, auditWarn } from '../../services/audit-log.ts'
@@ -79,6 +80,7 @@ export interface GarminOAuthClientDeps {
   deleteOAuthToken: (user: string, provider: string) => Promise<unknown>
   markOAuthTokenRefused: (user: string, provider: string, refreshToken?: string) => Promise<void>
   resetSyncState: (user: string, provider: string) => Promise<void>
+  updateOAuthTokenScopes: (user: string, provider: string, scopes: string[]) => Promise<unknown>
   ensureUserSchema: (user: string) => Promise<void>
   upsertGarminUserMapping: (garminUserId: string, username: string) => Promise<string | null>
   getGarminUserIdByUsername: (username: string) => Promise<string | null>
@@ -152,16 +154,54 @@ const toGarminOAuthError = (error: unknown, what: string, secrets: (string | und
   )
 }
 
-/** Reads both a bare JSON array and `{ "permissions": [...] }`; Garmin's documented example is neither. */
-export const parseGarminPermissions = (data: unknown): string[] => {
-  const list = Array.isArray(data)
-    ? data
-    : typeof data === 'object' &&
-        data !== null &&
-        Array.isArray((data as { permissions?: unknown }).permissions)
-      ? (data as { permissions: unknown[] }).permissions
-      : []
-  return list.filter((permission): permission is string => typeof permission === 'string')
+const PERMISSION_TOKEN = /"([A-Z][A-Z0-9_]*)"/g
+
+const parseJson = (text: string): { ok: true; value: unknown } | { ok: false } => {
+  try {
+    return { ok: true, value: JSON.parse(text) }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/** The list the answer holds, or null when it holds none: a bare array, `{ "permissions": [...] }`, or either as text. */
+const permissionList = (data: unknown): unknown[] | null => {
+  if (Array.isArray(data)) return data
+  if (typeof data === 'string') {
+    const parsed = parseJson(data)
+    if (parsed.ok) return typeof parsed.value === 'string' ? null : permissionList(parsed.value)
+    const tokens = [...data.matchAll(PERMISSION_TOKEN)].map((match) => match[1])
+    return tokens.length > 0 ? tokens : null
+  }
+  if (
+    typeof data === 'object' &&
+    data !== null &&
+    Array.isArray((data as { permissions?: unknown }).permissions)
+  ) {
+    return (data as { permissions: unknown[] }).permissions
+  }
+  return null
+}
+
+/**
+ * Reads a bare JSON array, `{ "permissions": [...] }`, and either as a string body. Garmin's documented
+ * example, `{["ACTIVITY_EXPORT", ...]}`, is not JSON, so a string that does not parse yields its quoted names.
+ */
+export const parseGarminPermissions = (data: unknown): string[] =>
+  (permissionList(data) ?? []).filter((permission): permission is string => typeof permission === 'string')
+
+/** The JSON type of an answer and, for an object, its top-level key names: never a value. */
+export const garminAnswerShape = (data: unknown): string => {
+  if (data === null) return 'null'
+  if (Array.isArray(data)) return 'array'
+  if (typeof data === 'object') return `object (${Object.keys(data).join(', ')})`
+  return typeof data
+}
+
+/** Whether a permissions answer was understood: a list whose entries are permission names, or an empty one. */
+const permissionsUnderstood = (data: unknown): boolean => {
+  const list = permissionList(data)
+  return list !== null && (list.length === 0 || parseGarminPermissions(data).length > 0)
 }
 
 /** The OAuth callback URL — also the redirect URI the admin registers with Garmin. */
@@ -184,6 +224,7 @@ const defaultDeps = (): Omit<GarminOAuthClientDeps, MappingDeps> => ({
   markOAuthTokenRefused,
   now: () => new Date(),
   resetSyncState: (user, provider) => resetSyncState(user, provider),
+  updateOAuthTokenScopes,
   upsertOAuthToken,
 })
 
@@ -197,6 +238,7 @@ export const garminOAuthClient = (
   /** Refresh tokens rotate: concurrent callers on this instance share one in-flight refresh per user. */
   const refreshing = new Map<string, Promise<string>>()
   const keepFreshRetryAt = new Map<string, Date>()
+  const permissionsRetryAt = new Map<string, Date>()
 
   const tokenRequest = async (
     form: Record<string, string>,
@@ -235,8 +277,24 @@ export const garminOAuthClient = (
     return userId
   }
 
-  const fetchPermissions = async (accessToken: string): Promise<string[]> =>
-    parseGarminPermissions(await apiGet(PERMISSIONS_URL, accessToken, 'permissions request'))
+  /** The shared permissions, or none, with the reason audited: a failed request or an answer not understood. */
+  const readPermissions = async (user: string, accessToken: string): Promise<string[]> => {
+    let data: unknown
+    try {
+      data = await apiGet(PERMISSIONS_URL, accessToken, 'permissions request')
+    } catch (error) {
+      await deps.auditWarn(user, 'auth', 'Garmin: could not read the shared permissions', {
+        error: errorText(error),
+      })
+      return []
+    }
+    if (!permissionsUnderstood(data)) {
+      await deps.auditWarn(user, 'auth', 'Garmin: the shared permissions answer was not understood', {
+        shape: garminAnswerShape(data),
+      })
+    }
+    return parseGarminPermissions(data)
+  }
 
   const refresh = async (user: string, grant: OAuthToken, refreshToken: string): Promise<string> => {
     const credentials = await getCredentials()
@@ -320,6 +378,42 @@ export const garminOAuthClient = (
     }
   }
 
+  /** The live grant once it is fresh, or null when there is none to keep or the refresh failed. */
+  const refreshIfDue = async (user: string): Promise<OAuthToken | null> => {
+    try {
+      const grant = await deps.getOAuthToken(user, GARMIN_OAUTH_PROVIDER)
+      if (!isConnected(grant) || grant.refused_at !== undefined) return null
+      if (!(await getCredentials())) return null
+      const retryAt = keepFreshRetryAt.get(user)
+      if (retryAt && isAfter(retryAt, deps.now())) return null
+      keepFreshRetryAt.delete(user)
+      await getAccessToken(user)
+      return grant
+    } catch (error) {
+      keepFreshRetryAt.set(user, addSeconds(deps.now(), KEEP_FRESH_RETRY_SECONDS))
+      await deps.auditWarn(user, 'auth', 'Garmin OAuth token refresh failed', { error: errorText(error) })
+      return null
+    }
+  }
+
+  /** Stores the permissions through the same path as Garmin's permission-change notice. At most once an hour per user. */
+  const rereadPermissions = async (user: string): Promise<void> => {
+    const retryAt = permissionsRetryAt.get(user)
+    if (retryAt && isAfter(retryAt, deps.now())) return
+    permissionsRetryAt.set(user, addSeconds(deps.now(), KEEP_FRESH_RETRY_SECONDS))
+    try {
+      const permissions = await readPermissions(user, await getAccessToken(user))
+      if (permissions.length === 0) return
+      await deps.updateOAuthTokenScopes(user, GARMIN_OAUTH_PROVIDER, permissions)
+      permissionsRetryAt.delete(user)
+      await deps.auditInfo(user, 'auth', 'Garmin: read the shared permissions', { permissions })
+    } catch (error) {
+      await deps.auditWarn(user, 'auth', 'Garmin: could not read the shared permissions', {
+        error: errorText(error),
+      })
+    }
+  }
+
   return {
     redirectUri,
 
@@ -356,20 +450,13 @@ export const garminOAuthClient = (
      */
     forget,
 
-    /** Refreshes a grant that is due, so the refresh token does not lapse. Never throws. */
+    /**
+     * Refreshes a grant that is due, so the refresh token does not lapse, and reads the shared
+     * permissions again for a grant stored without any. Never throws.
+     */
     async keepFresh(user: string): Promise<void> {
-      try {
-        const grant = await deps.getOAuthToken(user, GARMIN_OAUTH_PROVIDER)
-        if (!isConnected(grant) || grant.refused_at !== undefined) return
-        if (!(await getCredentials())) return
-        const retryAt = keepFreshRetryAt.get(user)
-        if (retryAt && isAfter(retryAt, deps.now())) return
-        keepFreshRetryAt.delete(user)
-        await getAccessToken(user)
-      } catch (error) {
-        keepFreshRetryAt.set(user, addSeconds(deps.now(), KEEP_FRESH_RETRY_SECONDS))
-        await deps.auditWarn(user, 'auth', 'Garmin OAuth token refresh failed', { error: errorText(error) })
-      }
+      const grant = await refreshIfDue(user)
+      if (grant && (grant.scopes ?? []).length === 0) await rereadPermissions(user)
     },
 
     async getAuthorizeUrl(req: Request, res: Response<OAuthConnectUrlResponse>) {
@@ -447,7 +534,7 @@ export const garminOAuthClient = (
           [credentials.clientSecret, code, opened.verifier],
         )
         const garminUserId = await fetchUserId(token.access_token)
-        const permissions = await fetchPermissions(token.access_token).catch(() => [])
+        const permissions = await readPermissions(user, token.access_token)
         await deregisterOtherGarminAccount(user, garminUserId)
         await deps.upsertOAuthToken(user, {
           access_token: token.access_token,

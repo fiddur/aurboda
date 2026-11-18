@@ -29,6 +29,7 @@ import {
   garminOAuthStatusFromToken,
   garminPushLastReceivedAt,
 } from '../integrations/garmin/oauth-status.ts'
+import { garminPushDelivered } from '../integrations/garmin/push-coverage.ts'
 import { getGarminConnections, readGarminPersonalKeyEnabled } from '../integrations/garmin/source.ts'
 import { getCentralDb } from './central-db.ts'
 
@@ -280,6 +281,7 @@ export const getSettingsResponse = async (user: string): Promise<SettingsRespons
   const garminOAuth = {
     available: !!garminClientId && !!garminClientSecret,
     ...garminOAuthStatusFromToken(garminOAuthToken),
+    delivers: garminPushDelivered(garminOAuthToken, garminPushStates, new Date()),
     last_received_at: garminPushLastReceivedAt(garminPushStates),
   }
 
@@ -341,6 +343,7 @@ const buildErrorSettingsResponse = async (errorMessage: string): Promise<Setting
     garmin_oauth: {
       available: !!garminClientId && !!garminClientSecret,
       connected: false,
+      delivers: [],
       last_received_at: null,
       needs_reconnect: false,
       permissions: [],
