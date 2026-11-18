@@ -30,13 +30,13 @@ import kotlin.math.roundToLong
 val CHALLENGE_MEMBER_COLORS: IntArray =
     intArrayOf(
         0xFF2B9EA7.toInt(),
-        0xFF10B981.toInt(),
-        0xFF3B82F6.toInt(),
         0xFFF59E0B.toInt(),
-        0xFFEF4444.toInt(),
-        0xFFEC4899.toInt(),
-        0xFF8B5CF6.toInt(),
+        0xFFA855F7.toInt(),
+        0xFFE11D48.toInt(),
         0xFF84CC16.toInt(),
+        0xFFF472B6.toInt(),
+        0xFF3B82F6.toInt(),
+        0xFFA16207.toInt(),
     )
 
 private const val MEMBER_COLOR_LIGHTEN_PERCENT = 35

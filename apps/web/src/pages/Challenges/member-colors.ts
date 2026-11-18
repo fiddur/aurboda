@@ -5,13 +5,13 @@
  */
 export const MEMBER_COLORS = [
   '#2b9ea7',
-  '#10b981',
-  '#3b82f6',
   '#f59e0b',
-  '#ef4444',
-  '#ec4899',
-  '#8b5cf6',
+  '#a855f7',
+  '#e11d48',
   '#84cc16',
+  '#f472b6',
+  '#3b82f6',
+  '#a16207',
 ] as const
 
 const LIGHTEN_PERCENT = 35

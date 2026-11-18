@@ -89,7 +89,7 @@ describe('raceLinesFromStandings', () => {
       ]),
     )
     expect(lines.map((l) => l.name)).toEqual(['alice', 'bob'])
-    expect(lines.map((l) => l.color)).toEqual(['#2b9ea7', '#10b981'])
+    expect(lines.map((l) => l.color)).toEqual(['#2b9ea7', '#f59e0b'])
     expect(lines[0].points).toEqual([
       [new Date(START), 0],
       [new Date('2026-11-02T00:00:00.000Z'), 10],
@@ -116,7 +116,7 @@ describe('raceLinesFromStandings', () => {
       challenge(),
       standings([member('idle', []), member('bob', [{ offset: 0, sum: 3 }])]),
     )
-    expect(lines.map((l) => [l.name, l.color])).toEqual([['bob', '#10b981']])
+    expect(lines.map((l) => [l.name, l.color])).toEqual([['bob', '#f59e0b']])
   })
 
   test('an unparsable start time yields no lines', () => {
