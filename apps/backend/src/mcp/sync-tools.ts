@@ -1,5 +1,6 @@
 import {
   outboundSyncAckItemSchema,
+  reprocessGarminPushesBodySchema,
   syncCalendarsBodySchema,
   syncGarminBodySchema,
   syncGravlBodySchema,
@@ -67,6 +68,7 @@ export const registerSyncTools = (
     options?: { fullResync?: boolean; startDate?: Date },
   ) => Promise<HomeAssistantSyncResult>,
   homeAssistant?: HomeAssistantClient,
+  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>,
 ) => {
   server.tool(
     'sync_oura',
@@ -129,6 +131,22 @@ export const registerSyncTools = (
         }))
 
         return jsonResponse({ results: summary, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  server.tool(
+    'reprocess_garmin_pushes',
+    'Process the stored Connect with Garmin pushes again, the same way a fresh push is processed: every record Garmin pushed since the given time (default 7 days ago, at most 90 days back) is queued and read as it is stored now. Use it after processing failed or changed. Answers how many records were queued.',
+    { ...reprocessGarminPushesBodySchema.shape },
+    async ({ since }) => {
+      if (!reprocessGarminPushes) return errorResponse('Garmin push processing is not available.')
+      try {
+        const queued = await reprocessGarminPushes(user, since ? new Date(since) : undefined)
+        return jsonResponse({ queued, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

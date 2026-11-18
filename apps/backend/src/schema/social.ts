@@ -548,6 +548,16 @@ export const socialTables: Record<string, string> = {
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boosted_by_handle TEXT;
     ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boosted_by_display_name TEXT;
   `,
+  // A post several followed tags announce is one card (#1767). NULL is a card with its one
+  // original carrier (`object_uri` + `boosted_by_*`); otherwise every carrier in arrival order,
+  // `{ actor_uri, announce_uri, handle, display_name }`, the shown booster among them. The card
+  // goes when its last carrier is undone or unfollowed.
+  timeline_entry_boost_carriers: `
+    ALTER TABLE timeline_entry ADD COLUMN IF NOT EXISTS boost_carriers JSONB;
+    CREATE INDEX IF NOT EXISTS idx_timeline_entry_boost_carriers
+      ON timeline_entry USING GIN (boost_carriers jsonb_path_ops)
+      WHERE boost_carriers IS NOT NULL;
+  `,
   // Timeline ordering / keyset pagination is by (published_at DESC, id DESC).
   timeline_entry_indexes: `
     CREATE INDEX IF NOT EXISTS idx_timeline_entry_published

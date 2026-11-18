@@ -228,6 +228,7 @@ export const tableCreationOrder = [
   'timeline_entry_reply_checked',
   'timeline_entry_reply_checked_backstamp',
   'timeline_entry_boost',
+  'timeline_entry_boost_carriers',
   'timeline_entry_indexes',
   'timeline_entry_unenriched_indexes',
   'timeline_entry_reply_target_indexes',

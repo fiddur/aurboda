@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { OAuthToken, SyncState } from '../../db/types.ts'
 
-import { GARMIN_PUSH_FRESH_MS, garminPushDelivered } from './push-coverage.ts'
+import { GARMIN_DAILY_PUSH_STALE_MS, GARMIN_PUSH_FRESH_MS, garminPushDelivered } from './push-coverage.ts'
 
 const NOW = new Date('2026-11-18T12:00:00Z')
 const hoursBefore = (hours: number): Date => new Date(NOW.getTime() - hours * 3_600_000)
@@ -109,6 +109,50 @@ describe('garminPushDelivered', () => {
         NOW,
       ),
     ).toEqual(['hrv', 'activities'])
+  })
+
+  test('a daily type whose own last push is over three days old no longer vouches, while dailies keep it fresh', () => {
+    expect(
+      garminPushDelivered(grant(), [state('dailies', hoursBefore(1)), state('sleeps', hoursBefore(73))], NOW),
+    ).toEqual(['dailySummary', 'heartRate', 'intensityMinutes'])
+    expect(
+      garminPushDelivered(
+        grant(),
+        [
+          state('dailies', hoursBefore(1)),
+          state('hrv', hoursBefore(24 * 4)),
+          state('stressDetails', hoursBefore(24 * 4)),
+        ],
+        NOW,
+      ),
+    ).toEqual(['dailySummary', 'heartRate', 'intensityMinutes'])
+  })
+
+  test('a daily type exactly three days old still vouches', () => {
+    expect(
+      garminPushDelivered(
+        grant(),
+        [
+          state('dailies', hoursBefore(1)),
+          state('sleeps', new Date(NOW.getTime() - GARMIN_DAILY_PUSH_STALE_MS)),
+        ],
+        NOW,
+      ),
+    ).toEqual(['dailySummary', 'heartRate', 'sleep', 'intensityMinutes'])
+  })
+
+  test('the cap is for the daily types only: an old pulse ox or respiration push still vouches', () => {
+    expect(
+      garminPushDelivered(
+        grant(),
+        [
+          state('dailies', hoursBefore(1)),
+          state('pulseox', hoursBefore(24 * 5)),
+          state('allDayRespiration', hoursBefore(24 * 5)),
+        ],
+        NOW,
+      ),
+    ).toEqual(['dailySummary', 'heartRate', 'spo2', 'respiration', 'intensityMinutes'])
   })
 
   test('unknown permissions leave the pushes received to decide', () => {

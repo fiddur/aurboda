@@ -63,9 +63,11 @@ export { type Queryable, type UserDb } from './pool.ts'
 
 export {
   getAllScrobbles,
+  getRawRecordsByExternalIds,
   getScrobbles,
   insertRawRecord,
   insertRawRecords,
+  listRawRecordKeysReceivedSince,
   queryRawRecords,
   type QueryRawRecordsParams,
   type RawRecordRow,
@@ -439,6 +441,7 @@ export {
   deleteBoostCardsOf,
   getBoostCardAuthor,
   updateBoostCardsOf,
+  addTagBoostCarrier,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,

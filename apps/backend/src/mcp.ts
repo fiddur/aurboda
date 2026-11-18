@@ -174,6 +174,8 @@ interface McpDeps {
   /** The article preview (`preview_article`), shared with the REST route. */
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
+  /** `reprocess_garmin_pushes`: queues the stored Connect with Garmin pushes for processing again. */
+  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>
   /** The tag actor host (`tag_actor_host` server setting); its accounts' boosts are hashtag feeds, not people. */
   tagActorHost?: () => Promise<string>
   relayActions?: RelayActions
@@ -235,6 +237,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deps.onTrackWritten,
     deps.syncHomeAssistant,
     deps.homeAssistant,
+    deps.reprocessGarminPushes,
   )
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)

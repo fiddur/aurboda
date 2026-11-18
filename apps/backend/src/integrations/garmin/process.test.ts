@@ -983,6 +983,58 @@ describe('processGarminData', () => {
       expect(mockDeps.insertRawRecord).toHaveBeenCalledTimes(1)
     })
 
+    describe('an item without a name or a duration', () => {
+      const START = new Date('2025-01-15T07:00:00.000')
+      const storedRow = {
+        activity_type: 'running',
+        end_time: new Date(START.getTime() + 2400 * 1000),
+        start_time: START,
+        title: 'Lunch run',
+      }
+      const bare = makeActivity({ activityName: undefined, duration: undefined, elapsedDuration: undefined })
+
+      test('a new row gets the type key as title and ends at its start', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(null)
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        expect(findActivityByExternalId).toHaveBeenCalledWith(user, 'garmin', 'garmin-activity-12345')
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('running')
+        expect(activityArg.end_time).toEqual(START)
+      })
+
+      test('an existing row keeps its title and end', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(storedRow)
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('Lunch run')
+        expect(activityArg.end_time).toEqual(storedRow.end_time)
+      })
+
+      test('a name and a duration the item has win over the stored row, which is not looked up', async () => {
+        const findActivityByExternalId = vi.fn().mockResolvedValue(storedRow)
+        await processGarminData(user, 'activities', [makeActivity()], {
+          ...mockDeps,
+          findActivityByExternalId,
+        })
+
+        expect(findActivityByExternalId).not.toHaveBeenCalled()
+        const activityArg = vi.mocked(mockDeps.insertActivity).mock.calls[0]![1]
+        expect(activityArg.title).toBe('Morning Run')
+        expect(activityArg.end_time).toEqual(new Date(START.getTime() + 1800 * 1000))
+      })
+
+      test('a stored end before the start is not kept', async () => {
+        const findActivityByExternalId = vi
+          .fn()
+          .mockResolvedValue({ ...storedRow, end_time: new Date(START.getTime() - 1000) })
+        await processGarminData(user, 'activities', [bare], { ...mockDeps, findActivityByExternalId })
+
+        expect(vi.mocked(mockDeps.insertActivity).mock.calls[0]![1].end_time).toEqual(START)
+      })
+    })
+
     test('calculates end time from duration', async () => {
       await processGarminData(user, 'activities', [makeActivity({ duration: 3600 })], mockDeps)
 

@@ -106,15 +106,19 @@ const storeHealthConnectActivity = async (
   const endTime = data.endTime ? new Date(data.endTime as string) : undefined
   const identity = resolveHealthConnectIdentity(recordType, data)
   if (identity) await adoptForIdentity(user, identity, activityType, startTime)
-  const activityId = await insertActivity(user, {
-    activity_type: activityType,
-    data: { ...stripExerciseTypeFromData(data), ...singleLiftSets(data), ...identity?.data },
-    end_time: endTime,
-    external_id: identity?.external_id,
-    source: identity?.source ?? 'health_connect',
-    start_time: startTime,
-    title: data.title as string | undefined,
-  })
+  const activityId = await insertActivity(
+    user,
+    {
+      activity_type: activityType,
+      data: { ...stripExerciseTypeFromData(data), ...singleLiftSets(data), ...identity?.data },
+      end_time: endTime,
+      external_id: identity?.external_id,
+      source: identity?.source ?? 'health_connect',
+      start_time: startTime,
+      title: data.title as string | undefined,
+    },
+    identity ? { onConflict: 'fill_in' } : undefined,
+  )
   // HC sends `notes` as a single string. Persist it as a synced note row
   // (source='health_connect') so it round-trips cleanly: outbound HC sync
   // only includes user-authored (source IS NULL) notes, so this row never
@@ -285,7 +289,17 @@ export const processHealthConnectBatch = async (
     for (const { identity, activityType, startTime } of identified) {
       await adoptForIdentity(user, identity, activityType, startTime)
     }
-    const inserted = await insertActivities(user, activities)
+    const inserted = [
+      ...(await insertActivities(
+        user,
+        activities.filter((a) => a.source === 'health_connect'),
+      )),
+      ...(await insertActivities(
+        user,
+        activities.filter((a) => a.source !== 'health_connect'),
+        { onConflict: 'fill_in' },
+      )),
+    ]
     // Persist notes for activities that carry them. Match on (external_id) for
     // sessions stored under a provider identity and fall back to
     // (type + start_time) for plain HC rows, which carry no external_id.

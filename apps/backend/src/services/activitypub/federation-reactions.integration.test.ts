@@ -20,7 +20,7 @@ import {
 import { listFeedPostReactions } from '../../db/feed-reactions.ts'
 import { createFeedPost } from '../../db/feed.ts'
 import { listNotifications } from '../../db/notifications.ts'
-import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
+import { deleteTimelineEntriesByActor, listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext, type StubDocuments } from '../../test/inbox-context.ts'
 import {
@@ -361,27 +361,101 @@ describe('Inbound likes and boosts', () => {
       expect(await notificationsOf(user)).toEqual([])
     })
 
-    test('one post announced by two followed tags raises one new-post', async () => {
+    test('a followed tag’s boost of a reply is a card but raises nothing', async () => {
       const user = getTestUser()
-      const trail = 'https://tags.example/user/trail'
-      const docs = { ...fediverse(), [trail]: actorDocument(trail, 'trail', '#trail') }
       await followTagActor(user, ALICE, 'running')
-      await followTagActor(user, trail, 'trail')
-      await handleInboundAnnounce(inboxCtx(user, docs), boostOfCarol(`${ALICE}/statuses/9/activity`), ORIGIN)
       await handleInboundAnnounce(
-        inboxCtx(user, docs),
-        new Announce({
-          actor: new URL(trail),
-          id: new URL(`${trail}/announces/1`),
-          object: new URL(CAROL_NOTE),
-          published: dateToTemporalInstant(new Date('2026-07-01T11:05:00Z')),
-        }),
+        inboxCtx(user, fediverse({ inReplyTo: 'https://elsewhere.example/notes/0' })),
+        boostOfCarol(`${ALICE}/statuses/9/activity`),
         ORIGIN,
       )
-      expect(await listTimelineEntries(user, 10)).toHaveLength(2)
-      expect(await notificationsOf(user)).toEqual([
-        { link: '/feed?tag=running', title: 'Carol posted in #running', type: 'feed_post' },
-      ])
+      expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+      expect(await notificationsOf(user)).toEqual([])
+    })
+
+    describe('one post announced by two followed tags (#1767)', () => {
+      const RUNNING = 'https://tags.example/user/running'
+      const TRAIL = 'https://tags.example/user/trail'
+      const hashtag = (tag: string) => ({
+        href: `https://third.example/tags/${tag}`,
+        name: `#${tag}`,
+        type: 'Hashtag',
+      })
+      const docs = () => ({
+        ...fediverse({
+          '@context': ['https://www.w3.org/ns/activitystreams', { Hashtag: 'as:Hashtag' }],
+          tag: [hashtag('running'), hashtag('trail')],
+        }),
+        [RUNNING]: actorDocument(RUNNING, 'running', '#running'),
+        [TRAIL]: actorDocument(TRAIL, 'trail', '#trail'),
+      })
+      const tagAnnounce = (tagActor: string) =>
+        new Announce({
+          actor: new URL(tagActor),
+          id: new URL(`${tagActor}/announces/1`),
+          object: new URL(CAROL_NOTE),
+          published: dateToTemporalInstant(
+            new Date(tagActor === RUNNING ? '2026-07-01T11:00:00Z' : '2026-07-01T11:05:00Z'),
+          ),
+        })
+      const announceBoth = async (user: string) => {
+        await followTagActor(user, RUNNING, 'running')
+        await followTagActor(user, TRAIL, 'trail')
+        await handleInboundAnnounce(inboxCtx(user, docs()), tagAnnounce(RUNNING), ORIGIN)
+        await handleInboundAnnounce(inboxCtx(user, docs()), tagAnnounce(TRAIL), ORIGIN)
+      }
+      const undoFrom = (user: string, tagActor: string) =>
+        handleInboundUndo(
+          inboxCtx(user, docs()),
+          new Undo({ actor: new URL(tagActor), object: tagAnnounce(tagActor) }),
+        )
+      const boosters = async (user: string) =>
+        (await listTimelineEntries(user, 10)).map((e) => [e.boost_of_uri, e.boosted_by_actor_uri])
+
+      test('is one card and one new-post, found under both tags; a redelivery changes nothing', async () => {
+        const user = getTestUser()
+        await announceBoth(user)
+        await handleInboundAnnounce(inboxCtx(user, docs()), tagAnnounce(TRAIL), ORIGIN)
+        expect(await boosters(user)).toEqual([[CAROL_NOTE, RUNNING]])
+        expect(await listTimelineEntries(user, 10, undefined, undefined, 'running')).toHaveLength(1)
+        expect(await listTimelineEntries(user, 10, undefined, undefined, 'trail')).toHaveLength(1)
+        expect(await notificationsOf(user)).toEqual([
+          { link: '/feed?tag=running', title: 'Carol posted in #running', type: 'feed_post' },
+        ])
+      })
+
+      test('an Undo from the first tag keeps the card under the second; an Undo from both removes it', async () => {
+        const user = getTestUser()
+        await announceBoth(user)
+        await undoFrom(user, RUNNING)
+        expect(await boosters(user)).toEqual([[CAROL_NOTE, TRAIL]])
+        await undoFrom(user, TRAIL)
+        expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+      })
+
+      test('unfollowing one tag keeps the card; unfollowing both removes it', async () => {
+        const user = getTestUser()
+        await announceBoth(user)
+        await deleteTimelineEntriesByActor(user, RUNNING)
+        expect(await boosters(user)).toEqual([[CAROL_NOTE, TRAIL]])
+        await deleteTimelineEntriesByActor(user, TRAIL)
+        expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+      })
+
+      test('a person’s boost of the same post is still its own card', async () => {
+        const user = getTestUser()
+        await acceptFollow(user, ALICE, '@alice@mastodon.example')
+        await announceBoth(user)
+        await handleInboundAnnounce(
+          inboxCtx(user, docs()),
+          boostOfCarol(`${ALICE}/statuses/9/activity`),
+          ORIGIN,
+        )
+        expect((await boosters(user)).toSorted()).toEqual([
+          [CAROL_NOTE, ALICE],
+          [CAROL_NOTE, RUNNING],
+        ])
+      })
     })
   })
 

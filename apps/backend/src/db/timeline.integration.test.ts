@@ -2,7 +2,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getDbForUser, query, rewriteLegacyQuantpubStructured } from './connection.ts'
+import { upsertFeedFollowing } from './feed-following.ts'
 import {
+  addTagBoostCarrier,
+  type BoostCarrier,
   countTimelineRepliesTo,
   deleteBoostCardsOf,
   deleteBoostEntry,
@@ -720,6 +723,133 @@ describe('Timeline store integration', () => {
       // Bob's boost of alice's post survives — that's in the timeline because of
       // the (still active) follow of Bob.
       expect((await listTimelineEntries(user, 10)).map((e) => e.object_uri)).toEqual([ANNOUNCE])
+    })
+  })
+
+  describe('a boost card carried by several followed tags (#1767)', () => {
+    const NOTE = 'https://mastodon.example/notes/1'
+    const RUNNING = 'https://tags.example/user/running'
+    const TRAIL = 'https://tags.example/user/trail'
+    const HIKING = 'https://tags.example/user/hiking'
+    const announceOf = (tagActor: string) => `${tagActor}/announces/1`
+    const carrier = (tagActor: string): BoostCarrier => ({
+      actor_uri: tagActor,
+      announce_uri: announceOf(tagActor),
+      display_name: `#${tagActor.split('/').pop()}`,
+      handle: `@${tagActor.split('/').pop()}@tags.example`,
+    })
+
+    const followTag = (user: string, tagActor: string) =>
+      upsertFeedFollowing(user, {
+        actor_uri: tagActor,
+        inbox_uri: `${tagActor}/inbox`,
+        tag: tagActor.split('/').pop(),
+      })
+
+    const tagCard = (user: string, tagActor: string) =>
+      upsertTimelineEntry(
+        user,
+        entry(1, {
+          boost_of_uri: NOTE,
+          boosted_by_actor_uri: tagActor,
+          boosted_by_display_name: carrier(tagActor).display_name,
+          boosted_by_handle: carrier(tagActor).handle,
+          object_uri: announceOf(tagActor),
+        }),
+      )
+
+    const carriersOf = async (user: string): Promise<BoostCarrier[] | null> =>
+      (
+        await query<{ boost_carriers: BoostCarrier[] | null }>(
+          user,
+          'SELECT boost_carriers FROM timeline_entry',
+        )
+      ).rows[0]?.boost_carriers ?? null
+
+    const shownBooster = async (user: string) =>
+      (await listTimelineEntries(user, 10)).map((e) => [
+        e.object_uri,
+        e.boosted_by_actor_uri,
+        e.boosted_by_handle,
+      ])
+
+    const cardOfThree = async (user: string) => {
+      await Promise.all([followTag(user, RUNNING), followTag(user, TRAIL), followTag(user, HIKING)])
+      await tagCard(user, RUNNING)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(true)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(HIKING))).toBe(true)
+    }
+
+    test('a second tag joins the first tag’s card, the original carrier first; redelivery changes nothing', async () => {
+      const user = getTestUser()
+      await followTag(user, RUNNING)
+      await followTag(user, TRAIL)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(false)
+      await tagCard(user, RUNNING)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(true)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(true)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+      expect(await carriersOf(user)).toEqual([carrier(RUNNING), carrier(TRAIL)])
+    })
+
+    test('a person’s card is never joined, nor the card’s own Announce', async () => {
+      const user = getTestUser()
+      await followTag(user, TRAIL)
+      await tagCard(user, 'https://remote.example/users/bob')
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(false)
+      await tagCard(user, TRAIL)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(false)
+    })
+
+    test('removing the original carrier keeps the card and shows the next one', async () => {
+      const user = getTestUser()
+      await cardOfThree(user)
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), 'https://evil.example/users/mallory')).toBe(
+        false,
+      )
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(true)
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), TRAIL, carrier(TRAIL).handle]])
+      expect(await carriersOf(user)).toEqual([carrier(TRAIL), carrier(HIKING)])
+    })
+
+    test('removing a listed carrier keeps the shown booster', async () => {
+      const user = getTestUser()
+      await cardOfThree(user)
+      expect(await deleteBoostEntry(user, announceOf(HIKING), HIKING)).toBe(true)
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), RUNNING, carrier(RUNNING).handle]])
+      expect(await carriersOf(user)).toEqual([carrier(RUNNING), carrier(TRAIL)])
+    })
+
+    test('removing the last carrier deletes the card', async () => {
+      const user = getTestUser()
+      await followTag(user, RUNNING)
+      await followTag(user, TRAIL)
+      await tagCard(user, RUNNING)
+      await addTagBoostCarrier(user, NOTE, carrier(TRAIL))
+      expect(await deleteBoostEntry(user, announceOf(TRAIL), TRAIL)).toBe(true)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(1)
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(true)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(false)
+    })
+
+    test('a legacy card with no carriers listed goes with its booster', async () => {
+      const user = getTestUser()
+      await tagCard(user, RUNNING)
+      expect(await carriersOf(user)).toBeNull()
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(true)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+    })
+
+    test('unfollowing one carrier keeps the card; unfollowing every carrier removes it', async () => {
+      const user = getTestUser()
+      await cardOfThree(user)
+      expect(await deleteTimelineEntriesByActor(user, TRAIL)).toBe(0)
+      expect(await carriersOf(user)).toEqual([carrier(RUNNING), carrier(HIKING)])
+      expect(await deleteTimelineEntriesByActor(user, RUNNING)).toBe(0)
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), HIKING, carrier(HIKING).handle]])
+      expect(await deleteTimelineEntriesByActor(user, HIKING)).toBe(1)
+      expect(await listTimelineEntries(user, 10)).toHaveLength(0)
     })
   })
   describe('replies to one object (comments under an own post)', () => {

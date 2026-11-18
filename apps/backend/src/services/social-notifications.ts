@@ -221,12 +221,13 @@ const wantsPostNotification = ({ entry, source, visible }: TimelineEntryEvent): 
   visible &&
   source != null &&
   source.notify_on_post &&
-  (entry.boost_of_uri != null || entry.in_reply_to_uri == null)
+  (entry.in_reply_to_uri == null || (entry.boost_of_uri != null && source.tag == null))
 
 /**
  * For a newly stored entry on the live inbox path: a reply to the reader's own post, a mention
  * of them (a reply that also mentions them is one reply), or else a post from a followee or a
  * followed tag whose bell is on, top-level or a boost card, that the reader's timeline shows.
+ * A followed tag boosts every post carrying it, replies included; only its top-level posts notify.
  */
 export const timelineEntryNotification = (event: TimelineEntryEvent): RaiseNotificationInput | null => {
   const { entry } = event

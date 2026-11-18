@@ -2,7 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { createUsageRecorder, installUsageRecorder, type UsageRow } from '../services/usage-recorder.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { getScrobbles, insertRawRecord, insertRawRecords, queryRawRecords } from './raw-records.ts'
+import { query } from './connection.ts'
+import {
+  getRawRecordsByExternalIds,
+  getScrobbles,
+  insertRawRecord,
+  insertRawRecords,
+  listRawRecordKeysReceivedSince,
+  queryRawRecords,
+} from './raw-records.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -274,6 +282,109 @@ describe('Raw Records Integration Tests', () => {
         source: 'health_connect',
       })
       expect(total).toBe(2)
+    })
+  })
+
+  describe('getRawRecordsByExternalIds', () => {
+    test('answers the data of the found records of one type by external id', async () => {
+      const user = getTestUser()
+      const at = new Date('2026-11-16T12:00:00Z')
+      await insertRawRecords(user, [
+        {
+          data: { n: 1 },
+          external_id: 'a',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: { n: 2 },
+          external_id: 'b',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: { n: 3 },
+          external_id: 'a',
+          record_type: 'garmin_push_sleeps',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: { n: 4 },
+          external_id: 'a',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'oura',
+        },
+      ])
+
+      const found = await getRawRecordsByExternalIds(user, 'garmin', 'garmin_push_dailies', ['a', 'missing'])
+      expect([...found]).toEqual([['a', { n: 1 }]])
+      expect(await getRawRecordsByExternalIds(user, 'garmin', 'garmin_push_dailies', [])).toEqual(new Map())
+    })
+  })
+
+  describe('listRawRecordKeysReceivedSince', () => {
+    test('lists the keys of a type prefix received since the time, oldest first', async () => {
+      const user = getTestUser()
+      const at = new Date('2026-11-16T12:00:00Z')
+      await insertRawRecords(user, [
+        {
+          data: {},
+          external_id: 'old',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: {},
+          external_id: 'new',
+          record_type: 'garmin_push_sleeps',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: {},
+          external_id: 'newer',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        { data: {}, external_id: 'pull', record_type: 'garmin_sleep', recorded_at: at, source: 'garmin' },
+        {
+          data: {},
+          external_id: 'look',
+          record_type: 'garmin_pushXdailies',
+          recorded_at: at,
+          source: 'garmin',
+        },
+        {
+          data: {},
+          external_id: 'other',
+          record_type: 'garmin_push_dailies',
+          recorded_at: at,
+          source: 'oura',
+        },
+      ])
+      const received = (externalId: string, time: string) =>
+        query(user, `UPDATE raw_records SET received_at = $1 WHERE external_id = $2`, [time, externalId])
+      await received('old', '2026-11-01T00:00:00Z')
+      await received('new', '2026-11-10T00:00:00Z')
+      await received('newer', '2026-11-11T00:00:00Z')
+
+      expect(
+        await listRawRecordKeysReceivedSince(
+          user,
+          'garmin',
+          'garmin_push_',
+          new Date('2026-11-05T00:00:00Z'),
+        ),
+      ).toEqual([
+        { external_id: 'new', record_type: 'garmin_push_sleeps' },
+        { external_id: 'newer', record_type: 'garmin_push_dailies' },
+      ])
     })
   })
 

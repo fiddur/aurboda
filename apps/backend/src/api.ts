@@ -20,7 +20,12 @@ import {
 import { mountRestRouters, postChartDeps } from './api/rest-routes.ts'
 import { mountSyncRouter } from './api/sync-setup.ts'
 import { createUsageMiddleware } from './api/usage-middleware.ts'
-import { setupGarminPush, setupOuraWebhook, setupStravaWebhook } from './api/webhooks-setup.ts'
+import {
+  createGarminPushProcessor,
+  setupGarminPush,
+  setupOuraWebhook,
+  setupStravaWebhook,
+} from './api/webhooks-setup.ts'
 import { createAuth } from './auth.ts'
 import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
@@ -43,6 +48,7 @@ import {
   insertRawRecord,
   insertTimeSeries,
   listChallengesAwaitingResult,
+  listRawRecordKeysReceivedSince,
   listPublicFeedPosts,
   listReplyUncheckedEntries,
   listUnenrichedAurbodaEntries,
@@ -188,6 +194,12 @@ import {
   unfollowActor,
   unfollowTag,
 } from './services/following.ts'
+import {
+  createGarminPushQueue,
+  type GarminPushQueue,
+  inProcessGarminPushQueue,
+  reprocessGarminPushes,
+} from './services/garmin-push-queue.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
@@ -1072,6 +1084,37 @@ const main = async () => {
     )
   }
 
+  // Garmin pushes (#1806) are processed from a durable queue, so a restart between the answer
+  // and the processing loses nothing. Without pg-boss they are processed in this process.
+  const processGarminPush = createGarminPushProcessor({
+    garminOAuth,
+    isReadOnly,
+    onActivityDetailSynced,
+    onActivitySynced: activityNotifier,
+    onTrackWritten,
+  })
+  const onGarminPushError = (error: unknown) =>
+    console.error('Garmin push: processing failed:', error instanceof Error ? error.message : error)
+  let garminPushQueue: GarminPushQueue = inProcessGarminPushQueue(processGarminPush, onGarminPushError)
+  if (boss) {
+    try {
+      garminPushQueue = await createGarminPushQueue(boss, processGarminPush)
+    } catch (error) {
+      console.error('Failed to initialize the Garmin push queue:', error)
+    }
+  }
+  const reprocessGarminPushesForUser = (user: string, since?: Date) =>
+    reprocessGarminPushes(
+      {
+        enqueue: (job) => garminPushQueue.enqueue(job),
+        listPushRecordKeys: (owner, from) =>
+          listRawRecordKeysReceivedSince(owner, 'garmin', 'garmin_push_', from),
+        now: () => new Date(),
+      },
+      user,
+      since,
+    )
+
   // Background polling (#1042): every 5 minutes, sync whatever each user's
   // `sync_intervals` says is due, through the same sync provider queries use.
   if (boss) {
@@ -1220,6 +1263,7 @@ const main = async () => {
       onTrackWritten,
       oura,
       reactionActions,
+      reprocessGarminPushes: reprocessGarminPushesForUser,
       retroEnrichTimeline,
       stravaQueue: stravaQueue ?? undefined,
       sync: syncProvider,
@@ -1298,6 +1342,7 @@ const main = async () => {
     activityNotifier,
     onActivityDetailSynced,
     onTrackWritten,
+    reprocessGarminPushes: reprocessGarminPushesForUser,
   })
 
   registerOAuthRoutes({
@@ -1330,9 +1375,7 @@ const main = async () => {
     garminOAuth,
     httpd,
     isReadOnly,
-    onActivityDetailSynced,
-    onActivitySynced: activityNotifier,
-    onTrackWritten,
+    pushQueue: garminPushQueue,
     sessionSecret,
   })
 

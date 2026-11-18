@@ -577,34 +577,130 @@ export const deleteTimelineEntryByUri = async (
   return removed > 0
 }
 
+/** One account whose `Announce` keeps a boost card in the timeline (see `boost_carriers`). */
+export interface BoostCarrier {
+  actor_uri: string
+  announce_uri: string
+  handle: string | null
+  display_name: string | null
+}
+
+/** A card's carriers: the stored list, or its single original carrier for a NULL one. */
+const CARRIERS_SQL = `COALESCE(boost_carriers, jsonb_build_array(jsonb_build_object(
+  'actor_uri', boosted_by_actor_uri, 'announce_uri', object_uri,
+  'handle', boosted_by_handle, 'display_name', boosted_by_display_name)))`
+
+const remainingCarriersSql = (keep: string): string =>
+  `(SELECT COALESCE(jsonb_agg(c ORDER BY ord), '[]'::jsonb)
+      FROM jsonb_array_elements(${CARRIERS_SQL}) WITH ORDINALITY AS e(c, ord)
+     WHERE ${keep})`
+
 /**
- * Remove one boost card by its `Announce` id, scoped to the booster — the
- * inbound `Undo{Announce}` path. Never touches the original post's own entry
- * (which is keyed on the Note id, not the Announce id).
+ * Store the carriers left after a removal, and move the shown booster to the first of them
+ * when it is no longer among them. `object_uri`, the card's identity, never changes.
+ */
+const keepCardWithoutCarriers = async (
+  user: string,
+  keep: string,
+  match: string,
+  params: unknown[],
+): Promise<number> => {
+  const remaining = remainingCarriersSql(keep)
+  const shownStays = `${remaining} @> jsonb_build_array(jsonb_build_object('actor_uri', boosted_by_actor_uri))`
+  const shown = (column: string, key: string) =>
+    `${column} = CASE WHEN ${shownStays} THEN ${column} ELSE ${remaining}->0->>'${key}' END`
+  const result = await query(
+    user,
+    `UPDATE timeline_entry
+     SET ${shown('boosted_by_actor_uri', 'actor_uri')},
+         ${shown('boosted_by_handle', 'handle')},
+         ${shown('boosted_by_display_name', 'display_name')},
+         boost_carriers = ${remaining}
+     WHERE boost_of_uri IS NOT NULL AND boost_carriers IS NOT NULL AND (${match})
+       AND jsonb_array_length(${remaining}) > 0`,
+    params,
+  )
+  return result.rowCount ?? 0
+}
+
+/**
+ * A followed tag announcing a Note whose boost card from another followed tag is already in
+ * the timeline: record it as one more carrier of that card instead of adding a second card.
+ * Returns false when there is no such card. A redelivered `Announce` already listed changes
+ * nothing; the card's own `Announce` is not matched, so its redelivery refreshes the card.
+ */
+export const addTagBoostCarrier = async (
+  user: string,
+  noteUri: string,
+  carrier: BoostCarrier,
+): Promise<boolean> => {
+  const result = await query(
+    user,
+    `WITH card AS (
+       SELECT te.id FROM timeline_entry te
+       JOIN feed_following ff ON ff.actor_uri = te.boosted_by_actor_uri AND ff.tag IS NOT NULL
+       WHERE te.boost_of_uri = $1 AND te.object_uri <> $2
+       ORDER BY te.received_at, te.id
+       LIMIT 1
+       FOR UPDATE OF te
+     )
+     UPDATE timeline_entry
+     SET boost_carriers = CASE
+       WHEN ${CARRIERS_SQL} @> jsonb_build_array(jsonb_build_object('announce_uri', $2::text)) THEN ${CARRIERS_SQL}
+       ELSE ${CARRIERS_SQL} || jsonb_build_array(jsonb_build_object(
+         'actor_uri', $3::text, 'announce_uri', $2::text, 'handle', $4::text, 'display_name', $5::text))
+     END
+     FROM card WHERE timeline_entry.id = card.id`,
+    [noteUri, carrier.announce_uri, carrier.actor_uri, carrier.handle, carrier.display_name],
+  )
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Remove one carrier of a boost card, by its `Announce` id and scoped to the booster — the
+ * inbound `Undo{Announce}` path. The card stays while another carrier remains, and goes with
+ * its last one. Never touches the original post's own entry (keyed on the Note id).
+ *
+ * Two statements, each atomic: the first keeps cards with carriers left, the second deletes
+ * those without, and a card the first one changed no longer lists the pair the second matches.
  */
 export const deleteBoostEntry = async (
   user: string,
   announceUri: string,
   boosterActorUri: string,
 ): Promise<boolean> => {
-  const removed = await deleteTimelineEntriesWhere(user, 'object_uri = $1 AND boosted_by_actor_uri = $2', [
+  const pair = `jsonb_build_array(jsonb_build_object('announce_uri', $1::text, 'actor_uri', $2::text))`
+  const keep = `NOT (c->>'announce_uri' = $1 AND c->>'actor_uri' = $2)`
+  const kept = await keepCardWithoutCarriers(user, keep, `boost_carriers @> ${pair}`, [
     announceUri,
     boosterActorUri,
   ])
-  return removed > 0
+  const removed = await deleteTimelineEntriesWhere(
+    user,
+    `boost_of_uri IS NOT NULL
+     AND ((boost_carriers IS NULL AND object_uri = $1 AND boosted_by_actor_uri = $2)
+          OR (boost_carriers @> ${pair} AND jsonb_array_length(${remainingCarriersSql(keep)}) = 0))`,
+    [announceUri, boosterActorUri],
+  )
+  return kept + removed > 0
 }
 
 /**
  * Remove every timeline row that exists *because of* an actor, on
  * `Undo{Follow}`/unfollow: their own posts (direct entries they authored) and
- * every post they boosted into the timeline. Someone ELSE's boost of one of
- * their posts stays — it's in the timeline on the booster's account, and that
- * follow is untouched.
+ * every post they boosted into the timeline, unless another carrier still keeps
+ * that card (see `boost_carriers`). Someone ELSE's boost of one of their posts
+ * stays — it's in the timeline on the booster's account, and that follow is
+ * untouched. Returns how many rows were deleted.
  */
 export const deleteTimelineEntriesByActor = async (user: string, actorUri: string): Promise<number> => {
+  const carries = `(boosted_by_actor_uri = $1 OR boost_carriers @> jsonb_build_array(jsonb_build_object('actor_uri', $1::text)))`
+  const keep = `c->>'actor_uri' IS DISTINCT FROM $1`
+  await keepCardWithoutCarriers(user, keep, carries, [actorUri])
   return deleteTimelineEntriesWhere(
     user,
-    '(actor_uri = $1 AND boost_of_uri IS NULL) OR boosted_by_actor_uri = $1',
+    `(actor_uri = $1 AND boost_of_uri IS NULL)
+     OR (boost_of_uri IS NOT NULL AND ${carries} AND jsonb_array_length(${remainingCarriersSql(keep)}) = 0)`,
     [actorUri],
   )
 }

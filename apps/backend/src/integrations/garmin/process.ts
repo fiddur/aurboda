@@ -20,6 +20,7 @@ import {
   activityTypeExists,
   adoptLegacyActivity,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -75,6 +76,8 @@ export interface GarminProcessDeps {
   auditInfo: typeof auditInfo
   auditWarn: typeof auditWarn
   deleteGarminActivityWithWrongType: typeof deleteGarminActivityWithWrongType
+  /** The stored row, whose title and end an item without a name or duration keeps; absent, the fallbacks are written. */
+  findActivityByExternalId?: typeof findActivityByExternalId
   insertActivity: typeof insertActivity
   insertLocations: typeof insertLocations
   insertRawRecord: typeof insertRawRecord
@@ -105,6 +108,7 @@ const defaultDeps: GarminProcessDeps = {
   auditInfo,
   auditWarn,
   deleteGarminActivityWithWrongType,
+  findActivityByExternalId,
   insertActivity,
   insertLocations,
   insertRawRecord,
@@ -567,6 +571,28 @@ const processBodyBattery = async (
   return count
 }
 
+/** An item without a name or a duration (a pushed manual edit) keeps the stored row's title and end. */
+const activityTitleAndEnd = async (
+  user: string,
+  act: IActivity,
+  startTime: Date,
+  deps: GarminProcessDeps,
+): Promise<{ title: string | undefined; end: Date }> => {
+  const durationSeconds = act.duration || act.elapsedDuration || 0
+  const computedEnd = new Date(startTime.getTime() + durationSeconds * 1000)
+  if (act.activityName && durationSeconds) return { end: computedEnd, title: act.activityName }
+  const stored = await deps.findActivityByExternalId?.(
+    user,
+    'garmin',
+    garminActivityExternalId(act.activityId),
+  )
+  const keepEnd = !durationSeconds && stored?.end_time !== undefined && stored.end_time > startTime
+  return {
+    end: keepEnd && stored?.end_time ? stored.end_time : computedEnd,
+    title: act.activityName || stored?.title,
+  }
+}
+
 const processActivity = async (
   user: string,
   act: IActivity,
@@ -575,14 +601,13 @@ const processActivity = async (
 ): Promise<void> => {
   const externalId = garminActivityExternalId(act.activityId)
   const startTime = new Date(act.startTimeGMT || act.beginTimestamp)
-  const durationMs = (act.duration || act.elapsedDuration || 0) * 1000
-  const endTime = new Date(startTime.getTime() + durationMs)
+  const { end: endTime, title } = await activityTitleAndEnd(user, act, startTime, deps)
 
   await deps.insertRawRecord(user, makeRaw('garmin_activity', externalId, startTime, act))
 
   const activityTypeKey = act.activityType?.typeKey ?? 'unknown'
   const resolved = await resolveActivityType(user, activityTypeKey, deps, typeCache)
-  const exerciseTitle = act.activityName || activityTypeKey
+  const exerciseTitle = title || activityTypeKey
 
   // Legacy rows (no external_id) with a different type are removed so a
   // re-sync after a type-mapping change doesn't leave a duplicate; keyed rows

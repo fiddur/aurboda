@@ -23,6 +23,7 @@ vi.mock('../../db/index.ts', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   adoptLegacyActivity: vi.fn().mockResolvedValue(null),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
+  findActivityByExternalId: vi.fn().mockResolvedValue(null),
   getActivitiesNeedingDetail: vi.fn().mockResolvedValue([]),
   getGarminActivitiesNeedingSets: vi.fn().mockResolvedValue([]),
   getOAuthToken: vi.fn().mockResolvedValue({ access_token: '{"oauth1":{},"oauth2":{}}', provider: 'garmin' }),

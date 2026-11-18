@@ -144,6 +144,42 @@ export const queryRawRecords = async (
   return { rows: dataResult.rows, total }
 }
 
+/** The stored data of each found record of one type, by external id. */
+export const getRawRecordsByExternalIds = async (
+  user: string,
+  source: string,
+  recordType: string,
+  externalIds: string[],
+): Promise<Map<string, Record<string, unknown>>> => {
+  if (externalIds.length === 0) return new Map()
+  const result = await query<{ external_id: string; data: Record<string, unknown> }>(
+    user,
+    `SELECT external_id, data FROM raw_records
+     WHERE source = $1 AND record_type = $2 AND external_id = ANY($3::text[])`,
+    [source, recordType, externalIds],
+  )
+  return new Map(result.rows.map((row) => [row.external_id, row.data]))
+}
+
+const likePrefix = (prefix: string): string => `${prefix.replaceAll(/[\\%_]/g, (c) => `\\${c}`)}%`
+
+/** The keys of the records whose type starts with the prefix, stored or updated since the time, oldest first. */
+export const listRawRecordKeysReceivedSince = async (
+  user: string,
+  source: string,
+  recordTypePrefix: string,
+  since: Date,
+): Promise<{ record_type: string; external_id: string }[]> => {
+  const result = await query<{ record_type: string; external_id: string }>(
+    user,
+    `SELECT record_type, external_id FROM raw_records
+     WHERE source = $1 AND record_type LIKE $2 AND received_at >= $3 AND external_id IS NOT NULL
+     ORDER BY received_at, id`,
+    [source, likePrefix(recordTypePrefix), since],
+  )
+  return result.rows
+}
+
 export const getScrobbles = async (user: string, start: Date, end: Date): Promise<ScrobbleRecord[]> => {
   const result = await query(
     user,
