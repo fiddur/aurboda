@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "reference_bodyweight_kg": 75,
   "bodyweight_exponent": 0.67,
   "groups": [
@@ -393,6 +393,26 @@
       "ratio": {
         "female": 1.28,
         "male": 1.6
+      }
+    },
+    {
+      "group": "glutes",
+      "id": "dumbbell_deadlift",
+      "keys": ["dumbbell_deadlift"],
+      "name": "Dumbbell deadlift",
+      "ratio": {
+        "female": 0.41,
+        "male": 0.56
+      }
+    },
+    {
+      "group": "glutes",
+      "id": "weighted_single_leg_glute_bridge",
+      "keys": ["single_leg_glute_bridge", "single_leg_hip_raise"],
+      "name": "Weighted single-leg glute bridge",
+      "ratio": {
+        "female": 0.38,
+        "male": 0.5
       }
     }
   ]

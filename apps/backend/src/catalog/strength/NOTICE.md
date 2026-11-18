@@ -23,6 +23,14 @@ published table of strength standards.
   one weight in both hands.
 - **Only free-weight lifts** are listed. A machine's or a cable stack's numbers differ from one make
   to the next, and a bodyweight exercise has no logged weight to estimate a one-rep max from.
+- **The weighted single-leg glute bridge** is the one bodyweight exercise listed: its catalogue
+  entries carry no equipment, and a set scores only when it has a logged weight. That weight is the
+  load lying on the hip, the same whether it is a kettlebell, a dumbbell, a plate or a barbell. The
+  ratio comes from the barbell glute bridge: the hips lift the bar plus roughly 0.45 of the body,
+  one leg manages about half of that, and about half the bodyweight is the leg's own share.
+- **Left out on purpose:** the kettlebell swing, which is ballistic, so its weight and reps say
+  little about maximal strength; and the two-leg glute bridge or hip thrust with a kettlebell or a
+  dumbbell, where the weight that can be held is far below what the glutes can lift.
 - **`keys`** are keys of `../exercises/exercise-catalog.json`. A key belongs to one lift, and every
   entry listed trains one of the lift's group's `muscle_groups` at a recruitment weight of 0.5 or
   more; a test holds both.
