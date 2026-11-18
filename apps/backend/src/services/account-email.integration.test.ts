@@ -218,6 +218,20 @@ describe('createUserRole and setUserPassword', () => {
     await setUserPassword(admin, user, 'old password')
   })
 
+  test('a password that NFKC changes signs in as typed and in its NFKC form', async () => {
+    await setUserPassword(admin, user, 'Ｐａｓｓword-ﬁx')
+    expect(await loginError('Ｐａｓｓword-ﬁx')).toBeNull()
+    expect(await loginError('Password-fix')).toBeNull()
+    expect(isInvalidPasswordError(await loginError('Ｐａｓｓword-ﬁy'))).toBe(true)
+    await setUserPassword(admin, user, 'old password')
+  })
+
+  test('a password whose verifier Postgres computed itself still signs in as typed', async () => {
+    await admin.query(format('ALTER USER %I WITH PASSWORD %L', user, 'ﬁsh 🙂'))
+    expect(await loginError('ﬁsh 🙂')).toBeNull()
+    await setUserPassword(admin, user, 'old password')
+  })
+
   test('refuses an empty password', async () => {
     await expect(setUserPassword(admin, user, '')).rejects.toThrow('must not be empty')
   })

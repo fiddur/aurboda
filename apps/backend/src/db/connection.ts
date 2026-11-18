@@ -7,7 +7,7 @@ import { normalizeStructuredActivity } from '../services/activitypub/quant-wire.
 import { createRolePool, type Queryable, type UserDb, withTransaction } from './pool.ts'
 import { repairGarminSleepStages } from './repair-garmin-sleep-stages.ts'
 import { repairGarminSleepTimes } from './repair-garmin-sleep-times.ts'
-import { scramSha256Verifier } from './scram.ts'
+import { preparedPassword, scramSha256Verifier } from './scram.ts'
 
 const dbByUser = new Map<string, Promise<UserDb>>()
 
@@ -190,6 +190,20 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
  * `SET ROLE`, so a warm pool proves nothing about the password.
  */
 export const loginToUserDb = async (user: string, password: string) => {
+  try {
+    await connectOnce(user, password)
+  } catch (error) {
+    const prepared = preparedPassword(password)
+    if (prepared === password || !isInvalidPasswordError(error)) throw error
+    await connectOnce(user, prepared)
+  }
+}
+
+/**
+ * The password as typed is tried first: a role whose verifier Postgres computed itself, from a
+ * password its SASLprep refused (a code point outside Unicode 3.2, an emoji say), was stored raw.
+ */
+const connectOnce = async (user: string, password: string) => {
   const client = new Client({
     connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
     database: userDbName(user),
