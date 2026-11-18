@@ -43,7 +43,8 @@ and each carries a `dedupe_key` (the object or activity id) so a redelivery is s
 the on-follow backfill of a followee's older posts nor an `Update` of a stored post raises
 anything. `feed_post` is narrowed per account by the bell in the Following list and per tag by the bell in
 the Followed tags list (`notify_on_post`): the type's switches turn the whole kind on or off, the
-bells pick the accounts and the tags. Replies and
+bells pick the accounts and the tags. A followed tag boosts every post carrying it, replies
+included; only its top-level posts raise `feed_post` (a person's boost of a reply still does). Replies and
 mentions ignore the bell, since they are addressed to you. A read-only account stores no new
 inbound posts, so it gets no reply, mention or post notifications; follows and reactions still
 notify.

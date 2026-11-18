@@ -441,6 +441,7 @@ export {
   deleteBoostCardsOf,
   getBoostCardAuthor,
   updateBoostCardsOf,
+  addTagBoostCarrier,
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
