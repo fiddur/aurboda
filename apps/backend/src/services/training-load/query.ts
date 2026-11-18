@@ -26,7 +26,7 @@ import {
   summarizeImpulseBasis,
 } from './banister.ts'
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
-import { exerciseWindow, recomputeImpulseBuckets } from './recompute.ts'
+import { exerciseWindow, IMPULSE_VERSION, recomputeImpulseBuckets } from './recompute.ts'
 
 type TrainingLoadBucketSize = (typeof trainingLoadBucketSizes)[number]
 
@@ -99,15 +99,51 @@ const buildWorkoutList = async (
   if (exercises.length === 0) return []
 
   // Only the sessions' own windows, not the whole range: months of 5-minute HR data would be wasted
-  const hrPerExercise = await deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow))
+  const [hrPerExercise, displayNames] = await Promise.all([
+    deps.getHrSamplesForWindows(user, exercises.map(exerciseWindow)),
+    deps.getActivityTypeDisplayNames(user),
+  ])
 
   const training = new Map<string, number>() // throwaway, just for reusing processExercise
   const workoutList: WorkoutTrimp[] = []
   for (let i = 0; i < exercises.length; i++) {
     const workout = processExercise(exercises[i]!, hrPerExercise[i]!, hrMax, hrRest, kFactor, training)
-    if (workout) workoutList.push(workout)
+    if (workout) workoutList.push(withTypeTitle(workout, displayNames))
   }
   return workoutList
+}
+
+/** An untitled workout is named after its type, except the generic `exercise`, which the web shows as "Workout". */
+const withTypeTitle = (workout: WorkoutTrimp, displayNames: Map<string, string>): WorkoutTrimp => {
+  if (workout.title || workout.activity_type === 'exercise') return workout
+  const title = displayNames.get(workout.activity_type)
+  return title ? { ...workout, title } : workout
+}
+
+const earlierIso = (a: string | undefined, b: Date | undefined): string | undefined => {
+  if (!b) return a
+  if (!a) return b.toISOString()
+  return new Date(a) <= b ? a : b.toISOString()
+}
+
+/**
+ * Buckets stored under an older IMPULSE_VERSION are marked dirty from the first workout. Version and
+ * watermark are persisted before the recompute, so an interrupted one resumes on the next read.
+ * Returns the watermark to recompute from.
+ */
+const markOutdatedImpulses = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  watermark: string | undefined,
+  version: number | undefined,
+): Promise<string | undefined> => {
+  if ((version ?? 0) >= IMPULSE_VERSION) return watermark
+  const dirtyFrom = earlierIso(watermark, await deps.getEarliestExerciseStart(user))
+  await deps.updateTrainingLoadSettings(user, {
+    impulse_version: IMPULSE_VERSION,
+    ...(dirtyFrom ? { impulse_watermark: dirtyFrom } : {}),
+  })
+  return dirtyFrom
 }
 
 export const computeTrainingLoad = async (
@@ -141,7 +177,12 @@ export const computeTrainingLoad = async (
   const currentHour = getCurrentHourStart()
   const effectiveEnd = end > currentHour ? currentHour : floorToHour(end)
 
-  const watermark = userSettings.training_load?.impulse_watermark
+  const watermark = await markOutdatedImpulses(
+    deps,
+    user,
+    userSettings.training_load?.impulse_watermark,
+    userSettings.training_load?.impulse_version,
+  )
   if (watermark) {
     const fromHour = floorToHour(new Date(watermark))
     await recomputeImpulseBuckets(deps, user, fromHour)

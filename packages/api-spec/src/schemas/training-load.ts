@@ -50,6 +50,10 @@ export const trainingLoadSettingsSchema = z
     hr_rest: z.number().int().positive().max(120).optional().meta({
       description: 'Resting heart rate override (bpm). Falls back to most recent resting HR metric.',
     }),
+    impulse_version: z.number().int().optional().meta({
+      description:
+        'Internal: version of the rules the stored impulse buckets were computed with. When it is behind the server, the buckets are recomputed from the first workout on the next read.',
+    }),
     impulse_watermark: z.string().optional().meta({
       description:
         'ISO 8601 timestamp of the earliest hour that needs recomputation. Set when new data arrives retroactively.',
@@ -141,12 +145,19 @@ export const workoutTrimpSchema = z
       .string()
       .optional()
       .meta({ description: 'Activity UUID if linked to an exercise session' }),
+    activity_type: z.string().meta({
+      description:
+        'Activity type of the session (a name from list_activity_types), e.g. running, yoga, strength_training',
+    }),
     avg_hr: z.number().optional().meta({ description: 'Average heart rate during workout (bpm)' }),
     date: z.string().meta({ description: 'Date of the workout (YYYY-MM-DD)' }),
     duration_minutes: z.number().meta({ description: 'Workout duration in minutes' }),
     end_time: z.string().meta({ description: 'Workout end time (ISO 8601)' }),
     start_time: z.string().meta({ description: 'Workout start time (ISO 8601)' }),
-    title: z.string().optional().meta({ description: 'Workout title / exercise type' }),
+    title: z.string().optional().meta({
+      description:
+        'Session title; without one, the display name of its activity type (absent for the generic exercise type)',
+    }),
     trimp: z.number().meta({ description: 'Training Impulse score for this workout' }),
     trimp_basis: trimpBasisSchema,
   })

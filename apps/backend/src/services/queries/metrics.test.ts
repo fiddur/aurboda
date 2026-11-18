@@ -8,6 +8,7 @@ import { parseBucketSize, queryMetrics, queryMetricsBucketed } from './metrics.t
 
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
+  getActivityTypeDefinitions: vi.fn(async () => []),
   getDistinctMetrics: vi.fn(),
   getSleepSessions: vi.fn(),
   getTimeSeries: vi.fn(),

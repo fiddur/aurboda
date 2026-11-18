@@ -20,6 +20,9 @@ import {
 } from './banister.ts'
 import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 
+/** Version of the rules the stored impulse buckets follow; a user's buckets from a lower one are recomputed. */
+export const IMPULSE_VERSION = 2
+
 /** Maximum chunk size for recomputation (7 days in ms). */
 const RECOMPUTE_CHUNK_MS = 7 * 24 * MS_PER_HOUR
 
