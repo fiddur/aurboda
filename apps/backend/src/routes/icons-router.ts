@@ -1,16 +1,12 @@
 import type { RequestHandler } from 'express'
 
-import multer from 'multer'
-
+import { singleUpload } from '../api/upload.ts'
 import { getIcon } from '../db/icons.ts'
 import { isAllowedContentType, processAndStoreIcon, removeIcon } from '../services/icons.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
 
-const upload = multer({
-  limits: { fileSize: 10 * 1024 * 1024 },
-  storage: multer.memoryStorage(),
-})
+const upload = singleUpload({ field: 'icon', fields: 2, fileSize: 10 * 1024 * 1024 })
 
 export const createIconsRouter = (authMiddleware: RequestHandler): TypedRouter => {
   const router = typedRouter()
@@ -39,7 +35,7 @@ export const createIconsRouter = (authMiddleware: RequestHandler): TypedRouter =
   router.post<Record<string, never>, { success: boolean; id?: string; url?: string; error?: string }>(
     '/',
     authMiddleware,
-    upload.single('icon'),
+    upload,
     async (req, res) => {
       const user = req.user!
       const file = req.file

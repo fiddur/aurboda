@@ -9,8 +9,10 @@ import {
   NAV_LINKS_PRIMARY,
   NAV_LINKS_SECONDARY,
   SHARING_LINKS,
+  visibleLinks,
 } from './nav-links'
 import { NotificationBellDropdown } from './NotificationBell'
+import { useHiddenPages } from './useHiddenPages'
 import './Sidebar.css'
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
@@ -21,6 +23,11 @@ export function Sidebar() {
   const isLoggedIn = auth.value.token
   const isAdmin = auth.value.is_admin
   const canSignup = signupMode.value === 'open'
+  const hidden = useHiddenPages()
+  const primaryLinks = visibleLinks(NAV_LINKS_PRIMARY, hidden)
+  const sharingLinks = visibleLinks(SHARING_LINKS, hidden)
+  const secondaryLinks = visibleLinks(NAV_LINKS_SECONDARY, hidden)
+  const dataSourceLinks = visibleLinks(DATA_SOURCE_LINKS, hidden)
 
   useEffect(() => {
     if (!isLoggedIn) ensureStatusLoaded()
@@ -67,7 +74,7 @@ export function Sidebar() {
       <nav class="sidebar-nav">
         {isLoggedIn ? (
           <>
-            {NAV_LINKS_PRIMARY.map((link) => (
+            {primaryLinks.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
@@ -79,8 +86,8 @@ export function Sidebar() {
               </a>
             ))}
 
-            {collapsed ? (
-              SHARING_LINKS.map((link) => (
+            {sharingLinks.length === 0 ? null : collapsed ? (
+              sharingLinks.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
@@ -104,7 +111,7 @@ export function Sidebar() {
                 </button>
                 {sharingExpanded && (
                   <div class="sidebar-sub-links">
-                    {SHARING_LINKS.map((link) => (
+                    {sharingLinks.map((link) => (
                       <a
                         key={link.href}
                         href={link.href}
@@ -119,7 +126,7 @@ export function Sidebar() {
               </>
             )}
 
-            {NAV_LINKS_SECONDARY.map((link) => (
+            {secondaryLinks.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
@@ -131,9 +138,9 @@ export function Sidebar() {
               </a>
             ))}
 
-            {collapsed ? (
+            {dataSourceLinks.length === 0 ? null : collapsed ? (
               <a
-                href="/data-sources"
+                href={dataSourceLinks[0]?.path}
                 class={`sidebar-link${isDataSourcesActive ? ' active' : ''}`}
                 title="Data Sources"
               >
@@ -153,7 +160,7 @@ export function Sidebar() {
                 </button>
                 {dsExpanded && (
                   <div class="sidebar-sub-links">
-                    {DATA_SOURCE_LINKS.map((link) => (
+                    {dataSourceLinks.map((link) => (
                       <a
                         key={link.path}
                         href={link.path}

@@ -33,7 +33,7 @@ built-in `strength_training` schema sets it on `sets.exercise` (see
 - **Type page**: under each catalogue-backed item field, "Not in the catalogue" summarises the
   logged names that match no entry and that you have neither mapped nor dismissed
   (`GET /activity-types/:name/item-values/unmapped`, paged with `limit` and `offset`). "Review"
-  lists them, most used first, 20 at a time ("Show more" fetches the next 20), each with up to three suggested entries to map it to with one click, a catalogue search that opens on the entries closest to the name (`similar_to`) and pages with "Show more", and
+  lists them, most used first, 20 at a time ("Show more" fetches the next 20), each with up to three suggested entries to map it to with one click (scored on the same normalised words as the search: singularised, with the synonyms applied, so `db` meets `dumbbell` and `single` meets `one`), a catalogue search that opens on the entries closest to the name (`similar_to`) and pages with "Show more", and
   "Not in the catalogue" to dismiss it. Nothing here is required: an unmapped name keeps working
   everywhere.
 

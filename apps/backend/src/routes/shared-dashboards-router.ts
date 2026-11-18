@@ -27,6 +27,7 @@ import {
   listSharedDashboards,
   updateSharedDashboard,
 } from '../db/index.ts'
+import { dashboardConfigError } from '../services/dashboard-config.ts'
 import { resolvePresetConfig } from '../services/dashboard-presets.ts'
 import {
   defaultPeriodLock,
@@ -78,6 +79,8 @@ export const createSharedDashboardsRouter = (
       if (!config) {
         return res.status(400).json({ error: 'Give exactly one of config or preset', success: false })
       }
+      const configError = req.body.config && dashboardConfigError(req.body.config)
+      if (configError) return res.status(400).json({ error: configError, success: false })
       const lock = requestedPeriodLock(req.body) ?? defaultPeriodLock
       const lockError = validatePeriodLock(config, lock, new Date(), await getUserTimezone(user))
       if (lockError !== null) return res.status(400).json({ error: lockError, success: false })
@@ -131,6 +134,8 @@ export const createSharedDashboardsRouter = (
       if (!stored) {
         return res.status(404).json({ error: 'Shared dashboard not found', success: false })
       }
+      const configError = req.body.config && dashboardConfigError(req.body.config)
+      if (configError) return res.status(400).json({ error: configError, success: false })
       const lockUpdate = resolveLockUpdate(stored, req.body, new Date(), await getUserTimezone(user))
       if ('error' in lockUpdate) return res.status(400).json({ error: lockUpdate.error, success: false })
       const record = await updateSharedDashboard(user, req.params.id, {

@@ -1,17 +1,13 @@
 /** The public read side lives in public-avatar-router (`/u/:username/avatar.png`). */
 import type { RequestHandler } from 'express'
 
-import multer from 'multer'
-
+import { singleUpload } from '../api/upload.ts'
 import { deleteProfileAvatar, upsertProfileAvatar } from '../db/index.ts'
 import { isAllowedImageType, processAvatar } from '../services/avatar.ts'
 import { buildProfileUrl } from '../services/share-urls.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 
-const upload = multer({
-  limits: { fileSize: 10 * 1024 * 1024 },
-  storage: multer.memoryStorage(),
-})
+const upload = singleUpload({ field: 'avatar', fields: 2, fileSize: 10 * 1024 * 1024 })
 
 export const createProfileRouter = (
   authMiddleware: RequestHandler,
@@ -28,7 +24,7 @@ export const createProfileRouter = (
   router.post<Record<string, never>, { success: boolean; url?: string; error?: string }>(
     '/avatar',
     authMiddleware,
-    upload.single('avatar'),
+    upload,
     async (req, res) => {
       const user = req.user!
       const file = req.file

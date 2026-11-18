@@ -223,4 +223,16 @@ class AppStateNavigationTest {
         assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "file:///data/x", allowed))
         assertEquals(DeepLink(MainTab.More, null), deepLinkFrom(MainActivity.TAB_MORE, "goals"))
     }
+
+    @Test
+    fun `hidden pages start empty and a failed fetch keeps the last list`() {
+        val state = appState()
+        assertEquals(emptyList<String>(), state.hiddenPages)
+        state.setHiddenPagesFrom(listOf("/meals"))
+        assertEquals(listOf("/meals"), state.hiddenPages)
+        state.setHiddenPagesFrom(null)
+        assertEquals(listOf("/meals"), state.hiddenPages)
+        state.setHiddenPagesFrom(emptyList())
+        assertEquals(emptyList<String>(), state.hiddenPages)
+    }
 }

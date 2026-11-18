@@ -7,10 +7,10 @@ import {
   MAX_FEED_IMAGE_BYTES,
   MAX_FEED_IMAGES_PER_ACCOUNT,
 } from '@aurboda/api-spec'
-import multer from 'multer'
 
 import type { FeedImageRecord } from '../db/index.ts'
 
+import { singleUpload } from '../api/upload.ts'
 import { deleteFeedImage, listFeedImages } from '../db/index.ts'
 import { isAllowedImageType } from '../services/avatar.ts'
 import {
@@ -37,9 +37,11 @@ const defaultDeps: FeedImagesRouterDeps = {
   listFeedImages: (user) => listFeedImages(user),
 }
 
-const imageUpload = multer({
-  limits: { fileSize: MAX_FEED_IMAGE_BYTES },
-  storage: multer.memoryStorage(),
+const imageUpload = singleUpload({
+  field: 'image',
+  fields: 2,
+  fileSize: MAX_FEED_IMAGE_BYTES,
+  tooLargeMessage: PICTURE_TOO_LARGE_MESSAGE,
 })
 
 const FAILURE_STATUS = { limit: 409, unsupported: 415 } as const
@@ -54,13 +56,7 @@ export const createFeedImagesRouter = (
   router.post<Record<string, never>, FeedImageResponse>(
     '/',
     authMiddleware,
-    (req, res, next) =>
-      imageUpload.single('image')(req, res, (error: unknown) => {
-        if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({ error: PICTURE_TOO_LARGE_MESSAGE, success: false })
-        }
-        next(error)
-      }),
+    imageUpload,
     async (req, res) => {
       const user = req.user!
       const file = req.file

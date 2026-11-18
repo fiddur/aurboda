@@ -6,6 +6,7 @@ import { Client } from 'pg'
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
 
+import { unhandledErrorAudit } from './api/audit-body.ts'
 import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
 import { gateFederation } from './api/federation-gate.ts'
 import { createAdminMiddleware, createAuditLogMiddleware, createAuthMiddleware } from './api/middleware.ts'
@@ -236,6 +237,8 @@ import {
   relayRecipients,
   retryErroredRelays,
 } from './services/relays.ts'
+import { createReminderScheduler } from './services/reminder-scheduler.ts'
+import { raiseDueReminders, reminderDeps } from './services/reminders.ts'
 import { safeFetchGet } from './services/safe-fetch.ts'
 import { initSentry, Sentry } from './services/sentry.ts'
 import {
@@ -1131,6 +1134,19 @@ const main = async () => {
     }
   }
 
+  if (boss) {
+    try {
+      await createReminderScheduler(boss, {
+        listUsers: () => listUserNames(userDb),
+        raiseDue: (user) => raiseDueReminders(reminderDeps, user),
+      })
+    } catch (error) {
+      console.error('Failed to initialize reminder scheduler:', error)
+    }
+  } else {
+    console.warn('⚠️ Reminders disabled (no job queue)')
+  }
+
   // Challenge completion: a scheduled sweep over every user's hosted challenges
   // that closed (grace period ago) posts the final standings — winners tagged —
   // to the host's feed through the SAME challenge fan-out a manual share uses.
@@ -1493,10 +1509,8 @@ const main = async () => {
     if (status >= 500) console.error(err)
 
     if (req.user) {
-      auditError(req.user, 'system', `${req.method} ${req.path}: ${err.message}`, {
-        status,
-        ...(status >= 500 && { stack: err.stack }),
-      })
+      const { details, message } = unhandledErrorAudit(req, err, status)
+      auditError(req.user, 'system', message, details)
     }
 
     res.status(status).json(errorResponseBody(err, status))

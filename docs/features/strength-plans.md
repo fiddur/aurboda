@@ -42,7 +42,12 @@ name (case-insensitive); ties by creation.
   and a "Plan a workout" link.
 - **Start** opens the live session (`/strength/live?plan=<id>`) with the planned sets prefilled
   block by block, as Repeat does with an earlier session. The session carries the plan's id from
-  its first save.
+  its first save, after which the start page no longer lists a plan with a day as open. A planned
+  set's type is preselected and logged with the set unless changed, and its note shows under the
+  planned line as a cue without being copied onto the logged set. The live session shows the plan's
+  name and note at the top, read from the plan (also after a reload; nothing of it is stored on the
+  activity, and nothing shows once the plan is deleted). A plan that cannot be loaded opens an
+  empty session with "That plan no longer exists. Starting an empty session."
 - **The plan page** (`/strength/plan/new`, `/strength/plan/<id>`): name, day, note and the sets,
   in the same block editor as a past session, with the sessions done from the plan and Delete.
 

@@ -865,6 +865,7 @@ export {
   markAllNotificationsRead,
   markNotificationRead,
   markNotificationsReadByType,
+  markReminderNotificationsRead,
   type NotificationCursor,
   type NotificationInsert,
   type NotificationPreferencePatch,
@@ -875,6 +876,17 @@ export {
   reviseOpenNotifications,
   upsertNotificationPreference,
 } from './notifications.ts'
+export {
+  deleteReminder,
+  getReminder,
+  insertReminder,
+  listReminders,
+  normalizeWeekdays,
+  type ReminderInsert,
+  type ReminderPatch,
+  type ReminderRecord,
+  updateReminder,
+} from './reminders.ts'
 
 export {
   deleteItemValueIdentity,

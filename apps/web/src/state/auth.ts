@@ -10,6 +10,15 @@ import { apiErrorText } from '../utils/profile'
 import { clearCachedDashboards } from './dashboardCache'
 import { clearPeriodData } from './periodDataCache'
 
+/**
+ * An axios error carries the request, password included, so only a fixed
+ * message and the HTTP status reach the console.
+ */
+const logAuthFailure = (message: string, error: unknown) => {
+  const status = (error as AxiosError | undefined)?.response?.status
+  console.error(message, typeof status === 'number' ? status : 'network')
+}
+
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
 // When running embedded in the native app, seed auth from the WebView bridge so
@@ -76,7 +85,7 @@ export const fetchStatus = async () => {
       serverVersion.value = version || null
       statusFailed.value = false
     } catch (error) {
-      console.error('Status fetch error:', error)
+      logAuthFailure('Status fetch failed', error)
       signupAllowed.value = false
       statusFailed.value = true
       statusFetchPromise = null
@@ -103,7 +112,7 @@ export const login = async (user: string, pass: string): Promise<{ success: bool
   } catch (error) {
     const axiosError = error as AxiosError<{ error?: string }>
     const message = axiosError.response?.data?.error ?? 'Login failed'
-    console.error('Login error:', error)
+    logAuthFailure('Login failed', error)
     return { error: message, success: false }
   }
 }
@@ -130,7 +139,7 @@ export const signup = async (
   } catch (error) {
     const axiosError = error as AxiosError<{ error?: unknown }>
     const message = apiErrorText(axiosError.response?.data?.error, 'Signup failed')
-    console.error('Signup error:', error)
+    logAuthFailure('Signup failed', error)
     return { error: message, success: false }
   }
 }
@@ -210,7 +219,7 @@ export const signupWithPasskey = async (
       axiosError.response?.data?.error,
       friendlyWebAuthnError(error, 'Passkey signup failed'),
     )
-    console.error('Passkey signup error:', error)
+    logAuthFailure('Passkey signup failed', error)
     return { error: message, success: false }
   }
 }
@@ -250,7 +259,7 @@ export const loginWithPasskey = async (): Promise<{ success: boolean; error?: st
     const axiosError = error as AxiosError<{ error?: string }>
     const apiError = axiosError.response?.data?.error
     const message = apiError ?? friendlyWebAuthnError(error, 'Passkey login failed')
-    console.error('Passkey login error:', error)
+    logAuthFailure('Passkey login failed', error)
     return { error: message, success: false }
   }
 }

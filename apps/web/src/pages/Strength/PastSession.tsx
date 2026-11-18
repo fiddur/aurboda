@@ -16,7 +16,7 @@ export interface EditTarget {
   blocks: ExerciseBlock[]
 }
 
-export const PastSession = ({ edit }: { edit?: EditTarget }) => {
+export const PastSession = ({ edit, back }: { edit?: EditTarget; back?: string }) => {
   const queryClient = useQueryClient()
   const { route } = useLocation()
   const [initial] = useState(() => (edit ? undefined : readLogDraft()))
@@ -61,7 +61,7 @@ export const PastSession = ({ edit }: { edit?: EditTarget }) => {
         clearLogDraft()
       }
       await invalidateStrengthQueries(queryClient)
-      route(detailUrl(id))
+      route(back ?? detailUrl(id))
     } catch {
       setError('The session could not be saved. Your entries are kept here; try again.')
       setSaving(false)
@@ -74,9 +74,16 @@ export const PastSession = ({ edit }: { edit?: EditTarget }) => {
     <div class="strength-page">
       <header class="strength-sticky-header">
         <h1>{edit ? 'Edit session' : 'Log a past session'}</h1>
-        <button type="button" class="btn-primary" onClick={() => void save()} disabled={!canSave}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        <div class="strength-row-actions">
+          {back && (
+            <a class="btn-secondary" href={back}>
+              Cancel
+            </a>
+          )}
+          <button type="button" class="btn-primary" onClick={() => void save()} disabled={!canSave}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </header>
       {error && <p class="strength-error">{error}</p>}
       <div class="strength-card strength-times">

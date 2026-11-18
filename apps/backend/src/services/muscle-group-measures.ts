@@ -126,7 +126,6 @@ export interface MuscleGroupContribution {
   /** The exercise as logged, spelled as it first appears in the items. */
   value: string
   normalized: string
-  /** The exercise's recruitment weight for the group. */
   weight: number
   /** Only the summed measures, each times `weight`, unrounded. */
   measures: ActivityMeasures

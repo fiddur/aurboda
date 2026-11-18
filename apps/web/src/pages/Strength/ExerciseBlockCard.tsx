@@ -5,7 +5,7 @@ import { useState } from 'preact/hooks'
 import type { RecordLines } from './records'
 
 import { exerciseItemUrl } from './constants'
-import { type ExerciseBlock, setLabel, type SetRow } from './sessionModel'
+import { type ExerciseBlock, plannedNote, setLabel, type SetRow } from './sessionModel'
 import { SetForm } from './SetForm'
 
 export const ExerciseBlockCard = ({
@@ -156,7 +156,10 @@ export const ExerciseBlockCard = ({
       {block.planned.length > 0 && (
         <ul class="strength-planned">
           {block.planned.map((set, i) => (
-            <li key={i}>planned: {setLabel(set)}</li>
+            <li key={i}>
+              planned: {setLabel(set)}
+              {plannedNote(set) && <span class="strength-planned-note">{plannedNote(set)}</span>}
+            </li>
           ))}
         </ul>
       )}

@@ -176,6 +176,12 @@ import {
   updateAccountEmailBodySchema,
 } from './schemas/profile.ts'
 import {
+  addReminderBodySchema,
+  reminderResponseSchema,
+  remindersResponseSchema,
+  updateReminderBodySchema,
+} from './schemas/reminders.ts'
+import {
   mergeRoutesBodySchema,
   mergeRoutesResponseSchema,
   routeDetailResponseSchema,
@@ -2140,6 +2146,86 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/reminders': {
+      get: {
+        description:
+          "The user's recurring reminders, each with `next_due_at` (the next instant it raises a `reminder` notification, null when switched off), the earliest of those, and the time zone the times are read in.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: remindersResponseSchema } },
+            description: 'The reminders',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List reminders',
+        tags: ['Reminders'],
+      },
+      post: {
+        description:
+          "Create a recurring reminder. It raises a `reminder` notification at `time_of_day` (in the user's time zone) on each of `weekdays`; one created after today's time starts with the next matching day.",
+        requestBody: { content: { 'application/json': { schema: addReminderBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reminderResponseSchema } },
+            description: 'The new reminder',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a reminder',
+        tags: ['Reminders'],
+      },
+    },
+    '/reminders/{id}': {
+      delete: {
+        description: 'Delete a reminder. Notifications it already raised stay.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Reminder ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reminder not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a reminder',
+        tags: ['Reminders'],
+      },
+      patch: {
+        description:
+          'Change a reminder. Changing the time or the days, or switching it back on, starts it afresh: an occurrence earlier today is not raised.',
+        requestBody: { content: { 'application/json': { schema: updateReminderBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Reminder ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reminderResponseSchema } },
+            description: 'The reminder after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reminder not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a reminder',
+        tags: ['Reminders'],
+      },
+    },
+
     '/sync/outbound': {
       get: {
         description:
@@ -3442,6 +3528,7 @@ const openApiDocument = createDocument({
     { description: 'Named and detected locations', name: 'Locations' },
     { description: 'Notifications: the bell, read state and per-type switches', name: 'Notifications' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
+    { description: 'Recurring reminders delivered as notifications', name: 'Reminders' },
     { description: 'User settings and preferences', name: 'Settings' },
     {
       description: 'Data synchronization with external services',

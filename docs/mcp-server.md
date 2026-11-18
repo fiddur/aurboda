@@ -208,6 +208,17 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 | `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
 | `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
 
+### Reminder tools
+
+Recurring reminders delivered as `reminder` notifications. See [Reminders](features/reminders.md).
+
+| Tool              | What it does                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| `list_reminders`  | The reminders with `next_due_at`, the earliest of those and the time zone, like `GET /reminders` |
+| `add_reminder`    | Create one: `title`, `time_of_day` (HH:MM, five-minute steps), `weekdays` (default every day), … |
+| `update_reminder` | Change a reminder by `id`; only the given fields; `body` and `link` take null to clear           |
+| `delete_reminder` | Delete a reminder by `id`                                                                        |
+
 ### Auto-share tools
 
 The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).
@@ -226,6 +237,11 @@ The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
 - `DELETE /mcp` - End session
 
 Request bodies are limited to 4 MB; a larger body gets HTTP 413 with a JSON-RPC `-32600` error.
+
+A request is also refused before any tool runs, with HTTP 413 and the JSON-RPC error
+`{ "code": -32600, "message": "Request too large" }`, when it is a batch of more than 20 messages,
+nests deeper than 64 levels, or holds more than 100,000 elements in all (every array item and every
+object property counts as one). A 10,000-point `add_metrics_bulk` is about 50,000 elements.
 
 ## Authentication
 

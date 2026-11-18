@@ -1,4 +1,26 @@
-import type { DashboardConfig } from '@aurboda/api-spec'
+import { type BarChartConfig, chartFilterError, type DashboardConfig } from '@aurboda/api-spec'
+
+type BarsFilter = Pick<BarChartConfig, 'breakdown_fields' | 'filter_field' | 'filter_value' | 'measure'>
+
+const barsFilterError = (bars: BarsFilter): string | undefined =>
+  chartFilterError(bars.filter_field, bars.filter_value, bars.breakdown_fields, bars.measure)
+
+/** Not a refinement of `barChartConfigSchema`: the combined chart's bars layer `.omit()`s and `.extend()`s it. */
+export const dashboardConfigError = (config: DashboardConfig): string | undefined => {
+  for (const widget of config.sections.flatMap((section) => section.widgets)) {
+    const bars =
+      widget.type === 'bar_chart'
+        ? [widget.config]
+        : widget.type === 'combined_chart'
+          ? widget.config.layers.filter((layer) => layer.kind === 'bars')
+          : []
+    for (const layer of bars) {
+      const error = barsFilterError(layer)
+      if (error) return error
+    }
+  }
+  return undefined
+}
 
 /**
  * Strip viewer-useless / internal fields from a config before exposing it.

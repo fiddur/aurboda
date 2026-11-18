@@ -3,20 +3,14 @@ import type { ExerciseCatalogEntry } from '@aurboda/api-spec'
 import { useEffect, useId, useRef, useState } from 'preact/hooks'
 
 import './ExerciseCatalogPicker.css'
+import { catalogSearch, MIN_QUERY_LENGTH, showsClosestCaption } from './exerciseCatalogPickerModel'
 import { catalogHint, stepActiveIndex } from './knownValueSuggestions'
 import { useDebounced } from './useDebounced'
 import { useExerciseCatalogPages } from './useExerciseCatalogPages'
 
 const STALE_TIME = 5 * 60 * 1000
 const CATALOG_DEBOUNCE_MS = 200
-const MIN_QUERY_LENGTH = 2
 const PAGE_SIZE = 10
-
-const catalogSearch = (q: string, similarTo: string | undefined) => {
-  const similar = similarTo === undefined ? {} : { similar_to: similarTo }
-  if (q.length >= MIN_QUERY_LENGTH) return { q, ...similar }
-  return similarTo === undefined ? undefined : similar
-}
 
 const ShowMore = ({
   shown,
@@ -55,7 +49,7 @@ const useCatalogResults = (text: string, similarTo: string | undefined) => {
   const entries = searching || closestOnly ? pages.entries : []
   const settled = searching && q === typed && !pages.isFetching && !pages.isPlaceholderData && pages.isLoaded
   return {
-    caption: closestOnly && entries.length > 0,
+    caption: showsClosestCaption(q, similar, entries.length),
     entries,
     noMatch: settled && entries.length === 0,
     pages,

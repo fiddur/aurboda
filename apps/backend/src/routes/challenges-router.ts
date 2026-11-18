@@ -24,10 +24,10 @@ import {
   type UpdateChallengeBody,
   updateChallengeBodySchema,
 } from '@aurboda/api-spec'
-import multer from 'multer'
 
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
 
+import { singleUpload } from '../api/upload.ts'
 import {
   type ChallengeRecord,
   createChallenge,
@@ -63,10 +63,7 @@ import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibili
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-const bannerUpload = multer({
-  limits: { fileSize: 10 * 1024 * 1024 },
-  storage: multer.memoryStorage(),
-})
+const bannerUpload = singleUpload({ field: 'banner', fields: 2, fileSize: 10 * 1024 * 1024 })
 
 const joinErrorStatus = (error: JoinChallengeError): 400 | 404 | 502 =>
   error.kind === 'invalid_url' ? 400 : error.kind === 'not_found' ? 404 : 502
@@ -204,7 +201,7 @@ export const createChallengesRouter = (
   router.post<{ id: string }, ChallengeResponse>(
     '/:id/banner',
     authMiddleware,
-    bannerUpload.single('banner'),
+    bannerUpload,
     async (req, res) => {
       const user = req.user!
       const file = req.file

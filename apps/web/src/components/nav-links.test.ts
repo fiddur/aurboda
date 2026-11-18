@@ -1,7 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
-import { DATA_SOURCE_LINKS, pageTitleForPath } from './nav-links'
+import {
+  DATA_SOURCE_LINKS,
+  MENU_ALWAYS_SHOWN,
+  menuSwitches,
+  NAV_LINKS_PRIMARY,
+  pageTitleForPath,
+  SHARING_LINKS,
+  toggleHiddenPage,
+  visibleLinks,
+} from './nav-links'
 
 describe('pageTitleForPath', () => {
   test('uses the nav label of the current route', () => {
@@ -57,5 +66,91 @@ describe('DATA_SOURCE_LINKS', () => {
 
     expect(cardPaths.length).toBeGreaterThan(0)
     expect(linkPaths).toEqual(cardPaths)
+  })
+})
+
+describe('visibleLinks', () => {
+  test('leaves out the hidden pages of an href list', () => {
+    const shown = visibleLinks(NAV_LINKS_PRIMARY, ['/meals', '/chart']).map((l) => l.href)
+    expect(shown).not.toContain('/meals')
+    expect(shown).not.toContain('/chart')
+    expect(shown).toContain('/goals')
+    expect(shown).toHaveLength(NAV_LINKS_PRIMARY.length - 2)
+  })
+
+  test('leaves out the hidden pages of a path list', () => {
+    const shown = visibleLinks(DATA_SOURCE_LINKS, ['/data-sources', '/data-sources/oura']).map((l) => l.path)
+    expect(shown).not.toContain('/data-sources')
+    expect(shown).not.toContain('/data-sources/oura')
+    expect(shown).toHaveLength(DATA_SOURCE_LINKS.length - 2)
+  })
+
+  test('an unknown path in the hidden list changes nothing', () => {
+    expect(visibleLinks(NAV_LINKS_PRIMARY, ['/no-such-page'])).toEqual(NAV_LINKS_PRIMARY)
+  })
+
+  test('a protected path in the hidden list is ignored', () => {
+    const links = [
+      { href: '/', label: 'Home' },
+      { href: '/settings', label: 'Settings' },
+      { href: '/help', label: 'Help' },
+      { href: '/notifications', label: 'Notifications' },
+      { href: '/admin', label: 'Admin' },
+      { href: '/admin/users', label: 'Users' },
+    ]
+    expect(visibleLinks(links, [...MENU_ALWAYS_SHOWN, '/admin/users'])).toEqual(links)
+  })
+
+  test('hiding every child empties a group', () => {
+    expect(
+      visibleLinks(
+        SHARING_LINKS,
+        SHARING_LINKS.map((l) => l.href),
+      ),
+    ).toEqual([])
+  })
+})
+
+describe('menuSwitches', () => {
+  const groups = menuSwitches()
+  const paths = groups.flatMap((g) => g.switches.map((s) => s.path))
+
+  test('groups the switches as the menus show them', () => {
+    expect(groups.map((g) => g.label)).toEqual([
+      'Main',
+      'Sharing',
+      'More',
+      'Data sources',
+      'Only in the Android app',
+    ])
+    expect(groups[1]?.switches.map((s) => s.path)).toEqual(['/feed', '/dashboards', '/challenges'])
+    expect(groups[3]?.switches[0]?.path).toBe('/data-sources')
+  })
+
+  test('offers no switch for the never-hidden pages', () => {
+    for (const path of MENU_ALWAYS_SHOWN) expect(paths).not.toContain(path)
+  })
+
+  test('covers the Android-only More entries', () => {
+    expect(paths).toContain('/reminders')
+    expect(paths).toContain('/audit-log')
+  })
+
+  test('gives every switch a description and a label without the "+"', () => {
+    for (const s of groups.flatMap((g) => g.switches)) expect(s.description).not.toBe('')
+    expect(groups[0]?.switches.find((s) => s.path === '/add')?.label).toBe('Add')
+  })
+
+  test('lists each page once', () => {
+    expect(new Set(paths).size).toBe(paths.length)
+  })
+})
+
+describe('toggleHiddenPage', () => {
+  test('adds a page once and removes it again, keeping unknown paths', () => {
+    const hidden = toggleHiddenPage(['/old-page'], '/meals', false)
+    expect(hidden).toEqual(['/old-page', '/meals'])
+    expect(toggleHiddenPage(hidden, '/meals', false)).toEqual(hidden)
+    expect(toggleHiddenPage(hidden, '/meals', true)).toEqual(['/old-page'])
   })
 })

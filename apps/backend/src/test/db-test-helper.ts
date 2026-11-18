@@ -120,6 +120,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'notes',
     'notifications',
     'notification_preferences',
+    'reminders',
     'challenge_banner',
     'feed_image',
     'challenge_members',

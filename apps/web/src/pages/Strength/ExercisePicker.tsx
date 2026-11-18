@@ -245,7 +245,7 @@ export const ExercisePicker = ({
                 disabled={catalog.isLoadingMore}
                 onClick={catalog.loadMore}
               >
-                Show more ({catalogRemaining})
+                Show more
               </button>
             )
           }

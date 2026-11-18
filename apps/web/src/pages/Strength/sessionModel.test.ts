@@ -18,6 +18,8 @@ import {
   newLiveDraft,
   nextSetPrefill,
   planFromSession,
+  plannedNote,
+  plannedOf,
   removeBlock,
   sessionSummary,
   setLabel,
@@ -117,6 +119,14 @@ describe('block editing', () => {
     expect(next[0].planned).toEqual([{ reps: 6, weight: 85 }])
   })
 
+  it('keeps the logged set as submitted and does not copy the planned note onto it', () => {
+    const planned = [
+      block('A', [], { planned: [{ note: 'pause at the bottom', reps: 10, set_type: 'warmup' }] }),
+    ]
+    const next = logSet(planned, 'A', { reps: 10, set_type: 'warmup', weight: 14 })
+    expect(next[0].sets).toEqual([{ exercise: 'A', reps: 10, set_type: 'warmup', weight: 14 }])
+  })
+
   it('appends several sets at once', () => {
     const next = appendSets([block('A')], 'A', expandQuickEntry(2, 8, 60))
     expect(next[0].sets).toEqual([
@@ -171,6 +181,25 @@ describe('nextSetPrefill', () => {
     })
   })
 
+  it('takes the set type from the planned set, not from the logged one', () => {
+    const planned = [
+      { reps: 10, set_type: 'warmup', weight: 14 },
+      { reps: 8, weight: 20 },
+    ]
+    expect(nextSetPrefill(block('A', [], { planned }))).toEqual({ reps: 10, set_type: 'warmup', weight: 14 })
+    const afterWarmup = block('A', [{ exercise: 'A', reps: 10, set_type: 'warmup', weight: 14 }], {
+      planned: planned.slice(1),
+    })
+    expect(nextSetPrefill(afterWarmup)).toEqual({ reps: 10, weight: 14 })
+  })
+
+  it('leaves a planned note out of the prefill', () => {
+    expect(nextSetPrefill(block('A', [], { planned: [{ note: 'pause', reps: 5, weight: 100 }] }))).toEqual({
+      reps: 5,
+      weight: 100,
+    })
+  })
+
   it('takes last time’s set at that index, else nothing', () => {
     expect(nextSetPrefill(block('A'), lastTime)).toEqual({ reps: 10, weight: 50 })
     expect(nextSetPrefill(block('A'))).toEqual({})
@@ -195,6 +224,16 @@ describe('labels and summaries', () => {
     expect(setLabel({})).toBe('—')
   })
 
+  it('labels a planned warmup with its type and keeps its cue apart', () => {
+    const planned = plannedOf(
+      { note: 'pause at the bottom', reps: 10, set_type: 'warmup', weight: 14 },
+      { withNote: true },
+    )
+    expect(`planned: ${setLabel(planned)}`).toBe('planned: 14 kg × 10 (warmup)')
+    expect(plannedNote(planned)).toBe('pause at the bottom')
+    expect(plannedNote({ reps: 10 })).toBeUndefined()
+  })
+
   it('summarises a block', () => {
     expect(blockSummary(block('A', [{ reps: 9 }, { reps: 8 }, { reps: 7 }]))).toBe('3 sets: 9, 8, 7 reps')
     expect(blockSummary(block('A', [{ time: 60 }]))).toBe('1 set: 1:00')
@@ -213,12 +252,31 @@ describe('labels and summaries', () => {
   })
 })
 
+describe('plannedOf', () => {
+  it('keeps the numbers and a warmup, drop set or failure type', () => {
+    expect(plannedOf({ reps: 10, rpe: 7, set_type: 'warmup', weight: 14 }, { withNote: false })).toEqual({
+      reps: 10,
+      set_type: 'warmup',
+      weight: 14,
+    })
+    expect(plannedOf({ reps: 10, set_type: 'normal' }, { withNote: false })).toEqual({ reps: 10 })
+    expect(plannedOf({ reps: 10, set_type: 'bogus' }, { withNote: false })).toEqual({ reps: 10 })
+  })
+
+  it('keeps the note only when asked', () => {
+    const set = { note: ' pause ', reps: 5 }
+    expect(plannedOf(set, { withNote: true })).toEqual({ note: 'pause', reps: 5 })
+    expect(plannedOf(set, { withNote: false })).toEqual({ reps: 5 })
+    expect(plannedOf({ note: '  ', reps: 5 }, { withNote: true })).toEqual({ reps: 5 })
+  })
+})
+
 describe('planFromSession', () => {
-  it('turns the source sets into planned sets of empty blocks', () => {
+  it('turns the source sets into planned sets of empty blocks, with the set type and no notes', () => {
     const plan = planFromSession(
       [
         { exercise: 'A', note: 'n', reps: 8, weight: 80 },
-        { exercise: 'A', reps: 8, weight: 80 },
+        { exercise: 'A', reps: 8, set_type: 'drop_set', weight: 60 },
         { exercise: 'B', time: 60 },
       ],
       ids(),
@@ -229,7 +287,7 @@ describe('planFromSession', () => {
         id: 'id1',
         planned: [
           { reps: 8, weight: 80 },
-          { reps: 8, weight: 80 },
+          { reps: 8, set_type: 'drop_set', weight: 60 },
         ],
         sets: [],
       },
