@@ -8,7 +8,12 @@ import type { BiologicalSex, TrainingLoadSettings } from '@aurboda/api-spec'
 import type { Activity, TimeSeriesPoint } from '../../db/types.ts'
 
 export interface TrainingLoadDeps {
+  /** Every workout type's sessions (exercise and its subtypes, custom exercise types), merged across sources */
   getExercises: (user: string, start: Date, end: Date) => Promise<Activity[]>
+  /** Start of the user's earliest workout, of any workout type */
+  getEarliestExerciseStart: (user: string) => Promise<Date | undefined>
+  /** Activity type name → display name */
+  getActivityTypeDisplayNames: (user: string) => Promise<Map<string, string>>
   /** Get HR time-series data in a time range (bucketed to 5-min) */
   getHrSamples: (user: string, start: Date, end: Date) => Promise<[Date, number][]>
   /** `getHrSamples` for many windows in one round trip; the result is index-aligned with `windows` */
@@ -48,7 +53,7 @@ export interface TrainingLoadDeps {
 
 import {
   deleteTimeSeriesBySource,
-  getActivities,
+  getActivityTypeDefinitions,
   getLatestTimeSeriesValue,
   getTimeSeries,
   getTimeSeriesBucketed,
@@ -58,6 +63,7 @@ import {
 } from '../../db/index.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { getSettings } from '../settings.ts'
+import { getEarliestWorkoutStart, getWorkoutActivities } from '../workout-activities.ts'
 
 const processBootstrappedFrom: TrainingLoadDeps['bootstrappedFrom'] = new Map()
 
@@ -73,9 +79,12 @@ export const createTrainingLoadDeps = (): TrainingLoadDeps => ({
     return samples
   },
 
-  getExercises: async (user, start, end) => {
-    return getActivities(user, 'exercise', start, end)
-  },
+  getActivityTypeDisplayNames: async (user) =>
+    new Map((await getActivityTypeDefinitions(user)).map((d) => [d.name, d.display_name])),
+
+  getEarliestExerciseStart: getEarliestWorkoutStart,
+
+  getExercises: getWorkoutActivities,
 
   getHourlyCalorieSums: async (user, start, end) => {
     const buckets = await getTimeSeriesBucketed(user, ['calories_active'], start, end, '60 minutes')

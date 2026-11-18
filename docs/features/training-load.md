@@ -30,9 +30,17 @@ A per-workout load score computed from heart rate intensity and duration. Harder
 
 When a workout has no usable heart rate (none recorded during it, or an average at or below your resting HR), its TRIMP is a duration-based estimate instead: 0.5 per minute. The estimate feeds CTL, ATL and TSB like a measured value, so the API marks it: every workout has a `trimp_basis` (`hr` or `duration_estimate`), and the response's `estimated_impulse` counts the estimated workouts in the requested range and their share of the workout TRIMP (`estimated_share`, 0 to 1). A high share means fitness and fatigue are mostly guessed. The share covers the workouts in the range; CTL also carries load from the weeks before it.
 
+### Which sessions count
+
+A workout is any session whose activity type is `exercise`, one of its subtypes (running, yoga, strength training, walking and the other built-in exercise types, and custom subtypes of them), or a custom type in the Exercise category. Meditation, sleep and wellness sessions do not count. The same workout recorded by several sources (say Garmin and a live-logged session) counts once.
+
 ### Activity Impulse
 
 Training stress from general daily movement (active calories). Converted from calories using a scale factor (default: 100 active calories = 10 impulse units). This captures non-workout activity like walking and housework.
+
+### Stored impulse
+
+Both impulses are stored per completed hour and recomputed from the raw data when it changes. When the rules for the stored hours change, they are recomputed from your first workout on the next read, tracked by `training_load.impulse_version` in your settings.
 
 ## Recovery Zones
 
@@ -55,7 +63,7 @@ Zone boundaries are based on your average CTL: balanced is 0.8x to 1.3x, straine
 - **Notes**: a bootstrapping note during the first ~6 weeks, and, when some workouts had no usable heart rate, how many were estimated from duration and their share of the TRIMP (`estimated_impulse`).
 - **Fitness, fatigue and form chart**: CTL as a blue area (dashed while bootstrapping), ATL as an orange line and TSB as a line that is green above zero and red below. Hovering (or dragging on a phone) shows the values of a day below the chart; otherwise it shows the latest day.
 - **Recovery zones**: a strip of the zone each day was in (from its ATL against the zone thresholds), with the first and last date. Before the zones exist it says why.
-- **Workouts**: newest first, with date, title (linked to the activity), duration, average HR and TRIMP with a bar relative to the range's largest TRIMP. A TRIMP estimated from duration is marked `*`. The newest 20 show until **Show all** is pressed.
+- **Workouts**: newest first, with date, title (linked to the activity; an untitled session is named after its type), duration, average HR and TRIMP with a bar relative to the range's largest TRIMP. A TRIMP estimated from duration is marked `*`. The newest 20 show until **Show all** is pressed.
 - **Time constants**: the ATL and CTL time constants in use, linking to the Training load section of Settings.
 
 The Android app opens the same page embedded from its More hub.

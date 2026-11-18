@@ -69,6 +69,7 @@ describe('zoneSegments', () => {
 describe('newestFirst', () => {
   test('sorts workouts by start time, newest first, without mutating the input', () => {
     const workout = (start_time: string): WorkoutTrimp => ({
+      activity_type: 'running',
       date: start_time.slice(0, 10),
       duration_minutes: 30,
       end_time: start_time,

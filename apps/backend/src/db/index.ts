@@ -174,6 +174,7 @@ export {
   getNonSleepActivitiesMerged,
   getAllActivityTypeNames,
   getBucketStarts,
+  getEarliestActivityStart,
   getActivityById,
   getActivitySourcesByIds,
   getNearbyActivities,

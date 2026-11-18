@@ -478,6 +478,20 @@ export const getActivitiesByCategory = async (
   return mergeOverlappingActivities(activities, categoryMap)
 }
 
+/** Start of the earliest non-deleted activity of any of `activityTypes`. */
+export const getEarliestActivityStart = async (
+  user: string,
+  activityTypes: string[],
+): Promise<Date | undefined> => {
+  if (activityTypes.length === 0) return undefined
+  const result = await query<{ earliest: Date | null }>(
+    user,
+    `SELECT MIN(start_time) AS earliest FROM activities WHERE activity_type = ANY($1) AND deleted_at IS NULL`,
+    [activityTypes],
+  )
+  return result.rows[0]?.earliest ?? undefined
+}
+
 /**
  * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
  * A recursive loose index scan over `idx_activities_not_deleted`: one index probe per

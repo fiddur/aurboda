@@ -160,12 +160,13 @@ export const processExercise = (
   const dateStr = ex.start_time.toISOString().split('T')[0]!
   return {
     activity_id: ex.id,
+    activity_type: ex.activity_type,
     avg_hr: avgHr ?? undefined,
     date: dateStr,
     duration_minutes: Math.round(durationMinutes * 10) / 10,
     end_time: sessionEnd.toISOString(),
     start_time: ex.start_time.toISOString(),
-    title: ex.title ?? (ex.data?.exerciseType != null ? String(ex.data.exerciseType) : undefined),
+    title: ex.title ?? undefined,
     trimp: Math.round(trimp * 100) / 100,
     trimp_basis: fromHr ? 'hr' : 'duration_estimate',
   }

@@ -18,6 +18,7 @@ import {
   getActivityById,
   getActivitiesNeedingDetail,
   getAllActivityTypeNames,
+  getEarliestActivityStart,
   getGarminActivitiesNeedingSets,
   getEffectiveActivitiesInRange,
   getNonSleepActivitiesMerged,
@@ -1732,6 +1733,38 @@ describe('Activities Integration Tests', () => {
 
       expect(names).toEqual(expected.rows.map((r) => r.activity_type))
       expect(names).toEqual(['exercise', 'sleep', 'walking'])
+    })
+  })
+
+  describe('getEarliestActivityStart', () => {
+    test('gives the earliest start across the types, ignoring soft-deleted rows', async () => {
+      const user = getTestUser()
+      const at = (d: number) => new Date(Date.UTC(2024, 0, d, 10))
+      await insertActivities(user, [
+        { activity_type: 'running', source: 'aurboda', start_time: at(1) },
+        { activity_type: 'yoga', source: 'aurboda', start_time: at(3) },
+        { activity_type: 'running', source: 'aurboda', start_time: at(5) },
+        { activity_type: 'exercise', source: 'aurboda', start_time: at(4) },
+        { activity_type: 'sleep', source: 'aurboda', start_time: at(2) },
+      ])
+      await getTestDbClient().query(
+        `UPDATE activities SET deleted_at = now() WHERE activity_type = 'running' AND start_time = $1`,
+        [at(1)],
+      )
+
+      expect(await getEarliestActivityStart(user, ['running', 'yoga', 'exercise'])).toEqual(at(3))
+    })
+
+    test('is undefined when nothing matches or no type is given', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'sleep',
+        source: 'aurboda',
+        start_time: new Date('2024-01-15T23:00:00Z'),
+      })
+
+      expect(await getEarliestActivityStart(user, ['running'])).toBeUndefined()
+      expect(await getEarliestActivityStart(user, [])).toBeUndefined()
     })
   })
 

@@ -6,6 +6,7 @@ import { getPeriodSummary } from './period-summary.ts'
 
 vi.mock('../../db', () => ({
   getActivities: vi.fn(),
+  getActivityTypeDefinitions: vi.fn(async () => []),
   getDailyAggregates: vi.fn(),
   getHrZoneSecs: vi.fn(),
   getSleepSessions: vi.fn(),

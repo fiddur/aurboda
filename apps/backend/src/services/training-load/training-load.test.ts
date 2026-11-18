@@ -468,6 +468,7 @@ const makeActivity = (id: string, startStr: string, endStr: string, title?: stri
 
 describe('summarizeImpulseBasis', () => {
   const workout = (trimp: number, trimp_basis: 'hr' | 'duration_estimate') => ({
+    activity_type: 'exercise',
     date: '2024-01-01',
     duration_minutes: 30,
     end_time: '2024-01-01T10:30:00.000Z',
@@ -508,6 +509,8 @@ describe('computeTrainingLoad', () => {
     bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
+    getActivityTypeDisplayNames: async () => new Map(),
+    getEarliestExerciseStart: async () => undefined,
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],
@@ -753,6 +756,129 @@ describe('computeTrainingLoad', () => {
     expect(getHrSamples).not.toHaveBeenCalled()
   })
 
+  test('names an untitled workout after its type, except the generic exercise', async () => {
+    const exercises: Activity[] = [
+      { ...makeActivity('a1', '2024-01-02T10:00:00Z', '2024-01-02T10:30:00Z'), activity_type: 'running' },
+      makeActivity('a2', '2024-01-03T10:00:00Z', '2024-01-03T10:30:00Z'),
+      {
+        ...makeActivity('a3', '2024-01-04T10:00:00Z', '2024-01-04T10:30:00Z', 'Evening flow'),
+        activity_type: 'yoga',
+      },
+    ]
+    const deps = makeDeps({
+      getActivityTypeDisplayNames: async () =>
+        new Map([
+          ['exercise', 'Exercise'],
+          ['running', 'Running'],
+          ['yoga', 'Yoga'],
+        ]),
+      getExercises: async () => exercises,
+    })
+
+    const result = await computeTrainingLoad(
+      deps,
+      'testuser',
+      new Date('2024-01-01T00:00:00Z'),
+      new Date('2024-01-07T00:00:00Z'),
+    )
+
+    expect(result.workouts.map((w) => [w.activity_type, w.title])).toEqual([
+      ['running', 'Running'],
+      ['exercise', undefined],
+      ['yoga', 'Evening flow'],
+    ])
+  })
+
+  describe('impulse version', () => {
+    const settingsWith = (training_load: Record<string, unknown>) => async () => ({
+      birth_date: '1985-06-15',
+      sex: 'male' as const,
+      training_load,
+    })
+    const range = [new Date('2024-03-01T00:00:00Z'), new Date('2024-03-07T00:00:00Z')] as const
+    const trainingDeleteStarts = (deleteImpulseBuckets: ReturnType<typeof vi.fn>) =>
+      deleteImpulseBuckets.mock.calls
+        .filter(([, metric]) => metric === 'training_impulse')
+        .map(([, , , start]) => (start as Date).toISOString())
+
+    test('behind: marks everything from the first workout dirty and recomputes from there', async () => {
+      const earliest = new Date('2023-05-04T07:42:00Z')
+      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getEarliestExerciseStart: async () => earliest,
+        getUserSettings: settingsWith({ observed_hr_max: 190 }),
+        updateTrainingLoadSettings,
+      })
+
+      await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
+        impulse_version: 2,
+        impulse_watermark: earliest.toISOString(),
+      })
+      expect(trainingDeleteStarts(deleteImpulseBuckets)[0]).toBe(floorToHour(earliest).toISOString())
+    })
+
+    test('behind: an existing earlier watermark is kept', async () => {
+      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getEarliestExerciseStart: async () => new Date('2023-05-04T07:42:00Z'),
+        getUserSettings: settingsWith({
+          impulse_watermark: '2023-01-02T03:00:00.000Z',
+          observed_hr_max: 190,
+        }),
+        updateTrainingLoadSettings,
+      })
+
+      await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect(updateTrainingLoadSettings).toHaveBeenCalledWith('testuser', {
+        impulse_version: 2,
+        impulse_watermark: '2023-01-02T03:00:00.000Z',
+      })
+      expect(trainingDeleteStarts(deleteImpulseBuckets)[0]).toBe('2023-01-02T03:00:00.000Z')
+    })
+
+    test('behind without any workout: only the version is written', async () => {
+      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const deleteImpulseBuckets = vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
+      const deps = makeDeps({
+        deleteImpulseBuckets,
+        getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
+        getUserSettings: settingsWith({ observed_hr_max: 190 }),
+        updateTrainingLoadSettings,
+      })
+
+      await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect(updateTrainingLoadSettings).toHaveBeenCalledTimes(1)
+      const update = updateTrainingLoadSettings.mock.calls[0]![1]
+      expect(update).toEqual({ impulse_version: 2 })
+      expect('impulse_watermark' in update).toBe(false)
+      expect(deleteImpulseBuckets).not.toHaveBeenCalled()
+    })
+
+    test('current: the earliest workout is not looked up', async () => {
+      const getEarliestExerciseStart = vi.fn(async () => new Date('2023-05-04T07:42:00Z'))
+      const updateTrainingLoadSettings = vi.fn<TrainingLoadDeps['updateTrainingLoadSettings']>(async () => {})
+      const deps = makeDeps({
+        getEarliestExerciseStart,
+        getImpulseBuckets: async () => [[new Date('2024-03-02T10:00:00Z'), 1]],
+        getUserSettings: settingsWith({ impulse_version: 2, observed_hr_max: 190 }),
+        updateTrainingLoadSettings,
+      })
+
+      await computeTrainingLoad(deps, 'testuser', ...range)
+
+      expect(getEarliestExerciseStart).not.toHaveBeenCalled()
+      expect(updateTrainingLoadSettings).not.toHaveBeenCalled()
+    })
+  })
+
   describe('auto-bootstrap', () => {
     const deleteSpy = () => vi.fn<TrainingLoadDeps['deleteImpulseBuckets']>(async () => 0)
     const recomputeCount = (deleteImpulseBuckets: ReturnType<typeof deleteSpy>) =>
@@ -941,6 +1067,8 @@ describe('recomputeImpulseBuckets', () => {
     bootstrappedFrom: new Map(),
     deleteImpulseBuckets: async () => 0,
     getActiveCalories: async () => [],
+    getActivityTypeDisplayNames: async () => new Map(),
+    getEarliestExerciseStart: async () => undefined,
     getExercises: async () => [],
     getHourlyCalorieSums: async () => [],
     getHrSamples: async () => [],

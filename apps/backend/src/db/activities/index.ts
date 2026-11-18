@@ -57,6 +57,7 @@ export {
   fetchCategoryMap,
   getAllActivityTypeNames,
   getBucketStarts,
+  getEarliestActivityStart,
   getEffectiveActivitiesInRange,
   getNearbyActivities,
   getNonSleepActivitiesMerged,
