@@ -44,6 +44,8 @@ Training stress from general daily movement (active calories). Converted from ca
 
 Both impulses are stored per completed hour and recomputed from the raw data when it changes. When the rules for the stored hours change, they are recomputed from your first workout on the next read, tracked by `training_load.impulse_version` in your settings.
 
+The recompute runs in the background, one at a time per user, four weeks at a time: after each stretch it moves `training_load.impulse_watermark` forward, so an interrupted recompute resumes where it stopped. A read waits for it a few seconds at most; while it is still running, the page says it is recalculating (and updates by itself), and the API and MCP tool answer with `recomputing: true` and no points.
+
 ## Recovery Zones
 
 Once you have about 6 weeks of training data, recovery zones appear as colored horizontal bands on the Timeline. They classify your current fatigue relative to your historical fitness:

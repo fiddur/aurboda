@@ -235,6 +235,10 @@ export const trainingLoadResultSchema = z
     points: z
       .array(trainingLoadPointSchema)
       .meta({ description: 'Training load time series (granularity depends on bucket_size parameter)' }),
+    recomputing: z.boolean().optional().meta({
+      description:
+        'True while the stored hours are being recomputed in the background (after old data arrived or a rule changed): points is empty and zones is absent. Ask again in a few seconds. Absent otherwise.',
+    }),
     settings: trainingLoadSettingsSchema.meta({ description: 'Effective settings used for computation' }),
     workouts: z.array(workoutTrimpSchema).meta({ description: 'Per-workout TRIMP scores in the range' }),
     zones: recoveryZonesSchema

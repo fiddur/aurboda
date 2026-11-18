@@ -31,6 +31,9 @@ Recovery zones (based on historical CTL):
 - Strained: balanced_max < ATL ≤ strained_max
 - Very Strained: ATL > strained_max
 
+While the stored hours are being recomputed (after old data arrived or a rule changed), the result has
+recomputing: true and no points or zones; ask again after a short wait (a few seconds).
+
 Parameters can be configured in user settings (training_load).
 
 Example: "Show my training load for the last 3 months"

@@ -23,8 +23,11 @@ import { getOrCacheMaxObservedHr } from './hr-cache.ts'
 /** Version of the rules the stored impulse buckets follow; a user's buckets from a lower one are recomputed. */
 export const IMPULSE_VERSION = 3
 
-/** Maximum chunk size for recomputation (7 days in ms). */
-const RECOMPUTE_CHUNK_MS = 7 * 24 * MS_PER_HOUR
+/**
+ * Chunk size for recomputation (28 days in ms). A chunk holds its hourly calorie sums and the HR
+ * samples of its workouts only, so memory stays small; progress is stored after each chunk.
+ */
+const RECOMPUTE_CHUNK_MS = 28 * 24 * MS_PER_HOUR
 
 /** The HR window read for an exercise; one without an end counts as an hour long. */
 export const exerciseWindow = (ex: Activity): { start: Date; end: Date } => ({
@@ -100,7 +103,29 @@ const recomputeChunk = async (
 }
 
 /**
- * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour.
+ * Stores that everything before `chunkEnd` is recomputed and returns where to continue. A watermark
+ * earlier than `chunkStart` means older data was marked dirty during the run: it is kept and the run
+ * continues from there.
+ */
+const advanceWatermark = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  chunkStart: Date,
+  chunkEnd: Date,
+  currentHour: Date,
+): Promise<Date> => {
+  const stored = (await deps.getUserSettings(user)).training_load?.impulse_watermark
+  if (stored && new Date(stored) < chunkStart) return floorToHour(new Date(stored))
+  await deps.updateTrainingLoadSettings(user, {
+    impulse_watermark: chunkEnd >= currentHour ? undefined : chunkEnd.toISOString(),
+  })
+  return chunkEnd
+}
+
+/**
+ * Recompute hourly impulse buckets for a user from `fromHour` to the last completed hour, one chunk
+ * at a time: each chunk replaces its own buckets and then moves the watermark past it, so an
+ * interrupted run resumes where it stopped and the other hours stay readable meanwhile.
  *
  * Skips the current (incomplete) hour.
  */
@@ -111,7 +136,13 @@ export const recomputeImpulseBuckets = async (
 ): Promise<{ hours_computed: number }> => {
   const currentHour = getCurrentHourStart()
 
-  if (fromHour >= currentHour) return { hours_computed: 0 }
+  if (fromHour >= currentHour) {
+    const { training_load } = await deps.getUserSettings(user)
+    if (training_load?.impulse_watermark) {
+      await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
+    }
+    return { hours_computed: 0 }
+  }
 
   // Use cached observed_hr_max to avoid the expensive 1-year scan.
   const [userSettings, latestRestingHr] = await Promise.all([
@@ -126,30 +157,24 @@ export const recomputeImpulseBuckets = async (
   const hrMax = resolveHrMax(settings.hr_max, maxObservedHr, userSettings.birth_date)
   const hrRest = resolveHrRest(settings.hr_rest, latestRestingHr)
 
-  // Delete old buckets in the full range upfront
-  await Promise.all([
-    deps.deleteImpulseBuckets(user, 'training_impulse', 'aurboda', fromHour, currentHour),
-    deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', fromHour, currentHour),
-  ])
-
-  let allPoints: TimeSeriesPoint[] = []
+  let hoursComputed = 0
   let chunkStart = fromHour
 
   while (chunkStart < currentHour) {
     const chunkEnd = new Date(Math.min(chunkStart.getTime() + RECOMPUTE_CHUNK_MS, currentHour.getTime()))
     const chunkPoints = await recomputeChunk(deps, user, chunkStart, chunkEnd, hrMax, hrRest, settings)
 
+    await Promise.all([
+      deps.deleteImpulseBuckets(user, 'training_impulse', 'aurboda', chunkStart, chunkEnd),
+      deps.deleteImpulseBuckets(user, 'activity_impulse', 'aurboda', chunkStart, chunkEnd),
+    ])
     if (chunkPoints.length > 0) {
-      // Write each chunk immediately to avoid accumulating in memory
       await deps.writeImpulseBuckets(user, chunkPoints)
-      allPoints = allPoints.concat(chunkPoints)
+      hoursComputed += new Set(chunkPoints.map((p) => p.time.getTime())).size
     }
 
-    chunkStart = chunkEnd
+    chunkStart = await advanceWatermark(deps, user, chunkStart, chunkEnd, currentHour)
   }
 
-  await deps.updateTrainingLoadSettings(user, { impulse_watermark: undefined })
-
-  const hours = new Set(allPoints.map((p) => p.time.toISOString()))
-  return { hours_computed: hours.size }
+  return { hours_computed: hoursComputed }
 }
