@@ -5,8 +5,11 @@ import type {
   MuscleRecoverySource,
 } from '@aurboda/api-spec'
 
+import { MUSCLE_RECOVERY_HISTORY_MAX_POINTS } from '@aurboda/api-spec'
+import { differenceInCalendarDays, endOfDay, subDays } from 'date-fns'
 import { describe, expect, test } from 'vitest'
 
+import { MUSCLE_GROUP_PERIODS } from '../../pages/MuscleGroup/muscleGroupView'
 import {
   filterOptionLabel,
   readyLabel,
@@ -167,19 +170,39 @@ describe('filterOptionLabel', () => {
 })
 
 describe('recoveryPeriod', () => {
-  test('covers the 14 days up to the end of the current hour, every 6 hours', () => {
-    const now = new Date(2026, 10, 17, 12, 34, 56)
-    const period = recoveryPeriod(now)
+  const now = new Date(2026, 10, 17, 12, 34, 56)
+
+  test('90 days up to the end of the current hour, every 6 hours', () => {
+    const period = recoveryPeriod(now, 90)
     expect(period.end).toBe(new Date(2026, 10, 17, 13, 0, 0).toISOString())
-    expect(new Date(period.end).getTime() - new Date(period.start).getTime()).toBe(14 * 24 * HOUR)
+    expect(period.start).toBe(subDays(new Date(2026, 10, 17, 13, 0, 0), 90).toISOString())
+    expect(differenceInCalendarDays(new Date(period.end), new Date(period.start))).toBe(90)
     expect(period.step_hours).toBe(6)
   })
 
+  test.each([365, 730])('%i days up to the end of the day, one point a day', (days) => {
+    const period = recoveryPeriod(now, days)
+    expect(period.end).toBe(endOfDay(now).toISOString())
+    expect(differenceInCalendarDays(new Date(period.end), new Date(period.start))).toBe(days)
+    expect(period.step_hours).toBe(24)
+  })
+
   test('is stable within the hour', () => {
-    expect(recoveryPeriod(new Date(2026, 10, 17, 12, 1))).toEqual(
-      recoveryPeriod(new Date(2026, 10, 17, 12, 59)),
+    expect(recoveryPeriod(new Date(2026, 10, 17, 12, 1), 90)).toEqual(
+      recoveryPeriod(new Date(2026, 10, 17, 12, 59), 90),
     )
   })
+
+  test.each(MUSCLE_GROUP_PERIODS.map((p) => p.value))(
+    'the %i days of a page period stay within the point limit',
+    (days) => {
+      const period = recoveryPeriod(now, days)
+      const span = new Date(period.end).getTime() - new Date(period.start).getTime()
+      expect(Math.floor(span / (period.step_hours * HOUR)) + 1).toBeLessThanOrEqual(
+        MUSCLE_RECOVERY_HISTORY_MAX_POINTS,
+      )
+    },
+  )
 })
 
 describe('recoverySeries', () => {

@@ -76,10 +76,10 @@ const loadOf = (item: Record<string, unknown>): { reps: number; weight: number }
   const weight = finite(item.weight)
   const reps = finite(item.reps)
   if (weight === undefined || weight <= 0 || reps === undefined) return undefined
-  return reps >= 1 && reps <= STRENGTH_SCORE_MAX_REPS ? { reps, weight } : undefined
+  return reps >= 1 ? { reps, weight } : undefined
 }
 
-/** Every working set of 1 to 12 reps with a weight whose exercise resolves to a reference lift. */
+/** Every working set with a weight and reps whose exercise resolves to a reference lift; reps above 12 are estimated as 12. */
 export const scoredSets = (
   sessions: ExerciseSession[],
   key: string,
@@ -105,7 +105,7 @@ export const scoredSets = (
           activity_type: session.activity_type,
           ...(bodyweight !== undefined && { bodyweight }),
           catalog_key: entry.key,
-          e1rm: epley(load.weight, load.reps),
+          e1rm: epley(load.weight, Math.min(load.reps, STRENGTH_SCORE_MAX_REPS)),
           lift,
           reps: load.reps,
           session_id: session.id,

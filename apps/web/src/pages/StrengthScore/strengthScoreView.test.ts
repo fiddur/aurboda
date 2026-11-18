@@ -249,6 +249,12 @@ describe('bestSetLabel and liftDetail', () => {
       set: '12 kg × 12',
     })
   })
+
+  test('a set above 12 reps says its estimate is of 12 reps', () => {
+    expect(liftDetail(best({ reps: 17 }))).toBe(
+      '12 kg × 17 on 3 Nov 2026 · est. 1RM 16.8 kg (as 12 reps) · 100 points at 12 kg',
+    )
+  })
 })
 
 describe('missingText', () => {
