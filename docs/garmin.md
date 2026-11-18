@@ -8,7 +8,7 @@
 
 ## The two pull connections
 
-Each data type is pulled through one connection, the login or the key; Connect with Garmin takes no part in the pull sync:
+Each data type is pulled through one connection, the login or the key; Connect with Garmin takes no part in the pull sync, but once it delivers a type the automatic pull leaves that type to it (see [When Connect with Garmin delivers a type](#when-connect-with-garmin-delivers-a-type)):
 
 | Data type          | Login only | Key only                | Both                              |
 | ------------------ | ---------- | ----------------------- | --------------------------------- |
@@ -29,6 +29,33 @@ Each data type is pulled through one connection, the login or the key; Connect w
 With a key and no login, stress and training readiness are skipped (no sync state is written for them), sleep comes without the stage timeline (a Health Connect timeline already on the night is kept), and activities come without [strength sets](#strength-sets); their per-second detail and GPS track come from the [activity's FIT file](#activity-detail-from-the-fit-file). A key that is refused or past its expiry date is not used, and the session, if any, serves every type instead: a refused key is tried again once a day (see below), and a key is used through its expiry date and not from the next day (UTC), without a request to Garmin. When the key serves a type and the Personal API answers a `5xx` (or fails on the network), the sync records an error for that type and day rather than asking the login; the next run tries the key again.
 
 Respiration and intensity minutes come from the key's daily summary (`avgWakingRespirationValue`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`, `intensityMinutesGoal`), which is fetched once per day for all three types and kept for 60 seconds; connecting or disconnecting a key drops the user's copy, so a replaced key answers at once.
+
+## When Connect with Garmin delivers a type
+
+A user with the login (or a key) and Connect with Garmin would otherwise get every type fetched twice. Once Connect with Garmin **delivers** a data type, the **automatic** pull (the background poll, the top-up before a query, and the Health Connect enrichment job) stops fetching it; the login and the key keep fetching everything else (`apps/backend/src/integrations/garmin/push-coverage.ts`). A type counts as delivered when all of these hold:
+
+1. Connect with Garmin is connected and does not need a reconnect.
+2. Garmin pushed something for the user (any `garmin_push` sync state, whatever its status) less than 24 hours ago.
+3. A push type that carries the data type was last processed without error (its `garmin_push` state is `idle`). That push type may be older than 24 hours: a user can go a week without an activity.
+4. The user shares the permission it needs: `ACTIVITY_EXPORT` for activities, `HEALTH_EXPORT` for the rest. When Garmin's permission answer could not be read (an empty permission list), this rule is left out and the first three decide.
+
+| Push type           | Delivers                                     |
+| ------------------- | -------------------------------------------- |
+| `dailies`           | Daily summary, heart rate, intensity minutes |
+| `sleeps`            | Sleep                                        |
+| `hrv`               | HRV                                          |
+| `stressDetails`     | Stress, Body Battery                         |
+| `pulseox`           | SpO2                                         |
+| `allDayRespiration` | Respiration                                  |
+| `activities`        | Activities                                   |
+
+`activityDetails`, `activityFiles` and `manuallyUpdatedActivities` do not vouch for activities, and training readiness is never delivered, so the login keeps fetching it, as it keeps fetching [strength sets](#strength-sets).
+
+When the automatic pull leaves a type to the push, it writes that type's `garmin` sync state as `idle` with the current time (unless a manual sync holds it as `syncing`), so the interval holds and a later pull resumes from there; no `Auto-syncing Garmin <type>` audit entry is written and nothing is fetched. For activities the detail step still runs, but an activity under a day old is left for its pushed FIT file, which is the full recording (the login's JSON detail would mark it done first); older activities get their detail from the login or the key as before.
+
+A **manual** sync (`POST /api/sync/garmin`, MCP `sync_garmin`, **Sync now** and **Full Re-sync**) is unchanged and fetches everything the login or the key serves, including history: that is how a user refills. When the pushes stop for 24 hours, the grant needs a reconnect, or the user stops sharing a permission, the automatic pull takes the types back by itself.
+
+Settings report the delivered types as `garmin_oauth.delivers`, and the Garmin page shows under each data type whether Connect with Garmin delivers it or which pull connection fetches it.
 
 ## Data Synced
 
@@ -123,11 +150,11 @@ Connect with Garmin uses the Garmin Connect Developer Program's OAuth 2.0 author
 
 A user who started in the Android app consents in the phone's browser, so the connection finishes in that browser, which must be signed in to the same Aurboda account. Without a login there the page offers **Log in to finish connecting Garmin**, which comes back to the page after the login.
 
-**Storage.** The grant is a row in the user's `oauth_tokens` (provider `garmin_oauth`): the access token, the refresh token, `expires_at`, and the granted permissions in `scopes` (`HEALTH_EXPORT`, `ACTIVITY_EXPORT`, `MCT_EXPORT`, `WORKOUT_IMPORT`, `COURSE_IMPORT`). The Garmin user id, which every push carries, maps to the Aurboda user in the central `garmin_user_mappings` table. One Garmin account belongs to one Aurboda user: connecting a Garmin account that another Aurboda user had connected moves it, deletes the other user's grant and audits it on both. A user who reconnects with a different Garmin account drops the old mapping, and the old account is deregistered at Garmin (best effort). If the mapping cannot be written, the grant just stored is removed again, so a connection never shows as connected without it. No token, code, verifier, client secret or Garmin user id reaches a response, an audit entry or a log line.
+**Storage.** The grant is a row in the user's `oauth_tokens` (provider `garmin_oauth`): the access token, the refresh token, `expires_at`, and the granted permissions in `scopes` (`HEALTH_EXPORT`, `ACTIVITY_EXPORT`, `MCT_EXPORT`, `WORKOUT_IMPORT`, `COURSE_IMPORT`). The Garmin user id, which every push carries, maps to the Aurboda user in the central `garmin_user_mappings` table. One Garmin account belongs to one Aurboda user: connecting a Garmin account that another Aurboda user had connected moves it, deletes the other user's grant and audits it on both. A user who reconnects with a different Garmin account drops the old mapping, and the old account is deregistered at Garmin (best effort). If the mapping cannot be written, the grant just stored is removed again, so a connection never shows as connected without it. No token, code, verifier, client secret or Garmin user id reaches a response, an audit entry or a log line. When the permissions could not be read at connect (the request failed, audited as a warning, or its answer was not understood, audited by its shape only), the grant is stored with no permissions, and the scheduler's token upkeep reads them again at most once an hour until Garmin answers some, storing them as a permission-change notice would.
 
 **Token upkeep.** An access token lasts 24 hours and is refreshed when less than 600 seconds of it are left, as Garmin recommends; each refresh brings a new refresh token (rotation), which lasts about three months. Concurrent callers on one server share one refresh. A refresh Garmin answers with the OAuth error `invalid_grant` marks the grant refused (`oauth_tokens.refused_at`): it is not refreshed again, and the page asks the user to connect again. Any other failure, a rejected client secret included, leaves the grant as it is. Since a user whose data only arrives by push would otherwise never refresh, the five-minute background sync tick refreshes every grant that is due, so the refresh token does not lapse; a failure there is audited as a warning and that user is tried again an hour later.
 
-**Status.** Settings report `garmin_oauth` (`available`: the server has both credentials; `connected`; `needs_reconnect`: Garmin refused the refresh; `permissions`; `last_received_at`: when Garmin last pushed data for the user, or `null`). `garmin_connected` is true for any of the three connections. The Garmin page shows "Last data received …" under the connection, or that nothing has arrived yet. The page's sync status, **Full Re-sync** and sync interval belong to the pull sync and show only with the login or a key.
+**Status.** Settings report `garmin_oauth` (`available`: the server has both credentials; `connected`; `needs_reconnect`: Garmin refused the refresh; `permissions`; `last_received_at`: when Garmin last pushed data for the user, or `null`; `delivers`: the data types the automatic pull currently leaves to it, see [When Connect with Garmin delivers a type](#when-connect-with-garmin-delivers-a-type)). `garmin_connected` is true for any of the three connections. The Garmin page shows "Last data received …" under the connection, or that nothing has arrived yet. The page's sync status, **Full Re-sync** and sync interval belong to the pull sync and show only with the login or a key.
 
 ### Data pushed by Garmin
 
@@ -196,7 +223,7 @@ When the login is connected and the server offers Connect with Garmin, the Garmi
 
 1. Click **Connect with Garmin** and finish the sign-in at Garmin.
 2. Wait for the first data: it arrives the next time your watch syncs, and the page then shows when data was last received.
-3. Disconnect the login, or keep both. Aurboda never disconnects the login by itself. The connections fill the same records, so keeping both counts nothing twice.
+3. Disconnect the login, or keep both. Aurboda never disconnects the login by itself. The connections fill the same records, so keeping both counts nothing twice. Once data arrives, the login only fetches on its schedule what Connect with Garmin does not deliver (see [When Connect with Garmin delivers a type](#when-connect-with-garmin-delivers-a-type)); **Sync now** and **Full Re-sync** still fetch everything.
 
 What stops when the login is disconnected depends on what else is connected:
 
@@ -246,9 +273,9 @@ Rate limiting (HTTP 429 or similar errors) is handled automatically with exponen
 
 ## Auto-Sync
 
-Garmin is polled by the background scheduler and topped up before queries, both governed by the user's `sync_intervals` setting (`garmin`, else `default`; server fallback 30 minutes) — see [Data Sources → Sync Behavior](./data-sources.md#sync-behavior). Every data type keeps its own sync state, so each is checked against the interval separately. A user who has connected Garmin in neither way is skipped before anything is read or written: no audit entry, no sync state, no request to Garmin. A manual sync for such a user returns an error per data type instead of attempting the fetch.
+Garmin is polled by the background scheduler and topped up before queries, both governed by the user's `sync_intervals` setting (`garmin`, else `default`; server fallback 30 minutes) — see [Data Sources → Sync Behavior](./data-sources.md#sync-behavior). Every data type keeps its own sync state, so each is checked against the interval separately. A type Connect with Garmin delivers is not fetched: its sync state is stamped instead (see [When Connect with Garmin delivers a type](#when-connect-with-garmin-delivers-a-type)). A user who has connected Garmin in neither way is skipped before anything is read or written: no audit entry, no sync state, no request to Garmin. A manual sync for such a user returns an error per data type instead of attempting the fetch.
 
-When the Android app delivers a Health Connect exercise or sleep session written by the Garmin Connect app, an enrichment job runs the Garmin `activities` (plus activity detail) or `sleep` sync for that user within about a minute, so the session gets its Garmin data without waiting for the poll. Garmin often lists a fresh activity before it serves the activity's detail; while the stored row is still without detail (`data.detail_synced`), the activity job fails and is retried with backoff (3 retries, from 2 minutes) instead of reporting success. A user with neither a usable key nor a login has no source for the detail, so the job does not wait for it.
+When the Android app delivers a Health Connect exercise or sleep session written by the Garmin Connect app, an enrichment job runs the Garmin `activities` (plus activity detail) or `sleep` sync for that user within about a minute, so the session gets its Garmin data without waiting for the poll. Garmin often lists a fresh activity before it serves the activity's detail; while the stored row is still without detail (`data.detail_synced`), the activity job fails and is retried with backoff (3 retries, from 2 minutes) instead of reporting success. A user with neither a usable key nor a login has no source for the detail, so the job does not wait for it, and neither does it when Connect with Garmin delivers activities, since the push brings the file itself.
 
 When an activity's detail lands for the first time (the poll, a manual sync, the enrichment job) or is re-synced by hand, any feed post sharing it is re-federated as an `Update`, so followers get the settled distance, heart-rate chart and route map — see [Feed](./features/feed.md#publishing--lifecycle-delivery). Auto-share rules wait for the detail before sharing a Garmin-backed activity, for up to two hours — see [Auto-share rules](./features/auto-share-rules.md#evaluation--timing).
 

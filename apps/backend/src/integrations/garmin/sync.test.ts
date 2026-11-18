@@ -15,6 +15,7 @@ import {
   syncActivitySets,
   syncAllGarminData,
   syncGarminDataType,
+  syncGarminDataTypeAutomatically,
 } from './sync.ts'
 
 // Mock the db module (include all exports used by garmin-process.ts too)
@@ -80,6 +81,7 @@ const createMockGarmin = () => ({
   getStress: vi.fn().mockResolvedValue({}),
   getTrainingReadiness: vi.fn().mockResolvedValue({}),
   login: vi.fn(),
+  pushDelivers: vi.fn().mockResolvedValue(false),
   sourceFor: vi.fn().mockResolvedValue('session'),
 })
 
@@ -904,5 +906,163 @@ describe('syncAllGarminData', () => {
     for (const result of results.slice(1)) {
       expect(result.status).toBe('skipped')
     }
+  })
+})
+
+describe('syncGarminDataTypeAutomatically', () => {
+  const user = 'alice'
+  const now = new Date('2026-11-18T12:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getSyncState).mockResolvedValue({
+      data_type: 'sleep',
+      last_sync_time: now,
+      provider: 'garmin',
+      status: 'idle',
+    })
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([])
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([])
+  })
+
+  test('leaves a delivered type to the push and stamps its sync state', async () => {
+    const garmin = createMockGarmin()
+    garmin.pushDelivers.mockResolvedValue(true)
+    const onPull = vi.fn()
+
+    const result = await syncGarminDataTypeAutomatically(user, garmin as never, 'sleep', { now, onPull })
+
+    expect(result).toEqual({
+      data_type: 'sleep',
+      delivered_by_push: true,
+      records_processed: 0,
+      status: 'skipped',
+    })
+    expect(garmin.pushDelivers).toHaveBeenCalledWith(user, 'sleep')
+    expect(garmin.getSleep).not.toHaveBeenCalled()
+    expect(onPull).not.toHaveBeenCalled()
+    expect(db.upsertSyncState).toHaveBeenCalledWith(user, {
+      data_type: 'sleep',
+      error_message: undefined,
+      last_sync_time: now,
+      provider: 'garmin',
+      retry_after: undefined,
+      status: 'idle',
+    })
+  })
+
+  test('does not stamp a state a manual sync is holding', async () => {
+    vi.mocked(db.getSyncState).mockResolvedValue({
+      data_type: 'sleep',
+      provider: 'garmin',
+      status: 'syncing',
+    })
+    const garmin = createMockGarmin()
+    garmin.pushDelivers.mockResolvedValue(true)
+
+    const result = await syncGarminDataTypeAutomatically(user, garmin as never, 'sleep', { now })
+
+    expect(result.delivered_by_push).toBe(true)
+    expect(result.status).toBe('skipped')
+    expect(db.upsertSyncState).not.toHaveBeenCalled()
+  })
+
+  test('pulls a type the push does not deliver, telling onPull first', async () => {
+    const garmin = createMockGarmin()
+    const order: string[] = []
+    const onPull = vi.fn(() => order.push('onPull'))
+    garmin.getSleep.mockImplementation(async () => {
+      order.push('fetch')
+      return {}
+    })
+
+    const result = await syncGarminDataTypeAutomatically(user, garmin as never, 'sleep', { onPull })
+
+    expect(result.status).toBe('success')
+    expect(result.delivered_by_push).toBeUndefined()
+    expect(onPull).toHaveBeenCalledOnce()
+    expect(order[0]).toBe('onPull')
+    expect(garmin.getSleep).toHaveBeenCalled()
+  })
+
+  test.each([
+    ['delivered', true],
+    ['not delivered', false],
+  ])('activities %s still run the detail sync', async (_, delivered) => {
+    const garmin = createMockGarmin()
+    garmin.pushDelivers.mockResolvedValue(delivered)
+    const onDetailSynced = vi.fn()
+    const twoHoursOld = new Date(now.getTime() - 2 * 3_600_000)
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      {
+        activity_type: 'running' as const,
+        data: { garmin_activity_id: 4242 },
+        end_time: now,
+        id: 'fresh',
+        source: 'garmin' as const,
+        start_time: twoHoursOld,
+      },
+    ])
+
+    await syncGarminDataTypeAutomatically(user, garmin as never, 'activities', { now, onDetailSynced })
+
+    expect(db.getActivitiesNeedingDetail).toHaveBeenCalledWith(user, { forceAll: false })
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalled()
+    if (delivered) expect(garmin.getActivityDetail).not.toHaveBeenCalled()
+    else expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 4242)
+  })
+
+  test('a type other than activities runs no detail sync', async () => {
+    await syncGarminDataTypeAutomatically(user, createMockGarmin() as never, 'hrv', { now })
+
+    expect(db.getActivitiesNeedingDetail).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncActivityDetails waiting for the pushed file', () => {
+  const user = 'alice'
+  const now = new Date('2026-11-18T12:00:00Z')
+  const activity = (id: string, garminActivityId: number, hoursOld: number) => ({
+    activity_type: 'running' as const,
+    data: { garmin_activity_id: garminActivityId },
+    end_time: now,
+    id,
+    source: 'garmin' as const,
+    start_time: new Date(now.getTime() - hoursOld * 3_600_000),
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getGarminActivitiesNeedingSets).mockResolvedValue([])
+    vi.mocked(db.getActivitiesNeedingDetail).mockResolvedValue([
+      activity('fresh', 1, 2),
+      activity('old', 2, 48),
+    ])
+  })
+
+  test('skips an activity under a day old and fetches an older one', async () => {
+    const garmin = createMockGarmin()
+
+    await syncActivityDetails(user, garmin as never, { now, waitForPushedFile: true })
+
+    expect(garmin.getActivityDetail).toHaveBeenCalledTimes(1)
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 2)
+    expect(db.markActivityDetailSynced).not.toHaveBeenCalledWith(user, 'fresh')
+    expect(db.markActivityDetailSynced).toHaveBeenCalledWith(user, 'old')
+  })
+
+  test('still syncs the strength sets', async () => {
+    await syncActivityDetails(user, createMockGarmin() as never, { now, waitForPushedFile: true })
+
+    expect(db.getGarminActivitiesNeedingSets).toHaveBeenCalledWith(user, { forceAll: false })
+  })
+
+  test('a full re-sync ignores it', async () => {
+    const garmin = createMockGarmin()
+
+    await syncActivityDetails(user, garmin as never, { fullResync: true, now, waitForPushedFile: true })
+
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 1)
+    expect(garmin.getActivityDetail).toHaveBeenCalledWith(user, 2)
   })
 })

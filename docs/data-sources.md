@@ -50,7 +50,8 @@ You connect sources from **Data Sources** in the web app's sidebar, one page per
 
 **Garmin's Developer Program** (Connect with Garmin) pushes too, but from Garmin's servers to one secret
 URL the admin registers with Garmin, as the user's device syncs; each summary type received leaves a
-`garmin_push` sync state. See [Garmin → Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
+`garmin_push` sync state. Once it delivers a data type, the automatic pull through the login or key
+leaves that type to it (a manual sync still fetches everything). See [Garmin → Data pushed by Garmin](./garmin.md#data-pushed-by-garmin).
 
 Check sync status:
 

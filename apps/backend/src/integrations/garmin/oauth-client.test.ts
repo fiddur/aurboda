@@ -13,6 +13,7 @@ import {
   garminOAuthClient,
   GarminOAuthNotConnectedError,
   GarminOAuthRefusedError,
+  garminAnswerShape,
   garminOAuthStatusFromToken,
   parseGarminPermissions,
 } from './oauth-client.ts'
@@ -69,6 +70,7 @@ const makeClient = (
   const deleteOAuthToken = vi.fn(async () => true)
   const markOAuthTokenRefused = vi.fn()
   const resetSyncState = vi.fn(async () => {})
+  const updateOAuthTokenScopes = vi.fn(async () => true)
   const clock = { now: options.now ?? NOW }
   const upsertGarminUserMapping = vi.fn(async () => {
     if (options.mappingFails) throw new Error('central db down')
@@ -100,6 +102,7 @@ const makeClient = (
       markOAuthTokenRefused,
       now: () => clock.now,
       resetSyncState,
+      updateOAuthTokenScopes,
       upsertGarminUserMapping,
       upsertOAuthToken,
     },
@@ -115,6 +118,7 @@ const makeClient = (
     http,
     markOAuthTokenRefused,
     resetSyncState,
+    updateOAuthTokenScopes,
     upsertGarminUserMapping,
     upsertOAuthToken,
   }
@@ -358,9 +362,58 @@ describe('complete', () => {
         throw axiosFailure(503)
       },
     })
-    const { client, upsertOAuthToken } = makeClient({ http: { get } })
+    const { auditWarn, client, upsertOAuthToken } = makeClient({ http: { get } })
     expect(await client.complete('alice', 'fake-code', sealedFor('alice'))).toEqual({ ok: true })
     expect(upsertOAuthToken).toHaveBeenCalledWith('alice', expect.objectContaining({ scopes: [] }))
+    expect(auditWarn).toHaveBeenCalledWith('alice', 'auth', 'Garmin: could not read the shared permissions', {
+      error: 'Garmin permissions request 503',
+    })
+  })
+
+  it('never puts the access token in the audit of a failed permissions request', async () => {
+    const get = getAnswering({
+      permissions: () => {
+        throw axiosFailure(401, { error: 'invalid_token', error_description: 'fake-access-new rejected' })
+      },
+    })
+    const { auditWarn, client } = makeClient({ http: { get } })
+    await client.complete('alice', 'fake-code', sealedFor('alice'))
+    const said = everythingSaid([auditWarn])
+    expect(said).toContain('could not read the shared permissions')
+    expect(said).not.toContain('fake-access-new')
+    expect(said).not.toContain(GARMIN_USER_ID)
+  })
+
+  it('reads the permissions from a string body in the shape of Garmin’s documented example', async () => {
+    const get = getAnswering({ permissions: () => '{["ACTIVITY_EXPORT", "HEALTH_EXPORT"]}' })
+    const { auditWarn, client, upsertOAuthToken } = makeClient({ http: { get } })
+    expect(await client.complete('alice', 'fake-code', sealedFor('alice'))).toEqual({ ok: true })
+    expect(upsertOAuthToken).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ scopes: ['ACTIVITY_EXPORT', 'HEALTH_EXPORT'] }),
+    )
+    expect(auditWarn).not.toHaveBeenCalled()
+  })
+
+  it('audits an answer it does not understand by its shape only, and still connects', async () => {
+    const get = getAnswering({ permissions: () => ({ granted: { secretish: 'fake-value' }, userId: 'x' }) })
+    const { auditWarn, client, upsertOAuthToken } = makeClient({ http: { get } })
+    expect(await client.complete('alice', 'fake-code', sealedFor('alice'))).toEqual({ ok: true })
+    expect(upsertOAuthToken).toHaveBeenCalledWith('alice', expect.objectContaining({ scopes: [] }))
+    expect(auditWarn).toHaveBeenCalledWith(
+      'alice',
+      'auth',
+      'Garmin: the shared permissions answer was not understood',
+      { shape: 'object (granted, userId)' },
+    )
+    expect(everythingSaid([auditWarn])).not.toContain('fake-value')
+  })
+
+  it('does not audit an empty permission list', async () => {
+    const get = getAnswering({ permissions: () => [] })
+    const { auditWarn, client } = makeClient({ http: { get } })
+    expect(await client.complete('alice', 'fake-code', sealedFor('alice'))).toEqual({ ok: true })
+    expect(auditWarn).not.toHaveBeenCalled()
   })
 
   it('clears the previous owner’s grant when the Garmin account moves to this user', async () => {
@@ -414,6 +467,35 @@ describe('parseGarminPermissions', () => {
     expect(parseGarminPermissions({ permissions: ['ACTIVITY_EXPORT', 7] })).toEqual(['ACTIVITY_EXPORT'])
     expect(parseGarminPermissions({ other: [] })).toEqual([])
     expect(parseGarminPermissions('HEALTH_EXPORT')).toEqual([])
+  })
+
+  it('parses a string body as JSON when it is JSON', () => {
+    expect(parseGarminPermissions('["HEALTH_EXPORT","ACTIVITY_EXPORT"]')).toEqual([
+      'HEALTH_EXPORT',
+      'ACTIVITY_EXPORT',
+    ])
+    expect(parseGarminPermissions('{"permissions":["MCT_EXPORT",3]}')).toEqual(['MCT_EXPORT'])
+    expect(parseGarminPermissions('{"other":["HEALTH_EXPORT"]}')).toEqual([])
+    expect(parseGarminPermissions('"HEALTH_EXPORT"')).toEqual([])
+  })
+
+  it('takes the quoted permission names from a string body that is not JSON', () => {
+    expect(parseGarminPermissions('{["ACTIVITY_EXPORT", "HEALTH_EXPORT"]}')).toEqual([
+      'ACTIVITY_EXPORT',
+      'HEALTH_EXPORT',
+    ])
+    expect(parseGarminPermissions('{["lower", "WORKOUT_IMPORT", 7]')).toEqual(['WORKOUT_IMPORT'])
+    expect(parseGarminPermissions('not json at all')).toEqual([])
+  })
+})
+
+describe('garminAnswerShape', () => {
+  it('names the JSON type, and an object’s top-level keys, never a value', () => {
+    expect(garminAnswerShape(null)).toBe('null')
+    expect(garminAnswerShape(undefined)).toBe('undefined')
+    expect(garminAnswerShape('{["X"]}')).toBe('string')
+    expect(garminAnswerShape([1])).toBe('array')
+    expect(garminAnswerShape({ a: 'fake-value', b: 1 })).toBe('object (a, b)')
   })
 })
 
@@ -558,6 +640,52 @@ describe('keepFresh', () => {
     const said = everythingSaid([auditWarn])
     expect(said).not.toContain(SECRET)
     expect(said).not.toContain('fake-refresh-old')
+  })
+
+  it('reads the permissions again for a grant stored without any, and stores them', async () => {
+    const { auditInfo, client, updateOAuthTokenScopes } = makeClient({ grant: { ...liveGrant, scopes: [] } })
+    await client.keepFresh('alice')
+    expect(updateOAuthTokenScopes).toHaveBeenCalledWith('alice', GARMIN_OAUTH_PROVIDER, [
+      'HEALTH_EXPORT',
+      'ACTIVITY_EXPORT',
+    ])
+    expect(auditInfo).toHaveBeenCalledWith('alice', 'auth', 'Garmin: read the shared permissions', {
+      permissions: ['HEALTH_EXPORT', 'ACTIVITY_EXPORT'],
+    })
+  })
+
+  it('does not read the permissions for a grant that has them, or one that needs a reconnect', async () => {
+    for (const grant of [liveGrant, { ...liveGrant, refused_at: NOW, scopes: [] }]) {
+      const { client, http, updateOAuthTokenScopes } = makeClient({ grant })
+      await client.keepFresh('alice')
+      expect(http.get).not.toHaveBeenCalled()
+      expect(updateOAuthTokenScopes).not.toHaveBeenCalled()
+    }
+  })
+
+  it('tries the permissions at most once an hour, auditing a failure once', async () => {
+    const get = getAnswering({
+      permissions: () => {
+        throw axiosFailure(503)
+      },
+    })
+    const { auditWarn, client, clock, updateOAuthTokenScopes } = makeClient({
+      grant: { ...liveGrant, scopes: undefined },
+      http: { get },
+    })
+    await client.keepFresh('alice')
+    await client.keepFresh('alice')
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(auditWarn).toHaveBeenCalledTimes(1)
+    expect(auditWarn).toHaveBeenCalledWith('alice', 'auth', 'Garmin: could not read the shared permissions', {
+      error: 'Garmin permissions request 503',
+    })
+    expect(updateOAuthTokenScopes).not.toHaveBeenCalled()
+    expect(everythingSaid([auditWarn])).not.toContain('fake-access-live')
+
+    clock.now = new Date(NOW.getTime() + 61 * 60 * 1000)
+    await client.keepFresh('alice')
+    expect(get).toHaveBeenCalledTimes(2)
   })
 
   it('leaves a user alone for an hour after a failed refresh', async () => {

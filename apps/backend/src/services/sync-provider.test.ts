@@ -25,12 +25,29 @@ vi.mock('../integrations/lastfm/sync.ts', () => ({
   syncLastFmData: vi.fn(),
 }))
 
-vi.mock('../integrations/garmin/sync.ts', () => ({
-  hasGarminConnection: vi.fn().mockResolvedValue(true),
-  isRateLimited: vi.fn().mockReturnValue(false),
-  syncActivityDetails: vi.fn().mockResolvedValue(undefined),
-  syncGarminDataType: vi.fn(),
-}))
+vi.mock('../integrations/garmin/sync.ts', () => {
+  const syncGarminDataType = vi.fn()
+  return {
+    hasGarminConnection: vi.fn().mockResolvedValue(true),
+    isRateLimited: vi.fn().mockReturnValue(false),
+    syncGarminDataType,
+    // Stands in for the real one (tested in sync.test.ts): the push's types are left, the rest pulled.
+    syncGarminDataTypeAutomatically: vi.fn(
+      async (
+        user: string,
+        garmin: { pushDelivers: (user: string, dataType: string) => Promise<boolean> },
+        dataType: string,
+        options?: { onPull?: () => void },
+      ) => {
+        if (await garmin.pushDelivers(user, dataType)) {
+          return { data_type: dataType, delivered_by_push: true, records_processed: 0, status: 'skipped' }
+        }
+        options?.onPull?.()
+        return syncGarminDataType(user, garmin, dataType)
+      },
+    ),
+  }
+})
 
 vi.mock('../integrations/oura/sync.ts', () => ({
   isRateLimited: vi.fn().mockReturnValue(false),
@@ -126,12 +143,14 @@ describe('createSyncProvider › syncLastFmIfNeeded', () => {
 describe('createSyncProvider › syncGarminIfNeeded', () => {
   const lastSync = new Date('2026-06-01T00:00:00Z')
   const sourceFor = vi.fn()
-  const garmin = { sourceFor } as never
+  const pushDelivers = vi.fn()
+  const garmin = { pushDelivers, sourceFor } as never
 
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(hasGarminConnection).mockResolvedValue(true)
     sourceFor.mockResolvedValue('session')
+    pushDelivers.mockResolvedValue(false)
     vi.mocked(getSettings).mockResolvedValue({} as never) // no disabled data types
     vi.mocked(dbIndex.getSyncState).mockResolvedValue({ last_sync_time: lastSync } as never)
   })
@@ -227,6 +246,33 @@ describe('createSyncProvider › syncGarminIfNeeded', () => {
     const daysBack = ((end as Date).getTime() - (start as Date).getTime()) / 86_400_000
     expect(daysBack).toBeGreaterThan(89.5) // 90-day fallback, not the Last.fm 30
     expect(daysBack).toBeLessThan(90.5)
+  })
+
+  test('an undelivered type is pulled and audited as an auto-sync', async () => {
+    vi.mocked(syncGarminDataType).mockResolvedValue({
+      data_type: 'sleep',
+      records_processed: 0,
+      status: 'success',
+    } as never)
+    const { provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(pushDelivers).toHaveBeenCalledWith('alice', 'sleep')
+    expect(syncGarminDataType).toHaveBeenCalledWith('alice', garmin, 'sleep')
+    expect(auditInfo).toHaveBeenCalledWith('alice', 'sync', 'Auto-syncing Garmin sleep')
+  })
+
+  test('a type Connect with Garmin delivers is neither fetched nor audited, and triggers no deduction', async () => {
+    pushDelivers.mockResolvedValue(true)
+    const { onActivitySynced, provider } = build()
+
+    await provider.syncGarminIfNeeded('alice', 'sleep')
+
+    expect(syncGarminDataType).not.toHaveBeenCalled()
+    expect(auditInfo).not.toHaveBeenCalled()
+    expect(auditError).not.toHaveBeenCalled()
+    expect(onActivitySynced).not.toHaveBeenCalled()
   })
 
   test('skips entirely when the data type is disabled', async () => {
