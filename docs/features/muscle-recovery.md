@@ -41,12 +41,13 @@ is now.
 ### A worked example
 
 A session ends Monday at 18:00 with four sets of barbell bench press, three at RPE 8 and the last
-to failure. The chest gets `3 × 1 + 1.2` = 4.2 weighted sets, a fatigue of 0.42; the shoulders
-half of that, 0.21.
+to failure. The chest gets `3 × 1 + 1.2` = 4.2 weighted sets, a fatigue of 0.42. The catalogue
+weights the shoulders and the triceps fully for this lift too, so they get the same 0.42.
 
 On Tuesday at 08:00, 14 hours later, the chest has `0.42 × 0.5 ^ (14 / 36)` = 0.32 left: recovery
 68, ready at `18:00 + 36 × log2(0.42 / 0.2)` = 38.5 hours, Wednesday at about 08:30. The shoulders
-have `0.21 × 0.5 ^ (14 / 24)` = 0.14 left: recovery 86, ready since Monday evening.
+and the triceps recover faster: `0.42 × 0.5 ^ (14 / 24)` = 0.28 left, recovery 72, ready at
+`18:00 + 24 × log2(0.42 / 0.2)` = 25.7 hours, Tuesday at about 19:40.
 
 ## What it leaves out
 
