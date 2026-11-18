@@ -13,13 +13,15 @@ exercise, a changed weight).
 
 ## How it is computed
 
-1. **Which sets count.** Working sets (warm-ups are out) with a logged weight above 0 and 1 to 12
-   reps, of an exercise whose name resolves to a [catalogue entry](exercise-catalog.md) that is one
+1. **Which sets count.** Working sets (warm-ups are out) with a logged weight above 0 and at least
+   one rep, of an exercise whose name resolves to a [catalogue entry](exercise-catalog.md) that is one
    of a reference lift's entries. Names resolve the way muscle groups do, through the user's
    [exercise identities](activity-types.md#exercise-identities), so a name mapped by hand counts
-   too. Above 12 reps the estimate gets too poor to count. A set's time is its session's start.
-2. **Estimated one-rep max (e1RM)**, Epley: `weight × (1 + reps / 30)`, the same as the `e1rm`
-   measure of the exercise page. Dumbbell lifts count the weight of one dumbbell, as it is logged.
+   too. A set's time is its session's start.
+2. **Estimated one-rep max (e1RM)**, Epley: `weight × (1 + reps / 30)`, with the reps capped at 12
+   because the estimate gets poor above that: a set of 17 reps scores as one of 12 with the same
+   weight. That cap is where it differs from the `e1rm` measure of the exercise page, which is not
+   capped. Dumbbell lifts count the weight of one dumbbell, as it is logged.
 3. **Reference.** `ratio × 75 × (bodyweight / 75) ^ 0.67`, where `ratio` is the lift's reference
    one-rep max as a multiple of bodyweight at 75 kg, by sex. The reference grows slower than
    bodyweight does. The bodyweight of a set is the latest value of the `weight` metric at or before
@@ -77,8 +79,8 @@ the history has no points; each lift's best set (by e1RM) is still given, withou
   what to add and still lists the best sets.
 - **Strength start page** (`/strength`): a card with the score and the groups, strongest first.
 - **Type page**: a "Strength score" section above "Sets per muscle group".
-- **Muscle group page**: the group's score as a card (the Back score on the Lats and Middle back
-  pages).
+- **Muscle group page**: the group's score as a card and its score over the period chosen on the
+  page (the Back score on the Lats and Middle back pages).
 
 The Android app shows the same pages, embedded.
 

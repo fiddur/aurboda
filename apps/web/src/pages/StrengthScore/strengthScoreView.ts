@@ -1,6 +1,7 @@
 import {
   type ExerciseMuscleGroup,
   type StrengthScore,
+  STRENGTH_SCORE_MAX_REPS,
   type StrengthScoreGroup,
   type StrengthScoreGroupResult,
   strengthScoreGroups,
@@ -119,7 +120,9 @@ export const liftDetailParts = (best: StrengthScoreSet): { day: string; rest: st
   day: formatDay(best.start_time),
   rest: [
     '',
-    `est. 1RM ${kg(best.e1rm)}`,
+    best.reps > STRENGTH_SCORE_MAX_REPS
+      ? `est. 1RM ${kg(best.e1rm)} (as ${STRENGTH_SCORE_MAX_REPS} reps)`
+      : `est. 1RM ${kg(best.e1rm)}`,
     ...(best.reference_e1rm === undefined ? [] : [`100 points at ${kg(best.reference_e1rm)}`]),
   ].join(' · '),
   set: bestSetLabel(best),

@@ -1,6 +1,6 @@
 import type { ExerciseMuscleGroup } from '@aurboda/api-spec'
 
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Fragment } from 'preact'
 import { useMemo } from 'preact/hooks'
 
@@ -15,26 +15,30 @@ import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleReco
 import { fetchMuscleRecoveryHistory } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 
-const useMuscleRecoveryHistory = (name: string, field: string) => {
-  const period = useMemo(() => recoveryPeriod(new Date()), [])
-  return useQuery({
+const useMuscleRecoveryHistory = (name: string, field: string, days: number) => {
+  const period = useMemo(() => recoveryPeriod(new Date(), days), [days])
+  const query = useQuery({
+    placeholderData: keepPreviousData,
     queryFn: () => fetchMuscleRecoveryHistory(name, { field, ...period }),
     queryKey: ['muscle-recovery-history', name, field, period.start, period.end, period.step_hours],
     staleTime: 5 * 60 * 1000,
   })
+  return { daily: period.step_hours === 24, query }
 }
 
 export const RecoverySection = ({
   field,
   group,
   name,
+  periodDays,
 }: {
   field: string
   group: ExerciseMuscleGroup
   name: string
+  periodDays: number
 }) => {
   const current = recoveryOf(useMuscleRecovery(name, field).data, group)
-  const history = useMuscleRecoveryHistory(name, field)
+  const { daily, query: history } = useMuscleRecoveryHistory(name, field, periodDays)
   const series = useMemo(() => recoverySeries(history.data, group), [history.data, group])
   const sources = current?.sources ?? []
   if (sources.length === 0 && !series.some((p) => p.value < 100)) return null
@@ -54,8 +58,8 @@ export const RecoverySection = ({
         </p>
       )}
       <p class="activity-type-item-caption">
-        A model from your logged strength sets, not a measurement: it does not know about other training,
-        sleep or soreness.
+        {daily && 'One point a day, at the end of the day. '}A model from your logged strength sets, not a
+        measurement: it does not know about other training, sleep or soreness.
       </p>
     </section>
   )

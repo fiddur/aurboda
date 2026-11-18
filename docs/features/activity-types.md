@@ -442,11 +442,12 @@ per group how far the fatigue of its working sets has worn off, halving every 24
 Each muscle group has a page of its own at
 `/activity-type/<type>/muscle/<item path>/<group>` (`/activity-type/strength_training/muscle/sets.exercise/chest`):
 over 90 days, a year or two years, its sets this week, average sets per week and when it was last
-trained; its weighted sets, volume or reps per week (per month over two years) stacked by exercise,
-with Chart Explorer and dashboard entries in its ⋮ menu; the exercises that train it, with their
-recruitment, sets and sessions in the period and when each was last done; and the period's sessions
-that trained it. A group's name links to its page from the type page's list, the session's **Sets
-per muscle group** block and the muscles of an exercise page's catalogue entry.
+trained; its strength score and recovery curve over that period; its weighted sets, volume or reps
+per week (per month over two years) stacked by exercise, with Chart Explorer and dashboard entries
+in its ⋮ menu; the exercises that train it, with their recruitment, sets and sessions in the period
+and when each was last done; and the period's sessions that trained it. A group's name links to its
+page from the type page's list, the session's **Sets per muscle group** block and the muscles of an
+exercise page's catalogue entry.
 
 The Chart Explorer offers a **Muscle group** breakdown when a summed measure is chosen, and a
 **Muscle group** filter next to the exercise filter: picking a group charts only its weighted sets

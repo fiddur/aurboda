@@ -1,3 +1,5 @@
+import type { GarminOAuthStatus } from '@aurboda/api-spec'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -5,9 +7,13 @@ import {
   connectErrorText,
   garminConnectionFlags,
   garminDataTypeNote,
+  garminDataTypeSourceNote,
   garminLastReceivedText,
+  garminLoginOnlyData,
   garminOAuthReturn,
   garminPermissionLabel,
+  garminSwitchStep,
+  joinList,
   KEY_EXPIRY_CHOICES,
   keyExpiryState,
   localIsoDate,
@@ -79,6 +85,7 @@ describe('garminConnectionFlags', () => {
       oauth: {
         available: false,
         connected: false,
+        delivers: [],
         last_received_at: null,
         needs_reconnect: false,
         permissions: [],
@@ -103,6 +110,7 @@ describe('garminConnectionFlags', () => {
       oauth: {
         available: false,
         connected: false,
+        delivers: [],
         last_received_at: null,
         needs_reconnect: false,
         permissions: [],
@@ -116,6 +124,7 @@ describe('garminConnectionFlags', () => {
     const oauth = {
       available: true,
       connected: true,
+      delivers: [],
       last_received_at: null,
       needs_reconnect: false,
       permissions: ['HEALTH_EXPORT'],
@@ -214,5 +223,123 @@ describe('withoutGarminOAuthReturn', () => {
     expect(withoutGarminOAuthReturn('?garmin_code=fake-code&garmin_state=fake-state')).toBe('')
     expect(withoutGarminOAuthReturn('')).toBe('')
     expect(withoutGarminOAuthReturn('?embed=1')).toBe('?embed=1')
+  })
+})
+
+describe('garminSwitchStep', () => {
+  const oauth = (over: Partial<GarminOAuthStatus> = {}): GarminOAuthStatus => ({
+    available: true,
+    connected: false,
+    delivers: [],
+    last_received_at: null,
+    needs_reconnect: false,
+    permissions: [],
+    ...over,
+  })
+
+  it('is null without the login', () => {
+    expect(garminSwitchStep({ oauth: oauth(), sessionConnected: false })).toBeNull()
+    expect(
+      garminSwitchStep({
+        oauth: oauth({ connected: true, last_received_at: '2026-11-01T00:00:00Z' }),
+        sessionConnected: false,
+      }),
+    ).toBeNull()
+  })
+
+  it('is null when the server does not offer Connect with Garmin and it is not connected', () => {
+    expect(garminSwitchStep({ oauth: oauth({ available: false }), sessionConnected: true })).toBeNull()
+  })
+
+  it('is connect when the login is connected and Connect with Garmin is not', () => {
+    expect(garminSwitchStep({ oauth: oauth(), sessionConnected: true })).toBe('connect')
+  })
+
+  it('is connect when Connect with Garmin needs reconnecting', () => {
+    expect(
+      garminSwitchStep({
+        oauth: oauth({ connected: true, last_received_at: '2026-11-01T00:00:00Z', needs_reconnect: true }),
+        sessionConnected: true,
+      }),
+    ).toBe('connect')
+  })
+
+  it('is wait when connected and nothing has arrived yet', () => {
+    expect(garminSwitchStep({ oauth: oauth({ connected: true }), sessionConnected: true })).toBe('wait')
+  })
+
+  it('is ready when connected and data has arrived, even if the server no longer offers it', () => {
+    expect(
+      garminSwitchStep({
+        oauth: oauth({ available: false, connected: true, last_received_at: '2026-11-01T00:00:00Z' }),
+        sessionConnected: true,
+      }),
+    ).toBe('ready')
+  })
+})
+
+describe('garminLoginOnlyData', () => {
+  it('is null when the login is the only connection', () => {
+    expect(garminLoginOnlyData({ keyConnected: false, oauthConnected: false })).toBeNull()
+  })
+
+  it('lists what Connect with Garmin alone lacks', () => {
+    expect(garminLoginOnlyData({ keyConnected: false, oauthConnected: true })).toEqual([
+      'training readiness',
+      'strength sets',
+      'data from before you connected',
+      'syncing on demand',
+    ])
+  })
+
+  it('lists what a key alone lacks', () => {
+    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: false })).toEqual([
+      'stress',
+      'the sleep stage timeline',
+      'training readiness',
+      'strength sets',
+    ])
+  })
+
+  it('lists what both together lack', () => {
+    expect(garminLoginOnlyData({ keyConnected: true, oauthConnected: true })).toEqual([
+      'training readiness',
+      'strength sets',
+    ])
+  })
+})
+
+describe('joinList', () => {
+  it('joins with commas and a final and', () => {
+    expect(joinList([])).toBe('')
+    expect(joinList(['a'])).toBe('a')
+    expect(joinList(['a', 'b'])).toBe('a and b')
+    expect(joinList(['a', 'b', 'c'])).toBe('a, b and c')
+  })
+})
+
+describe('garminDataTypeSourceNote', () => {
+  const both = { keyConnected: true, sessionConnected: true }
+
+  it('says nothing while Connect with Garmin delivers nothing', () => {
+    expect(garminDataTypeSourceNote('sleep', { delivers: [], ...both })).toBeUndefined()
+  })
+
+  it('names Connect with Garmin for a type it delivers', () => {
+    expect(garminDataTypeSourceNote('sleep', { delivers: ['sleep'], ...both })).toBe(
+      'Delivered by Connect with Garmin',
+    )
+  })
+
+  it('names the pull connection for the rest, the login first', () => {
+    expect(garminDataTypeSourceNote('trainingReadiness', { delivers: ['sleep'], ...both })).toBe(
+      'Fetched through the Garmin login',
+    )
+    expect(
+      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: true, sessionConnected: false }),
+    ).toBe('Fetched with the Personal API key')
+    expect(
+      garminDataTypeSourceNote('hrv', { delivers: ['sleep'], keyConnected: false, sessionConnected: false }),
+    ).toBeUndefined()
   })
 })

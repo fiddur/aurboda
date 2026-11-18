@@ -59,12 +59,47 @@ const StatusLines = ({ error, finishing }: { error: string | null; finishing: bo
   </>
 )
 
+const NotConnectedText = ({ hasLogin }: { hasLogin: boolean }) => (
+  <>
+    <p class="field-description">
+      You sign in at Garmin and choose what to share. Garmin then sends new data to Aurboda each time your
+      watch syncs with Garmin Connect. Aurboda never sees your password.
+    </p>
+    <p class="field-description">
+      Not included: data from before you connect, training readiness and strength sets.
+      {hasLogin ? ' Your Garmin login below keeps adding those.' : ' Add the Garmin login below for those.'}
+    </p>
+  </>
+)
+
+const ConnectedLines = ({ status, hasLogin }: { status: GarminOAuthStatus; hasLogin: boolean }) => (
+  <>
+    <p class="connected-status">Connected</p>
+    <p class="field-description">
+      {status.permissions.length > 0
+        ? `You share: ${status.permissions.map(garminPermissionLabel).join(', ')}`
+        : status.last_received_at
+          ? 'Garmin has not told Aurboda what you share, but your data is arriving.'
+          : 'Garmin reported no shared data. Change what you share in your Garmin Connect account, under connected apps.'}
+    </p>
+    <p class="field-description">{garminLastReceivedText(status.last_received_at)}</p>
+    {!hasLogin && (
+      <p class="field-description">
+        Not included: data from before you connected, training readiness and strength sets. Add the Garmin
+        login below for those.
+      </p>
+    )}
+  </>
+)
+
 export function GarminOAuth({
   status,
   onChanged,
+  hasLogin = false,
 }: {
   status: GarminOAuthStatus
   onChanged: () => Promise<void>
+  hasLogin?: boolean
 }) {
   const [error, setError] = useState<string | null>(() => oauthErrorText(callbackErrorCode()))
   const [connecting, setConnecting] = useState(false)
@@ -129,7 +164,10 @@ export function GarminOAuth({
 
   return (
     <section class="settings-section">
-      <h2>Connect with Garmin</h2>
+      <h2>
+        Connect with Garmin
+        {!status.connected && <span class="garmin-recommended">Recommended</span>}
+      </h2>
       {status.connected && status.needs_reconnect ? (
         <div class="garmin-connected-actions">
           <p class="garmin-login-error">Garmin no longer accepts this connection. Connect again.</p>
@@ -140,23 +178,13 @@ export function GarminOAuth({
         </div>
       ) : status.connected ? (
         <div class="garmin-connected-actions">
-          <p class="connected-status">Connected</p>
-          <p class="field-description">
-            {status.permissions.length > 0
-              ? `You share: ${status.permissions.map(garminPermissionLabel).join(', ')}`
-              : 'Garmin reported no shared data. Change what you share in your Garmin Connect account, under connected apps.'}
-          </p>
-          <p class="field-description">{garminLastReceivedText(status.last_received_at)}</p>
+          <ConnectedLines status={status} hasLogin={hasLogin} />
           <div class="garmin-button-row">{disconnectButton}</div>
         </div>
       ) : (
         <>
           {connectButton}
-          <p class="field-description">
-            You sign in at Garmin and choose what to share. Garmin then sends new data to Aurboda each time
-            your device syncs with Garmin Connect. Aurboda never sees your password. Data from before you
-            connect is not included; add the login or a Personal API key below for history.
-          </p>
+          <NotConnectedText hasLogin={hasLogin} />
         </>
       )}
       <StatusLines error={error} finishing={finishing} />

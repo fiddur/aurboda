@@ -81,7 +81,7 @@ import {
   getGarminConnections,
   hasGarminConnection,
 } from './integrations/garmin/source.ts'
-import { syncActivityDetails, syncGarminDataType } from './integrations/garmin/sync.ts'
+import { syncGarminDataTypeAutomatically } from './integrations/garmin/sync.ts'
 import { gravlClient } from './integrations/gravl/client.ts'
 import { enrichGravlWorkout } from './integrations/gravl/sync.ts'
 import { homeAssistantClient, homeAssistantReachability } from './integrations/home-assistant/client.ts'
@@ -1044,6 +1044,7 @@ const main = async () => {
         enrichGravl: (user, workoutId) => enrichGravlWorkout(user, gravl, workoutId),
         garminDetailPending: async (user, garminActivityId) => {
           if (chooseGarminSource('activityDetail', await getGarminConnections(user)) === null) return false
+          if (await garmin.pushDelivers(user, 'activities')) return false
           const row = await findActivityByExternalId(
             user,
             'garmin',
@@ -1055,13 +1056,10 @@ const main = async () => {
         isGravlConnected: async (user) => (await gravl.connectionKind(user)) !== null,
         onEnriched: (user) => activityNotifier(user, '*', new Date(Date.now() - 86_400_000), new Date()),
         syncGarmin: async (user, dataType) => {
-          await syncGarminDataType(user, garmin, dataType)
-          if (dataType === 'activities') {
-            await syncActivityDetails(user, garmin, {
-              onDetailSynced: onActivityDetailSynced,
-              onTrackWritten,
-            })
-          }
+          await syncGarminDataTypeAutomatically(user, garmin, dataType, {
+            onDetailSynced: onActivityDetailSynced,
+            onTrackWritten,
+          })
         },
       })
     } catch (error) {

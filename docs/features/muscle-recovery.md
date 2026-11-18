@@ -65,7 +65,8 @@ have `0.21 × 0.5 ^ (14 / 24)` = 0.14 left: recovery 86, ready since Monday even
 - **Type page**: a "Muscle recovery" section with every group below 100 (green from 80), above
   "Sets per muscle group".
 - **Muscle group page**: a Recovery card, and a Recovery section with the group's curve over the
-  last 14 days and the sessions it is still tired from.
+  period chosen on the page (every 6 hours over 90 days, one point a day at the end of the day over
+  1 and 2 years) and the sessions it is still tired from.
 
 The Android app shows the same pages, embedded.
 
@@ -86,7 +87,7 @@ The Android app shows the same pages, embedded.
 - `GET /activity-types/:name/muscle-groups/recovery/history?field=sets.exercise&start=&end=&step_hours=`
   is the recovery of every group at `end` (default now; it may lie ahead) and every `step_hours`
   (1 to 24, default 6) before it down to `start` (default 14 days before `end`), oldest first. A
-  `start` not before `end`, or a period of more than 500 points, is a 400.
+  `start` not before `end`, or a period of more than 1000 points, is a 400.
 
 A field that is not a catalogue-backed item path of the type is a 400, an unknown type a 404. The
 MCP tools take the same parameters plus `activity_type`. To find exercises for a group that is

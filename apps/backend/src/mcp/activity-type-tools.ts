@@ -7,6 +7,7 @@ import {
   mergeActivityTypeBodySchema,
   mergeItemValuesBodySchema,
   MUSCLE_GROUP_HISTORY_START_AFTER_END,
+  MUSCLE_RECOVERY_HISTORY_MAX_POINTS,
   muscleGroupHistoryPeriod,
   muscleGroupHistoryQuerySchema,
   muscleGroupsQuerySchema,
@@ -297,7 +298,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_muscle_recovery_history',
-    'Get muscle recovery (see get_muscle_recovery) over a period: the recovery of every muscle group at end and every step_hours (1 to 24, default 6) before it down to start, oldest first; end defaults to now and may lie ahead to show the recovery to come, start defaults to 14 days before end, at most 500 points.',
+    `Get muscle recovery (see get_muscle_recovery) over a period: the recovery of every muscle group at end and every step_hours (1 to 24, default 6) before it down to start, oldest first; end defaults to now and may lie ahead to show the recovery to come, start defaults to 14 days before end, at most ${MUSCLE_RECOVERY_HISTORY_MAX_POINTS} points.`,
     {
       activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
       ...muscleRecoveryHistoryQuerySchema.shape,
@@ -314,7 +315,7 @@ export const registerActivityTypeTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_strength_score',
-    "Get the strength score of the activity type (or its subtypes) at a moment (at, ISO 8601; defaults to now). For every reference lift (barbell bench press, back squat, dumbbell curl, ...) the best estimated one-rep max (Epley: weight × (1 + reps / 30)) of its working sets of 1 to 12 reps in the 90 days up to `at` is scored against a reference that depends on sex and bodyweight: 100 points is a solid recreational lifter. Dumbbell lifts count the weight of one dumbbell, as logged. A muscle group's score (chest, shoulders, back, biceps, triceps, quadriceps, hamstrings, glutes) is the mean of its best 3 lift scores, the overall score the mean of the group scores. Only exercises of the catalogue-backed item path (sets.exercise) matched to the exercise catalogue count. Each lift gives its best set and when it leaves the window (expires_at). `missing` lists what the user has not given (`sex` in the user settings, `bodyweight` as any value of the weight metric); every score is then null but the best sets are still listed.",
+    "Get the strength score of the activity type (or its subtypes) at a moment (at, ISO 8601; defaults to now). For every reference lift (barbell bench press, back squat, dumbbell curl, ...) the best estimated one-rep max (Epley: weight × (1 + reps / 30)) of its working sets with a weight (reps above 12 count as 12) in the 90 days up to `at` is scored against a reference that depends on sex and bodyweight: 100 points is a solid recreational lifter. Dumbbell lifts count the weight of one dumbbell, as logged. A muscle group's score (chest, shoulders, back, biceps, triceps, quadriceps, hamstrings, glutes) is the mean of its best 3 lift scores, the overall score the mean of the group scores. Only exercises of the catalogue-backed item path (sets.exercise) matched to the exercise catalogue count. Each lift gives its best set and when it leaves the window (expires_at). `missing` lists what the user has not given (`sex` in the user settings, `bodyweight` as any value of the weight metric); every score is then null but the best sets are still listed.",
     {
       activity_type: z.string().describe('Activity type the item path belongs to, e.g. strength_training'),
       ...strengthScoreQuerySchema.shape,

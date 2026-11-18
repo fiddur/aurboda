@@ -1,4 +1,4 @@
-import type { GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
+import type { GarminDataType, GarminOAuthStatus, GarminPersonalKeyStatus } from '@aurboda/api-spec'
 
 import { formatDistance } from 'date-fns'
 
@@ -61,9 +61,25 @@ export const garminDataTypeNote = (
   { keyOnly, pushOnly }: { keyOnly: boolean; pushOnly: boolean },
 ): string | undefined => (keyOnly ? key_note : pushOnly ? push_note : undefined)
 
+/** The line under a data type saying which connection brings it, once Connect with Garmin delivers something. */
+export const garminDataTypeSourceNote = (
+  type: GarminDataType,
+  {
+    delivers,
+    keyConnected,
+    sessionConnected,
+  }: { delivers: readonly GarminDataType[]; sessionConnected: boolean; keyConnected: boolean },
+): string | undefined => {
+  if (delivers.length === 0) return undefined
+  if (delivers.includes(type)) return 'Delivered by Connect with Garmin'
+  if (sessionConnected) return 'Fetched through the Garmin login'
+  return keyConnected ? 'Fetched with the Personal API key' : undefined
+}
+
 const NO_OAUTH: GarminOAuthStatus = {
   available: false,
   connected: false,
+  delivers: [],
   last_received_at: null,
   needs_reconnect: false,
   permissions: [],
@@ -90,6 +106,37 @@ export const garminConnectionFlags = (
     sessionConnected,
   }
 }
+
+export type GarminSwitchStep = 'connect' | 'wait' | 'ready'
+
+/** Where a user with the login stands on the way to Connect with Garmin; null when there is nothing to switch. */
+export const garminSwitchStep = ({
+  oauth,
+  sessionConnected,
+}: Pick<GarminConnectionFlags, 'oauth' | 'sessionConnected'>): GarminSwitchStep | null => {
+  if (!sessionConnected || (!oauth.available && !oauth.connected)) return null
+  if (!oauth.connected || oauth.needs_reconnect) return 'connect'
+  return oauth.last_received_at === null ? 'wait' : 'ready'
+}
+
+/** What stops arriving when the login is disconnected, given the other connections; null when the login is the only one. */
+export const garminLoginOnlyData = ({
+  keyConnected,
+  oauthConnected,
+}: {
+  oauthConnected: boolean
+  keyConnected: boolean
+}): string[] | null => {
+  if (oauthConnected && keyConnected) return ['training readiness', 'strength sets']
+  if (oauthConnected) {
+    return ['training readiness', 'strength sets', 'data from before you connected', 'syncing on demand']
+  }
+  if (keyConnected) return ['stress', 'the sleep stage timeline', 'training readiness', 'strength sets']
+  return null
+}
+
+export const joinList = (items: readonly string[]): string =>
+  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
 
 const OAUTH_ERROR_TEXT: Record<string, string> = {
   auth_failed: 'Garmin did not complete the connection. Try again.',

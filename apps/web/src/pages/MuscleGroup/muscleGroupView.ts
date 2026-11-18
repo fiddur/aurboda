@@ -78,6 +78,9 @@ export const lastTrainedLabel = (
   return days === 1 ? 'Yesterday' : `${days} days ago`
 }
 
+export const scoreSectionHeading = (scoreGroupName: string, muscleGroupName: string): string =>
+  scoreGroupName === muscleGroupName ? 'Strength score' : `Strength score · ${scoreGroupName}`
+
 /** A recruitment weight as a plain number: `1`, `0.5`, `0.25`. */
 export const recruitmentLabel = (weight: number): string => String(Number(weight.toFixed(2)))
 

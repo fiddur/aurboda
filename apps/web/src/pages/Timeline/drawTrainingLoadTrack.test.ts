@@ -14,6 +14,7 @@ const point: TrainingLoadPoint = {
 }
 
 const workout = (overrides: Partial<WorkoutTrimp>): WorkoutTrimp => ({
+  activity_type: 'running',
   date: '2024-01-03',
   duration_minutes: 30,
   end_time: '2024-01-03T10:30:00.000Z',

@@ -5,6 +5,7 @@ import type { GarminPersonalClient } from './personal-client.ts'
 import type { GarminDataType } from './process.ts'
 
 import { getOAuthToken } from '../../db/index.ts'
+import { getGarminPushDelivered } from './push-coverage.ts'
 
 /** The oauth_tokens provider of a Personal API key: the key in refresh_token, the cached JWT in access_token. */
 export const GARMIN_PERSONAL_PROVIDER = 'garmin_personal'
@@ -129,6 +130,7 @@ export interface GarminRoutedClientDeps {
   session: GarminSessionClient
   personal: GarminPersonalClient
   getConnections?: (user: string) => Promise<GarminConnections>
+  getPushDelivered?: (user: string) => Promise<GarminDataType[]>
 }
 
 /**
@@ -139,6 +141,7 @@ export const garminRoutedClient = ({
   session,
   personal,
   getConnections = (user) => getGarminConnections(user),
+  getPushDelivered = (user) => getGarminPushDelivered(user),
 }: GarminRoutedClientDeps) => {
   const sourceFor = async (user: string, target: GarminSourceTarget): Promise<GarminSource | null> =>
     chooseGarminSource(target, await getConnections(user))
@@ -184,6 +187,8 @@ export const garminRoutedClient = ({
     getStress: session.getStress,
     getTrainingReadiness: session.getTrainingReadiness,
     login: session.login,
+    pushDelivers: async (user: string, dataType: GarminDataType): Promise<boolean> =>
+      (await getPushDelivered(user)).includes(dataType),
     sourceFor,
     verifyMfa: session.verifyMfa,
   }

@@ -11,13 +11,8 @@
 
 import type { MetricType } from '../schema.ts'
 
-import {
-  type Activity,
-  getActivities,
-  getSleepSessions,
-  getTimeSeries,
-  type TimeSeriesPoint,
-} from '../db/index.ts'
+import { type Activity, getSleepSessions, getTimeSeries, type TimeSeriesPoint } from '../db/index.ts'
+import { getWorkoutActivities } from './workout-activities.ts'
 
 export type HrvContext = 'sleep' | 'activity' | 'awake'
 
@@ -70,7 +65,7 @@ export const getHrvContextWindows = async (
 ): Promise<{ sleepWindows: TimeWindow[]; activityWindows: TimeWindow[] }> => {
   const [sleepSessions, exerciseActivities] = await Promise.all([
     getSleepSessions(user, start, end),
-    getActivities(user, 'exercise', start, end),
+    getWorkoutActivities(user, start, end),
   ])
 
   return {
