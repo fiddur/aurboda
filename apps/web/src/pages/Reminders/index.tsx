@@ -151,8 +151,8 @@ function ReminderEditor({ initial, timezone, submitLabel, onSubmit, onCancel }: 
         </button>
       </div>
       <p class="reminder-note">
-        Times follow your time zone{timezone ? ` (${timezone})` : ''}. The Android app reports it when it
-        syncs; without the app it is UTC.
+        Times follow your time zone{timezone ? ` (${timezone})` : ''}. Change it in{' '}
+        <a href="/settings#time-zone">Settings</a>.
       </p>
     </form>
   )

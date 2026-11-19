@@ -69,8 +69,16 @@ export const segmentDetailSchema = segmentSchema
     created_from_activity_id: z.string().uuid().nullable().meta({
       description: 'The activity the segment was cut from, if any',
     }),
+    created_from_activity_title: z.string().nullable().meta({
+      description:
+        'Title of the activity the segment was cut from, resolved when read; null when the segment was not cut from an activity, the activity is gone or it has no title',
+    }),
     created_from_route_id: z.string().uuid().nullable().meta({
       description: 'The route the segment was cut from, if any',
+    }),
+    created_from_route_name: z.string().nullable().meta({
+      description:
+        'Name of the route the segment was cut from, resolved when read; null when the segment was not cut from a route or the route is gone',
     }),
     efforts: z.array(segmentEffortSchema).meta({ description: 'Efforts on the segment, newest first' }),
     near_named_location: segmentNearNamedLocationSchema,

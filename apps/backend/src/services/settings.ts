@@ -104,9 +104,12 @@ const updateSettingsInternal = async (
   return await upsertUserSettings(user, updates, clear)
 }
 
-/** A key of the update input that is stored as a settings key (goals live in their own table). */
-const isStoredSettingsKey = (key: string): key is Exclude<keyof UpdateSettingsInput, 'goals'> =>
-  key !== 'goals' && key in updateSettingsInputSchema.shape
+/**
+ * A key of the update input that is stored under its own name (goals live in their own table,
+ * tz is stored as device_timezone).
+ */
+const isStoredSettingsKey = (key: string): key is Exclude<keyof UpdateSettingsInput, 'goals' | 'tz'> =>
+  key !== 'goals' && key !== 'tz' && key in updateSettingsInputSchema.shape
 
 /**
  * Priority: custom zones > age-based zones (from birth date) > default zones
@@ -415,6 +418,8 @@ const storedUpdates = (
     if (value === null) clear.push(field)
     else if (value !== undefined) (updates as Record<string, unknown>)[field] = value
   }
+  if (input.tz === null) clear.push('device_timezone')
+  else if (input.tz !== undefined) updates.device_timezone = input.tz
   if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
   const haUrl = updates.home_assistant_url
   if (haUrl) updates.home_assistant_url = normalizeHomeAssistantUrl(haUrl)

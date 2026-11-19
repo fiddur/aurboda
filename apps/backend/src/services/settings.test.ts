@@ -508,6 +508,30 @@ describe('validateAndUpdateSettings', () => {
     expect(db.upsertUserSettings).toHaveBeenCalledWith('testuser', {}, ['report_import_mapping'])
   })
 
+  test('stores tz as device_timezone and answers it, and null clears it', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({ device_timezone: 'Europe/Stockholm' })
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', { tz: 'Europe/Stockholm' })
+    expect(result.success).toBe(true)
+    expect(result.tz).toBe('Europe/Stockholm')
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { device_timezone: 'Europe/Stockholm' },
+      [],
+    )
+
+    await validateAndUpdateSettings('testuser', { tz: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['device_timezone'])
+  })
+
+  test('refuses an unknown tz and stores nothing', async () => {
+    const result = await validateAndUpdateSettings('testuser', { tz: 'Mars/Olympus' })
+    expect(result.success).toBe(false)
+    expect(db.upsertUserSettings).not.toHaveBeenCalled()
+  })
+
   test('stores maf_hr and clears it with null', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({})
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})

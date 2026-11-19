@@ -13,6 +13,7 @@ import type {
 } from '../db/suggested-segments.ts'
 
 import { findNearbyNamedLocation } from '../db/locations.ts'
+import { deleteSegment } from '../db/segments.ts'
 import {
   claimSuggestedSegment,
   countUnscannedTrackedActivities,
@@ -66,6 +67,7 @@ export interface SuggestedSegmentDeps {
     status: 'dismissed' | 'promoted',
     segmentId?: string,
   ) => Promise<boolean>
+  deleteSegment: (user: string, id: string) => Promise<boolean>
   findNearbyNamedLocation: SegmentDeps['findNearbyNamedLocation']
   now: () => number
   segment: SegmentDeps
@@ -75,6 +77,7 @@ export const defaultSuggestedSegmentDeps: SuggestedSegmentDeps = {
   claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
+  deleteSegment,
   findNearbyNamedLocation,
   getSuggestionInput,
   listSuggestedSegments,
@@ -249,7 +252,10 @@ export const promoteSuggestedSegment = async (
     await deps.settleSuggestedSegmentClaim(user, id, segmentId)
   } catch (error) {
     // A failed release is left to releaseStaleSuggestedSegmentClaims; the first error is the one to report.
-    if (segmentId) await deps.settleSuggestedSegmentClaim(user, id, null).catch(() => undefined)
+    if (segmentId) {
+      await deps.deleteSegment(user, segmentId).catch(() => undefined)
+      await deps.settleSuggestedSegmentClaim(user, id, null).catch(() => undefined)
+    }
     throw error
   }
   return created

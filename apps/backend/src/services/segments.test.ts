@@ -46,7 +46,9 @@ const record: SegmentRecord = {
   best_elapsed_s: 125,
   created_at: START,
   created_from_activity_id: 'a1',
+  created_from_activity_title: 'Morning run',
   created_from_route_id: null,
+  created_from_route_name: null,
   effort_count: 1,
   id: 's1',
   last_effort_at: START,
@@ -313,5 +315,37 @@ describe('getSegmentDetail', () => {
     expect(
       await getSegmentDetail('alice', 's9', makeDeps({ getSegmentById: vi.fn(async () => null) })),
     ).toBeNull()
+  })
+
+  test('names the activity or the route it was cut from', async () => {
+    const fromActivity = await getSegmentDetail(
+      'alice',
+      's1',
+      makeDeps({ getSegmentById: vi.fn(async () => record) }),
+    )
+    expect(fromActivity).toMatchObject({
+      created_from_activity_id: 'a1',
+      created_from_activity_title: 'Morning run',
+      created_from_route_id: null,
+      created_from_route_name: null,
+    })
+    const fromRoute = await getSegmentDetail(
+      'alice',
+      's1',
+      makeDeps({
+        getSegmentById: vi.fn(async () => ({
+          ...record,
+          created_from_activity_id: null,
+          created_from_activity_title: null,
+          created_from_route_id: 'r1',
+          created_from_route_name: 'Lake loop',
+        })),
+      }),
+    )
+    expect(fromRoute).toMatchObject({
+      created_from_activity_title: null,
+      created_from_route_id: 'r1',
+      created_from_route_name: 'Lake loop',
+    })
   })
 })
