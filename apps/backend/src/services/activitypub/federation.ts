@@ -13,6 +13,7 @@ import {
   Announce,
   Create,
   Delete,
+  Event,
   Follow,
   Image,
   Like,
@@ -42,6 +43,7 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   addTagBoostCarrier,
+  getChallengeBySlug,
   deleteBoostEntry,
   deleteFeedQuoteAuthorizationsByActor,
   deleteFeedQuoteAuthorizationsByQuote,
@@ -90,6 +92,7 @@ import {
 } from '../social-notifications.ts'
 import { DEFAULT_TAG_ACTOR_HOST } from '../tag-actor-host.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
+import { buildChallengeEvent } from './challenge-event.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import {
   buildArticleNote,
@@ -1303,6 +1306,24 @@ export const createFeedFederation = (
       const activity = await resolveFeedActivity(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
+    },
+  )
+
+  // A hosted challenge, public or unlisted: like its HTTP document, anyone holding the slug resolves it.
+  federation.setObjectDispatcher(
+    Event,
+    '/users/{identifier}/challenges/{slug}',
+    async (ctx, { identifier, slug }) => {
+      if (!isValidUsername(identifier)) return null
+      let challenge
+      try {
+        challenge = await getChallengeBySlug(identifier, slug)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      if (challenge == null) return null
+      return buildChallengeEvent(ctx, identifier, challenge, { apiBaseUrl, now: new Date(), webHost: origin })
     },
   )
 
