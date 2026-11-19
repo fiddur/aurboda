@@ -475,6 +475,19 @@ The logged-out view is `GET /public/<user>/challenges/<slug>/thread[?cursor=]` (
 entries only). MCP: `get_challenge_thread`, `add_challenge_comment`,
 `hide_challenge_comment`, `unhide_challenge_comment`.
 
+On the web, the challenge page (`/u/<user>/<slug>`, embedded as is by the Android app)
+shows the thread in a **Comments** section (`#comments`, where notifications link) under
+the leaderboard: a composer, then the top-level entries newest first with "Show more",
+each with its replies indented under it. An entry shows its author, time, an "edited"
+mark, a "🔒 People in the challenge" badge on `participants` entries (public ones carry
+none) and a label on a share or the result; Reply, Edit and Delete (own entries) and Hide
+/ Unhide (the host, who sees a hidden entry dimmed) act on it. The composer offers both
+audiences only when the viewer has both, defaulting to _People in the challenge_ and
+remembering the last choice in the browser; with one, it says which. A reply to a
+`participants` entry is `participants`. Signed out, a "Sign in to comment" link stands in
+for the composer; a signed-in visitor of an unlisted challenge is told only people in the
+challenge can comment. The author's own feed card of a comment reads "in <challenge>".
+
 ## Completion & winner announcement
 
 When a challenge's window closes, the **host's instance** announces the result: a
