@@ -15,6 +15,7 @@ import type {
   ChallengeThreadResponse,
   CreateChallengeBody,
   DiscoverChallengesResponse,
+  JoinedChallengeResponse,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
   PublicSharedExerciseResponse,
@@ -146,6 +147,40 @@ export const fetchPublicChallengeStandings = async (
   return res.data.members ?? []
 }
 
+/** A challenge the user joined, as their own server shows it; `null` when they are not in it. */
+export const fetchJoinedChallenge = async (
+  participationId: string,
+): Promise<JoinedChallengeResponse | null> => {
+  let res
+  try {
+    res = await axios.get<JoinedChallengeResponse>(
+      `${API_URL}/challenges/participations/${encodeURIComponent(participationId)}`,
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the challenge.'))
+  }
+  if (!res.data.participation) throw new Error(res.data.error ?? 'Couldn’t load the challenge.')
+  return res.data
+}
+
+/** A challenge's comment thread as the signed-in user sees it. */
+export const fetchChallengeThreadAsViewer = async (
+  challengeUrl: string,
+  cursor?: string,
+): Promise<ChallengeThreadResponse> => {
+  try {
+    const res = await axios.get<ChallengeThreadResponse>(`${API_URL}/challenges/thread`, {
+      headers: authHeaders(),
+      params: { challenge_url: challengeUrl, cursor },
+    })
+    return res.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the comments.'))
+  }
+}
+
 /**
  * A challenge's comment thread: the viewer's view when signed in, else the public entries only.
  */
@@ -155,16 +190,12 @@ export const fetchChallengeThread = async (
   challengeUrl: string,
   cursor?: string,
 ): Promise<ChallengeThreadResponse> => {
+  if (auth.value.token) return fetchChallengeThreadAsViewer(challengeUrl, cursor)
   try {
-    const res = auth.value.token
-      ? await axios.get<ChallengeThreadResponse>(`${API_URL}/challenges/thread`, {
-          headers: authHeaders(),
-          params: { challenge_url: challengeUrl, cursor },
-        })
-      : await axios.get<ChallengeThreadResponse>(
-          `${API_URL}/public/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}/thread`,
-          { params: { cursor } },
-        )
+    const res = await axios.get<ChallengeThreadResponse>(
+      `${API_URL}/public/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}/thread`,
+      { params: { cursor } },
+    )
     return res.data
   } catch (error) {
     throw new Error(apiErrorMessage(error, 'Couldn’t load the comments.'))
