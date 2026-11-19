@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { fetchActivityImpact } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { correlationTitle } from './correlationTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 interface PhaseData {
@@ -114,8 +115,7 @@ interface CorrelationViewProps {
 }
 
 export function CorrelationView({ config, data }: CorrelationViewProps) {
-  const { activity, title } = config
-  const displayTitle = title ?? `${activity} impact`
+  const displayTitle = correlationTitle(config, data?.activity_label)
 
   return (
     <div class="correlation-widget">
@@ -137,7 +137,7 @@ interface CorrelationWidgetProps {
 }
 
 export function CorrelationWidget({ config }: CorrelationWidgetProps) {
-  const { activity, activity_type, title, period_days = 90, window_minutes = 30 } = config
+  const { activity, activity_type, period_days = 90, window_minutes = 30 } = config
 
   const impactQuery = useQuery({
     queryFn: () => fetchActivityImpact(activity, activity_type, period_days, window_minutes),
@@ -146,7 +146,10 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const displayTitle = title ?? `${activity} impact`
+  const displayTitle = correlationTitle(
+    config,
+    activity_type === 'meal_sensitivity' ? impactQuery.data?.activity : undefined,
+  )
 
   if (impactQuery.isLoading) {
     return (
@@ -168,6 +171,7 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
 
   const impact = impactQuery.data
   const data: CorrelationData = {
+    ...(activity_type === 'meal_sensitivity' ? { activity_label: impact.activity } : {}),
     hrv_after30: impact.hrv_timeline.after30min.mean,
     hrv_before30: impact.hrv_timeline.before30min.mean,
     hrv_during: impact.hrv_timeline.during.mean,

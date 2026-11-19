@@ -126,7 +126,7 @@ The sensitivity flags you put on food items (gluten, dairy, alcohol, ...) can be
 
 **In Context**, the **Meals** table has a row per flag carried by a meal in the period. Selecting one shows HRV, heart rate and stress in the window before and after each meal with the flag ("stress in the 2 hours after a meal with gluten" is the ±2 h window), with the Time of day and Sleep in the window breakdowns and filters; Length and data fields do not apply to a meal. Next to it is a **comparison**: the same analysis over the meals **without** the flag on days marked as a complete meal log, tabled as "Meals without gluten, on days with a complete meal log", with its n, and its changes counted among the comparisons the p-values are adjusted for. A completed day is the meal's local date in your timezone.
 
-Over the API this is `activity_type=meal_sensitivity` with the flag id as the activity (`GET /correlations/activity-impact/:flag_id`, MCP `get_activity_impact`); the response names the flag in `activity` and carries the comparison in `comparison`. Article impact blocks and shared dashboards do not offer this source: a flag id means nothing to a reader.
+Over the API this is `activity_type=meal_sensitivity` with the flag id as the activity (`GET /correlations/activity-impact/:flag_id`, MCP `get_activity_impact`); the response names the flag in `activity` and carries the comparison in `comparison`. Article impact blocks do not offer this source: a flag id means nothing to a reader. A dashboard impact card does: it shows the flag's name, resolved when the card is read.
 
 Combinations of flags, doses and confounders are not modelled.
 
