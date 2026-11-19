@@ -104,9 +104,23 @@ describe('deduction-rules db', () => {
     expect(await deleteDeductionRule(user, 'nonexistent')).toBe(false)
   })
 
-  test('deleteRuleActivities deletes by rule_id', async () => {
-    mockQuery.mockResolvedValue({ command: 'DELETE', fields: [], oid: 0, rowCount: 3, rows: [] })
-    expect(await deleteRuleActivities(user, 'rule-1')).toBe(3)
+  test('deleteRuleActivities deletes by rule_id and sums the counts per type', async () => {
+    const sauna = { activity_type: 'sauna', start_time: new Date('2024-01-15T10:00:00Z') }
+    const running = { activity_type: 'running', start_time: new Date('2024-01-14T10:00:00Z') }
+    mockQuery.mockResolvedValue({
+      command: 'SELECT',
+      fields: [],
+      oid: 0,
+      rowCount: 2,
+      rows: [
+        { ...running, count: '1' },
+        { ...sauna, count: '2' },
+      ],
+    })
+    expect(await deleteRuleActivities(user, 'rule-1')).toEqual({
+      count: 3,
+      earliest_by_type: [running, sauna],
+    })
   })
 
   test('deleteStaleRuleActivities excludes keepIds', async () => {

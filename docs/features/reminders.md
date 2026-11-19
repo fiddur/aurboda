@@ -16,8 +16,8 @@ instant before which no occurrence is raised.
 
 ## When a reminder fires
 
-Times are read in the user's time zone, the one set in Settings (`device_timezone`, UTC when
-unset). A reminder has an occurrence on each local date whose weekday it lists, at `time_of_day`
+Times are read in the user's time zone, the one the Android app reports when it syncs
+(`device_timezone`, UTC when unset; nothing on the web sets it yet). A reminder has an occurrence on each local date whose weekday it lists, at `time_of_day`
 on that date. A time skipped by the spring-forward clock change moves to the instant the clocks
 jump (02:30 becomes 03:00); a time that happens twice in the autumn uses the first.
 

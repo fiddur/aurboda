@@ -329,7 +329,9 @@ activity's (or the segment's) efforts are replaced in one transaction.
 
 **Where it runs**: the `track-analyse` job, after routes and features, against every segment
 for the written track (an activity that no longer covers a segment loses its efforts there);
-the `track-backfill` job, after its route matching, for every track it wrote; at creation
+the `track-backfill` job, after its route matching, and `POST /tracks/backfill` /
+`backfill_activity_tracks`, for every track they wrote (both skip it when the user has no
+segments); at creation
 against every track; `POST /segments/:id/match` / `match_segment` repeats that on
 demand; and a retype drops the activity's efforts and times its tracks again under the new
 type, next to the route re-match.
@@ -432,7 +434,9 @@ promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also 
 made from it is deleted); a similar pending one takes the larger activity count. Merging an
 activity type moves its suggestions with it; deleting one deletes them, pending and decided.
 Promoting claims the suggestion first (it is marked promoted before the segment is made, and
-made pending again when no segment comes of it), so two promotes of it make one segment.
+made pending again when no segment comes of it or linking it to its segment fails), so two
+promotes of it make one segment. A claim left without a segment for more than ten minutes (the
+process died in between) is made pending again by the next list or promote.
 
 **Where it runs**: the `track-analyse` job, after segment timing (a fourth step); the
 `track-backfill` job, one time-limited run (20 s) over tracked activities not looked at yet,

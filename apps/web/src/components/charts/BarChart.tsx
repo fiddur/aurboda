@@ -19,6 +19,7 @@ import {
 import { SERIES_COLORS } from './breakdown'
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './BarChart.css'
+import { useMeasuredWidth } from './useMeasuredWidth'
 
 export interface BarSeriesData {
   name: string
@@ -389,17 +390,15 @@ export function BarChart({
   lines = NO_LINES,
   stacked = false,
 }: BarChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const { element: container, ref: containerRef, width: chartWidth } = useMeasuredWidth<HTMLDivElement>()
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
   const effectiveData = multiSeries ? (multiSeries[0]?.data ?? []) : data
 
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current) return
+    if (!svgRef.current || !container) return
 
-    const container = containerRef.current
-    const chartWidth = container.clientWidth
     const chartHeight = height
 
     const svg = d3.select(svgRef.current)
@@ -498,7 +497,20 @@ export function BarChart({
       }
       for (const overlay of overlays) renderOverlayLine(g, overlay, x, y)
     }
-  }, [data, color, height, multiSeries, getBarHref, bucketSize, rangeStart, rangeEnd, lines, stacked])
+  }, [
+    data,
+    color,
+    height,
+    chartWidth,
+    container,
+    multiSeries,
+    getBarHref,
+    bucketSize,
+    rangeStart,
+    rangeEnd,
+    lines,
+    stacked,
+  ])
 
   if (effectiveData.length === 0) {
     return <div class="bar-chart-placeholder">No data for the selected range</div>

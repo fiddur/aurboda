@@ -6,6 +6,7 @@ import { processGarminData } from './process.ts'
 import {
   adaptGarminPushItem,
   garminPushFeeds,
+  garminPushSideFeeds,
   offsetSamples,
   pushCalendarDate,
   pushedGarminActivityId,
@@ -97,6 +98,14 @@ describe('garminPushFeeds', () => {
 
   test('moveIQActivities stays raw only', () => {
     expect(garminPushFeeds('moveIQActivities')).toEqual([])
+  })
+
+  test('sleeps vouches for sleep alone, writing spo2 on the side', () => {
+    expect(garminPushFeeds('sleeps')).toEqual(['sleep'])
+    expect(garminPushSideFeeds('sleeps')).toEqual(['spo2'])
+    expect(garminPushSideFeeds('pulseox')).toEqual([])
+    expect(garminPushSideFeeds('somethingNew')).toEqual([])
+    expect(garminPushSideFeeds('constructor')).toEqual([])
   })
 })
 
@@ -274,6 +283,36 @@ describe('sleeps', () => {
     expect((garmin[0]!.data as { dailySleepDTO: { calendarDate: string } }).dailySleepDTO.calendarDate).toBe(
       '2025-01-15',
     )
+  })
+
+  test('turns the sleep SpO2 offsets into spo2 points at their own times, zeros dropped', () => {
+    const adapted = adaptGarminPushItem('sleeps', {
+      ...sleep,
+      timeOffsetSleepSpo2: { '0': 95, '120': 97, '60': 0 },
+    })
+    expect(adapted.points).toEqual([])
+    expect(adapted.garmin).toEqual(adaptGarminPushItem('sleeps', sleep).garmin)
+    expect(adapted.feedPoints).toEqual([
+      {
+        dataType: 'spo2',
+        points: [
+          { metric: 'spo2', source: 'garmin', time: new Date(sleepStart * 1000), unit: 'percent', value: 95 },
+          {
+            metric: 'spo2',
+            source: 'garmin',
+            time: new Date((sleepStart + 120) * 1000),
+            unit: 'percent',
+            value: 97,
+          },
+        ],
+      },
+    ])
+  })
+
+  test.each([undefined, {}, 'x', [95], { '0': 0 }])('gives no feedPoints for a SpO2 map of %j', (map) => {
+    const adapted = adaptGarminPushItem('sleeps', { ...sleep, timeOffsetSleepSpo2: map })
+    expect(adapted).not.toHaveProperty('feedPoints')
+    expect(adapted.garmin).toHaveLength(1)
   })
 
   test.each(garbled)('answers nothing for %j', async (item) => {

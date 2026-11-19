@@ -13,7 +13,7 @@ import type { TrackBackfillJobDeps, TrackBackfillResult } from './track-backfill
 
 import { auditError, auditInfo } from './audit-log.ts'
 import { backfillActivityFeatures } from './track-analyse.ts'
-import { backfillUserTracksWithIds } from './track-backfill.ts'
+import { backfillUserTracksWithIds, timeWrittenTracks } from './track-backfill.ts'
 
 /** `stately`: a re-sync while a job waits collapses into it. The policy is fixed at creation. */
 export const TRACK_ANALYSE_QUEUE = 'track-analyse'
@@ -67,17 +67,7 @@ export const runTrackBackfillJob = async (
   if (routes.matched + routes.created > 0) {
     auditInfo(job.user, 'data', '🗺️ Route matching done', { ...routes })
   }
-  const segments = { efforts: 0 }
-  for (const activityId of written) {
-    try {
-      segments.efforts += (await deps.matchSegments(job.user, activityId)).efforts
-    } catch (error) {
-      auditError(job.user, 'data', 'Segment matching failed', {
-        activity_id: activityId,
-        error: String(error),
-      })
-    }
-  }
+  const segments = await timeWrittenTracks(job.user, written, deps)
   let suggestions = null
   try {
     suggestions = await deps.scanSuggestedSegments(job.user)

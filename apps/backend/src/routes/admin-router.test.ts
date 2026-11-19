@@ -1034,6 +1034,16 @@ describe('email (SMTP) settings and the test mail', () => {
     expect(res.status).toBe(400)
   })
 
+  test.each([
+    'Doe, Jane <no-reply@example.org>',
+    'Aurboda; Mail <no-reply@example.org>',
+    'a@example.org, b@example.org',
+    'a@example.org;b@example.org',
+  ])('PATCH refuses %s, which is not a single sender', async (smtp_from) => {
+    const res = await supertest(buildEmailApp().app).patch('/admin/settings').send({ smtp_from })
+    expect(res.status).toBe(400)
+  })
+
   test('PATCH accepts a named sender', async () => {
     const { app, db } = buildEmailApp()
     const res = await supertest(app)

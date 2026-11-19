@@ -956,12 +956,41 @@ export const getCentralDb = (): CentralDb => {
   return centralDbInstance
 }
 
+const allowSignupOpen = ['true', '1', 'yes', 'on']
+const allowSignupClosed = ['false', '0', 'no', 'off']
+
+const normalizeAllowSignup = (allowSignup: string | undefined): string =>
+  (allowSignup ?? '').trim().toLowerCase()
+
 /**
- * `ALLOW_SIGNUP` set to anything but `true` starts a fresh install closed. It is never applied
- * again: re-applying it on every start closed signups an admin had opened, at each deploy.
+ * `ALLOW_SIGNUP` only seeds a fresh install. It is never applied again: re-applying it on every
+ * start closed signups an admin had opened, at each deploy. An unrecognised value closes signups.
  */
-export const signupModeFromEnv = (allowSignup: string | undefined): SignupMode =>
-  allowSignup === undefined || allowSignup === 'true' ? 'open' : 'closed'
+export const signupModeFromEnv = (allowSignup: string | undefined): SignupMode => {
+  const value = normalizeAllowSignup(allowSignup)
+  return value === '' || allowSignupOpen.includes(value) ? 'open' : 'closed'
+}
+
+export const signupEnvWarning = (allowSignup: string | undefined): string | null => {
+  const value = normalizeAllowSignup(allowSignup)
+  if (value === '' || allowSignupOpen.includes(value) || allowSignupClosed.includes(value)) return null
+  return `ALLOW_SIGNUP=${allowSignup} is not recognised and starts a fresh install with signups closed; accepted values are ${allowSignupOpen.join(', ')} (open) and ${allowSignupClosed.join(', ')} (closed).`
+}
+
+const signupModeDescriptions: Record<SignupMode, string> = {
+  closed: 'signups are closed',
+  invite_only: 'signups are by invitation only',
+  open: 'signups are open',
+}
+
+export const signupEnvNotice = (
+  allowSignup: string | undefined,
+  seeded: boolean,
+  storedMode: SignupMode,
+): string | null => {
+  if (allowSignup === undefined || seeded || signupModeFromEnv(allowSignup) === storedMode) return null
+  return `ALLOW_SIGNUP=${allowSignup} is ignored: ${signupModeDescriptions[storedMode]} in the admin settings, which decide after the first start.`
+}
 
 /**
  * Should be called once at server startup.
@@ -969,11 +998,12 @@ export const signupModeFromEnv = (allowSignup: string | undefined): SignupMode =
 export const initializeCentralDb = async (): Promise<void> => {
   const db = getCentralDb()
   const allowSignupEnv = process.env.ALLOW_SIGNUP
+  const warning = signupEnvWarning(allowSignupEnv)
+  if (warning) console.warn(warning)
   const seeded = await db.initializeCentralDb(signupModeFromEnv(allowSignupEnv))
   if (allowSignupEnv !== undefined && !seeded) {
-    console.info(
-      'ALLOW_SIGNUP only sets the signup mode of a fresh install; the admin settings decide it now.',
-    )
+    const notice = signupEnvNotice(allowSignupEnv, seeded, await db.getSignupMode())
+    if (notice) console.info(notice)
   }
 
   console.info('Central database initialized')
