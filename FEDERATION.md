@@ -102,6 +102,36 @@ requests are answered per [FEP-044f](https://w3id.org/fep/044f):
 Posts federated before quote policies were added keep Mastodon's cached "nobody"
 policy until an `Update` of them reaches it; editing the post sends one.
 
+## Challenge threads
+
+A challenge hosted here has a comment thread (see
+[docs/features/challenges.md](docs/features/challenges.md#comment-thread)), and comments
+reach it over ActivityPub:
+
+- **Outgoing.** A challenge comment (a reply `Note`) and a share of a challenge carry the
+  challenge object id (`/users/<username>/challenges/<slug>`) as `context`. Addressing is
+  unchanged.
+- **Incoming.** A `Create{Note}` in any local user's inbox enters the thread when its
+  `inReplyTo` is the challenge object, a local post of the thread, or an entry of a thread
+  the recipient hosts. Authority is the timeline's: the Note's id is on the sender's host
+  and its `attributedTo` names the sender.
+- **Audience.** A Note addressed to `as:Public` is a public entry. Any other Note is a
+  participants-only entry, admitted only when its `context` names the challenge and the
+  sender is the host or an active member, so a followers-only reply is never widened. An
+  unlisted challenge takes participants-only entries from its participants alone.
+- **Rate limit.** A sender who is not a participant adds at most 30 new entries a day to
+  one thread; an `Update` of an entry they already have is not counted.
+- **Delivery limit.** A reply to a remote commenter's comment is only seen when it is
+  delivered to the host's inbox, which Mastodon does when the reply keeps the host's
+  mention.
+- **Update and Delete.** An `Update` rewrites the entry; a `Delete` from its author removes
+  it (with its replies), and an actor deleting itself loses every entry it wrote in the
+  threads the recipient hosts. A
+  `Delete` from anyone else changes nothing.
+
+A Note admitted to a thread still becomes a timeline card where it would have before, but
+the recipient who already gets `challenge_comment` for it gets no second notification.
+
 ## Challenges (HTTP, outside ActivityPub)
 
 Federated challenges use the HTTP half of the

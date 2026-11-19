@@ -165,3 +165,9 @@ export const challengeThreadHideBodySchema = z
   .meta({ id: 'ChallengeThreadHideBody' })
 
 export type ChallengeThreadHideBody = z.infer<typeof challengeThreadHideBodySchema>
+
+export const challengeThreadHideQuerySchema = z
+  .object({ challenge_url: challengeUrlSchema })
+  .meta({ id: 'ChallengeThreadHideQuery' })
+
+export type ChallengeThreadHideQuery = z.infer<typeof challengeThreadHideQuerySchema>

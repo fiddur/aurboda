@@ -114,6 +114,12 @@ A metric is scored from what each member chose to share for this challenge
 alone; nothing about a challenge grants access to any other data of a member
 (§8).
 
+A `Note` that belongs to a challenge's conversation — a comment on the
+challenge, a reply to one, a share of the challenge or the result (§7) —
+SHOULD name the challenge object's id as its `context`. A host MUST NOT widen
+a Note's audience: a Note that does not address `as:Public` is only shown to
+the challenge's participants, and only when its `context` names the challenge.
+
 ### 3. Discovery and the challenge document
 
 The [FEP-302f] §4 discovery document gains one key:
@@ -402,7 +408,9 @@ block (the exact spec on a challenge, the measure echo on an entry) that other
 implementations ignore. Of the ActivityPub half, the `Event` object (§2) is served
 at the §2 id convention, with the document's `id` pointing at it; `Join` / `Leave`
 in the inbox (§4.1), `attendees` and `Create{Event}` delivery are not yet
-implemented, nor is `joinMode: restricted`.
+implemented, nor is `joinMode: restricted`. Comment and share Notes name the
+challenge as their `context` (§2), and a host takes comments from other servers
+into its challenge's thread.
 
 A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
 fetch the post's Aurboda-only structured payload, which carries the §3 document

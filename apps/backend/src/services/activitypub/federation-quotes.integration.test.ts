@@ -255,7 +255,7 @@ describe('Quote posts (FEP-044f)', () => {
       const { ctx, sendActivity } = inboxCtx(user)
       await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
       const stamp = (sendActivity.mock.calls[0][2] as Accept).resultId?.href ?? ''
-      await handleInboundDelete(ctx, del(ALICE, QUOTE))
+      await handleInboundDelete(ctx, del(ALICE, QUOTE), ORIGIN)
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
       expect((await fetchAs2(stamp)).status).toBe(404)
     })
@@ -273,7 +273,7 @@ describe('Quote posts (FEP-044f)', () => {
         }),
       )
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(2)
-      await handleInboundDelete(ctx, del(ALICE, ALICE))
+      await handleInboundDelete(ctx, del(ALICE, ALICE), ORIGIN)
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
     })
 
@@ -282,7 +282,7 @@ describe('Quote posts (FEP-044f)', () => {
       const post = await ownPost(user)
       const { ctx } = inboxCtx(user)
       await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
-      await handleInboundDelete(ctx, del(BOB, BOB))
+      await handleInboundDelete(ctx, del(BOB, BOB), ORIGIN)
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(1)
     })
 
@@ -291,7 +291,7 @@ describe('Quote posts (FEP-044f)', () => {
       const post = await ownPost(user)
       const { ctx } = inboxCtx(user)
       await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
-      await handleInboundDelete(ctx, del(BOB, QUOTE))
+      await handleInboundDelete(ctx, del(BOB, QUOTE), ORIGIN)
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(1)
     })
   })
