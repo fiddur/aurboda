@@ -25,7 +25,9 @@ const segment = {
 const detail = {
   ...segment,
   created_from_activity_id: ACTIVITY_ID,
+  created_from_activity_title: null,
   created_from_route_id: null,
+  created_from_route_name: null,
   efforts: [],
   near_named_location: { end: null, start: null },
   points: [],

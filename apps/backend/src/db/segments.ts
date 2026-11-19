@@ -4,7 +4,7 @@ import type { QueryResultRow } from 'pg'
 import type { LatLon } from './routes.ts'
 
 import { query, withUserTransaction } from './connection.ts'
-import { effectiveType } from './effective-type.ts'
+import { effectiveTitle, effectiveType } from './effective-type.ts'
 
 /** Buffer around a segment and a track, in metres, for matching and timing. */
 export const SEGMENT_BUFFER_M = 25
@@ -42,7 +42,9 @@ export interface SegmentRecord {
   best_elapsed_s: number | null
   last_effort_at: Date | null
   created_from_activity_id: string | null
+  created_from_activity_title: string | null
   created_from_route_id: string | null
+  created_from_route_name: string | null
   created_at: Date
   updated_at: Date
 }
@@ -247,8 +249,11 @@ const segmentSelect = (segmentFilter: string): string => `
   ${rankedEfforts(segmentFilter)}
   SELECT s.id, s.name, s.activity_type, s.length_m, s.created_from_activity_id, s.created_from_route_id,
          s.created_at, s.updated_at,
-         COALESCE(st.n, 0) AS effort_count, st.best AS best_elapsed_s, st.last AS last_effort_at
+         COALESCE(st.n, 0) AS effort_count, st.best AS best_elapsed_s, st.last AS last_effort_at,
+         ${effectiveTitle('fa')} AS created_from_activity_title, fr.name AS created_from_route_name
   FROM segments s
+  LEFT JOIN activities fa ON fa.id = s.created_from_activity_id AND fa.deleted_at IS NULL
+  LEFT JOIN routes fr ON fr.id = s.created_from_route_id AND fr.deleted_at IS NULL
   LEFT JOIN (
     SELECT segment_id, COUNT(*)::int AS n, MAX(elapsed_s) FILTER (WHERE is_best) AS best, MAX(t0) AS last
     FROM ranked
@@ -260,7 +265,9 @@ const mapSegmentRow = (row: QueryResultRow): SegmentRecord => ({
   best_elapsed_s: row.best_elapsed_s == null ? null : Number(row.best_elapsed_s),
   created_at: row.created_at as Date,
   created_from_activity_id: (row.created_from_activity_id as string | null) ?? null,
+  created_from_activity_title: (row.created_from_activity_title as string | null) || null,
   created_from_route_id: (row.created_from_route_id as string | null) ?? null,
+  created_from_route_name: (row.created_from_route_name as string | null) ?? null,
   effort_count: Number(row.effort_count),
   id: row.id as string,
   last_effort_at: (row.last_effort_at as Date | null) ?? null,

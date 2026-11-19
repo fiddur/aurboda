@@ -25,7 +25,6 @@ const distance = (a: string, b: string): number => {
 }
 
 describe('memberColor', () => {
-  // Teal and emerald, 0.11 apart, read as one colour on the dark theme.
   test('every pair in the palette is far apart in OKLab, so lines can be told apart', () => {
     const pairs = MEMBER_COLORS.flatMap((a, i) => MEMBER_COLORS.slice(i + 1).map((b) => distance(a, b)))
     expect(Math.min(...pairs)).toBeGreaterThan(0.15)
