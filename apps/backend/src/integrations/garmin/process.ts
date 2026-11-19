@@ -273,14 +273,19 @@ export const makeRaw = (
   source: 'garmin',
 })
 
-const isBlank = (value: unknown): boolean => value == null || (Array.isArray(value) && value.length === 0)
+const isBlankAnswer = (value: unknown): boolean =>
+  value == null || (typeof value === 'string' && value.trim() === '')
 
-/** No data for the day: nothing, an empty list, or an object of nulls and empty lists. */
+const isBlank = (value: unknown): boolean =>
+  isBlankAnswer(value) || (Array.isArray(value) && value.length === 0)
+
+/** No data for the day: nothing, a blank answer, an empty list, or an object of nulls and empty lists. */
 const isEmptyPayload = (data: unknown): boolean =>
   isBlank(data) || (typeof data === 'object' && !Array.isArray(data) && Object.values(data!).every(isBlank))
 
 /** JSONB takes an object; node-postgres would send a bare array as a Postgres array literal. */
-const rawData = (data: unknown): unknown => (Array.isArray(data) ? { entries: data } : data)
+const rawData = (data: unknown): object =>
+  Array.isArray(data) ? { entries: data } : data !== null && typeof data === 'object' ? data : { value: data }
 
 const payloadKeys = (data: unknown): string[] =>
   data !== null && typeof data === 'object' ? Object.keys(Array.isArray(data) ? (data[0] ?? {}) : data) : []
@@ -773,6 +778,7 @@ const processTrainingReadiness = async (
   deps: GarminProcessDeps,
   requestedDate?: string,
 ): Promise<number> => {
+  if (isBlankAnswer(data)) return 0
   const entries = (Array.isArray(data) ? data : [data]).filter(
     (entry): entry is GarminTrainingReadinessEntry => entry !== null && typeof entry === 'object',
   )

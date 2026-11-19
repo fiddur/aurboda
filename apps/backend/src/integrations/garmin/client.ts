@@ -402,7 +402,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
       pendingMfaSessions.delete(user)
       displayNames.delete(user)
 
-      auditInfo(user, 'auth', 'Garmin login attempt', { email })
+      auditInfo(user, 'auth', 'Garmin login attempt')
       const gc = new GarminConnect({ password, username: email })
 
       let result
@@ -410,7 +410,7 @@ export const garminClient = (deps: GarminClientDeps = defaultDeps) => {
         result = await gc.login()
       } catch (error) {
         const sanitized = sanitizeGarminLoginError(error)
-        auditError(user, 'auth', 'Garmin login failed', { email, error: sanitized.message })
+        auditError(user, 'auth', 'Garmin login failed', { error: sanitized.message })
         throw sanitized
       }
 

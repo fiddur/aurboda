@@ -268,7 +268,7 @@
   border-top: 1px solid #e5e7eb;
 }
 
-.btn-danger {
+.report-detail-page .btn-danger {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: #dc2626;
@@ -279,7 +279,7 @@
   font-weight: 500;
 }
 
-.btn-danger:hover:not(:disabled) {
+.report-detail-page .btn-danger:hover:not(:disabled) {
   background: #b91c1c;
 }
 

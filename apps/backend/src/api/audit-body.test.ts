@@ -119,6 +119,21 @@ describe('auditOperation', () => {
     expect(operation).toBe('POST /notes/:id')
   })
 
+  test('Express assigns req.route by plain assignment (trackRouteTemplate relies on it): nested router, next(err)', async () => {
+    const operation = await operationOf(
+      (app) => {
+        const inner = express.Router()
+        inner.post('/:id', (_req, _res, next) => next(new Error('boom')))
+        const outer = express.Router()
+        outer.use('/items', inner)
+        app.use('/lists', outer)
+      },
+      'post',
+      '/lists/items/42',
+    )
+    expect(operation).toBe('POST /lists/items/:id')
+  })
+
   test('says no route when nothing matched', async () => {
     const operation = await operationOf(() => {}, 'post', '/nothing/here/42')
     expect(operation).toBe('POST (no route)')

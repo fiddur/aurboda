@@ -27,7 +27,7 @@ vi.mock('../../services/audit-log.ts', () => ({ auditError: vi.fn(), auditInfo: 
 import garminConnectPkg from '@fiddur/garmin-connect'
 const { GarminConnect } = garminConnectPkg
 
-import { auditError } from '../../services/audit-log.ts'
+import { auditError, auditInfo } from '../../services/audit-log.ts'
 import { garminClient, type GarminClientDeps, redactSecret } from './client.ts'
 
 const testUser = 'test-user'
@@ -87,6 +87,14 @@ describe('garminClient', () => {
       expect(result).toEqual({ mfa_required: true })
       expect(deps.upsertOAuthToken).not.toHaveBeenCalled()
     })
+
+    it('keeps the login email out of the audit log', async () => {
+      const client = garminClient(deps)
+      await client.login(testUser, 'user@example.com', 'secret')
+
+      expect(auditInfo).toHaveBeenCalledWith(testUser, 'auth', 'Garmin login attempt')
+      expect(JSON.stringify(vi.mocked(auditInfo).mock.calls)).not.toContain('user@example.com')
+    })
   })
 
   describe('login failure', () => {
@@ -115,6 +123,7 @@ describe('garminClient', () => {
 
       const logged = JSON.stringify(vi.mocked(auditError).mock.calls)
       for (const form of forms) expect(logged).not.toContain(form)
+      expect(logged).not.toContain('user@example.com')
     })
 
     it('omits the status when none can be read', async () => {

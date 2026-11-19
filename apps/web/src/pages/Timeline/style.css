@@ -186,11 +186,6 @@
   }
 }
 
-.timeline-fullscreen-btn {
-  font-size: 1rem;
-  padding: 0.2rem 0.4rem !important;
-}
-
 .timeline-legend-wrapper {
   display: flex;
   align-items: center;

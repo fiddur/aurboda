@@ -615,7 +615,7 @@ details.list-field-detail:not([open]) > summary h3 {
   border-top: 1px solid #e5e7eb;
 }
 
-.btn-danger {
+.entity-actions .btn-danger {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: transparent;
@@ -625,7 +625,7 @@ details.list-field-detail:not([open]) > summary h3 {
   cursor: pointer;
 }
 
-.btn-danger:hover:not(:disabled) {
+.entity-actions .btn-danger:hover:not(:disabled) {
   background: #ef4444;
   color: white;
 }

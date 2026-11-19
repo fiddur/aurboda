@@ -119,18 +119,24 @@ const hasSets = (d: ActivityData | undefined): boolean => Array.isArray(d?.sets)
 const garminSets = (d: ActivityData | undefined): boolean => hasSets(d) && d?.sets_source === 'garmin'
 
 /**
- * `over` laid on `under`, except that `sets` and `sets_source` travel as a pair and sets imported
- * from Garmin never replace sets logged elsewhere: a Garmin row and a Gravl row of one session start
- * in either order, and the user's log must win both ways.
+ * `over` laid on `under`, except that `sets`, `sets_source` and `garmin_sets_origin` travel together
+ * and sets imported from Garmin never replace sets logged elsewhere: a Garmin row and a Gravl row of
+ * one session start in either order, and the user's log must win both ways.
  */
 export const blendData = (under: ActivityData | undefined, over: ActivityData): ActivityData => {
   const from =
     hasSets(under) && garminSets(over) && !garminSets(under) ? under : 'sets' in over ? over : under
-  const { sets: _sets, sets_source: _setsSource, ...rest } = { ...under, ...over }
+  const {
+    garmin_sets_origin: _origin,
+    sets: _sets,
+    sets_source: _setsSource,
+    ...rest
+  } = { ...under, ...over }
   return {
     ...rest,
     ...(from && 'sets' in from ? { sets: from.sets } : {}),
     ...(from && 'sets_source' in from ? { sets_source: from.sets_source } : {}),
+    ...(from && 'garmin_sets_origin' in from ? { garmin_sets_origin: from.garmin_sets_origin } : {}),
   }
 }
 
