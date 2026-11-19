@@ -148,7 +148,7 @@ describe('account deletion', () => {
         username: user,
       })
       await centralDb.upsertOuraUserMapping(`oura_${suffix}`, user)
-      await centralDb.upsertStravaAthleteMapping(4242, user)
+      await centralDb.upsertStravaAthleteMapping('4242', user)
       await centralDb.upsertGarminUserMapping(`garmin_${suffix}`, user)
       const job = await centralDb.insertImportJob('livsmedelsverket', user)
       await centralDb.setServerSetting('official_feed', {

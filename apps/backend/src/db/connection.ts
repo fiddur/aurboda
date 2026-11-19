@@ -1807,6 +1807,25 @@ export const migrateSchema = async (user: string, opts?: { force?: boolean }): P
     })
   }
 
+  const stravaIdsApplied = await query(
+    db,
+    `SELECT 1 FROM schema_migrations WHERE name = 'strava_activity_id_to_string_v1'`,
+  )
+  if (stravaIdsApplied.rows.length === 0) {
+    await withTransaction(db, async (tx) => {
+      await query(
+        tx,
+        `UPDATE activities
+            SET data = jsonb_set(data, '{strava_activity_id}', to_jsonb(data->>'strava_activity_id'))
+          WHERE jsonb_typeof(data->'strava_activity_id') = 'number'`,
+      )
+      await query(
+        tx,
+        `INSERT INTO schema_migrations (name) VALUES ('strava_activity_id_to_string_v1') ON CONFLICT DO NOTHING`,
+      )
+    })
+  }
+
   // Last, and only on success: a sweep that threw must run again next time. A failed legacy tags step
   // withholds the fingerprint without failing the sweep, so the next boot retries the tags.
   if (legacyTagsFailed) {

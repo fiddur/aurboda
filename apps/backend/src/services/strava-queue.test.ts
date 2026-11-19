@@ -111,6 +111,88 @@ describe('createStravaQueue', () => {
     }
   })
 
+  test.each([
+    ['a legacy numeric id', 7, '7'],
+    ['a 64-bit string id exactly', '9007199254740993', '9007199254740993'],
+  ])('a fetch job passes %s to the client', async (_, jobId, expected) => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const rateLimit = { reads_15min: 0, reads_daily: 0 }
+      const getActivity = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      const getActivityStreams = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      await createStravaQueue(boss as never, { ...mockDeps, getActivity, getActivityStreams })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([
+        { data: { request_type: 'fetch_activity', strava_activity_id: jobId, user: 'alice' } },
+      ])
+      await vi.runAllTimersAsync()
+      await run
+
+      expect(getActivity).toHaveBeenCalledWith('test-token', expected)
+      expect(getActivityStreams).toHaveBeenCalledWith('test-token', expected)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test.each([
+    ['missing', undefined],
+    ['invalid', 'abc'],
+  ])('a fetch job with a %s id is skipped', async (_, jobId) => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const getActivity = vi.fn()
+      await createStravaQueue(boss as never, { ...mockDeps, getActivity })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([
+        { data: { request_type: 'fetch_activity', strava_activity_id: jobId, user: 'alice' } },
+      ])
+      await vi.runAllTimersAsync()
+      await run
+
+      expect(getActivity).not.toHaveBeenCalled()
+      expect(processStravaActivity).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('a list job enqueues the exact id_str of each activity', async () => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const rateLimit = { reads_15min: 0, reads_daily: 0 }
+      const listActivities = vi.fn().mockResolvedValue({
+        data: [
+          { id: 9007199254740992, id_str: '9007199254740993', start_date: '2024-06-15T07:00:00Z' },
+          { id: 12, start_date: '2024-06-14T07:00:00Z' },
+        ],
+        rateLimit,
+      })
+      await createStravaQueue(boss as never, { ...mockDeps, listActivities })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([{ data: { request_type: 'list_activities', user: 'alice' } }])
+      await vi.runAllTimersAsync()
+      await run
+
+      const sent = boss.send.mock.calls.map((args) => args[1])
+      expect(sent).toEqual([
+        { request_type: 'fetch_activity', strava_activity_id: '9007199254740993', user: 'alice' },
+        { request_type: 'fetch_activity', strava_activity_id: '12', user: 'alice' },
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('a job for a read-only account completes without fetching, and a list job frees the sync state', async () => {
     const boss = createMockBoss()
     const getActivity = vi.fn()
@@ -207,13 +289,13 @@ describe('createStravaQueue', () => {
     const boss = createMockBoss()
     const queue = await createStravaQueue(boss as never, mockDeps)
 
-    await queue.enqueueActivityFetch('testuser', 999, 1)
+    await queue.enqueueActivityFetch('testuser', '999', 1)
 
     expect(boss.send).toHaveBeenCalledWith(
       'strava-sync',
       {
         request_type: 'fetch_activity',
-        strava_activity_id: 999,
+        strava_activity_id: '999',
         user: 'testuser',
       },
       expect.objectContaining({

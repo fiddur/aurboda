@@ -102,7 +102,7 @@ describe('processStravaActivity', () => {
       calories: 450,
       distance: 10000,
       max_hr: 170,
-      strava_activity_id: 12345,
+      strava_activity_id: '12345',
     })
 
     expect(result).toEqual({
@@ -115,6 +115,19 @@ describe('processStravaActivity', () => {
     expect(deps.insertTimeSeries).not.toHaveBeenCalled()
     expect(deps.insertLocations).not.toHaveBeenCalled()
     expect(deps.upsertActivityTrack).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['id_str over a rounded id', { id: 9007199254740992, id_str: '9007199254740993' }, '9007199254740993'],
+    ['a string id without id_str', { id: '9223372036854775807' }, '9223372036854775807'],
+  ])('keys a 64-bit activity by %s', async (_, ids, expected) => {
+    const deps = createMockDeps()
+    await processStravaActivity('testuser', { ...baseActivity, ...ids }, null, deps)
+
+    expect(vi.mocked(deps.insertRawRecord).mock.calls[0][1].external_id).toBe(`strava-activity-${expected}`)
+    const activityArg = vi.mocked(deps.insertActivity).mock.calls[0][1]
+    expect(activityArg.external_id).toBe(`strava-activity-${expected}`)
+    expect(activityArg.data?.strava_activity_id).toBe(expected)
   })
 
   test('processes heart rate stream into time series', async () => {

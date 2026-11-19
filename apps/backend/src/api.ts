@@ -98,6 +98,7 @@ import {
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
+import { stravaWebhookBodyParser } from './integrations/strava/webhook-router.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
 import {
@@ -1366,8 +1367,10 @@ const main = async () => {
     }),
   )
 
-  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large.
+  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large,
+  // and Strava's 64-bit ids need the lossless parse.
   httpd.use('/webhooks/garmin', garminPushBodyParser(garminPushToken(sessionSecret)))
+  httpd.use('/webhooks/strava', stravaWebhookBodyParser())
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use(createAuditLogMiddleware(auth, isDeletedUser))

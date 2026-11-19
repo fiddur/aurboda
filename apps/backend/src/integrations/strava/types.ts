@@ -1,6 +1,7 @@
 /** Summary activity from GET /athlete/activities */
 export interface StravaSummaryActivity {
-  id: number
+  id: number | string
+  id_str?: string
   name: string
   sport_type: string
   type: string
@@ -103,9 +104,9 @@ export type StravaStreamsResponse = Record<string, StravaStream>
 
 export interface StravaWebhookEvent {
   object_type: 'activity' | 'athlete'
-  object_id: number
+  object_id: number | string
   aspect_type: 'create' | 'update' | 'delete'
-  owner_id: number
+  owner_id: number | string
   subscription_id: number
   event_time: number
   updates?: Record<string, string>
@@ -113,7 +114,8 @@ export interface StravaWebhookEvent {
 
 /** Athlete profile from GET /athlete */
 export interface StravaAthleteProfile {
-  id: number
+  id: number | string
+  id_str?: string
   username?: string
   firstname?: string
   lastname?: string
@@ -153,7 +155,8 @@ export const parseRateLimitHeaders = (headers: Record<string, unknown>): StravaR
 export interface StravaSyncJobData {
   user: string
   request_type: 'list_activities' | 'fetch_activity'
-  strava_activity_id?: number
+  // A number only in jobs queued before ids became strings.
+  strava_activity_id?: string | number
   list_params?: {
     before?: number
     after?: number
