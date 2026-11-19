@@ -494,3 +494,143 @@
     color: #fca5a5;
   }
 }
+
+.challenge-thread {
+  margin-top: 2rem;
+}
+
+.challenge-thread h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.challenge-comment-list,
+.challenge-comment-replies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.challenge-comment-list {
+  margin-top: 1rem;
+}
+
+.challenge-comment-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+}
+
+.challenge-comment-replies {
+  margin-top: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--color-border);
+}
+
+.challenge-comment-replies .feed-post-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+.challenge-comment .feed-post-avatar {
+  width: 36px;
+  height: 36px;
+}
+
+.challenge-comment .feed-post-name,
+.challenge-comment .feed-post-content {
+  color: var(--color-text);
+}
+
+.challenge-comment .feed-post-handle,
+.challenge-comment-kind,
+.challenge-comment-note {
+  color: var(--color-text-muted);
+}
+
+.challenge-comment-kind {
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.challenge-comment-hidden {
+  opacity: 0.55;
+}
+
+.challenge-comment-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.challenge-comment-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  color: var(--color-accent-hover);
+  background: var(--color-accent-soft);
+  white-space: nowrap;
+}
+
+.challenge-comment-content {
+  overflow-wrap: anywhere;
+}
+
+.challenge-comment-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.challenge-comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.challenge-comment-action {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.challenge-comment-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.challenge-comment-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.challenge-comment-composer .feed-reply-text {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.challenge-comment-note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.challenge-comment-error {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-error, #b91c1c);
+}
+
+.challenge-comment-more {
+  margin-top: 1rem;
+}

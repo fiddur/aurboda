@@ -435,14 +435,34 @@ The rules:
    public comment and `participants` for a participants one, see
    [Feed posts](./feed.md#feed-posts)), so it is edited and deleted through
    `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
-   thread follows. Its audience cannot change after posting (`400`). A public comment is
-   delivered like any reply; a participants one never leaves the instance.
+   thread follows. Its audience cannot change after posting (`400`), and an edit always
+   reaches the thread, also after its author left the challenge. A public comment is
+   delivered like any reply; a participants one never leaves the instance. Deleting a
+   top-level entry takes its replies out of the thread with it, other people's included;
+   their own feed posts stay.
 4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
-   hidden top-level entry hides its replies. Hiding is undone by unhiding.
+   hidden entry hides the replies under it. Hiding is undone by unhiding.
 5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
 6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
    the host and every local member except its author.
 7. Comments on a challenge hosted on another server are not available yet (`400`).
+
+**Comments from other servers.** A `Note` delivered to any local user's inbox enters the
+thread of a challenge hosted here when it replies to the challenge object, to a local post
+of its thread (a comment, a share or the result), or to an entry of a thread that user
+hosts. Its author is the signature-verified sender, and the Note must be on the sender's
+server and attributed to them. A Note addressed to `Public` is a `public` entry; any other
+is a `participants` entry, and only when its `context` names the challenge and its author
+is a participant. The rules above apply as for a local comment (an unlisted challenge
+takes nothing from a non-member), and someone who is not a participant adds at most 30
+entries a day to one thread. An `Update` of the Note rewrites the entry and a `Delete` from
+its author removes it. The same Note may also become a timeline card for the recipient; it
+then raises no second notification beside `challenge_comment`. A reply to a commenter on
+another server only reaches the thread when it is delivered to the host's inbox (Mastodon
+does so when the reply keeps the host's mention).
+
+Every comment and share of a challenge hosted here that Aurboda federates names the challenge
+object as its `context`.
 
 A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
 with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
@@ -457,6 +477,19 @@ API: `GET /challenges/thread?challenge_url=<page url>[&cursor=]`,
 The logged-out view is `GET /public/<user>/challenges/<slug>/thread[?cursor=]` (public
 entries only). MCP: `get_challenge_thread`, `add_challenge_comment`,
 `hide_challenge_comment`, `unhide_challenge_comment`.
+
+On the web, the challenge page (`/u/<user>/<slug>`, embedded as is by the Android app)
+shows the thread in a **Comments** section (`#comments`, where notifications link) under
+the leaderboard: a composer, then the top-level entries newest first with "Show more",
+each with its replies indented under it. An entry shows its author, time, an "edited"
+mark, a "🔒 People in the challenge" badge on `participants` entries (public ones carry
+none) and a label on a share or the result; Reply, Edit and Delete (own entries) and Hide
+/ Unhide (the host, who sees a hidden entry dimmed) act on it. The composer offers both
+audiences only when the viewer has both, defaulting to _People in the challenge_ and
+remembering the last choice in the browser; with one, it says which. A reply to a
+`participants` entry is `participants`. Signed out, a "Sign in to comment" link stands in
+for the composer; a signed-in visitor of an unlisted challenge is told only people in the
+challenge can comment. The author's own feed card of a comment reads "in <challenge>".
 
 ## Completion & winner announcement
 

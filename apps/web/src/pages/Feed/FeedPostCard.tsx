@@ -47,7 +47,7 @@ export interface PostAuthor {
 
 const VISIBILITY: Record<FeedPostVisibility, { icon: string; label: string }> = {
   followers: { icon: '🔒', label: 'Followers only' },
-  participants: { icon: '👥', label: 'People in the challenge' },
+  participants: { icon: '🔒', label: 'People in the challenge' },
   public: { icon: '🌐', label: 'Public' },
   unlisted: { icon: '🔓', label: 'Unlisted' },
 }
@@ -127,13 +127,21 @@ const ReplyPostBody = ({ post }: { post: FeedPost }) => {
   return (
     <div class="feed-post-content">
       <p class="feed-post-reply-marker">
-        ↩ replying to{' '}
-        {post.in_reply_to_actor_uri ? (
-          <a href={post.in_reply_to_actor_uri} target="_blank" rel="noopener noreferrer nofollow">
-            {who}
-          </a>
+        {post.in_challenge ? (
+          <>
+            ↩ in <a href={post.in_challenge.url}>{post.in_challenge.name}</a>
+          </>
         ) : (
-          (who ?? 'a post')
+          <>
+            ↩ replying to{' '}
+            {post.in_reply_to_actor_uri ? (
+              <a href={post.in_reply_to_actor_uri} target="_blank" rel="noopener noreferrer nofollow">
+                {who}
+              </a>
+            ) : (
+              (who ?? 'a post')
+            )}
+          </>
         )}
       </p>
       {post.message && <div dangerouslySetInnerHTML={{ __html: renderMarkdown(post.message) }} />}

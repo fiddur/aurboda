@@ -664,6 +664,16 @@ export const deliverFeedArticleUpdate = async (
 // like any post. No activity to resolve; an opted-in post delivered to
 // followers attaches the standings race chart (`standings.png`).
 
+/** A post's challenge thread as the Note's `context`; nothing when absent or unparsable. */
+export const challengeContext = (challengeUri: string | null | undefined): { contexts?: URL[] } => {
+  if (challengeUri == null) return {}
+  try {
+    return { contexts: [new URL(challengeUri)] }
+  } catch {
+    return {}
+  }
+}
+
 /** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
 export interface DeliverableChallenge {
   id: string
@@ -677,12 +687,15 @@ export interface DeliverableChallenge {
   /** Capability token appended to a `followers`-only post's image URL. */
   image_token: string
   tags?: readonly string[]
+  /** The challenge object whose thread the post belongs to, federated as `context`. */
+  challenge_uri?: string | null
 }
 
 export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
   post.kind === 'challenge' && post.challenge != null
     ? {
         challenge: post.challenge,
+        challenge_uri: post.challenge_uri,
         created_at: post.created_at,
         id: post.id,
         image_token: post.image_token,
@@ -817,6 +830,7 @@ export const buildChallengeNote = (
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: linkifyHashtags(renderChallengeShareHtml(post.challenge, post.message), hashtags),
+    ...challengeContext(post.challenge_uri),
     id: noteId,
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.challenge.name,
@@ -1418,11 +1432,14 @@ export interface DeliverableReply {
   in_reply_to_actor_uri: string
   in_reply_to_handle: string | null
   tags?: readonly string[]
+  /** The challenge object whose thread the reply belongs to, federated as `context`. */
+  challenge_uri?: string | null
 }
 
 export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | null =>
   post.kind === 'reply' && post.in_reply_to_uri != null && post.in_reply_to_actor_uri != null
     ? {
+        challenge_uri: post.challenge_uri,
         created_at: post.created_at,
         id: post.id,
         in_reply_to_actor_uri: post.in_reply_to_actor_uri,
@@ -1483,6 +1500,7 @@ export const buildReplyNote = (ctx: Context<void>, user: string, post: Deliverab
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: linkifyHashtags(renderReplyContent(post), hashtags),
+    ...challengeContext(post.challenge_uri),
     id: noteId,
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     published: dateToTemporalInstant(post.created_at),
