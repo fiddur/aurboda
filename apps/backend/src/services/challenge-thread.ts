@@ -251,7 +251,10 @@ export interface AdmissionFacts {
   /** The entry `in_reply_to_uri` names, when it names one. */
   parent: Pick<ChallengeThreadEntryRecord, 'id' | 'challenge_id' | 'audience' | 'root_entry_id'> | null
   /** The entry already stored under the candidate's `object_uri`. */
-  existing: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'challenge_id'> | null
+  existing: Pick<
+    ChallengeThreadEntryRecord,
+    'actor_uri' | 'audience' | 'challenge_id' | 'kind' | 'root_entry_id'
+  > | null
   entry_count: number
 }
 
@@ -259,16 +262,27 @@ export type AdmissionDecision =
   | { admitted: true; audience: ChallengeThreadAudience; root_entry_id: string | null }
   | { admitted: false; reason: AdmissionRefusal }
 
-/** Rules 1 to 5 and 7: who may write what where. Pure. */
+/** An edit keeps its place: its author may have left, or the entry it answered may be gone. */
+const decideEdit = (
+  candidate: ThreadCandidate,
+  existing: NonNullable<AdmissionFacts['existing']>,
+  challengeId: string,
+  audience: ChallengeThreadAudience,
+): AdmissionDecision | null => {
+  if (existing.actor_uri !== candidate.author.actor_uri || existing.challenge_id !== challengeId) {
+    return { admitted: false, reason: 'not_author' }
+  }
+  return existing.kind === 'comment' && candidate.kind === 'comment' && existing.audience === audience
+    ? { admitted: true, audience, root_entry_id: existing.root_entry_id }
+    : null
+}
+
+/** Who may write what where. Pure. */
 export const decideAdmission = (candidate: ThreadCandidate, facts: AdmissionFacts): AdmissionDecision => {
   const audience: ChallengeThreadAudience = facts.challenge.is_public ? candidate.audience : 'participants'
   if (facts.existing != null) {
-    if (
-      facts.existing.actor_uri !== candidate.author.actor_uri ||
-      facts.existing.challenge_id !== facts.challenge.id
-    ) {
-      return { admitted: false, reason: 'not_author' }
-    }
+    const edit = decideEdit(candidate, facts.existing, facts.challenge.id, audience)
+    if (edit != null) return edit
   } else if (facts.entry_count >= MAX_THREAD_ENTRIES) {
     return { admitted: false, reason: 'thread_full' }
   }
@@ -351,7 +365,7 @@ export type AdmitResult =
   | { admitted: false; reason: AdmissionRefusal }
 
 /**
- * THE way into a thread: applies rules 1 to 5 and 7, resolves the root, upserts on `object_uri`,
+ * THE way into a thread: applies `decideAdmission`, resolves the root, upserts on `object_uri`,
  * and on a newly created, visible comment raises `challenge_comment` for the other side.
  */
 export const admitThreadEntry = async (
@@ -552,7 +566,7 @@ const loadOwn = async (
   return own
 }
 
-/** One page of a thread as `viewer` (null: signed out) may see it: rules 2, 3 and 6. */
+/** One page of a thread as `viewer` (null: signed out) may see it. */
 export const getChallengeThread = async (
   deps: ThreadReadDeps,
   hosted: HostedChallenge,
@@ -870,8 +884,8 @@ const hostedChallengeOf = async (
 
 /**
  * Bring a post's thread entry in step with the post, after it was created or edited: a comment is
- * re-rendered (its audience kept), a share enters only with a note while public or unlisted (rule
- * 10) and leaves otherwise, the result enters as is. A post in no hosted thread is left alone.
+ * re-rendered (its audience kept), a share enters only with a note while public or unlisted and
+ * leaves otherwise, the result enters as is. A post in no hosted thread is left alone.
  */
 export const syncThreadEntryForPost = async (
   deps: ChallengeThreadDeps,
@@ -945,7 +959,7 @@ export const followPostDeleteInThread = async (
   await followPostInThread(() => removeThreadEntryForPost(deps, user, post), post.id)
 }
 
-/** Rule 9: a comment's visibility is fixed; only its message can change. */
+/** A comment's visibility is fixed; only its message can change. */
 export const threadVisibilityLocked = (
   post: Pick<FeedPostRecord, 'challenge_uri' | 'kind' | 'visibility'> | null,
   requested: string | undefined,

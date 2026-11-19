@@ -435,7 +435,8 @@ The rules:
    public comment and `participants` for a participants one, see
    [Feed posts](./feed.md#feed-posts)), so it is edited and deleted through
    `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
-   thread follows. Its audience cannot change after posting (`400`). A public comment is
+   thread follows. Its audience cannot change after posting (`400`), and an edit always
+   reaches the thread, also after its author left the challenge. A public comment is
    delivered like any reply; a participants one never leaves the instance. Deleting a
    top-level entry takes its replies out of the thread with it, other people's included;
    their own feed posts stay.

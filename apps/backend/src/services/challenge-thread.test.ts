@@ -134,6 +134,15 @@ const facts = (over: Partial<AdmissionFacts> = {}): AdmissionFacts => ({
   ...over,
 })
 
+const stored = (over: Partial<NonNullable<AdmissionFacts['existing']>> = {}) => ({
+  actor_uri: `${WEB}/users/bob`,
+  audience: 'public' as const,
+  challenge_id: 'c1',
+  kind: 'comment' as const,
+  root_entry_id: null,
+  ...over,
+})
+
 describe('parseChallengePageUrl', () => {
   test('reads the host and slug of a challenge page on this instance', () => {
     expect(parseChallengePageUrl(WEB, `${WEB}/u/alice/abc`)).toEqual({ slug: 'abc', username: 'alice' })
@@ -306,18 +315,34 @@ describe('decideAdmission', () => {
         candidate(),
         facts({
           entry_count: MAX_THREAD_ENTRIES,
-          existing: { actor_uri: `${WEB}/users/bob`, challenge_id: 'c1' },
+          existing: stored(),
         }),
       ),
     ).toMatchObject({ admitted: true })
   })
 
-  test('only the author updates an entry', () => {
+  test('an edit keeps its place when its author left or the entry it answered is gone', () => {
+    const reply = candidate({ audience: 'participants', in_reply_to_uri: `${WEB}/users/alice/feed/x` })
+    const existing = stored({ audience: 'participants', root_entry_id: 'r0' })
+    expect(decideAdmission(reply, facts({ existing, is_participant: false }))).toEqual({
+      admitted: true,
+      audience: 'participants',
+      root_entry_id: 'r0',
+    })
+  })
+
+  test('an edit that changes the audience is judged like a new entry', () => {
     expect(
       decideAdmission(
-        candidate(),
-        facts({ existing: { actor_uri: `${WEB}/users/carol`, challenge_id: 'c1' } }),
+        candidate({ audience: 'participants' }),
+        facts({ existing: stored(), is_participant: false }),
       ),
+    ).toEqual({ admitted: false, reason: 'not_participant' })
+  })
+
+  test('only the author updates an entry', () => {
+    expect(
+      decideAdmission(candidate(), facts({ existing: stored({ actor_uri: `${WEB}/users/carol` }) })),
     ).toEqual({ admitted: false, reason: 'not_author' })
   })
 
