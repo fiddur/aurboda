@@ -29,6 +29,7 @@ const replyPost = (id: string, createdAt: string, over: Partial<FeedPostRecord> 
   activity_id: null,
   article: null,
   autoshare_rule_id: null,
+  challenge_uri: null,
   challenge: null,
   dashboard: null,
   exercise: null,

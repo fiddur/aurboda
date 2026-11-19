@@ -11,6 +11,7 @@ const record = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   activity_id: null,
   article: null,
   autoshare_rule_id: null,
+  challenge_uri: null,
   challenge: null,
   created_at: new Date('2026-11-01T07:30:00.000Z'),
   dashboard: null,

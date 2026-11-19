@@ -33,6 +33,14 @@ import {
 } from './schemas/admin.ts'
 import { skipAutoshareBodySchema, skipAutoshareResponseSchema } from './schemas/autoshare-rules.ts'
 import {
+  challengeCommentBodySchema,
+  challengeThreadEntryResponseSchema,
+  challengeThreadHideBodySchema,
+  challengeThreadQuerySchema,
+  challengeThreadResponseSchema,
+  publicChallengeThreadQuerySchema,
+} from './schemas/challenge-thread.ts'
+import {
   challengeParticipationsResponseSchema,
   challengePreviewQuerySchema,
   challengePreviewResponseSchema,
@@ -399,6 +407,136 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List my challenge participations',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/thread': {
+      get: {
+        description:
+          "A challenge's comment thread, as the authenticated user may see it: top-level entries newest first (20 a page), each with its replies oldest first. `participants` entries are shown to the host and members only; hidden entries only to the host. Only challenges hosted on this instance.",
+        requestParams: { query: challengeThreadQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeThreadResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a challenge page URL, or the challenge is hosted on another server',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Read a challenge's comment thread",
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/thread/comments': {
+      post: {
+        description:
+          'Comment in a challenge thread, or reply to an entry. The comment is a feed post of the author (edit or delete it through `PATCH`/`DELETE /feed/{postId}`). `participants` is for the host and members; an unlisted challenge takes only `participants`; a reply is never wider than its parent. A thread holds at most 2,000 entries.',
+        requestBody: { content: { 'application/json': { schema: challengeCommentBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: challengeThreadEntryResponseSchema } },
+            description: 'The new entry',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Blank comment, not a challenge page URL, or a challenge hosted on another server',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The audience is not open to the user',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge, or no such entry to reply to',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The thread is full',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Comment in a challenge thread',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/thread/entries/{entryId}/hidden': {
+      delete: {
+        description: 'Show a hidden thread entry again. The host of the challenge or an admin only.',
+        requestParams: {
+          path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }),
+          query: challengeThreadHideBodySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeThreadEntryResponseSchema } },
+            description: 'The entry',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not the host or an admin',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge or entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unhide a thread entry',
+        tags: ['Challenges'],
+      },
+      post: {
+        description:
+          'Hide a thread entry (and, for a top-level entry, its replies) from everyone but the host. The host of the challenge or an admin only.',
+        requestBody: { content: { 'application/json': { schema: challengeThreadHideBodySchema } } },
+        requestParams: { path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeThreadEntryResponseSchema } },
+            description: 'The entry',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not the host or an admin',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge or entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Hide a thread entry',
+        tags: ['Challenges'],
+      },
+    },
+    '/public/{username}/challenges/{slug}/thread': {
+      get: {
+        description:
+          "A challenge's comment thread as a visitor sees it: public entries that are not hidden. An unlisted challenge answers an empty thread. No authentication.",
+        requestParams: {
+          path: z.object({
+            slug: z.string().meta({ description: 'Challenge slug' }),
+            username: z.string().meta({ description: 'The host' }),
+          }),
+          query: publicChallengeThreadQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengeThreadResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such user or challenge',
+          },
+        },
+        summary: "Read a challenge's public comment thread",
         tags: ['Challenges'],
       },
     },

@@ -6,7 +6,7 @@
  * article sanitiser, so a feed reader shows the same prose and chart images a
  * federated Note carries; other posts carry the HTML they federate with.
  */
-import type { ArticleContent, FeedPost, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedPost, FeedPostVisibility } from '@aurboda/api-spec'
 
 import type { ArticleFlagNames } from './article.ts'
 
@@ -32,7 +32,7 @@ export const ATOM_ENTRY_LIMIT = 20
 
 export interface AtomArticleSource {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   image_token: string
   created_at: Date
   updated_at: Date

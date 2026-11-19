@@ -4,7 +4,7 @@ import type {
   DashboardShare,
   ExerciseShare,
   FeedPostKind,
-  FeedVisibility,
+  FeedPostVisibility,
 } from '@aurboda/api-spec'
 /**
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
@@ -75,7 +75,7 @@ const noteHashtags = (ctx: Context<void>, user: string, tags: readonly string[] 
  * `addressingFor` uses for the JSON object model, mapped through `URL` so the
  * two can't drift.
  */
-export const recipients = (visibility: FeedVisibility, followers: URL): { to: URL[]; cc: URL[] } => {
+export const recipients = (visibility: FeedPostVisibility, followers: URL): { to: URL[]; cc: URL[] } => {
   const { cc, to } = addressingFor(visibility, followers.href)
   return { cc: cc.map((u) => new URL(u)), to: to.map((u) => new URL(u)) }
 }
@@ -85,7 +85,7 @@ export const recipients = (visibility: FeedVisibility, followers: URL): { to: UR
  * may quote", so every Note declares one: anyone for public/unlisted posts, only
  * the author (Mastodon's own form of "just me") for followers-only ones.
  */
-export const quoteInteractionPolicy = (visibility: FeedVisibility, actorUri: URL): InteractionPolicy =>
+export const quoteInteractionPolicy = (visibility: FeedPostVisibility, actorUri: URL): InteractionPolicy =>
   new InteractionPolicy({
     canQuote: new InteractionRule({
       automaticApprovals: [isPubliclyVisible(visibility) ? PUBLIC_COLLECTION : actorUri],
@@ -121,7 +121,7 @@ export interface DeliverablePost {
   included_metrics: string[]
   /** Metric keys whose series were explicitly shared (drive `quant:series` links). */
   series_metrics: string[]
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   /** The author's personal message (plain text); null/undefined = none shared. */
   message?: string | null
   created_at: Date
@@ -513,7 +513,7 @@ export const revokeQuoteStamps = async (
 /** The delivery-facing view of an article post (its `article` guaranteed present). */
 export interface DeliverableArticle {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   image_token: string
@@ -665,7 +665,7 @@ export const deliverFeedArticleUpdate = async (
 /** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
 export interface DeliverableChallenge {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   challenge: ChallengeShare
@@ -919,9 +919,9 @@ const deliverToMentioned = async (
 }
 
 /** Mastodon pushes public posts only to relays: not unlisted, not followers-only. */
-const toRelays = (post: { visibility: FeedVisibility }): boolean => post.visibility === 'public'
+const toRelays = (post: { visibility: FeedPostVisibility }): boolean => post.visibility === 'public'
 
-const relayCreate = (post: { visibility: FeedVisibility }, create: Activity): Activity | null =>
+const relayCreate = (post: { visibility: FeedPostVisibility }, create: Activity): Activity | null =>
   toRelays(post) ? create : null
 
 /**
@@ -933,7 +933,7 @@ const relayCreate = (post: { visibility: FeedVisibility }, create: Activity): Ac
 const relayEdit = (
   ctx: Context<void>,
   user: string,
-  post: { id: string; visibility: FeedVisibility },
+  post: { id: string; visibility: FeedPostVisibility },
   update: Activity,
 ): Activity => (toRelays(post) ? update : buildFeedDelete(ctx, user, { id: post.id, visibility: 'public' }))
 
@@ -1066,7 +1066,7 @@ export const deliverFeedChallengeUpdate = async (
 /** The delivery-facing view of an exercise post (its `exercise` guaranteed present). */
 export interface DeliverableExercise {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   exercise: ExerciseShare
@@ -1249,7 +1249,7 @@ export const deliverFeedExerciseUpdate = async (
 /** The delivery-facing view of a dashboard post (its `dashboard` guaranteed present). */
 export interface DeliverableDashboard {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   dashboard: DashboardShare
@@ -1367,7 +1367,7 @@ export const deliverFeedDashboardUpdate = async (
 /** The delivery-facing view of a reply post (its reply target guaranteed present). */
 export interface DeliverableReply {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   message: string | null

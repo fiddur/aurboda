@@ -205,6 +205,16 @@ explicit metric selection that bounds what is shared:
   pair is the shared `ShareVisibility` vocabulary (see [Sharing](./sharing.md)) that
   [challenges](./challenges.md) and shared dashboards also use; the feed extends it
   with the `followers` audience.
+  A post can also be **`participants`**: only a comment in a
+  [challenge's comment thread](./challenges.md#comment-thread) takes it, for an entry read by the
+  host and the challenge's members alone. No request body can ask for it, and an edit cannot move
+  a challenge comment between `participants` and the other visibilities. A `participants` post is
+  never federated: no `Create`, `Update` or `Delete` goes to followers or relays, it is addressed
+  to nobody, it is left out of the outbox, the public profile listing, the blog view and the Atom
+  feeds, and its Note id, its structured endpoint and its images answer 404 (a capability token
+  does not open it either). The author still sees it in their own feed. A post that belongs to a
+  challenge hosted here (a comment, a share, the result post) carries **`in_challenge`**
+  (`{ name, url }`) in the API.
 - **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
   GPS route-map image to the post (see [Images](#images)).
 - **`include_exercises`** — share each exercise of the session: its sets (reps, weight,

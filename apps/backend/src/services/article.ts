@@ -16,7 +16,7 @@ import type {
   ArticleContent,
   ArticleDraftBlock,
   ArticleWarning,
-  FeedVisibility,
+  FeedPostVisibility,
 } from '@aurboda/api-spec'
 
 import {
@@ -108,7 +108,7 @@ const articleBlockUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -131,7 +131,7 @@ export const articleBlockImageUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -150,7 +150,7 @@ export const articleBlockFigureUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,

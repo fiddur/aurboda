@@ -353,6 +353,23 @@ export {
 } from './challenges.ts'
 
 export {
+  type ChallengeThreadCursor,
+  type ChallengeThreadEntryInput,
+  type ChallengeThreadEntryPageRow,
+  type ChallengeThreadEntryRecord,
+  countChallengeThreadEntries,
+  countVisibleChallengeThreadEntries,
+  deleteChallengeThreadEntry,
+  getChallengeThreadEntryById,
+  getChallengeThreadEntryByObjectUri,
+  listChallengeThreadReplies,
+  listChallengeThreadTopLevel,
+  setChallengeThreadEntryHidden,
+  type ThreadVisibility,
+  upsertChallengeThreadEntry,
+} from './challenge-thread.ts'
+
+export {
   type ChallengeBanner,
   deleteChallengeBanner,
   getChallengeBanner,

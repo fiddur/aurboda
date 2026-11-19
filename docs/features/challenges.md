@@ -411,6 +411,53 @@ not notified.
 The older Aurboda-only shape (`/.well-known/aurboda`, `POST /public/<user>/<slug>/members`
 with a `{ total, buckets }` data URL) still works; see the legacy table above.
 
+## Comment thread
+
+A challenge hosted here has one comment thread, kept in the host's database
+(`challenge_thread_entries`, deleted with the challenge). Its entries are comments and
+replies, the personal note of a share of the challenge (a share without a note is not an
+entry) and the host's result post. Every entry has an **audience**:
+
+- **`public`** — read by anyone who can see the challenge, signed in or not. Only a
+  public challenge has public entries.
+- **`participants`** — read and written only by the host and the challenge's active
+  members. Every entry of an unlisted challenge is `participants`.
+
+The rules:
+
+1. Who may comment: the host and members with either audience on a public challenge,
+   anyone else signed in with `public` only; on an unlisted challenge the host and
+   members with `participants` only. Anything else is refused (`403`).
+2. Replies nest one level: a reply to a reply hangs under the same top-level entry. A
+   reply may not be wider than the entry it answers (`400`): a reply to a
+   `participants` entry is `participants`.
+3. A comment is a feed post of its author (kind `reply`, visibility `unlisted` for a
+   public comment and `participants` for a participants one, see
+   [Feed posts](./feed.md#feed-posts)), so it is edited and deleted through
+   `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
+   thread follows. Its audience cannot change after posting (`400`). A public comment is
+   delivered like any reply; a participants one never leaves the instance.
+4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
+   hidden top-level entry hides its replies. Hiding is undone by unhiding.
+5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
+6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
+   the host and every local member except its author.
+7. Comments on a challenge hosted on another server are not available yet (`400`).
+
+A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
+with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
+`role` (`host`, `member` or `visitor`), the audiences they may comment with and
+`can_comment`. An entry the viewer wrote carries `own_post_id` and `message` (the markdown
+source).
+
+API: `GET /challenges/thread?challenge_url=<page url>[&cursor=]`,
+`POST /challenges/thread/comments` (`{ challenge_url, audience, message, in_reply_to_id? }`,
+`201` with the entry), `POST /challenges/thread/entries/:entryId/hidden` (body
+`{ challenge_url }`) and `DELETE /challenges/thread/entries/:entryId/hidden?challenge_url=`.
+The logged-out view is `GET /public/<user>/challenges/<slug>/thread[?cursor=]` (public
+entries only). MCP: `get_challenge_thread`, `add_challenge_comment`,
+`hide_challenge_comment`, `unhide_challenge_comment`.
+
 ## Completion & winner announcement
 
 When a challenge's window closes, the **host's instance** announces the result: a
@@ -562,7 +609,7 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `GET /challenges/preview?challenge_url=<url>`, `POST /challenges/join`,
 `DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
 (`create/list/update/delete_challenge`, `join_challenge`, `list_joined_challenges`, `discover_challenges`,
-`preview_challenge`). A preview reads the challenge the way a join would — in-process for
+`preview_challenge`). The comment thread has its own routes and tools (see _Comment thread_). A preview reads the challenge the way a join would — in-process for
 this instance, else from the host's QuantPub document or Aurboda public resolver — and
 answers its name, host (`host_identity`, `host_handle`), window, timezone and spec without
 joining; it fails with the join's statuses (400 not a challenge link, 404 no such challenge

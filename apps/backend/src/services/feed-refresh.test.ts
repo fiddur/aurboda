@@ -20,6 +20,7 @@ const post = (id: string, over: Partial<FeedPostRecord> = {}): FeedPostRecord =>
   activity_id: 'a1',
   article: null,
   autoshare_rule_id: null,
+  challenge_uri: null,
   challenge: null,
   dashboard: null,
   exercise: null,

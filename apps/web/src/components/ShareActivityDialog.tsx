@@ -151,7 +151,9 @@ export function ShareActivityDialog({
   const [series, setSeries] = useState<Set<MetricType>>(
     () => new Set(post ? initialSeriesSelection(post) : defaults.series),
   )
-  const [visibility, setVisibility] = useState<FeedVisibility>(post?.visibility ?? 'public')
+  const [visibility, setVisibility] = useState<FeedVisibility>(
+    post == null || post.visibility === 'participants' ? 'public' : post.visibility,
+  )
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
   const [includeExercises, setIncludeExercises] = useState(() => initialIncludeExercises(post))
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))

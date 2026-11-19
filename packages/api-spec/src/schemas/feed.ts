@@ -54,6 +54,17 @@ export const feedVisibilitySchema = z
 
 export type FeedVisibility = z.infer<typeof feedVisibilitySchema>
 
+/**
+ * The visibility a stored post can have: the three a share or update body accepts, plus
+ * `participants`, which only a comment or share inside a challenge's thread carries. Such a post
+ * is read by the challenge's host and members alone: never public, never sent to followers.
+ */
+export const feedPostVisibilitySchema = z
+  .enum([...feedVisibilitySchema.options, 'participants'])
+  .meta({ description: 'Audience of a stored feed post', id: 'FeedPostVisibility' })
+
+export type FeedPostVisibility = z.infer<typeof feedPostVisibilitySchema>
+
 const scalarMetricKeySchema = z.string().min(1).max(64)
 
 /**
@@ -666,9 +677,19 @@ export const feedPostSchema = z
       description:
         "The post's native structured payload (an activity's typed metrics + inline series; on the public profile listing also an article's resolved blocks or a challenge's document + standings snapshot), identical to what a subscribing peer receives — drives the native card render",
     }),
+    in_challenge: z
+      .object({
+        name: z.string().meta({ description: "The challenge's current name" }),
+        url: z.string().meta({ description: "The challenge's public page URL" }),
+      })
+      .optional()
+      .meta({
+        description:
+          'The challenge whose comment thread this post is in (a comment or a share), resolved at read time; absent when it is in none or the challenge is gone',
+      }),
     tags: postTagsSchema,
     updated_at: z.string().meta({ description: 'Last update timestamp (ISO 8601)' }),
-    visibility: feedVisibilitySchema,
+    visibility: feedPostVisibilitySchema,
   })
   .meta({ id: 'FeedPost' })
 
