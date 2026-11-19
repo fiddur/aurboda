@@ -221,6 +221,7 @@ describe('labels and summaries', () => {
     expect(setLabel({ reps: 12 })).toBe('12 reps')
     expect(setLabel({ time: 72 })).toBe('1:12')
     expect(setLabel({ reps: 10, set_type: 'warmup', weight: 40 })).toBe('40 kg × 10 (warmup)')
+    expect(setLabel({ reps: 10, set_type: 'normal', weight: 40 })).toBe('40 kg × 10')
     expect(setLabel({})).toBe('—')
   })
 

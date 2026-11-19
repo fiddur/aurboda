@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import {
   codeFromHash,
   isLastLoginMethod,
+  isUnauthorized,
+  linkPageForRetry,
   loginReturningTo,
   oidcErrorMessage,
   parseEmailDomains,
@@ -108,6 +110,33 @@ describe('loginReturningTo', () => {
     expect(href).toBe('/login?next=%2Fsettings%2Foidc-link%3Fx%3D1%23code%3Dabc')
     expect(new URL(href, 'https://example.org').searchParams.get('next')).toBe(
       '/settings/oidc-link?x=1#code=abc',
+    )
+  })
+})
+
+describe('isUnauthorized', () => {
+  test('only an HTTP 401 from the API', () => {
+    expect(isUnauthorized({ isAxiosError: true, response: { status: 401 } })).toBe(true)
+    expect(isUnauthorized({ isAxiosError: true, response: { status: 400 } })).toBe(false)
+    expect(isUnauthorized({ isAxiosError: true })).toBe(false)
+    expect(isUnauthorized(new Error('network'))).toBe(false)
+  })
+})
+
+describe('linkPageForRetry', () => {
+  test('puts the code back in the fragment and the verifier back in storage', () => {
+    const items = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => items.get(key) ?? null,
+      removeItem: (key: string) => void items.delete(key),
+      setItem: (key: string, value: string) => void items.set(key, value),
+    }
+    const url = linkPageForRetry('a+b', 'v1', { pathname: '/settings/oidc-link', search: '?x=1' }, storage)
+    expect(url).toBe('/settings/oidc-link?x=1#code=a%2Bb')
+    expect(codeFromHash(new URL(url, 'https://example.org').hash)).toBe('a+b')
+    expect(takeOidcVerifier(storage)).toBe('v1')
+    expect(loginReturningTo(new URL(url, 'https://example.org'))).toBe(
+      '/login?next=%2Fsettings%2Foidc-link%3Fx%3D1%23code%3Da%252Bb',
     )
   })
 })
