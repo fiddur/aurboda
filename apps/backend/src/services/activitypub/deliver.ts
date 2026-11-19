@@ -99,6 +99,8 @@ export interface FeedDeliveryDeps {
   /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
   apiBaseUrl: string
   listRelayRecipients?: () => Promise<RelayRecipient[]>
+  /** Local users holding a boost card of this Note by this author without following them (usernames). */
+  listLocalBoostCardHolders?: (noteUri: string, authorUri: string) => Promise<string[]>
   /** Records this server's public posts on the public tag pages (`services/public-tags.ts`). */
   publicTagPosts?: LocalPublicTagPosts
 }
@@ -990,6 +992,46 @@ const recordPublicTagPost = async (
   }
 }
 
+const isPublicNote = (note: Note): boolean =>
+  [...note.toIds, ...note.ccIds].some((url) => url.href === PUBLIC_COLLECTION.href)
+
+/**
+ * An edit reaches the local users who hold a boost card of the Note through a followed tag
+ * without following the author: a tag actor forwards no edits. They get the Update while the
+ * post is public or unlisted, else the public Delete `relayEdit` built, so a holder who is no
+ * follower loses the card rather than receiving a post narrowed to followers.
+ */
+const deliverToLocalCardHolders = async (
+  deps: Pick<FeedDeliveryDeps, 'listLocalBoostCardHolders'>,
+  ctx: Context<void>,
+  user: string,
+  activity: Activity,
+  relayActivity: Activity | null,
+): Promise<void> => {
+  if (deps.listLocalBoostCardHolders == null || !(activity instanceof Update)) return
+  try {
+    const note = await activity.getObject()
+    if (!(note instanceof Note) || note.id == null) return
+    const toSend = isPublicNote(note) ? activity : relayActivity instanceof Delete ? relayActivity : null
+    if (toSend == null) return
+    const holders = await deps.listLocalBoostCardHolders(note.id.href, ctx.getActorUri(user).href)
+    for (const holder of holders) {
+      if (holder === user) continue
+      try {
+        await ctx.sendActivity(
+          { identifier: user },
+          { id: ctx.getActorUri(holder), inboxId: ctx.getInboxUri(holder) },
+          toSend,
+        )
+      } catch (error) {
+        console.warn(`⚠️ Edit delivery to local card holder ${holder} failed:`, error)
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Edit delivery to local card holders failed:', error)
+  }
+}
+
 /**
  * Fan an activity out to followers, to each tagged actor and (`relayActivity`,
  * when set) to the accepted relays — as independent deliveries. Without an outbox queue
@@ -1010,6 +1052,7 @@ const fanOut = async (
     mentions.length > 0 ? deliverToMentioned(ctx, user, mentions, activity) : Promise.resolve(),
     relayActivity == null ? Promise.resolve() : deliverToRelays(deps, ctx, user, relayActivity),
     relayActivity == null ? Promise.resolve() : recordPublicTagPost(deps, ctx, user, relayActivity),
+    deliverToLocalCardHolders(deps, ctx, user, activity, relayActivity),
   ])
   if (followers.status === 'rejected') throw followers.reason
 }

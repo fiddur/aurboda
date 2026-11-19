@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getDbForUser, query, rewriteLegacyQuantpubStructured } from './connection.ts'
-import { upsertFeedFollowing } from './feed-following.ts'
+import { markFeedFollowingAccepted, upsertFeedFollowing } from './feed-following.ts'
 import {
   addTagBoostCarrier,
   type BoostCarrier,
@@ -11,10 +11,12 @@ import {
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  foldTagBoostCards,
   getBoostCardAuthor,
   getTimelineEntryById,
   getTimelineEntryByObjectUri,
   hasCachedActorPresentation,
+  holdsBoostCardWithoutFollowing,
   isTimelineEntryVisible,
   listReplyUncheckedEntries,
   listTimelineEntries,
@@ -702,6 +704,25 @@ describe('Timeline store integration', () => {
       expect(afterAlice.find((e) => e.object_uri === ANNOUNCE)?.boosted_by_display_name).toBe('Bob Renamed')
     })
 
+    test('holdsBoostCardWithoutFollowing: a card of the Note by that author, and no accepted follow (#1852)', async () => {
+      const user = getTestUser()
+      const ALICE_URI = 'https://mastodon.example/users/alice'
+      const NOTE = 'https://mastodon.example/notes/1'
+      expect(await holdsBoostCardWithoutFollowing(user, NOTE, ALICE_URI)).toBe(false)
+      await upsertTimelineEntry(user, boostOfAlice())
+      expect(await holdsBoostCardWithoutFollowing(user, NOTE, ALICE_URI)).toBe(true)
+      expect(await holdsBoostCardWithoutFollowing(user, NOTE, 'https://elsewhere.example/users/eve')).toBe(
+        false,
+      )
+      expect(await holdsBoostCardWithoutFollowing(user, 'https://mastodon.example/notes/2', ALICE_URI)).toBe(
+        false,
+      )
+      await upsertFeedFollowing(user, { actor_uri: ALICE_URI, inbox_uri: `${ALICE_URI}/inbox` })
+      expect(await holdsBoostCardWithoutFollowing(user, NOTE, ALICE_URI)).toBe(true)
+      await markFeedFollowingAccepted(user, ALICE_URI)
+      expect(await holdsBoostCardWithoutFollowing(user, NOTE, ALICE_URI)).toBe(false)
+    })
+
     test('unfollowing drops the actor’s own posts and their boosts, but not others’ boosts of them', async () => {
       const user = getTestUser()
       const alice = 'https://mastodon.example/users/alice'
@@ -839,6 +860,123 @@ describe('Timeline store integration', () => {
       expect(await carriersOf(user)).toBeNull()
       expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(true)
       expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+    })
+
+    test('the card’s own Announce, re-announced after its Undo, joins its carriers again (#1846)', async () => {
+      const user = getTestUser()
+      await followTag(user, RUNNING)
+      await followTag(user, TRAIL)
+      await tagCard(user, RUNNING)
+      expect(await addTagBoostCarrier(user, NOTE, carrier(TRAIL))).toBe(true)
+      expect(await deleteBoostEntry(user, announceOf(RUNNING), RUNNING)).toBe(true)
+      expect(await carriersOf(user)).toEqual([carrier(TRAIL)])
+      expect(await addTagBoostCarrier(user, NOTE, carrier(RUNNING))).toBe(true)
+      expect(await carriersOf(user)).toEqual([carrier(TRAIL), carrier(RUNNING)])
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), TRAIL, carrier(TRAIL).handle]])
+      expect(await addTagBoostCarrier(user, NOTE, carrier(RUNNING))).toBe(false)
+      expect(await carriersOf(user)).toEqual([carrier(TRAIL), carrier(RUNNING)])
+      expect(await deleteBoostEntry(user, announceOf(TRAIL), TRAIL)).toBe(true)
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), RUNNING, carrier(RUNNING).handle]])
+      expect(await carriersOf(user)).toEqual([carrier(RUNNING)])
+    })
+
+    describe('foldTagBoostCards (#1846)', () => {
+      const cardsOf = async (user: string) =>
+        (
+          await query<{
+            object_uri: string
+            boosted_by_actor_uri: string
+            boost_carriers: BoostCarrier[] | null
+          }>(
+            user,
+            'SELECT object_uri, boosted_by_actor_uri, boost_carriers FROM timeline_entry ORDER BY received_at, id',
+          )
+        ).rows
+
+      const twoTagCards = async (user: string) => {
+        await followTag(user, RUNNING)
+        await followTag(user, TRAIL)
+        await tagCard(user, RUNNING)
+        await tagCard(user, TRAIL)
+      }
+
+      test('two tag cards of one Note fold into the earliest, carrying both', async () => {
+        const user = getTestUser()
+        await twoTagCards(user)
+        await foldTagBoostCards(user, NOTE)
+        expect(await cardsOf(user)).toEqual([
+          {
+            boost_carriers: [carrier(RUNNING), carrier(TRAIL)],
+            boosted_by_actor_uri: RUNNING,
+            object_uri: announceOf(RUNNING),
+          },
+        ])
+      })
+
+      test('a second fold, or one of a single card, changes nothing', async () => {
+        const user = getTestUser()
+        await followTag(user, RUNNING)
+        await tagCard(user, RUNNING)
+        await foldTagBoostCards(user, NOTE)
+        expect(await carriersOf(user)).toBeNull()
+        await followTag(user, TRAIL)
+        await tagCard(user, TRAIL)
+        await foldTagBoostCards(user, NOTE)
+        const once = await cardsOf(user)
+        await foldTagBoostCards(user, NOTE)
+        expect(await cardsOf(user)).toEqual(once)
+      })
+
+      test('concurrent folds leave one card', async () => {
+        const user = getTestUser()
+        await twoTagCards(user)
+        await Promise.all([foldTagBoostCards(user, NOTE), foldTagBoostCards(user, NOTE)])
+        expect(await cardsOf(user)).toHaveLength(1)
+        expect(await carriersOf(user)).toEqual([carrier(RUNNING), carrier(TRAIL)])
+      })
+
+      test('a person’s boost card of the same Note is left alone', async () => {
+        const user = getTestUser()
+        const BOB = 'https://remote.example/users/bob'
+        await twoTagCards(user)
+        await tagCard(user, BOB)
+        await foldTagBoostCards(user, NOTE)
+        expect((await cardsOf(user)).map((c) => c.boosted_by_actor_uri)).toEqual([RUNNING, BOB])
+      })
+
+      test('after a fold, an Undo of either carrier keeps the card and an Undo of both removes it', async () => {
+        for (const [first, second] of [
+          [RUNNING, TRAIL],
+          [TRAIL, RUNNING],
+        ]) {
+          await cleanTestDb()
+          const user = getTestUser()
+          await twoTagCards(user)
+          await foldTagBoostCards(user, NOTE)
+          expect(await deleteBoostEntry(user, announceOf(first), first)).toBe(true)
+          expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), second, carrier(second).handle]])
+          expect(await deleteBoostEntry(user, announceOf(second), second)).toBe(true)
+          expect(await listTimelineEntries(user, 10)).toHaveLength(0)
+        }
+      })
+    })
+
+    test('updateTimelineActorPresentation renames a carrier in place; a carrier alone passes the cache gate', async () => {
+      const user = getTestUser()
+      await cardOfThree(user)
+      await query(user, `DELETE FROM feed_following WHERE actor_uri = $1`, [TRAIL])
+      expect(await hasCachedActorPresentation(user, TRAIL)).toBe(true)
+      await updateTimelineActorPresentation(user, TRAIL, {
+        avatar_url: null,
+        display_name: '#Trail running',
+        handle: '@trail@tags.example',
+      })
+      expect(await carriersOf(user)).toEqual([
+        carrier(RUNNING),
+        { ...carrier(TRAIL), display_name: '#Trail running' },
+        carrier(HIKING),
+      ])
+      expect(await shownBooster(user)).toEqual([[announceOf(RUNNING), RUNNING, carrier(RUNNING).handle]])
     })
 
     test('unfollowing one carrier keeps the card; unfollowing every carrier removes it', async () => {

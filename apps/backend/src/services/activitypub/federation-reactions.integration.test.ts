@@ -1,5 +1,5 @@
 import { Announce, Create, Like, Note, Person, Undo, Update } from '@fedify/fedify/vocab'
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 /**
  * Inbox behaviour for likes ⭐ and boosts 🔄, against a real per-user database.
@@ -19,10 +19,20 @@ import {
 } from '../../db/feed-following.ts'
 import { listFeedPostReactions } from '../../db/feed-reactions.ts'
 import { createFeedPost } from '../../db/feed.ts'
+import { _setDbForUser } from '../../db/index.ts'
 import { listNotifications } from '../../db/notifications.ts'
+import { createRolePool, type UserDb } from '../../db/pool.ts'
 import { deleteTimelineEntriesByActor, listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../../test/db-test-helper.ts'
+import {
+  cleanTestDb,
+  createTestDatabase,
+  getTestUser,
+  startTestDb,
+  stopTestDb,
+  type TestDatabase,
+} from '../../test/db-test-helper.ts'
 import { actorDocument, inboxContext, type StubDocuments } from '../../test/inbox-context.ts'
+import { type DeliverableArticle, deliverFeedArticleUpdate, type FeedDeliveryDeps } from './deliver.ts'
 import {
   createFeedFederation,
   handleInboundAnnounce,
@@ -31,6 +41,7 @@ import {
   handleInboundUndo,
   handleInboundUpdate,
 } from './federation.ts'
+import { createLocalBoostCardHolders } from './local-card-holders.ts'
 import { dateToTemporalInstant } from './temporal-interop.ts'
 
 const CONTAINER_TIMEOUT = 120_000
@@ -766,5 +777,105 @@ describe('Inbound likes and boosts', () => {
       content: '<p>the victim’s own words</p>',
       object_uri: victimNote,
     })
+  })
+})
+
+describe('a local author’s edit reaches a local holder of a tag-carried boost card (#1852)', () => {
+  const BERT = `${ORIGIN}/users/bert`
+  const TAG = 'https://tags.example/user/running'
+  const POST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const BERT_NOTE = `${BERT}/feed/${POST_ID}`
+  const OTHER_USER = 'carl'
+  let other: TestDatabase
+  let otherPool: UserDb
+
+  const article = (title: string): DeliverableArticle => ({
+    article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title },
+    created_at: new Date('2026-07-03T00:00:00Z'),
+    id: POST_ID,
+    image_token: 'tok',
+    updated_at: new Date('2026-07-04T00:00:00Z'),
+    visibility: 'public',
+  })
+
+  const docs = (): StubDocuments => ({
+    [BERT]: actorDocument(BERT, 'bert', 'Bert'),
+    [BERT_NOTE]: {
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      attributedTo: BERT,
+      content: '<p>Bert’s first words</p>',
+      id: BERT_NOTE,
+      published: '2026-07-03T00:00:00Z',
+      type: 'Note',
+    },
+    [TAG]: actorDocument(TAG, 'running', '#running'),
+  })
+
+  beforeAll(async () => {
+    await startTestDb()
+    other = await createTestDatabase()
+    otherPool = createRolePool({ connectionString: other.uri, max: 2 })
+    _setDbForUser(OTHER_USER, otherPool)
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await otherPool.end()
+    await other.drop()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('the Update goes to the holder’s inbox only, and rewrites the card there', async () => {
+    const user = getTestUser()
+    await upsertFeedFollowing(user, { actor_uri: TAG, inbox_uri: `${TAG}/inbox`, tag: 'running' })
+    await markFeedFollowingAccepted(user, TAG)
+    await handleInboundAnnounce(
+      inboxCtx(user, docs()),
+      new Announce({ actor: new URL(TAG), id: new URL(`${TAG}/announces/1`), object: new URL(BERT_NOTE) }),
+      ORIGIN,
+    )
+    expect((await listTimelineEntries(user, 10)).map((e) => [e.boost_of_uri, e.actor_uri])).toEqual([
+      [BERT_NOTE, BERT],
+    ])
+
+    // Carl holds a card of the same Note too, but follows Bert: the followers delivery reaches him.
+    await upsertTimelineEntry(OTHER_USER, {
+      actor_uri: BERT,
+      boost_of_uri: BERT_NOTE,
+      boosted_by_actor_uri: TAG,
+      content: '<p>Bert’s first words</p>',
+      object_uri: `${TAG}/announces/1`,
+      published_at: new Date('2026-07-03T00:00:00Z'),
+    })
+    await upsertFeedFollowing(OTHER_USER, { actor_uri: BERT, inbox_uri: `${BERT}/inbox` })
+    await markFeedFollowingAccepted(OTHER_USER, BERT)
+
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const sendActivity = vi.fn().mockResolvedValue(undefined)
+    Object.assign(ctx, { sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      listLocalBoostCardHolders: createLocalBoostCardHolders({
+        listUsers: async () => [user, OTHER_USER],
+      }),
+      origin: ORIGIN,
+    }
+    await deliverFeedArticleUpdate(deps, 'bert', article('Bert’s edited words'))
+
+    const toHolders = sendActivity.mock.calls.filter(([, recipient]) => typeof recipient !== 'string')
+    expect(toHolders.map(([, recipient]) => recipient.inboxId.href)).toEqual([
+      `${ORIGIN}/users/${user}/inbox`,
+    ])
+    const [[, , update]] = toHolders
+    expect(update).toBeInstanceOf(Update)
+
+    await handleInboundUpdate(inboxCtx(user, docs()), update as Update, ORIGIN)
+    const [card] = await listTimelineEntries(user, 10)
+    expect(card.boost_of_uri).toBe(BERT_NOTE)
+    expect(card.content).toContain('Bert’s edited words')
   })
 })
