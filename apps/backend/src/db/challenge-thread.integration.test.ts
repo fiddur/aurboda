@@ -11,6 +11,7 @@ import {
   deleteChallengeThreadEntry,
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
+  listChallengeThreadDocumentEntries,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
   setChallengeThreadEntryHidden,
@@ -234,5 +235,32 @@ describe('challenge thread entries (integration)', () => {
     await upsertChallengeThreadEntry(user, input(challenge.id, 1))
     await deleteChallenge(user, challenge.id)
     expect(await getChallengeThreadEntryByObjectUri(user, `${BOB}/feed/1`)).toBeNull()
+  })
+  test('the document entries: visible ones of the given audiences, replies as rows, newest first', async () => {
+    const user = getTestUser()
+    const challenge = await newChallenge(user)
+    const root = (await upsertChallengeThreadEntry(user, input(challenge.id, 1)))!.entry
+    await upsertChallengeThreadEntry(user, {
+      ...input(challenge.id, 2),
+      in_reply_to_uri: root.object_uri,
+      root_entry_id: root.id,
+    })
+    const hiddenRoot = (await upsertChallengeThreadEntry(user, input(challenge.id, 3)))!.entry
+    await upsertChallengeThreadEntry(user, {
+      ...input(challenge.id, 4),
+      in_reply_to_uri: hiddenRoot.object_uri,
+      root_entry_id: hiddenRoot.id,
+    })
+    await setChallengeThreadEntryHidden(user, challenge.id, hiddenRoot.id, true)
+    await upsertChallengeThreadEntry(user, { ...input(challenge.id, 5), audience: 'participants' })
+    const hidden = (await upsertChallengeThreadEntry(user, input(challenge.id, 6)))!.entry
+    await setChallengeThreadEntryHidden(user, challenge.id, hidden.id, true)
+
+    const all = await listChallengeThreadDocumentEntries(user, challenge.id, ['public', 'participants'], 500)
+    expect(all.map((e) => e.content)).toEqual(['<p>5</p>', '<p>2</p>', '<p>1</p>'])
+    const publicOnly = await listChallengeThreadDocumentEntries(user, challenge.id, ['public'], 500)
+    expect(publicOnly.map((e) => e.content)).toEqual(['<p>2</p>', '<p>1</p>'])
+    expect(await listChallengeThreadDocumentEntries(user, challenge.id, ['public'], 1)).toHaveLength(1)
+    expect(await listChallengeThreadDocumentEntries(user, challenge.id, [], 500)).toEqual([])
   })
 })

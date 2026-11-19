@@ -4,6 +4,7 @@ import type { ChallengeSpecFields } from './challenges.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { upsertChallengeBanner } from './challenge-banner.ts'
+import { getParticipationByObjectUri, updateParticipationThreadState } from './challenge-thread-copy.ts'
 import {
   createChallenge,
   createChallengeParticipation,
@@ -22,6 +23,7 @@ import {
   listChallengesAwaitingResult,
   listLeftChallengeUrls,
   listPublicChallenges,
+  markChallengeMemberActorVerified,
   markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
@@ -220,6 +222,81 @@ describe('Challenges integration', () => {
     expect(again.id).toBe(member.id)
     expect(again.actor).toBeNull()
     expect((await listChallengeMembers(user, c.id))[0].actor).toBeNull()
+  })
+
+  test('a verified actor is stamped, kept on the same actor, cleared on another', async () => {
+    const user = getTestUser()
+    const c = await createChallenge(user, sampleInput('verified'))
+    const remote = {
+      data_endpoint_url: 'https://foo.bar/api/public/bob/challenge-entries/tok',
+      display_name: 'bob',
+      identity_base_url: 'https://foo.bar/u/bob',
+      kind: 'remote' as const,
+    }
+    const member = await upsertChallengeMember(user, c.id, remote)
+    expect(member.actor_verified_at).toBeNull()
+
+    const verified = await markChallengeMemberActorVerified(user, member.id, 'https://foo.bar/users/bob')
+    expect(verified?.actor).toBe('https://foo.bar/users/bob')
+    expect(verified?.actor_verified_at).toBeInstanceOf(Date)
+    const replaced = await markChallengeMemberActorVerified(user, member.id, 'https://foo.bar/users/x')
+    expect(replaced?.actor).toBe('https://foo.bar/users/x')
+    const kept = await markChallengeMemberActorVerified(user, member.id, 'https://foo.bar/users/bob')
+
+    const same = await upsertChallengeMember(user, c.id, { ...remote, actor: 'https://foo.bar/users/bob' })
+    expect(same.actor_verified_at).toEqual(kept?.actor_verified_at)
+    const other = await upsertChallengeMember(user, c.id, { ...remote, actor: 'https://foo.bar/users/eve' })
+    expect(other.actor).toBe('https://foo.bar/users/eve')
+    expect(other.actor_verified_at).toBeNull()
+    expect(
+      await markChallengeMemberActorVerified(user, '00000000-0000-4000-8000-000000000000', 'x'),
+    ).toBeNull()
+  })
+
+  test("a participation remembers its host's thread and finds itself by object id while active", async () => {
+    const user = getTestUser()
+    const p = await createChallengeParticipation(user, {
+      challenge_url: 'https://host.example/u/freja/nov',
+      end_ts: new Date('2026-06-08T00:00:00Z'),
+      host_identity: 'https://host.example/u/freja',
+      name: 'Nov',
+      spec,
+      start_ts: new Date('2026-06-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    expect(p).toMatchObject({
+      challenge_object_uri: null,
+      host_actor_uri: null,
+      thread_attendees: [],
+      thread_audiences: [],
+      thread_synced_at: null,
+      thread_url: null,
+    })
+    const objectUri = 'https://host.example/users/freja/challenges/nov'
+    const synced = new Date('2026-06-02T00:00:00Z')
+    const updated = await updateParticipationThreadState(user, p.id, {
+      challenge_object_uri: objectUri,
+      host_actor_uri: 'https://host.example/users/freja',
+      thread_attendees: ['https://a.example/users/a'],
+      thread_audiences: ['participants'],
+      thread_synced_at: synced,
+      thread_url: `${objectUri}/thread`,
+    })
+    expect(updated).toMatchObject({
+      challenge_object_uri: objectUri,
+      thread_attendees: ['https://a.example/users/a'],
+      thread_audiences: ['participants'],
+      thread_synced_at: synced,
+      thread_url: `${objectUri}/thread`,
+    })
+    expect((await getParticipationByObjectUri(user, objectUri))?.id).toBe(p.id)
+    expect(
+      (await updateParticipationThreadState(user, p.id, { thread_synced_at: null }))?.thread_synced_at,
+    ).toBeNull()
+    expect((await updateParticipationThreadState(user, p.id, {}))?.thread_url).toBe(`${objectUri}/thread`)
+
+    await query(user, `UPDATE challenge_participations SET status = 'withdrawn' WHERE id = $1`, [p.id])
+    expect(await getParticipationByObjectUri(user, objectUri)).toBeNull()
   })
 
   test('cascade deletes members with the challenge', async () => {

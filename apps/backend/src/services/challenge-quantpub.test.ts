@@ -72,6 +72,7 @@ const challenge = (overrides: Partial<ChallengeRecord> = {}): ChallengeRecord =>
 
 const member = (overrides: Partial<ChallengeMemberRecord>): ChallengeMemberRecord => ({
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',
@@ -193,6 +194,12 @@ describe('entries', () => {
     data_token: 'tok',
     end_ts: END,
     host_checked_at: null,
+    challenge_object_uri: null,
+    host_actor_uri: null,
+    thread_attendees: [],
+    thread_audiences: [],
+    thread_synced_at: null,
+    thread_url: null,
     host_identity: 'https://qs.example/u/freja',
     id: 'p1',
     name: 'November steps',
@@ -330,6 +337,12 @@ describe('challenge documents', () => {
 
   test('the id is the ActivityPub object URL, also on the listing', () => {
     expect(buildChallengeListItem(challenge(), ctx).id).toBe('https://qs.example/users/freja/challenges/nov')
+  })
+
+  test('the thread URL is next to the object id, on the document and the listing', () => {
+    const thread = 'https://qs.example/users/freja/challenges/nov/thread'
+    expect(buildChallengeListItem(challenge(), ctx).threadUrl).toBe(thread)
+    expect(buildChallengeDocument(challenge(), [], ctx).threadUrl).toBe(thread)
   })
 
   test('an ended challenge is closed to joins', () => {

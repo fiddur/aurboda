@@ -48,6 +48,7 @@ import {
   challengesResponseSchema,
   discoverChallengesResponseSchema,
   challengeStandingsResponseSchema,
+  joinedChallengeResponseSchema,
   updateChallengeBodySchema,
   wellKnownAurbodaSchema,
   wellKnownQuantpubSchema,
@@ -410,10 +411,30 @@ const openApiDocument = createDocument({
         tags: ['Challenges'],
       },
     },
+    '/challenges/participations/{id}': {
+      get: {
+        description:
+          "A challenge the authenticated user joined, for the page on their own server: the participation, the host's page URL and, when the host can be read, the challenge and its standings as the host's page shows them (both absent otherwise).",
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Participation ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: joinedChallengeResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such participation of the user',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a joined challenge',
+        tags: ['Challenges'],
+      },
+    },
     '/challenges/thread': {
       get: {
         description:
-          "A challenge's comment thread, as the authenticated user may see it: top-level entries newest first (20 a page), each with its replies oldest first. `participants` entries are shown to the host and members only; hidden entries only to the host. Only challenges hosted on this instance.",
+          "A challenge's comment thread, as the authenticated user may see it: top-level entries newest first (20 a page), each with its replies oldest first. `participants` entries are shown to the host and members only; hidden entries only to the host. For a challenge hosted on another server, a member reads the copy of the host's thread kept here, pulled from the host when older than five minutes.",
         requestParams: { query: challengeThreadQuerySchema },
         responses: {
           200: {
@@ -422,11 +443,20 @@ const openApiDocument = createDocument({
           },
           400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Not a challenge page URL, or the challenge is hosted on another server',
+            description:
+              "Not a challenge page URL, or the challenge's host offers no comments to other servers",
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A challenge on another server the user has not joined',
           },
           404: {
             content: { 'application/json': { schema: errorResponseSchema } },
             description: 'No such challenge',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The challenge's host could not be reached and there is no copy of its thread yet",
           },
         },
         security: [{ bearerAuth: [] }],
@@ -446,11 +476,13 @@ const openApiDocument = createDocument({
           },
           400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Blank comment, not a challenge page URL, or a challenge hosted on another server',
+            description:
+              "Blank comment, not a challenge page URL, or the challenge's host offers no comments to other servers",
           },
           403: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'The audience is not open to the user',
+            description:
+              'The audience is not open to the user, or a challenge on another server the user has not joined',
           },
           404: {
             content: { 'application/json': { schema: errorResponseSchema } },
@@ -468,7 +500,8 @@ const openApiDocument = createDocument({
     },
     '/challenges/thread/entries/{entryId}/hidden': {
       delete: {
-        description: 'Show a hidden thread entry again. The host of the challenge or an admin only.',
+        description:
+          "Show a hidden thread entry again. The host of the challenge or an admin only, on the host's own server.",
         requestParams: {
           path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }),
           query: challengeThreadHideBodySchema,
@@ -493,7 +526,7 @@ const openApiDocument = createDocument({
       },
       post: {
         description:
-          'Hide a thread entry (and, for a top-level entry, its replies) from everyone but the host. The host of the challenge or an admin only.',
+          "Hide a thread entry (and, for a top-level entry, its replies) from everyone but the host. The host of the challenge or an admin only, on the host's own server.",
         requestBody: { content: { 'application/json': { schema: challengeThreadHideBodySchema } } },
         requestParams: { path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }) },
         responses: {

@@ -109,8 +109,30 @@ A challenge hosted here has a comment thread (see
 reach it over ActivityPub:
 
 - **Outgoing.** A challenge comment (a reply `Note`) and a share of a challenge carry the
-  challenge object id (`/users/<username>/challenges/<slug>`) as `context`. Addressing is
-  unchanged.
+  challenge object id (`/users/<username>/challenges/<slug>`) as `context`. A public
+  comment is addressed like any reply. A participants-only comment pushed to a thread is
+  addressed `to` the host and the thread's attendees alone, with an empty `cc`: never
+  `as:Public` or followers.
+- **Thread document.** `GET /users/<username>/challenges/<slug>/thread` (outside the API
+  base, `no-store`) serves a hosted challenge's thread as a QuantPub `challengeThread`
+  document, named by `threadUrl` on the challenge document.
+  - The request is verified with Fedify. A signer matched to an active remote member
+    (by its actor, or the actor its identity resolves to) is stamped verified. It gets
+    every visible entry, both audiences and the attendees.
+  - Anyone else gets the public entries only.
+  - A member's server pulls it signed as the member (RSA key, through the SSRF-guarded
+    fetch), at join and when its copy is more than five minutes old.
+- **Push.** The host delivers each comment written, edited or deleted on its side
+  (`Create`, `Update`, `Delete`) to its verified members. A member's server delivers its
+  user's comments to the host and the attendees.
+- **Member inbox.** A `Note` in a member's inbox goes into the member's copy of a remote
+  thread under these conditions:
+  - its `context` names the challenge object of an active participation;
+  - the sender is that challenge's host actor or one of the thread's attendees;
+  - the sender is not the member themselves;
+  - the Note passes the same authority check as below.
+    A copy row written by another actor is never overwritten. A Note from anyone else marks
+    the copy for a fresh pull. A `Delete` from the author removes the copy row.
 - **Incoming.** A `Create{Note}` in any local user's inbox enters the thread when its
   `inReplyTo` is the challenge object, a local post of the thread, or an entry of a thread
   the recipient hosts. Authority is the timeline's: the Note's id is on the sender's host

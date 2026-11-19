@@ -183,16 +183,16 @@ const hostOf = (uri: string): string | null => {
 }
 
 /** The timeline's authority rule: the Note lives on the sender's host and names the sender as author. */
-const isSendersNote = (noteId: URL, note: Note, actorUri: string): boolean =>
+export const isSendersNote = (noteId: URL, note: Note, actorUri: string): boolean =>
   noteId.host === hostOf(actorUri) && note.attributionIds.some((uri) => uri.href === actorUri)
 
 /** `public` for a Note addressed to Public; else `participants`, only with the challenge as `context`. */
-const inboundAudience = (note: Note, challengeObjectUri: string): ChallengeThreadAudience | null => {
+export const inboundAudience = (note: Note, challengeObjectUri: string): ChallengeThreadAudience | null => {
   if ([...note.toIds, ...note.ccIds].some((uri) => uri.href === AS_PUBLIC)) return 'public'
   return note.contextIds.some((uri) => uri.href === challengeObjectUri) ? 'participants' : null
 }
 
-const clampToNow = (date: Date, now: number): Date => new Date(Math.min(date.getTime(), now))
+export const clampToNow = (date: Date, now: number): Date => new Date(Math.min(date.getTime(), now))
 
 const inboundCandidate = async (
   note: Note,

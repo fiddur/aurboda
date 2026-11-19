@@ -54,6 +54,7 @@ const record: ChallengeRecord = {
 
 const member: ChallengeMemberRecord = {
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',
@@ -86,6 +87,12 @@ const participation: ChallengeParticipationRecord = {
   data_token: 'dt',
   end_ts: END,
   host_checked_at: null,
+  challenge_object_uri: null,
+  host_actor_uri: null,
+  thread_attendees: [],
+  thread_audiences: [],
+  thread_synced_at: null,
+  thread_url: null,
   host_identity: '@olle@other.example',
   id: 'p1',
   name: 'Olle’s steps',

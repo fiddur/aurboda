@@ -56,3 +56,7 @@ export const buildActorUrl = (webHost: string, username: string): string =>
 /** A hosted challenge's ActivityPub object id. */
 export const buildChallengeObjectUrl = (webHost: string, username: string, slug: string): string =>
   joinUrl(webHost, `users/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}`)
+
+/** Where a hosted challenge's comment thread is served to a signed request. */
+export const buildChallengeThreadUrl = (webHost: string, username: string, slug: string): string =>
+  `${buildChallengeObjectUrl(webHost, username, slug)}/thread`

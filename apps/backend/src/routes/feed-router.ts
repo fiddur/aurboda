@@ -89,8 +89,8 @@ import {
 } from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
 import { publishChallengeShare } from '../services/challenge-share.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
 import {
-  createChallengeThreadDeps,
   followPostDeleteInThread,
   followPostEditInThread,
   THREAD_VISIBILITY_LOCKED_MESSAGE,
@@ -189,9 +189,11 @@ export const createFeedRouter = (
   previewArticle?: ArticlePreviewer,
   /** Boosts by accounts on this host are hashtag feeds: left out of `boost_count` and the reactions list. */
   tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
+  /** How challenge comments are pushed and threads on other servers pulled. */
+  threadFederation: ThreadFederation = {},
 ): TypedRouter => {
   const router = typedRouter()
-  const thread = webHost ? createChallengeThreadDeps({ deliver, webHost }) : undefined
+  const thread = webHost ? createThreadDeps({ deliver, webHost, ...threadFederation }) : undefined
 
   router.get<Record<string, never>, FeedPostsResponse, unknown, FeedPostsQuery>(
     '/',

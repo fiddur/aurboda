@@ -27,14 +27,18 @@ import { joinChallenge, previewChallenge } from '../services/challenge-federatio
 import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
 import { announcementPending } from '../services/challenge-results.ts'
 import { serializeParticipation, specToApi, toSpecFields } from '../services/challenge-spec.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
 import {
   addChallengeComment,
-  createChallengeThreadDeps,
-  getChallengeThread,
-  resolveHostedChallenge,
+  readChallengeThread,
   setChallengeThreadEntryHidden,
 } from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
+import {
+  createJoinedChallengeDeps,
+  getJoinedChallenge,
+  type JoinedChallengeDeps,
+} from '../services/joined-challenge.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
@@ -65,10 +69,12 @@ export const registerChallengeTools = (
     discoverChallenges?: DiscoverChallenges
     deliver?: FeedDeliver
     isAdmin?: (user: string) => Promise<boolean>
+    threadFederation?: ThreadFederation
+    joined?: JoinedChallengeDeps
   },
 ) => {
   const thread = deps.webHost
-    ? createChallengeThreadDeps({ deliver: deps.deliver, webHost: deps.webHost })
+    ? createThreadDeps({ deliver: deps.deliver, webHost: deps.webHost, ...deps.threadFederation })
     : null
   const setHidden = async (challenge_url: string, entry_id: string, hidden: boolean) => {
     if (!thread) return errorResponse('Federation is not configured on this server')
@@ -195,10 +201,29 @@ export const registerChallengeTools = (
           user,
           webHost: deps.webHost,
         })
+        await thread?.remote?.afterJoin(user, participation)
         return jsonResponse({ joined: true, name: participation.name })
       } catch (error) {
         return errorResponse(error instanceof Error ? error.message : 'Failed to join challenge')
       }
+    },
+  )
+
+  server.tool(
+    'get_joined_challenge',
+    "A challenge you joined, by its participation id (from list_joined_challenges): your participation, the host's page URL and, when the host can be read, the challenge and its standings as the host's page shows them.",
+    { participation_id: z.string().uuid().describe('Participation ID') },
+    async ({ participation_id }) => {
+      if (!deps.webHost) return errorResponse('Federation is not configured on this server')
+      const result = await getJoinedChallenge(
+        deps.joined ?? createJoinedChallengeDeps(),
+        user,
+        participation_id,
+        {
+          webHost: deps.webHost,
+        },
+      )
+      return result.ok ? jsonResponse(result.response) : errorResponse(result.error)
     },
   )
 
@@ -228,19 +253,20 @@ export const registerChallengeTools = (
 
   server.tool(
     'get_challenge_thread',
-    'Read the comment thread of a challenge hosted on this instance, by its page URL: top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
+    'Read the comment thread of a challenge, by its page URL: one hosted on this instance, or one on another server that you joined (read from a copy pulled from the host at most five minutes ago). top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
     { ...challengeThreadQuerySchema.shape },
     async ({ challenge_url, cursor }) => {
       if (!thread) return errorResponse('Federation is not configured on this server')
-      const resolved = await resolveHostedChallenge(thread.webHost, challenge_url, thread.loadChallenge)
-      if (!resolved.ok) return errorResponse(resolved.error)
-      return jsonResponse(await getChallengeThread(thread, resolved, user, cursor))
+      const result = await readChallengeThread(thread, user, challenge_url, cursor)
+      if (!result.ok) return errorResponse(result.error)
+      const { ok: _ok, ...view } = result
+      return jsonResponse(view)
     },
   )
 
   server.tool(
     'add_challenge_comment',
-    "Comment in a challenge's thread (a challenge hosted on this instance, by its page URL), or reply to an entry with `in_reply_to_id`. `audience` `participants` is read by the host and members only and is all an unlisted challenge takes; `public` is open to anyone signed in on a public challenge. A reply is never wider than the entry it answers. The comment is a feed post of yours: edit or delete it with update_feed_post / delete_feed_post (its audience cannot change). Returns the new entry.",
+    "Comment in a challenge's thread (by its page URL: one hosted on this instance, or one on another server that you joined, where the comment is delivered to the host and the other members), or reply to an entry with `in_reply_to_id`. `audience` `participants` is read by the host and members only and is all an unlisted challenge takes; `public` is open to anyone signed in on a public challenge. A reply is never wider than the entry it answers. The comment is a feed post of yours: edit or delete it with update_feed_post / delete_feed_post (its audience cannot change). Returns the new entry.",
     { ...challengeCommentBodySchema.shape },
     async (body) => {
       if (!thread) return errorResponse('Federation is not configured on this server')
@@ -251,14 +277,14 @@ export const registerChallengeTools = (
 
   server.tool(
     'hide_challenge_comment',
-    "Hide an entry of a challenge's thread from everyone but the host (a hidden top-level entry hides its replies too). The host of the challenge or an admin only.",
+    "Hide an entry of a challenge's thread from everyone but the host (a hidden top-level entry hides its replies too). The host of the challenge or an admin only, on the host's own server.",
     { entry_id: z.string().uuid().describe('Thread entry ID'), ...challengeThreadHideBodySchema.shape },
     async ({ challenge_url, entry_id }) => setHidden(challenge_url, entry_id, true),
   )
 
   server.tool(
     'unhide_challenge_comment',
-    "Show a hidden entry of a challenge's thread again. The host of the challenge or an admin only.",
+    "Show a hidden entry of a challenge's thread again. The host of the challenge or an admin only, on the host's own server.",
     { entry_id: z.string().uuid().describe('Thread entry ID'), ...challengeThreadHideBodySchema.shape },
     async ({ challenge_url, entry_id }) => setHidden(challenge_url, entry_id, false),
   )

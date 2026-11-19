@@ -442,7 +442,8 @@ The rules:
 5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
 6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
    the host and every local member except its author.
-7. Comments on a challenge hosted on another server are not available yet (`400`).
+7. A challenge hosted on another server is read and commented on from here by its
+   members (see _Members on other servers_). Anyone else gets `403`.
 
 **Comments from other servers.** A `Note` delivered to any local user's inbox enters the
 thread of a challenge hosted here when it replies to the challenge object, to a local post
@@ -460,6 +461,40 @@ does so when the reply keeps the host's mention).
 
 Every comment and share of a challenge hosted here that Aurboda federates names the challenge
 object as its `context`.
+
+**Members on other servers.** A member reads and writes a remote challenge's thread from
+their own server, through the same routes and tools, with the challenge's page URL on the
+host.
+
+- **What the member's server keeps.** It keeps a copy of the host's thread
+  (`challenge_thread_copies`, deleted with the participation). It remembers, on the
+  participation:
+  - the thread URL, the challenge object id and the host actor, all from the challenge
+    document at join, or fetched on first use for an older participation;
+  - the audiences the member may post with;
+  - the thread's attendees.
+- **The pull.** The member's server pulls the thread document, signed as the member, right
+  after joining. It pulls again when the copy is more than five minutes old.
+  - The host stamps the member it matches by the signature as **verified**, and answers
+    with every visible entry.
+  - When the pull fails, the last copy is shown. With no copy yet, the answer is `502`.
+- **The push.** A comment the member writes is a feed post like any other: it enters the
+  copy, and is delivered to the host and the attendees. A participants comment is
+  addressed to them alone. Editing or deleting it pushes the `Update` or `Delete`.
+  - The host delivers every comment written, edited or deleted on its side to its verified
+    members.
+  - A Note from someone who is not the host or an attendee is not taken into the copy; it
+    marks the copy for a fresh pull instead.
+  - A comment pushed into the copy raises `challenge_comment`, linking to the member's page
+    for the challenge.
+- **What is not pushed.** A fediverse reply or a share the host took in arrives with the
+  next pull.
+- **Hiding.** Hiding and unhiding happen on the host's server only (`403` elsewhere).
+
+The member's page for a joined challenge reads `GET /challenges/participations/:id`
+(MCP `get_joined_challenge`). It answers the participation, `host_page_url` and, when the
+host can be read, the challenge and standings as the host's page shows them. When the host
+cannot be read, those two are left out.
 
 A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
 with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
@@ -637,8 +672,10 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `GET /:id/standings`, `GET /:id/members`, `DELETE /:id/members/:memberId`,
 `GET /challenges/participations/mine`, `GET /challenges/discover`,
 `GET /challenges/preview?challenge_url=<url>`, `POST /challenges/join`,
-`DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
-(`create/list/update/delete_challenge`, `join_challenge`, `list_joined_challenges`, `discover_challenges`,
+`GET /challenges/participations/:id` (one joined challenge, with the host's challenge
+and standings when they can be read), `DELETE /challenges/participations/:id`. The same
+CRUD + join is available over MCP (`create/list/update/delete_challenge`, `join_challenge`,
+`list_joined_challenges`, `get_joined_challenge`, `discover_challenges`,
 `preview_challenge`). The comment thread has its own routes and tools (see _Comment thread_). A preview reads the challenge the way a join would — in-process for
 this instance, else from the host's QuantPub document or Aurboda public resolver — and
 answers its name, host (`host_identity`, `host_handle`), window, timezone and spec without

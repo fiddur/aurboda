@@ -344,6 +344,7 @@ export {
   listChallengesAwaitingResult,
   listLeftChallengeUrls,
   listPublicChallenges,
+  markChallengeMemberActorVerified,
   markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
@@ -364,12 +365,27 @@ export {
   deleteChallengeThreadEntry,
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
+  listChallengeThreadDocumentEntries,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
   setChallengeThreadEntryHidden,
   type ThreadVisibility,
   upsertChallengeThreadEntry,
 } from './challenge-thread.ts'
+
+export {
+  deleteThreadCopyEntry,
+  getParticipationByObjectUri,
+  getThreadCopyEntryById,
+  getThreadCopyEntryByObjectUri,
+  listThreadCopy,
+  type ParticipationThreadState,
+  replaceThreadCopy,
+  type ThreadCopyEntryInput,
+  type ThreadCopyEntryRecord,
+  updateParticipationThreadState,
+  upsertThreadCopyEntry,
+} from './challenge-thread-copy.ts'
 
 export {
   type ChallengeBanner,

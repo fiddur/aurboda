@@ -60,6 +60,9 @@ export const quantChallengeDocumentSchema = z
     scoring: quantChallengeScoringSchema,
     standingsUrl: z.string().optional(),
     startTime: z.string().meta({ description: 'Start of the window (ISO 8601)' }),
+    threadUrl: z.string().optional().meta({
+      description: 'Where a member on another server fetches the comment thread with a signed GET',
+    }),
     timezone: z.string().meta({ description: 'IANA zone days are counted in, for every member' }),
     unit: z.string().optional().meta({ description: 'UCUM unit; required for an extension key' }),
     url: z.string().meta({ description: 'The challenge’s public page' }),
@@ -200,6 +203,58 @@ export const quantStandingsSchema = z
   .meta({ description: "A challenge's standings (QuantPub Challenges §6)", id: 'QuantStandings' })
 
 export type QuantStandings = z.infer<typeof quantStandingsSchema>
+
+const quantThreadAudienceSchema = z.enum(['public', 'participants'])
+
+export const quantChallengeThreadItemSchema = z
+  .object({
+    attachment: z
+      .array(
+        z.object({
+          height: z.number().optional(),
+          mediaType: z.string().optional(),
+          name: z.string().optional(),
+          url: z.string(),
+          width: z.number().optional(),
+        }),
+      )
+      .optional(),
+    attributedTo: z.object({
+      handle: z.string().nullable().optional(),
+      icon: z.string().nullable().optional(),
+      id: z.string().meta({ description: "The author's actor id" }),
+      name: z.string().nullable().optional(),
+    }),
+    audience: quantThreadAudienceSchema,
+    content: z.string().meta({ description: 'HTML; the reader MUST sanitise it' }),
+    id: z.string().meta({ description: "The entry's object id" }),
+    inReplyTo: z.string().nullable(),
+    published: z.string().meta({ description: 'ISO 8601' }),
+    type: z.enum(['comment', 'share', 'result']),
+    updated: z.string().nullable().optional().meta({ description: 'ISO 8601' }),
+    url: z.string().nullable().optional(),
+  })
+  .meta({ description: 'One entry of a challenge comment thread', id: 'QuantChallengeThreadItem' })
+
+export type QuantChallengeThreadItem = z.infer<typeof quantChallengeThreadItemSchema>
+
+export const quantChallengeThreadSchema = z
+  .object({
+    attendees: z.array(z.string()).optional().meta({
+      description: 'Actor ids a comment is delivered to; only for a verified member',
+    }),
+    audiences: z.array(quantThreadAudienceSchema).meta({
+      description:
+        'The audiences the requester may post with; what a visitor may post with for one who is not a member',
+    }),
+    challenge: z.string().meta({ description: 'The challenge object id' }),
+    host: z.string().meta({ description: "The host's actor id" }),
+    items: z.array(quantChallengeThreadItemSchema).meta({ description: 'Newest first, at most 500' }),
+    kind: z.literal('challengeThread'),
+  })
+  .meta({ description: "A challenge's comment thread, as the signer may see it", id: 'QuantChallengeThread' })
+
+export type QuantChallengeThread = z.infer<typeof quantChallengeThreadSchema>
 
 export const quantErrorSchema = z
   .object({ error: z.string().meta({ description: 'Why the request was refused' }) })
