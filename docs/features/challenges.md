@@ -488,6 +488,14 @@ remembering the last choice in the browser; with one, it says which. A reply to 
 for the composer; a signed-in visitor of an unlisted challenge is told only people in the
 challenge can comment. The author's own feed card of a comment reads "in <challenge>".
 
+A member of a challenge hosted on another server follows it on their own server, at
+`/challenges/joined/<participation id>`, where the _Joined_ rows of `/challenges` link
+(a challenge hosted here keeps linking to its own page). The page shows the same banner,
+race chart and leaderboard as the host's page, or, when the host could not be read, the
+challenge's name and window with a note that the standings are on the host's page. Its
+actions are "Open on <host>" (the host's page, in a new tab) and Leave; under them is the
+same **Comments** section, read and written as the signed-in member.
+
 ## Completion & winner announcement
 
 When a challenge's window closes, the **host's instance** announces the result: a
