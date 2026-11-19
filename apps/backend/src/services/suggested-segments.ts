@@ -13,6 +13,7 @@ import type {
 } from '../db/suggested-segments.ts'
 
 import { findNearbyNamedLocation } from '../db/locations.ts'
+import { deleteSegment } from '../db/segments.ts'
 import {
   claimSuggestedSegment,
   countUnscannedTrackedActivities,
@@ -21,6 +22,7 @@ import {
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
+  releaseStaleSuggestedSegmentClaims,
   settleSuggestedSegmentClaim,
   suggestedSegmentLine,
   upsertSuggestion,
@@ -51,6 +53,7 @@ export interface SuggestedSegmentDeps {
   countUnscannedTrackedActivities: (user: string) => Promise<number>
   listSuggestedSegments: (user: string) => Promise<SuggestedSegmentRecord[]>
   claimSuggestedSegment: (user: string, id: string) => Promise<SuggestedSegmentRecord | null>
+  releaseStaleSuggestedSegmentClaims: (user: string) => Promise<void>
   settleSuggestedSegmentClaim: (user: string, id: string, segmentId: string | null) => Promise<void>
   suggestedSegmentLine: (
     user: string,
@@ -64,6 +67,7 @@ export interface SuggestedSegmentDeps {
     status: 'dismissed' | 'promoted',
     segmentId?: string,
   ) => Promise<boolean>
+  deleteSegment: (user: string, id: string) => Promise<boolean>
   findNearbyNamedLocation: SegmentDeps['findNearbyNamedLocation']
   now: () => number
   segment: SegmentDeps
@@ -73,12 +77,14 @@ export const defaultSuggestedSegmentDeps: SuggestedSegmentDeps = {
   claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
+  deleteSegment,
   findNearbyNamedLocation,
   getSuggestionInput,
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
   now: () => Date.now(),
+  releaseStaleSuggestedSegmentClaims,
   segment: defaultSegmentDeps,
   settleSuggestedSegmentClaim,
   suggestedSegmentLine,
@@ -183,6 +189,7 @@ export const listSuggestedSegmentsWithNames = async (
   user: string,
   deps: SuggestedSegmentDeps,
 ): Promise<SuggestedSegment[]> => {
+  await deps.releaseStaleSuggestedSegmentClaims(user)
   const records = await deps.listSuggestedSegments(user)
   return Promise.all(
     records.map(async (record) => {
@@ -221,8 +228,8 @@ const createFromSuggestion = async (
 /**
  * Adds a pending suggestion as a segment (trimmed when start_km and end_km are given), exactly
  * as creating one from a line does. The suggestion is claimed first, so a second promote of it
- * finds nothing pending, and made pending again when no segment came of it. Null when there is
- * no pending suggestion with this id.
+ * finds nothing pending, and made pending again when no segment came of it or linking it to
+ * its segment failed. Null when there is no pending suggestion with this id.
  */
 export const promoteSuggestedSegment = async (
   user: string,
@@ -230,15 +237,28 @@ export const promoteSuggestedSegment = async (
   body: PromoteSuggestedSegmentBody,
   deps: SuggestedSegmentDeps,
 ): Promise<CreateSegmentResult | null> => {
+  await deps.releaseStaleSuggestedSegmentClaims(user)
   const suggestion = await deps.claimSuggestedSegment(user, id)
   if (!suggestion) return null
-  let created: CreateSegmentResult | null = null
+  let created: CreateSegmentResult | null
   try {
     created = await createFromSuggestion(user, suggestion, body, deps)
-    return created
-  } finally {
-    await deps.settleSuggestedSegmentClaim(user, id, created?.ok ? created.segment.id : null)
+  } catch (error) {
+    await deps.settleSuggestedSegmentClaim(user, id, null)
+    throw error
   }
+  const segmentId = created?.ok ? created.segment.id : null
+  try {
+    await deps.settleSuggestedSegmentClaim(user, id, segmentId)
+  } catch (error) {
+    // A failed release is left to releaseStaleSuggestedSegmentClaims; the first error is the one to report.
+    if (segmentId) {
+      await deps.deleteSegment(user, segmentId).catch(() => undefined)
+      await deps.settleSuggestedSegmentClaim(user, id, null).catch(() => undefined)
+    }
+    throw error
+  }
+  return created
 }
 
 export const dismissSuggestedSegment = (

@@ -51,6 +51,7 @@ import {
 import {
   buildArticlesAtomUrl,
   buildBlogUrl,
+  buildChallengeObjectUrl,
   buildOfficialFeedAtomUrl,
   buildOfficialFeedUrl,
   buildPostUrl,
@@ -359,15 +360,18 @@ export const createShareHtmlRouter = (deps: ShareHtmlDeps): Router => {
       const { joined, measure, members, phrase, range, status } = describeChallenge(challenge, now())
       return sendHtml(
         loadTemplate,
-        withOembed(
-          buildChallengeShareMeta({
-            details: { joined, measure, participants: members.length, phrase, range, status },
-            name: challenge.name,
+        {
+          ...withOembed(
+            buildChallengeShareMeta({
+              details: { joined, measure, participants: members.length, phrase, range, status },
+              name: challenge.name,
+              url,
+              username,
+            }),
             url,
-            username,
-          }),
-          url,
-        ),
+          ),
+          activityUrl: buildChallengeObjectUrl(webHost, username, slug),
+        },
         true,
         res,
       )

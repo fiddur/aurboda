@@ -22,6 +22,7 @@ import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { CentralDb } from '../services/central-db.ts'
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
+import type { ThreadFederation } from '../services/challenge-thread-remote.ts'
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from '../services/deduction-queue.ts'
 import type { Mailer } from '../services/email.ts'
@@ -198,6 +199,8 @@ interface RestRoutesDeps {
   wellKnown: WellKnownConfig
   userDb: Client
   feedDeliver: FeedDeliver
+  /** How challenge comments are pushed and threads on other servers pulled. */
+  threadFederation: ThreadFederation
   followActions: FollowActions
   followerActions: FollowerActions
   relayActions: RelayActions
@@ -273,6 +276,7 @@ export const mountRestRouters = ({
   runNotificationAction,
   dataExport,
   feedDeliver,
+  threadFederation,
   followActions,
   followerActions,
   relayActions,
@@ -383,9 +387,17 @@ export const mountRestRouters = ({
       reactionActions,
       previewArticle,
       tagActorHost,
+      threadFederation,
     ),
   )
-  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))
+  httpd.use(
+    '/challenges',
+    createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges, {
+      deliver: feedDeliver,
+      federation: threadFederation,
+      isAdmin: centralDb.isAdmin,
+    }),
+  )
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.

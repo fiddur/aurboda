@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import type { Activity } from './types.ts'
+
 import { cleanTestDb, getTestDbClient, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getActivityById, insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import {
   deleteDeductionRule,
+  deleteRuleActivities,
   getDeductionRule,
   insertDeductionRule,
   insertDeductionRuleRun,
@@ -166,6 +169,40 @@ describe('deduction rules (integration)', () => {
     expect(await dataOf(untouched)).toEqual({ run_categories: [manual] })
     expect(await dataOf(malformed)).toEqual({ run_categories: 'long' })
     expect(await removeRuleCategoryEntries(user, rule.id)).toBe(0)
+  })
+
+  test("deleteRuleActivities deletes only the rule's activities and answers the earliest start per type", async () => {
+    const user = getTestUser()
+    const ruleId = '00000000-0000-4000-8000-000000000002'
+    const add = (
+      activity_type: string,
+      start: string,
+      rule_id: string,
+      source: Activity['source'] = 'deduction-rule',
+    ) =>
+      insertActivity(user, {
+        activity_type,
+        data: { rule_id },
+        end_time: new Date(new Date(start).getTime() + 30 * 60_000),
+        source,
+        start_time: new Date(start),
+      })
+    await add('running', '2026-06-03T08:00:00Z', ruleId)
+    await add('running', '2026-06-01T08:00:00Z', ruleId)
+    await add('meditation', '2026-06-02T18:00:00Z', ruleId)
+    const otherRule = await add('running', '2026-05-01T08:00:00Z', '00000000-0000-4000-8000-000000000003')
+    const otherSource = await add('running', '2026-05-02T08:00:00Z', ruleId, 'aurboda')
+
+    expect(await deleteRuleActivities(user, ruleId)).toEqual({
+      count: 3,
+      earliest_by_type: [
+        { activity_type: 'meditation', start_time: new Date('2026-06-02T18:00:00Z') },
+        { activity_type: 'running', start_time: new Date('2026-06-01T08:00:00Z') },
+      ],
+    })
+    expect(await getActivityById(user, otherRule)).not.toBeNull()
+    expect(await getActivityById(user, otherSource)).not.toBeNull()
+    expect(await deleteRuleActivities(user, ruleId)).toEqual({ count: 0, earliest_by_type: [] })
   })
 
   test('pruneDeductionRuleRuns deletes only runs older than the retention', async () => {

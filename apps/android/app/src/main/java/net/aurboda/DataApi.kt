@@ -42,38 +42,10 @@ data class WidgetGoalsProgressResponse(
     @SerialName(value = "goals") val goals: List<WidgetGoalProgress>,
 )
 
-suspend fun fetchUserSettings(
-    httpClient: HttpClient,
-    serverUrl: String,
-    authToken: String
-): DataResult<UserSettingsResponse> {
-    return try {
-        val url = "$serverUrl/user/settings"
-        Log.d("DataApi", "Fetching user settings from: $url")
-
-        val response = httpClient.get(url) {
-            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
-        }
-
-        if (response.status == HttpStatusCode.OK) {
-            val body = response.bodyAsText()
-            Log.d("DataApi", "User settings response: $body")
-            val parsed = appJson.decodeFromString<UserSettingsResponse>(body)
-            DataResult.Success(parsed)
-        } else {
-            Log.e("DataApi", "User settings error: ${response.status}")
-            DataResult.Error("Server returned ${response.status}")
-        }
-    } catch (e: Exception) {
-        Log.e("DataApi", "Error fetching user settings", e)
-        DataResult.Error(e.message ?: "Unknown error")
-    }
-}
-
 /**
- * The user's `hidden_pages` menu paths, or null when the call failed. Unlike [fetchUserSettings] it does
- * not log the body, which holds stored keys. The generated model requires the field, so a server from
- * before it existed counts as a failed call.
+ * The user's `hidden_pages` menu paths, or null when the call failed. The body is not logged: it holds
+ * stored keys. The generated model requires the field, so a server from before it existed counts as a
+ * failed call.
  */
 suspend fun fetchHiddenPages(httpClient: HttpClient, apiUrl: String, authToken: String): List<String>? =
     try {

@@ -116,6 +116,7 @@ export {
 } from './flagged-windows.ts'
 
 export {
+  type DeletedRuleActivities,
   deleteDeductionRule,
   deleteRuleActivities,
   deleteStaleRuleActivities,
@@ -344,6 +345,7 @@ export {
   listChallengesAwaitingResult,
   listLeftChallengeUrls,
   listPublicChallenges,
+  markChallengeMemberActorVerified,
   markChallengeResultPublished,
   removeChallengeMember,
   updateChallenge,
@@ -351,6 +353,40 @@ export {
   updateChallengeParticipationSnapshot,
   upsertChallengeMember,
 } from './challenges.ts'
+
+export {
+  type ChallengeThreadCursor,
+  type ChallengeThreadEntryInput,
+  type ChallengeThreadEntryPageRow,
+  type ChallengeThreadEntryRecord,
+  countChallengeThreadEntries,
+  countChallengeThreadEntriesByActorSince,
+  countVisibleChallengeThreadEntries,
+  deleteChallengeThreadEntriesByActor,
+  deleteChallengeThreadEntry,
+  getChallengeThreadEntryById,
+  getChallengeThreadEntryByObjectUri,
+  listChallengeThreadDocumentEntries,
+  listChallengeThreadReplies,
+  listChallengeThreadTopLevel,
+  setChallengeThreadEntryHidden,
+  type ThreadVisibility,
+  upsertChallengeThreadEntry,
+} from './challenge-thread.ts'
+
+export {
+  deleteThreadCopyEntry,
+  getParticipationByObjectUri,
+  getThreadCopyEntryById,
+  getThreadCopyEntryByObjectUri,
+  listThreadCopy,
+  type ParticipationThreadState,
+  replaceThreadCopy,
+  type ThreadCopyEntryInput,
+  type ThreadCopyEntryRecord,
+  updateParticipationThreadState,
+  upsertThreadCopyEntry,
+} from './challenge-thread-copy.ts'
 
 export {
   type ChallengeBanner,
@@ -450,9 +486,11 @@ export {
   deleteBoostEntry,
   deleteTimelineEntriesByActor,
   deleteTimelineEntryByUri,
+  foldTagBoostCards,
   getTimelineEntryById,
   getTimelineEntryByObjectUri,
   hasCachedActorPresentation,
+  holdsBoostCardWithoutFollowing,
   isTimelineEntryVisible,
   listReplyUncheckedEntries,
   listTimelineEntries,

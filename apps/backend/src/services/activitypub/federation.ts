@@ -13,6 +13,7 @@ import {
   Announce,
   Create,
   Delete,
+  Event,
   Follow,
   Image,
   Like,
@@ -42,6 +43,8 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   addTagBoostCarrier,
+  foldTagBoostCards,
+  getChallengeBySlug,
   deleteBoostEntry,
   deleteFeedQuoteAuthorizationsByActor,
   deleteFeedQuoteAuthorizationsByQuote,
@@ -78,6 +81,18 @@ import {
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
+import { articleFlagNames } from '../article.ts'
+import {
+  admitInboundThreadNote,
+  createInboundThreadDeps,
+  type InboundThreadDeps,
+  removeInboundThreadEntry,
+} from '../challenge-thread-inbound.ts'
+import {
+  admitPushedThreadNote,
+  createPushedThreadDeps,
+  type PushedThreadDeps,
+} from '../challenge-thread-remote.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { notifier } from '../notifications.ts'
 import { buildProfileUrl } from '../share-urls.ts'
@@ -89,6 +104,7 @@ import {
 } from '../social-notifications.ts'
 import { DEFAULT_TAG_ACTOR_HOST } from '../tag-actor-host.ts'
 import { ownActorUri, ownObjectPrefix } from '../timeline.ts'
+import { buildChallengeEvent } from './challenge-event.ts'
 import { dashboardNoteContent } from './dashboard-object.ts'
 import {
   buildArticleNote,
@@ -408,6 +424,10 @@ const resolveBoostAuthor = async (
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
+const foldIfTagCard = async (me: string, tag: string | null, noteUri: string): Promise<void> => {
+  if (tag != null) await foldTagBoostCards(me, noteUri)
+}
+
 /**
  * A followee boosted somebody else's post → a **boost card** in our timeline
  * (Mastodon's "🔄 X boosted"). The card is its own row keyed on the `Announce`
@@ -422,7 +442,8 @@ const resolveBoostAuthor = async (
  * and declare `attributedTo`; and a post ALREADY in this timeline directly gets
  * no boost card (Mastodon hides a reblog of a post you have). A followed tag's
  * `Announce` of a Note another followed tag already carded joins that card as a
- * carrier (`addTagBoostCarrier`): one card, no second notification.
+ * carrier (`addTagBoostCarrier`): one card, no second notification. Two that arrive together
+ * both make a card, and `foldTagBoostCards` folds them into one.
  */
 const ingestBoostedNote = async (
   ctx: InboxContext<void>,
@@ -458,6 +479,7 @@ const ingestBoostedNote = async (
       notify: { source: booster },
       onNewEntry,
     })
+    await foldIfTagCard(me, booster.tag, announced.uri)
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
@@ -588,13 +610,21 @@ export const handleInboundLike = (
  * Inbound `Delete` on a user's own inbox. `del.objectId` is the removed object's id (a Tombstone or
  * bare id), and every effect is scoped to the sender (`del.actorId`) so a signed `Delete` from some
  * other actor can't evict a post it didn't author — mirroring how `Undo{Follow}` is scoped to its own
- * actor. A post we received leaves the timeline; a deleted quoting Note loses its stamp (FEP-044f),
- * and a deleted actor every stamp it held.
+ * actor. A post we received leaves the timeline and any challenge thread it entered; a deleted
+ * quoting Note loses its stamp (FEP-044f), and a deleted actor every stamp and thread entry it held.
  */
-export const handleInboundDelete = async (ctx: InboxContext<void>, del: Delete): Promise<void> => {
+export const handleInboundDelete = async (
+  ctx: InboxContext<void>,
+  del: Delete,
+  origin: string,
+  threadDeps: InboundThreadDeps = createInboundThreadDeps(origin),
+  pushedDeps: Pick<PushedThreadDeps, 'deleteCopy'> = createPushedThreadDeps(),
+): Promise<void> => {
   const me = ctx.recipient
   if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
   try {
+    await removeInboundThreadEntry(threadDeps, origin, me, del.objectId.href, del.actorId.href)
+    await pushedDeps.deleteCopy(me, del.objectId.href, del.actorId.href)
     await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
     await deleteFeedQuoteAuthorizationsByQuote(me, del.objectId.href, del.actorId.href)
     if (del.objectId.href === del.actorId.href) {
@@ -765,6 +795,14 @@ export const handleInboundUndo = async (ctx: InboxContext<void>, undo: Undo): Pr
   }
 }
 
+interface StrangerIngestOptions {
+  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
+  onNewEntry?: (user: string) => void
+  structuredUrl?: string
+  /** The Note already raised `challenge_comment` for `me`: store it without a notification. */
+  quiet?: boolean
+}
+
 /**
  * The stranger branch of {@link ingestFeedActivity}: admit a non-followee's
  * Note only when the recipient is INVOLVED — it replies to one of their own,
@@ -777,9 +815,7 @@ const ingestStrangerInvolvement = async (
   object: Note,
   me: string,
   origin: string,
-  enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
-  onNewEntry?: (user: string) => void,
-  structuredUrl?: string,
+  { enrich, onNewEntry, quiet = false, structuredUrl }: StrangerIngestOptions,
 ): Promise<boolean> => {
   if (activity.actorId == null) return false
   const target = object.replyTargetIds[0]?.href
@@ -808,8 +844,38 @@ const ingestStrangerInvolvement = async (
     { ...presentation, actor_uri: activity.actorId.href },
     enrich,
     origin,
-    { notify: { source: null }, onNewEntry, structuredUrl },
+    { ...(quiet ? {} : { notify: { source: null } }), onNewEntry, structuredUrl },
   )
+}
+
+/**
+ * Admit the Note into a challenge thread hosted here when it answers one; true when `me` already
+ * gets `challenge_comment` for it, so the timeline must not notify again.
+ */
+const admitToChallengeThread = async (
+  ctx: InboxContext<void>,
+  deps: InboundThreadDeps,
+  pushedDeps: PushedThreadDeps | undefined,
+  origin: string,
+  me: string,
+  actorId: URL,
+  note: Note,
+  follow: FeedFollowingRecord | null,
+): Promise<boolean> => {
+  const input = {
+    actor_uri: actorId.href,
+    me,
+    note,
+    origin,
+    presentation: async () =>
+      follow != null && follow.accepted
+        ? { avatar_url: follow.avatar_url, display_name: follow.display_name, handle: follow.handle }
+        : await fetchActorPresentation(ctx, me, actorId),
+  }
+  const thread =
+    (await admitInboundThreadNote(deps, input)) ??
+    (await admitPushedThreadNote(pushedDeps ?? createPushedThreadDeps(), input))
+  return thread?.quiet === true
 }
 
 const ingestFeedActivity = async (
@@ -819,6 +885,8 @@ const ingestFeedActivity = async (
   onNewEntry?: (user: string) => void,
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
+  threadDeps: InboundThreadDeps = createInboundThreadDeps(origin),
+  pushedDeps?: PushedThreadDeps,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
@@ -826,31 +894,38 @@ const ingestFeedActivity = async (
   // fine today (the actor advertises no `sharedInbox`), but shared-inbox support
   // would need fanning a single delivery out to every local follower of the actor.
   const me = ctx.recipient
-  if (me == null || !isValidUsername(me) || activity.actorId == null) return
+  const actorId = activity.actorId
+  if (me == null || !isValidUsername(me) || actorId == null) return
   try {
-    const follow = await getFeedFollowingByActor(me, activity.actorId.href)
+    const follow = await getFeedFollowingByActor(me, actorId.href)
     // Read before `getObject`: dereferencing a bare-URI object replaces the received document.
     const received = await activity.toJsonLd()
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
     const structuredUrl = object.id == null ? undefined : inboundStructuredUrl(received, object.id.href)
+    const quiet = await admitToChallengeThread(
+      ctx,
+      threadDeps,
+      pushedDeps,
+      origin,
+      me,
+      actorId,
+      object,
+      follow,
+    )
     if (follow != null && follow.accepted) {
       await ingestNoteForRecipient(me, object, follow, enrich, origin, {
-        notify: { source: follow },
+        ...(quiet ? {} : { notify: { source: follow } }),
         onNewEntry,
         structuredUrl,
       })
     } else {
-      const admitted = await ingestStrangerInvolvement(
-        ctx,
-        activity,
-        object,
-        me,
-        origin,
+      const admitted = await ingestStrangerInvolvement(ctx, activity, object, me, origin, {
         enrich,
         onNewEntry,
+        quiet,
         structuredUrl,
-      )
+      })
       if (!admitted && activity instanceof Update) {
         await applyEditToBoostCards(me, activity, object, enrich, structuredUrl)
       }
@@ -953,7 +1028,9 @@ export const handleInboundCreate = (
   origin: string,
   onNewEntry?: (user: string) => void,
   enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
-): Promise<void> => ingestFeedActivity(ctx, create, origin, onNewEntry, enrich)
+  threadDeps?: InboundThreadDeps,
+  pushedDeps?: PushedThreadDeps,
+): Promise<void> => ingestFeedActivity(ctx, create, origin, onNewEntry, enrich, threadDeps, pushedDeps)
 
 /**
  * Inbound `Update`. Two meanings share the type: an actor editing **themselves**
@@ -967,9 +1044,11 @@ export const handleInboundUpdate = async (
   origin: string,
   onNewEntry?: (user: string) => void,
   enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
+  threadDeps?: InboundThreadDeps,
+  pushedDeps?: PushedThreadDeps,
 ): Promise<void> => {
   if (isSelfActorUpdate(update)) return await refreshRemoteActorPresentation(ctx, update)
-  await ingestFeedActivity(ctx, update, origin, onNewEntry, enrich)
+  await ingestFeedActivity(ctx, update, origin, onNewEntry, enrich, threadDeps, pushedDeps)
 }
 
 /**
@@ -1251,7 +1330,7 @@ export const createFeedFederation = (
       if (instance?.publicTagPosts != null && isInstanceDelivery(ctx)) {
         return await handleInstanceActorDelete(ctx, del, instance.publicTagPosts)
       }
-      await handleInboundDelete(ctx, del)
+      await handleInboundDelete(ctx, del, origin)
     })
 
   // Individual post object. Serves the same `Note` that was delivered, at its
@@ -1275,7 +1354,10 @@ export const createFeedFederation = (
       // An article and an activity share this Note id (a post is one or the
       // other). An article's Note is built from its stored content — no activity.
       const article = toDeliverableArticle(post)
-      if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
+      if (article != null) {
+        const flagNames = await articleFlagNames(identifier, article.article.blocks)
+        return buildArticleNote(ctx, identifier, article, apiBaseUrl, flagNames)
+      }
       const challenge = toDeliverableChallenge(post)
       if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
       const exercise = toDeliverableExercise(post)
@@ -1299,6 +1381,24 @@ export const createFeedFederation = (
       const activity = await resolveFeedActivity(identifier, post.activity_id)
       if (activity == null) return null
       return buildFeedNote(ctx, identifier, post, activity, apiBaseUrl)
+    },
+  )
+
+  // A hosted challenge, public or unlisted: like its HTTP document, anyone holding the slug resolves it.
+  federation.setObjectDispatcher(
+    Event,
+    '/users/{identifier}/challenges/{slug}',
+    async (ctx, { identifier, slug }) => {
+      if (!isValidUsername(identifier)) return null
+      let challenge
+      try {
+        challenge = await getChallengeBySlug(identifier, slug)
+      } catch (error) {
+        if (isMissingDatabase(error)) return null
+        throw error
+      }
+      if (challenge == null) return null
+      return buildChallengeEvent(ctx, identifier, challenge, { apiBaseUrl, now: new Date(), webHost: origin })
     },
   )
 
@@ -1349,7 +1449,10 @@ export const createFeedFederation = (
             // (no linked activity); every other post as `Create{Note}` from its
             // resolved activity.
             const article = toDeliverableArticle(post)
-            if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
+            if (article != null) {
+              const flagNames = await articleFlagNames(identifier, article.article.blocks)
+              return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl, flagNames)
+            }
             const challenge = toDeliverableChallenge(post)
             if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)
             const exercise = toDeliverableExercise(post)

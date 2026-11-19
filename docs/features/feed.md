@@ -34,9 +34,12 @@ A feed post has a **`kind`**:
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. An **impact block** names one `activity`
-  exactly as the Analyze context table groups it (with its `activity_type`: an activity
-  type, a location, a screen-time category, or — set through the API — an app or a tag) and
+  with the Pearson/Spearman coefficients and n. A `sensitivity` selector (a meal sensitivity
+  flag) is shown to readers by the flag's name, for example "Meals with gluten (count)". An
+  **impact block** names one `activity` exactly as the Analyze context table groups it (with its
+  `activity_type`: an activity type, a location, a screen-time category, a meal sensitivity
+  (`meal_sensitivity`, with the flag id as the `activity`, labelled "Impact of meals with
+  gluten"), or, set through the API, an app or a tag) and
   an optional `window_minutes` (10–1440, default 30), and shows the Analyze page's impact
   chart over its window: HRV, heart rate and stress in the buckets before, during and after
   each session, each on its own scale, with the paired before → after change of each
@@ -202,6 +205,17 @@ explicit metric selection that bounds what is shared:
   pair is the shared `ShareVisibility` vocabulary (see [Sharing](./sharing.md)) that
   [challenges](./challenges.md) and shared dashboards also use; the feed extends it
   with the `followers` audience.
+  A post can also be **`participants`**: only a comment in a
+  [challenge's comment thread](./challenges.md#comment-thread) takes it, for an entry read by the
+  host and the challenge's members alone. No request body can ask for it, and an edit cannot move
+  a challenge comment between `participants` and the other visibilities. A `participants` post
+  never goes to followers or relays: its `Create`, `Update` and `Delete` are delivered only to the
+  challenge's host and members on other servers, and only when the challenge spans servers (see
+  [Members on other servers](./challenges.md#comment-thread)). It is left out of the outbox, the public profile listing, the blog view and the Atom
+  feeds, and its Note id, its structured endpoint and its images answer 404 (a capability token
+  does not open it either). The author still sees it in their own feed. A post that belongs to a
+  challenge hosted here (a comment, a share, the result post) carries **`in_challenge`**
+  (`{ name, url }`) in the API.
 - **`include_chart` / `include_map`** — attach a rendered heart-rate chart and/or
   GPS route-map image to the post (see [Images](#images)).
 - **`include_exercises`** — share each exercise of the session: its sets (reps, weight,
@@ -257,6 +271,23 @@ as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 | `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `tags` / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` / `tags` clears it |
 | `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
 | `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
+
+#### Sharing warnings
+
+A meal sensitivity is personal, so an article that names one says so, and never refuses it:
+Aurboda does not block a user from sharing their own data. A correlation block with a
+`sensitivity` selector, or an impact block of a meal sensitivity, shows readers the flag's name.
+The flag is stored by id and its name is resolved whenever the article renders (the Note's figure
+labels, the figures, the markdown export, the Atom feed, the structured payload's `flag_names`
+and `activity_label`), so renaming a flag renames it everywhere, and a deleted flag reads
+generically ("a sensitivity flag").
+
+The answers of the draft routes (create, get, update), the preview, article create, article
+update and draft publish, REST and MCP alike, carry `warnings` (`ArticleWarning[]`: `block`, the
+0-based index in `blocks`, and a one-sentence `message`) when there is something to warn about,
+and leave it out otherwise. Warnings are given whatever the visibility. The web editor shows the
+same sentences live under each block, as a note that does not stop **Publish**
+(`articleSharingWarnings` in `@aurboda/api-spec`, shared by the backend and the editor).
 
 #### Preview
 
@@ -416,8 +447,11 @@ card from the tag, and so nothing through it. A post carrying several followed t
 (#1767): the first tag's `Announce` makes the card, every further tag's joins it as a carrier
 (`timeline_entry.boost_carriers`), and the card shows the first tag. It stays while any of those
 tags is followed: an `Undo{Announce}` or an unfollow of one tag drops only that carrier (the card
-then shows the next one), and only the last one removes the card. A person's boost of the same post
-is still its own card. The Android fallback notifier for servers without `/notifications` still reads only the
+then shows the next one), and only the last one removes the card. A tag that re-announces after its
+`Undo` joins the carriers again, even on the card its first `Announce` made. Two tags' `Announce`s
+arriving at the same moment can each make a card; the later one is then folded into the earlier
+(its carriers join, the card goes). A carrier's handle and name follow its `Update{Person}` like a
+booster's. A person's boost of the same post is still its own card. The Android fallback notifier for servers without `/notifications` still reads only the
 people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The tag accounts also boost each of
 the user's own public posts back to them; those are not counted as boosts (see
@@ -889,6 +923,13 @@ Only the card's own author can do this: the card is matched on the signature-ver
 as well as the Note, and the edited Note must still be on that author's host and attributed to
 them. The card keeps its boost time.
 
+A **local** author's edit also reaches every local user who holds a boost card of the Note and
+does not follow the author (typically a card that came through a followed tag, since a tag actor
+forwards no edits): their inbox gets the `Update` while the post is public or unlisted, and the
+public `Delete` that relays get once it is narrowed to followers, so the card goes rather than
+showing the narrowed text. A remote server's user who holds such a card only through a tag actor
+is not reached: that is a limit of the tag actor.
+
 A boost card's `published_at` is the boost time, so it sorts where the boost happened. And a
 boost is never treated as a _reply_, even when
 the boosted Note is one: it stays visible with `timeline_show_replies` off (Mastodon shows
@@ -1017,8 +1058,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    peer's 1 MB response limit, so a long article still renders natively rather than dropping
    to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
-   `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
+   the same `getContinuousCorrelation` call the block image uses, with `flag_names` (the names
+   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity; an
+   impact block's `activity`, `activity_type`, `activity_label` (set for `meal_sensitivity`, as
+   in "meals with gluten"), `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
    buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`
    call (exact match, no freshness sync) the block image uses, present for any bounded window
    even without sessions; a challenge block's `url` and

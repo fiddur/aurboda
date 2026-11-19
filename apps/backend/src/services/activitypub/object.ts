@@ -9,7 +9,7 @@
  * and is spliced into the delivered/served JSON-LD there (#896).
  */
 
-import { activityHeadline, type FeedVisibility, prettifyKey } from '@aurboda/api-spec'
+import { activityHeadline, type FeedPostVisibility, prettifyKey } from '@aurboda/api-spec'
 
 /** The AS2 magic collection every public object is addressed to. */
 export const AS_PUBLIC = 'https://www.w3.org/ns/activitystreams#Public'
@@ -142,16 +142,17 @@ export const feedPostContent = (
  * non-public visibility is excluded by default; mirrors the SQL filter in
  * `listPublicFeedPosts`.
  */
-export const isPubliclyVisible = (visibility: FeedVisibility): boolean =>
+export const isPubliclyVisible = (visibility: FeedPostVisibility): boolean =>
   visibility === 'public' || visibility === 'unlisted'
 
 /**
  * Map a post's visibility to AS2 `to`/`cc` addressing. `followers` is the
  * actor's followers collection; public objects are addressed to the AS2 Public
- * magic collection.
+ * magic collection. A `participants` post is addressed to nobody here: only
+ * the push of a challenge comment names recipients for it (`replyAddressing`).
  */
 export const addressingFor = (
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   followersUrl: string,
 ): { to: string[]; cc: string[] } => {
   switch (visibility) {
@@ -161,5 +162,7 @@ export const addressingFor = (
       return { cc: [AS_PUBLIC], to: [followersUrl] }
     case 'followers':
       return { cc: [], to: [followersUrl] }
+    case 'participants':
+      return { cc: [], to: [] }
   }
 }

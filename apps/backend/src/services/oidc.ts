@@ -97,6 +97,10 @@ export interface OidcServiceDeps {
   createAccount: (input: AccountSignupInput) => Promise<AccountSignupResult>
   /** Removes an account `createAccount` made moments ago: its role, its database and its central rows. */
   discardAccount: (username: string) => Promise<void>
+  /** The admins' "New signup" notice, sent once the identity is linked. */
+  notifyAdminsOfSignup: (username: string) => void
+  /** Tells the admins that a sign-up left an account that has no way to sign in. */
+  notifyAdminsOfUnfinishedSignup: (username: string) => void
   /** Records an event in the account's own audit log. */
   audit: (username: string, message: string, details?: Record<string, unknown>) => Promise<void>
   usernameTaken: (username: string) => Promise<boolean>
@@ -378,6 +382,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
       const created = await deps.createAccount({
         display_name,
         invitation: record.invitation ?? undefined,
+        notify_admins: false,
         password: randomToken(),
         username,
       })
@@ -407,6 +412,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
             `⚠️ OIDC signup of ${username}: the identity was not linked and rolling back failed:`,
             error,
           )
+          deps.notifyAdminsOfUnfinishedSignup(username)
           await deps.audit(
             username,
             'Single sign-on sign-up could not link the identity; the account was kept',
@@ -420,6 +426,7 @@ export const createOidcService = (deps: OidcServiceDeps): OidcService => {
         await store.saveOidcCode(record).catch(logFailure('keeping the code for another try'))
         return unfinished
       }
+      deps.notifyAdminsOfSignup(username)
       if (record.email) {
         const email = record.email
         await (async () => {

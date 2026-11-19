@@ -29,6 +29,11 @@ const pageOf = <T extends { start_time: Date }>(items: T[]) =>
     items.filter((c) => !after || c.start_time > after).slice(0, limit),
   )
 
+const noSegments = () => ({
+  hasSegments: vi.fn(async () => false),
+  matchSegments: vi.fn(async () => ({ efforts: 0 })),
+})
+
 describe('backfillUserTracks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -48,6 +53,7 @@ describe('backfillUserTracks', () => {
         },
       ]),
       upsertActivityTrack: vi.fn(async () => undefined),
+      ...noSegments(),
     }
 
     const result = await backfillUserTracksWithIds('alice', deps)
@@ -80,6 +86,7 @@ describe('backfillUserTracks', () => {
       getGarminCandidates,
       getStravaCandidates: pageOf([]),
       upsertActivityTrack: vi.fn(async () => undefined),
+      ...noSegments(),
     }
 
     const result = await backfillUserTracks('alice', deps, 2)
@@ -107,6 +114,7 @@ describe('backfillUserTracks', () => {
         { activity_id: 's1', elapsed_seconds: 100, polyline: 'garbage!', start_time: day(0) },
       ]),
       upsertActivityTrack,
+      ...noSegments(),
     }
 
     const result = await backfillUserTracks('alice', deps)
@@ -114,5 +122,47 @@ describe('backfillUserTracks', () => {
     expect(result).toMatchObject({ garmin: 1, skipped: 3, strava: 0 })
     expect(upsertActivityTrack).toHaveBeenCalledTimes(2)
     expect(auditError).toHaveBeenCalledTimes(1)
+  })
+  test('times the segments each written track covers, auditing a failure and carrying on', async () => {
+    const matchSegments = vi.fn(async (_user: string, activityId: string) => {
+      if (activityId === 'g1') throw new Error('boom')
+      return { efforts: 2 }
+    })
+    const deps: TrackBackfillDeps = {
+      getGarminCandidates: pageOf([
+        { activity_id: 'g1', detail: garminDetail(57, day(0)), end_time: null, start_time: day(0) },
+        { activity_id: 'g2', detail: garminDetail(58, day(1)), end_time: null, start_time: day(1) },
+      ]),
+      getStravaCandidates: pageOf([]),
+      hasSegments: vi.fn(async () => true),
+      matchSegments,
+      upsertActivityTrack: vi.fn(async () => undefined),
+    }
+
+    expect(await backfillUserTracks('alice', deps)).toEqual({ garmin: 2, skipped: 0, strava: 0 })
+    expect(matchSegments.mock.calls).toEqual([
+      ['alice', 'g1'],
+      ['alice', 'g2'],
+    ])
+    expect(auditError).toHaveBeenCalledWith('alice', 'data', 'Segment matching failed', {
+      activity_id: 'g1',
+      error: 'Error: boom',
+    })
+  })
+
+  test('does not time segments when the user has none', async () => {
+    const deps: TrackBackfillDeps = {
+      getGarminCandidates: pageOf([
+        { activity_id: 'g1', detail: garminDetail(57), end_time: null, start_time: start },
+      ]),
+      getStravaCandidates: pageOf([]),
+      upsertActivityTrack: vi.fn(async () => undefined),
+      ...noSegments(),
+    }
+
+    await backfillUserTracks('alice', deps)
+
+    expect(deps.hasSegments).toHaveBeenCalledWith('alice')
+    expect(deps.matchSegments).not.toHaveBeenCalled()
   })
 })

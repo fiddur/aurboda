@@ -128,7 +128,7 @@ export const registerActivityTools = (
 
   server.tool(
     'backfill_activity_tracks',
-    'Build missing activity GPS tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks. Incremental: only activities without a track. Returns counts written per source and skipped.',
+    'Build missing activity GPS tracks from stored raw records: Garmin activity details at full resolution, Strava polylines as shape-only tracks. Incremental: only activities without a track. Times the segments each written track covers. Returns counts written per source and skipped.',
     {},
     async () => jsonResponse(await backfillUserTracks(user, defaultTrackBackfillDeps)),
   )

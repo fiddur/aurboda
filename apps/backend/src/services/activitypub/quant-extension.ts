@@ -24,7 +24,7 @@
  * RSA Linked-Data signature and HTTP signatures both operate on the spliced
  * document, so they stay valid.
  */
-import type { FeedStructuredExercise, FeedVisibility } from '@aurboda/api-spec'
+import type { FeedStructuredExercise, FeedPostVisibility } from '@aurboda/api-spec'
 import type { Object as APObject } from '@fedify/fedify/vocab'
 
 import type { ScalarMetric } from './object.ts'
@@ -75,7 +75,7 @@ export interface QuantExerciseInput {
   postId: string
   /** Capability token appended for `followers`-only posts (FEP §9). */
   imageToken: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   activityType: string
   startTime: Date
   endTime?: Date
@@ -132,20 +132,34 @@ type JsonRecord = Record<string, unknown>
 
 const isRecord = (v: unknown): v is JsonRecord => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Dual-type a serialized `type` value with `quant:Exercise` (idempotent). */
-const withQuantType = (type: unknown): unknown => {
-  if (typeof type === 'string') return type === 'quant:Exercise' ? type : [type, 'quant:Exercise']
-  if (Array.isArray(type)) return type.includes('quant:Exercise') ? type : [...type, 'quant:Exercise']
+export interface QuantSpliceOptions {
+  /** The extension type the object is dual-typed with; `quant:Exercise` when absent. */
+  type?: string
+  /** A further frozen `@context` entry appended after the quant entry. */
+  extraContext?: Readonly<Record<string, unknown>>
+}
+
+const DEFAULT_QUANT_TYPE = 'quant:Exercise'
+
+/** Dual-type a serialized `type` value with the extension type (idempotent). */
+const withQuantType = (type: unknown, quantType: string): unknown => {
+  if (typeof type === 'string') return type === quantType ? type : [type, quantType]
+  if (Array.isArray(type)) return type.includes(quantType) ? type : [...type, quantType]
   return type
 }
 
-const withQuantContext = (context: unknown): unknown => {
+const withContextEntry = (context: unknown, entry: object): unknown => {
   if (context === undefined || context === null) {
-    return ['https://www.w3.org/ns/activitystreams', quantContextEntry]
+    return ['https://www.w3.org/ns/activitystreams', entry]
   }
-  if (context === quantContextEntry) return context
-  if (!Array.isArray(context)) return [context, quantContextEntry]
-  return context.includes(quantContextEntry) ? context : [...context, quantContextEntry]
+  if (context === entry) return context
+  if (!Array.isArray(context)) return [context, entry]
+  return context.includes(entry) ? context : [...context, entry]
+}
+
+const withQuantContext = (context: unknown, extraContext?: Readonly<Record<string, unknown>>): unknown => {
+  const quant = withContextEntry(context, quantContextEntry)
+  return extraContext === undefined ? quant : withContextEntry(quant, extraContext)
 }
 
 /**
@@ -154,17 +168,22 @@ const withQuantContext = (context: unknown): unknown => {
  * document itself, extending each `@context` in scope. Non-object documents
  * pass through untouched — enrichment must never break serialization.
  */
-export const spliceQuantExtension = (doc: unknown, props: JsonRecord): unknown => {
+export const spliceQuantExtension = (
+  doc: unknown,
+  props: JsonRecord,
+  options: QuantSpliceOptions = {},
+): unknown => {
   if (!isRecord(doc)) return doc
+  const quantType = options.type ?? DEFAULT_QUANT_TYPE
   const embedded = isRecord(doc.object) ? doc.object : undefined
   const target = embedded ?? doc
-  const enriched: JsonRecord = { ...target, ...props, type: withQuantType(target.type) }
+  const enriched: JsonRecord = { ...target, ...props, type: withQuantType(target.type, quantType) }
   // An embedded object serialized with its own scoped @context keeps it valid standalone.
   if (embedded !== undefined && '@context' in enriched) {
-    enriched['@context'] = withQuantContext(enriched['@context'])
+    enriched['@context'] = withQuantContext(enriched['@context'], options.extraContext)
   }
   const out: JsonRecord = embedded === undefined ? enriched : { ...doc, object: enriched }
-  return { ...out, '@context': withQuantContext(out['@context']) }
+  return { ...out, '@context': withQuantContext(out['@context'], options.extraContext) }
 }
 
 /**
@@ -174,11 +193,15 @@ export const spliceQuantExtension = (doc: unknown, props: JsonRecord): unknown =
  * way — `sendActivity`'s default transformers clone the activity before
  * serialising it.
  */
-export const withQuantJsonLd = <T extends APObject>(obj: T, props: JsonRecord): T => {
+export const withQuantJsonLd = <T extends APObject>(
+  obj: T,
+  props: JsonRecord,
+  options: QuantSpliceOptions = {},
+): T => {
   const baseToJsonLd = obj.toJsonLd.bind(obj)
   const baseClone = obj.clone.bind(obj)
-  obj.toJsonLd = async (options?: Parameters<APObject['toJsonLd']>[0]): Promise<unknown> =>
-    spliceQuantExtension(await baseToJsonLd(options), props)
-  obj.clone = (...args: Parameters<APObject['clone']>) => withQuantJsonLd(baseClone(...args), props)
+  obj.toJsonLd = async (jsonLdOptions?: Parameters<APObject['toJsonLd']>[0]): Promise<unknown> =>
+    spliceQuantExtension(await baseToJsonLd(jsonLdOptions), props, options)
+  obj.clone = (...args: Parameters<APObject['clone']>) => withQuantJsonLd(baseClone(...args), props, options)
   return obj
 }

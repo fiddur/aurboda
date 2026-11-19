@@ -16,6 +16,7 @@ import { GARMIN_PUSH_PROVIDER } from './oauth-status.ts'
 import {
   adaptGarminPushItem,
   garminPushFeeds,
+  garminPushSideFeeds,
   garminPushTypes,
   isCalendarDate,
   isPlainObject,
@@ -244,6 +245,10 @@ const processItem = async (
     if (feeds.includes(dataType)) await deps.processGarminData(user, dataType, data)
   }
   if (adapted.points.length > 0) await deps.insertTimeSeries(user, adapted.points)
+  const feedPoints = (adapted.feedPoints ?? []).flatMap(({ dataType, points }) =>
+    feeds.includes(dataType) ? points : [],
+  )
+  if (feedPoints.length > 0) await deps.insertTimeSeries(user, feedPoints)
 
   const fileWanted = ACTIVITY_TYPES.has(type) || (type === 'activityFiles' && isFitNotice(item))
   const activityId = fileWanted ? pushedGarminActivityId(item) : undefined
@@ -328,8 +333,8 @@ export const processGarminPushJob = async (
   for (const [type, externalIds] of groupRefsByType(records)) {
     if (isLifecycle(type) || !PUSH_TYPE.test(type)) continue
     const feeds = garminPushFeeds(type)
-    const enabled = feeds.filter((feed) => !disabled.includes(feed))
-    if (feeds.length > 0 && enabled.length === 0) continue
+    if (feeds.length > 0 && feeds.every((feed) => disabled.includes(feed))) continue
+    const enabled = [...feeds, ...garminPushSideFeeds(type)].filter((feed) => !disabled.includes(feed))
     const found = await deps.getPushRecords(user, garminPushRecordType(type), externalIds)
     const entries = externalIds.flatMap((id) => {
       const item = found.get(id)

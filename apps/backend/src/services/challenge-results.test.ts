@@ -15,6 +15,7 @@ import {
   resultPostVisibility,
   STALE_ACCEPT_AFTER_MS,
 } from './challenge-results.ts'
+import { buildChallengeObjectUrl } from './share-urls.ts'
 
 vi.mock('./audit-log.ts', () => ({ auditError: vi.fn() }))
 
@@ -116,6 +117,7 @@ describe('buildChallengeResultPost', () => {
     const post = buildChallengeResultPost(challenge(), result, 'https://aurboda.net', 'host')
     expect(post).toEqual({
       challenge: { name: 'August steps', result, url: 'https://aurboda.net/u/host/aug' },
+      challenge_uri: buildChallengeObjectUrl('https://aurboda.net', 'host', 'aug'),
       message: null,
       visibility: 'public',
     })
@@ -187,6 +189,21 @@ describe('publishFinishedChallengeResults', () => {
     expect(d.created[0].user).toBe('host')
     expect(d.created[0].input.challenge.result?.podium[0].display_name).toBe('alice')
     expect(d.delivered).toEqual(['p1'])
+  })
+
+  test('enters the result post into the thread, and a thread failure does not undo the post', async () => {
+    const admitted: string[] = []
+    const d = deps({
+      admitToThread: vi.fn(async (_user: string, p: FeedPostRecord) => {
+        admitted.push(p.id)
+      }),
+    })
+    expect(await publishFinishedChallengeResults(d)).toBe(1)
+    expect(admitted).toEqual(['p1'])
+
+    const failing = deps({ admitToThread: vi.fn(async () => Promise.reject(new Error('db down'))) })
+    expect(await publishFinishedChallengeResults(failing)).toBe(1)
+    expect(failing.delivered).toEqual(['p1'])
   })
 
   test('does not post when another sweep already claimed the challenge', async () => {

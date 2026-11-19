@@ -12,7 +12,7 @@ import type { ContinuousCorrelationData, CorrelationSelector } from '@aurboda/ap
 
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchContinuousCorrelation } from '../../state/api'
+import { fetchContinuousCorrelation, fetchCorrelationSelectors } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { describeSelectorAxis, linearRegression } from '../Correlations/exploreCharts'
 
@@ -42,7 +42,12 @@ export interface CorrelationScatterData {
   group_comparison: ContinuousCorrelationData['group_comparison']
   trigger: CorrelationSelector
   outcome: CorrelationSelector
+  /** Sensitivity flag names by id, for a `sensitivity` selector's axis. */
+  flag_names?: Record<string, string>
 }
+
+const axisLabel = (selector: CorrelationSelector, flagNames: Record<string, string> | undefined): string =>
+  describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames?.[selector.flag] : undefined)
 
 /** The scatter itself: points + OLS regression line + r/ρ/n/p annotation + axes. */
 export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }) => {
@@ -63,7 +68,9 @@ export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }
   const headline = gc?.trigger_is_binary
     ? `Δ(present−absent)=${fmt(gc.difference)} · d=${fmt(gc.cohens_d)} · n=${data.n} · p=${fmtP(gc.welch?.p_value)}`
     : `r=${fmt(data.pearson)} · ρ=${fmt(data.spearman)} · n=${data.n} · p=${fmtP(data.pearson_p)}`
-  const label = `Scatter of ${describeSelectorAxis(data.trigger)} versus ${describeSelectorAxis(data.outcome)}; ${headline}`
+  const triggerLabel = axisLabel(data.trigger, data.flag_names)
+  const outcomeLabel = axisLabel(data.outcome, data.flag_names)
+  const label = `Scatter of ${triggerLabel} versus ${outcomeLabel}; ${headline}`
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} class="article-scatter" role="img" aria-label={label}>
@@ -86,7 +93,7 @@ export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }
         {headline}
       </text>
       <text x={(PAD.left + (W - PAD.right)) / 2} y={H - 8} text-anchor="middle" class="article-scatter-axis">
-        {describeSelectorAxis(data.trigger)}
+        {triggerLabel}
       </text>
       <text
         x={14}
@@ -95,7 +102,7 @@ export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }
         class="article-scatter-axis"
         transform={`rotate(-90 14 ${(PAD.top + (H - PAD.bottom)) / 2})`}
       >
-        {describeSelectorAxis(data.outcome)}
+        {outcomeLabel}
       </text>
     </svg>
   )
@@ -135,6 +142,13 @@ export const ArticleCorrelationBlock = ({
       }),
     queryKey: ['article-correlation', JSON.stringify(trigger), JSON.stringify(outcome), lagDays, start, end],
   })
+  const { data: selectors } = useQuery({
+    enabled: trigger.kind === 'sensitivity' || outcome.kind === 'sensitivity',
+    queryFn: fetchCorrelationSelectors,
+    queryKey: ['correlationSelectors'],
+    staleTime: 5 * 60 * 1000,
+  })
+  const flagNames = Object.fromEntries((selectors?.sensitivities ?? []).map((s) => [s.value, s.label]))
 
   return (
     <figure class="article-chart">
@@ -145,7 +159,7 @@ export const ArticleCorrelationBlock = ({
       ) : !data || data.n < 3 ? (
         <p class="article-chart-note">Not enough overlapping data in this window.</p>
       ) : (
-        <CorrelationScatterSvg data={data} />
+        <CorrelationScatterSvg data={{ ...data, flag_names: flagNames }} />
       )}
       {caption && <figcaption class="article-chart-caption">{caption}</figcaption>}
     </figure>

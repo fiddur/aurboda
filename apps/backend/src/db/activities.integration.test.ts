@@ -310,6 +310,74 @@ describe('Activities Integration Tests', () => {
     })
   })
 
+  describe('insertActivities unchanged-row guard', () => {
+    const rowVersions = async (): Promise<Record<string, string>> =>
+      Object.fromEntries(
+        (await getTestDbClient().query(`SELECT id, xmin::text AS v FROM activities`)).rows.map((r) => [
+          r.id as string,
+          r.v as string,
+        ]),
+      )
+
+    const byExternalId: Activity = {
+      activity_type: 'exercise',
+      data: { calories: 200 },
+      end_time: new Date('2024-01-15T11:00:00Z'),
+      external_id: 'hc-guard-1',
+      source: 'health_connect',
+      start_time: new Date('2024-01-15T10:00:00Z'),
+      title: 'Run',
+    }
+
+    const byTime: Activity = {
+      activity_type: 'sleep',
+      end_time: new Date('2024-01-16T07:00:00Z'),
+      source: 'health_connect',
+      start_time: new Date('2024-01-15T23:00:00Z'),
+      title: 'Night',
+    }
+
+    const sortById = <T extends { id: string }>(rows: T[]): T[] =>
+      [...rows].sort((a, b) => a.id.localeCompare(b.id))
+
+    test('re-inserting an identical batch rewrites no row and still returns every key', async () => {
+      const user = getTestUser()
+      const first = await insertActivities(user, [byExternalId, byTime])
+      const versions = await rowVersions()
+
+      const second = await insertActivities(user, [byExternalId, byTime])
+
+      expect(await rowVersions()).toEqual(versions)
+      expect(sortById(second)).toEqual(sortById(first))
+      expect(second).toHaveLength(2)
+    })
+
+    test('a changed row in the batch is still updated while the identical one is left alone', async () => {
+      const user = getTestUser()
+      const first = await insertActivities(user, [byExternalId, byTime])
+      const versions = await rowVersions()
+      const sleepId = first.find((k) => k.activity_type === 'sleep')!.id
+      const runId = first.find((k) => k.activity_type === 'exercise')!.id
+
+      const second = await insertActivities(user, [{ ...byExternalId, title: 'Long run' }, byTime])
+
+      const after = await rowVersions()
+      expect(after[sleepId]).toBe(versions[sleepId])
+      expect(after[runId]).not.toBe(versions[runId])
+      expect((await getActivityById(user, runId))?.title).toBe('Long run')
+      expect(second.map((k) => k.id).sort()).toEqual([runId, sleepId].sort())
+    })
+
+    test('a soft-deleted conflicting row stays deleted and returns no key', async () => {
+      const user = getTestUser()
+      const [{ id }] = await insertActivities(user, [byTime])
+      await deleteActivity(user, id)
+
+      expect(await insertActivities(user, [byTime])).toEqual([])
+      expect(await getActivityById(user, id)).toBeNull()
+    })
+  })
+
   describe('getSleepSessions', () => {
     test('returns overnight sleep session on wake-up day', async () => {
       const user = getTestUser()

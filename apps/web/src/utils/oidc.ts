@@ -1,5 +1,7 @@
 import type { OidcErrorCode, OidcLink, OidcPreset, OidcPublicProvider } from '@aurboda/api-spec'
 
+import axios from 'axios'
+
 const ERROR_MESSAGES: Record<OidcErrorCode, string> = {
   already_linked: 'That sign-in is already linked to another account here.',
   domain_not_allowed:
@@ -64,6 +66,24 @@ export const takeOidcVerifier = (storage = browserStorage()): string | null => {
   } catch {
     return null
   }
+}
+
+/** Whether a request failed because the stored session is no longer accepted. */
+export const isUnauthorized = (err: unknown): boolean =>
+  axios.isAxiosError(err) && err.response?.status === 401
+
+/**
+ * The link page's URL with its code back in the fragment, and the verifier remembered again: the
+ * page drops both as it loads, and a signed-out visit needs them to log in and complete the link.
+ */
+export const linkPageForRetry = (
+  code: string,
+  verifier: string,
+  { pathname, search }: Pick<Location, 'pathname' | 'search'>,
+  storage = browserStorage(),
+): string => {
+  rememberOidcVerifier(verifier, storage)
+  return `${pathname}${search}#code=${encodeURIComponent(code)}`
 }
 
 /** The enabled providers the user has not linked yet. */

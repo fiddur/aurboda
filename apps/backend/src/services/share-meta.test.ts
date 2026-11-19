@@ -53,6 +53,17 @@ describe('renderShareMetaTags', () => {
     expect(html).not.toContain('<x>')
   })
 
+  test('links the ActivityPub object as an alternate when given, escaped', () => {
+    const html = renderShareMetaTags({
+      ...meta,
+      activityUrl: 'https://aurboda.net/users/fiddur/challenges/a&b',
+    })
+    expect(html).toContain(
+      '<link rel="alternate" type="application/activity+json" href="https://aurboda.net/users/fiddur/challenges/a&amp;b">',
+    )
+    expect(renderShareMetaTags(meta)).not.toContain('application/activity+json')
+  })
+
   test('embeds JSON-LD when provided, escaping </script', () => {
     const html = renderShareMetaTags({
       ...meta,

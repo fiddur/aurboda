@@ -96,6 +96,16 @@ describe('createActorAcceptNormalizer', () => {
     expect((await seenAccept(BROWSER, `/users/fiddur/feed/${PUBLIC_POST}`)).body.accept).toBe(BROWSER)
   })
 
+  test('rewrites a wildcard or absent Accept on a challenge id to the type Fedify serves the Event for', async () => {
+    for (const accept of ['*/*', undefined]) {
+      const res = await seenAccept(accept, '/users/fiddur/challenges/nov')
+      expect(res.body.accept).toBe('application/activity+json')
+      expect(res.headers.vary).toBe('Accept')
+    }
+    expect((await seenAccept(BROWSER, '/users/fiddur/challenges/nov')).body.accept).toBe(BROWSER)
+    expect((await seenAccept('*/*', '/users/fiddur/challenges/nov/extra')).body.accept).toBe('*/*')
+  })
+
   test('touches neither sub-resources, nor other methods, nor malformed usernames', async () => {
     expect((await seenAccept('*/*', '/users/fiddur/outbox')).body.accept).toBe('*/*')
     expect((await seenAccept('*/*', '/users/fiddur/followers')).body.accept).toBe('*/*')
@@ -215,5 +225,37 @@ describe('GET /users/:username/feed/:postId (browser HTML fallback)', () => {
       .set('Accept', 'image/png')
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ fellThrough: true })
+  })
+})
+
+describe('GET /users/:username/challenges/:slug (browser HTML fallback)', () => {
+  test('redirects a browser to the challenge page, varying on Accept', async () => {
+    const res = await supertest(buildApp()).get('/users/fiddur/challenges/nov').set('Accept', BROWSER)
+    expect(res.status).toBe(302)
+    expect(res.headers.location).toBe('https://aurboda.net/u/fiddur/nov')
+    expect(res.headers.vary).toBe('Accept')
+  })
+
+  test('keeps a configured origin sub-path without doubling slashes', async () => {
+    const res = await supertest(buildApp('https://example.org/qs/'))
+      .get('/users/fiddur/challenges/nov')
+      .set('Accept', 'text/html')
+    expect(res.headers.location).toBe('https://example.org/qs/u/fiddur/nov')
+  })
+
+  test('falls through for an unknown user or a malformed username', async () => {
+    for (const path of ['/users/nosuchuser/challenges/nov', '/users/Invalid..Name/challenges/nov']) {
+      const res = await supertest(buildApp()).get(path).set('Accept', BROWSER)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ fellThrough: true })
+    }
+  })
+
+  test("falls through for an ActivityPub, wildcard or unacceptable Accept: the Event is Fedify's", async () => {
+    for (const accept of ['application/activity+json', '*/*', 'image/png']) {
+      const res = await supertest(buildApp()).get('/users/fiddur/challenges/nov').set('Accept', accept)
+      expect(res.status).toBe(404)
+      expect(res.body).toEqual({ fellThrough: true })
+    }
   })
 })

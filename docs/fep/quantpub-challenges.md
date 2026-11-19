@@ -114,6 +114,12 @@ A metric is scored from what each member chose to share for this challenge
 alone; nothing about a challenge grants access to any other data of a member
 (§8).
 
+A `Note` that belongs to a challenge's conversation — a comment on the
+challenge, a reply to one, a share of the challenge or the result (§7) —
+SHOULD name the challenge object's id as its `context`. A host MUST NOT widen
+a Note's audience: a Note that does not address `as:Public` is only shown to
+the challenge's participants, and only when its `context` names the challenge.
+
 ### 3. Discovery and the challenge document
 
 The [FEP-302f] §4 discovery document gains one key:
@@ -158,7 +164,8 @@ GET {apiBase}/public/{username}/challenges/{slug}
     "actor": "https://qs.example.net/users/freja"
   },
   "members": [{ "name": "ola", "url": "https://ola.example/", "actor": null }],
-  "standingsUrl": "https://qs.example.net/api/public/freja/challenges/november-steps/standings"
+  "standingsUrl": "https://qs.example.net/api/public/freja/challenges/november-steps/standings",
+  "threadUrl": "https://qs.example.net/users/freja/challenges/november-steps/thread"
 }
 ```
 
@@ -172,6 +179,64 @@ document whose `items` are the same documents without `joinToken` and
 `members`, which is how a peer discovers open challenges from people its users
 follow. An `unlisted` challenge is reachable
 by slug only and is not listed.
+
+`threadUrl` is OPTIONAL and present only where the host keeps a comment thread
+(§3.1). A member MUST only follow a `threadUrl` (and only trust an `id`) on the
+origin of the challenge's `url`.
+
+#### 3.1 The comment thread
+
+A host that keeps a comment thread serves it at `threadUrl`, `no-store`:
+
+```json
+{
+  "kind": "challengeThread",
+  "challenge": "https://qs.example.net/users/freja/challenges/november-steps",
+  "host": "https://qs.example.net/users/freja",
+  "audiences": ["public", "participants"],
+  "attendees": ["https://qs.example.net/users/freja", "https://ola.example/users/ola"],
+  "items": [
+    {
+      "id": "https://ola.example/users/ola/notes/42",
+      "type": "comment",
+      "audience": "participants",
+      "attributedTo": { "id": "https://ola.example/users/ola", "name": "Ola" },
+      "content": "<p>Day one done</p>",
+      "inReplyTo": "https://qs.example.net/users/freja/challenges/november-steps",
+      "published": "2026-11-02T08:00:00Z"
+    }
+  ]
+}
+```
+
+`items` are the visible entries, newest first, at most 500; `content` is HTML
+the reader MUST sanitise. `audiences` are the audiences the requester may post
+with.
+
+A member's server MUST sign the GET with [HTTP Signatures] as its user's
+actor. The host MUST verify the signature and match the signer to an active
+member, by the member's `actor` or the actor its `url` resolves to. A matched
+member is **verified**: the host records it, and from then on delivers it the
+thread's comments (below). A verified member gets every entry, both
+audiences, and `attendees`. A request that is unsigned, does not verify, or is
+signed by someone who is not a member is not an error: it gets the `public`
+entries only, the audiences a visitor may post with, and no `attendees`.
+
+**Delivery.** A comment is a `Note` whose `inReplyTo` is the challenge `id` or
+an entry, and whose `context` is the challenge `id`.
+
+- The host delivers each new, edited and deleted comment (`Create`, `Update`,
+  `Delete`) to its verified members.
+- A member delivers its own comments to the host and to `attendees`.
+- A `participants` comment is addressed `to` exactly those actors, never to
+  `as:Public` or followers. A `public` one is addressed as any public reply.
+
+A member's server SHOULD accept such a Note into its copy of the thread only
+when the Note's `context` names a challenge the user joined and the sender is
+that challenge's `host` or one of its `attendees`. It SHOULD pull the thread
+again when anyone else sends one. Entries a host takes from elsewhere (a
+fediverse reply, a share) are not delivered; members see them at the next
+pull.
 
 ### 4. Joining and leaving
 
@@ -399,9 +464,13 @@ standings (§6) — alongside the old protocol, prefers it when joining a host t
 advertises `challenges: true`, and reads either shape from members, so instances
 on either side of the move keep competing. Its documents carry a vendor `aurboda`
 block (the exact spec on a challenge, the measure echo on an entry) that other
-implementations ignore. The ActivityPub half — the `Event` object (§2), `Join` /
-`Leave` in the inbox (§4.1) and `attendees` — is not yet implemented, nor is
-`joinMode: restricted`.
+implementations ignore. Of the ActivityPub half, the `Event` object (§2) is served
+at the §2 id convention, with the document's `id` pointing at it; `Join` / `Leave`
+in the inbox (§4.1), `attendees` and `Create{Event}` delivery are not yet
+implemented, nor is `joinMode: restricted`. Comment and share Notes name the
+challenge as their `context` (§2), and a host takes comments from other servers
+into its challenge's thread. Aurboda serves and pulls the §3.1 thread and
+delivers comments both ways.
 
 A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
 fetch the post's Aurboda-only structured payload, which carries the §3 document
@@ -457,6 +526,7 @@ and render the race from that.
 - [FEP-844e] Capability discovery
 - [FEP-8b32] Object Integrity Proofs
 - [RFC-2119] Key words for use in RFCs to Indicate Requirement Levels
+- [HTTP Signatures] Signing HTTP Messages (draft-cavage-http-signatures-12)
 
 [FEP-302f]: https://codeberg.org/fediverse/fep/src/branch/main/fep/302f/fep-302f.md
 [FEP-8a8e]: https://codeberg.org/fediverse/fep/src/branch/main/fep/8a8e/fep-8a8e.md
@@ -466,6 +536,7 @@ and render the race from that.
 [FEP-844e]: https://codeberg.org/fediverse/fep/src/branch/main/fep/844e/fep-844e.md
 [FEP-8b32]: https://codeberg.org/fediverse/fep/src/branch/main/fep/8b32/fep-8b32.md
 [RFC-2119]: https://tools.ietf.org/html/rfc2119.html
+[HTTP Signatures]: https://datatracker.ietf.org/doc/html/draft-cavage-http-signatures-12
 [docs/features/challenges.md]: ../features/challenges.md
 
 ## Copyright

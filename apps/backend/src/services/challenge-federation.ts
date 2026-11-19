@@ -32,6 +32,7 @@ import {
   type ChallengeParticipationRecord,
   type ChallengeSpecFields,
   createChallengeParticipation,
+  type ParticipationThreadState,
   deleteChallengeParticipation,
   getChallengeBySlug,
   getChallengeMemberByIdentity,
@@ -40,6 +41,7 @@ import {
   getParticipationByUrl,
   listChallengeParticipations,
   removeChallengeMember,
+  updateParticipationThreadState,
   upsertChallengeMember,
 } from '../db/index.ts'
 import { normalizeWellKnownQuantpub, wireMetricToMetricType } from './activitypub/quant-wire.ts'
@@ -251,6 +253,34 @@ export const joinQuantChallenge = async (
   }
 }
 
+const originOf = (url: string): string | null => {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * What a participation remembers of a QuantPub challenge document's thread: the object id and the
+ * thread URL only when on the challenge page's own origin, and the host's actor.
+ */
+export const threadStateFromDocument = (
+  challengeUrl: string,
+  doc: Pick<QuantChallengeDocument, 'host' | 'id' | 'threadUrl'>,
+): ParticipationThreadState => {
+  const origin = originOf(challengeUrl)
+  const sameOrigin = (url: string | undefined): string | undefined =>
+    url != null && origin != null && originOf(url) === origin ? url : undefined
+  const objectUri = sameOrigin(doc.id)
+  const threadUrl = sameOrigin(doc.threadUrl)
+  return {
+    ...(objectUri == null ? {} : { challenge_object_uri: objectUri }),
+    ...(doc.host.actor == null ? {} : { host_actor_uri: doc.host.actor }),
+    ...(threadUrl == null ? {} : { thread_url: threadUrl }),
+  }
+}
+
 /** The URL a member serves its entry for one participation at. */
 export const buildEntryUrl = (apiBase: string, user: string, dataToken: string): string =>
   joinUrl(apiBase, `public/${encodeURIComponent(user)}/challenge-entries/${dataToken}`)
@@ -304,7 +334,7 @@ const joinQuantpubHost = async (
   const joinToken = doc.joinToken
   // Read before createAndRegister: creating the participation clears the tombstone.
   const leftToken = await getLeftChallengeToken(user, challengeUrl)
-  return createAndRegister(
+  const joined = await createAndRegister(
     user,
     {
       challenge_url: challengeUrl,
@@ -326,6 +356,9 @@ const joinQuantpubHost = async (
         url: buildProfileUrl(ourWebHost, user),
       }),
   )
+  const state = threadStateFromDocument(challengeUrl, doc)
+  if (Object.keys(state).length === 0) return joined
+  return (await updateParticipationThreadState(user, joined.id, state)) ?? joined
 }
 
 const joinAurbodaHost = async (

@@ -57,7 +57,7 @@ const BARE_PAD = 6
  * (`apps/web/src/pages/Challenges/member-colors.ts`, mirrored by Android's
  * `challengeMemberColor` in `ChallengeWidgetModel.kt`): change all three together.
  */
-const MEMBER_COLORS = ['#2b9ea7', '#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#84cc16']
+const MEMBER_COLORS = ['#2b9ea7', '#f59e0b', '#a855f7', '#e11d48', '#84cc16', '#f472b6', '#3b82f6', '#a16207']
 const LIGHTEN_PERCENT = 35
 
 const hex2 = (n: number): string => n.toString(16).padStart(2, '0')

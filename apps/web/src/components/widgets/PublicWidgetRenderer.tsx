@@ -12,6 +12,7 @@ import { ActivityTypeCardView } from './ActivityTypeCardWidget'
 import { BarChartView } from './BarChartWidget'
 import { CombinedChartView } from './CombinedChartWidget'
 import { CorrelationView } from './CorrelationWidget'
+import { ResolvedDayOverview } from './DayOverviewWidget'
 import { GoalProgressView } from './GoalProgressWidget'
 import { HrZonesView } from './HrZonesWidget'
 import { LastSleepView } from './LastSleepWidget'
@@ -116,7 +117,9 @@ export function PublicWidgetRenderer({
     case 'places_card':
       return <PlacesCardView config={widget.config} data={data?.type === 'places_card' ? data.data : null} />
     case 'day_overview':
-      return null
+      return data?.type === 'day_overview' && data.data ? (
+        <ResolvedDayOverview config={widget.config} data={data.data} />
+      ) : null
     default:
       return <div class="widget-unknown">Unknown widget type</div>
   }

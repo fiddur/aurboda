@@ -17,7 +17,7 @@ import { ActivityTypeName } from '../Routes/ActivityTypeName'
 import { formatElapsed } from '../Routes/format'
 import '../DataSources/style.css'
 import '../Routes/style.css'
-import { formatEffortCount, formatMatchResult, segmentEffortSeries } from './format'
+import { cutFromLink, formatEffortCount, formatMatchResult, segmentEffortSeries } from './format'
 import './style.css'
 
 /** RouteMap draws a line from timed points; a segment line has no times and is never hovered. */
@@ -119,21 +119,13 @@ function Trend({ efforts }: { efforts: SegmentEffort[] }) {
 }
 
 function CutFrom({ segment }: { segment: SegmentDetailData }) {
-  if (segment.created_from_activity_id) {
-    return (
-      <p class="segment-cut-from">
-        Cut from <a href={`/detail/activity/${segment.created_from_activity_id}`}>an activity</a>.
-      </p>
-    )
-  }
-  if (segment.created_from_route_id) {
-    return (
-      <p class="segment-cut-from">
-        Cut from <a href={`/routes/${segment.created_from_route_id}`}>a route</a>.
-      </p>
-    )
-  }
-  return null
+  const link = cutFromLink(segment)
+  if (!link) return null
+  return (
+    <p class="segment-cut-from">
+      Cut from <a href={link.href}>{link.label}</a>.
+    </p>
+  )
 }
 
 function ManageSegment({ segment }: { segment: SegmentDetailData }) {

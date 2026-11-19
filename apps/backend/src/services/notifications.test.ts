@@ -13,6 +13,7 @@ import {
   listNotificationTypeSettings,
   type NotifierDeps,
   notifyAdminsOfSignup,
+  notifyAdminsOfUnfinishedSignup,
   type RaiseNotificationInput,
   serializeNotification,
 } from './notifications.ts'
@@ -258,6 +259,7 @@ describe('listNotificationTypeSettings', () => {
       'feed_like',
       'feed_boost',
       'feed_post',
+      'challenge_comment',
       'autoshare_pending',
       'garmin_key_expiring',
       'reminder',
@@ -340,5 +342,31 @@ describe('notifyAdminsOfSignup', () => {
       })('bob'),
     ).resolves.toBeUndefined()
     expect(errors).toHaveLength(1)
+  })
+})
+
+describe('notifyAdminsOfUnfinishedSignup', () => {
+  test('raises its own admin_signup notice for every admin except the account', async () => {
+    const raised: [string, RaiseNotificationInput][] = []
+    await notifyAdminsOfUnfinishedSignup({
+      getAdmins: async () => ['root_admin', 'bob'],
+      raiseBestEffort: async (user, notification) => {
+        raised.push([user, notification])
+      },
+    })('bob')
+
+    expect(raised).toEqual([
+      [
+        'root_admin',
+        {
+          body: 'Single sign-on sign-up could not link the identity and rolling back failed; the account was kept and has no way to sign in.',
+          data: { username: 'bob' },
+          dedupe_key: 'admin_signup_unfinished:bob',
+          link: '/admin/users/bob',
+          title: 'Sign-up of bob needs attention',
+          type: 'admin_signup',
+        },
+      ],
+    ])
   })
 })

@@ -54,6 +54,7 @@ const fakePost = (id: string, activityId: string, ruleId: string): FeedPostRecor
   article: null,
   autoshare_rule_id: ruleId,
   challenge: null,
+  challenge_uri: null,
   dashboard: null,
   exercise: null,
   created_at: T0,

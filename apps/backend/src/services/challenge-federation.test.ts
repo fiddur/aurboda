@@ -34,6 +34,7 @@ vi.mock('../db/index.ts', async (importOriginal) => ({
   getParticipationByUrl: vi.fn(),
   listChallengeParticipations: vi.fn(),
   removeChallengeMember: vi.fn(),
+  updateParticipationThreadState: vi.fn(),
   upsertChallengeMember: vi.fn(),
 }))
 
@@ -211,6 +212,12 @@ const participationRecord = (
   data_token: 'dtok',
   end_ts: new Date('2026-11-30T23:00:00Z'),
   host_checked_at: null,
+  challenge_object_uri: null,
+  host_actor_uri: null,
+  thread_attendees: [],
+  thread_audiences: [],
+  thread_synced_at: null,
+  thread_url: null,
   host_identity: 'https://qs.example/u/freja',
   id: 'p1',
   name: 'November steps',
@@ -258,6 +265,9 @@ beforeEach(() => {
   vi.mocked(db.getChallengeBySlug).mockResolvedValue(null)
   vi.mocked(db.getChallengeMemberByIdentity).mockResolvedValue(null)
   vi.mocked(db.removeChallengeMember).mockResolvedValue(true)
+  vi.mocked(db.updateParticipationThreadState).mockImplementation(async (_user, _id, state) =>
+    participationRecord({ ...(state as Partial<ChallengeParticipationRecord>) }),
+  )
 })
 
 describe('discoverInstance', () => {
@@ -352,6 +362,43 @@ describe('joinChallenge on a QuantPub host', () => {
         url: 'https://home.example/u/ola',
       },
     )
+  })
+
+  test('remembers the object id, the host actor and the thread URL on the challenge origin', async () => {
+    routeGets({
+      '/.well-known/quantpub': quantWellKnown,
+      '/public/freja/challenges/nov': quantDocument({
+        host: { actor: 'https://qs.example/users/freja', name: 'freja', url: 'https://qs.example/u/freja' },
+        id: 'https://qs.example/users/freja/challenges/nov',
+        threadUrl: 'https://qs.example/users/freja/challenges/nov/thread',
+      }),
+    })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ status: 'member' }))
+
+    const participation = await joinChallenge(deps)
+
+    expect(db.updateParticipationThreadState).toHaveBeenCalledWith('ola', 'p1', {
+      challenge_object_uri: 'https://qs.example/users/freja/challenges/nov',
+      host_actor_uri: 'https://qs.example/users/freja',
+      thread_url: 'https://qs.example/users/freja/challenges/nov/thread',
+    })
+    expect(participation.thread_url).toBe('https://qs.example/users/freja/challenges/nov/thread')
+  })
+
+  test('a thread URL or object id on another origin is not remembered', async () => {
+    routeGets({
+      '/.well-known/quantpub': quantWellKnown,
+      '/public/freja/challenges/nov': quantDocument({
+        host: { name: 'freja', url: 'https://qs.example/u/freja' },
+        id: 'https://evil.example/users/freja/challenges/nov',
+        threadUrl: 'https://evil.example/thread',
+      }),
+    })
+    vi.mocked(safeFetch.safeFetchPost).mockResolvedValue(response({ status: 'member' }))
+
+    await joinChallenge(deps)
+
+    expect(db.updateParticipationThreadState).not.toHaveBeenCalled()
   })
 
   test('a rejoin presents the entry URL of the participation it left', async () => {

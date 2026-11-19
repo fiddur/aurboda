@@ -326,7 +326,9 @@ export const insertActivity = async (
  * Bulk insert / upsert a batch of activities. Returns the persisted
  * `(source, external_id|null, activity_type, start_time, id)` tuple per
  * input row so callers (e.g. Health Connect ingest) can attach notes or
- * other linked rows by id afterwards.
+ * other linked rows by id afterwards. A row identical to the stored one fails the
+ * same `IS DISTINCT FROM` guard as `upsertActivity` and is not rewritten, but its key
+ * is still returned: screentime rebuilds keep only the returned ids.
  */
 export const insertActivities = async (
   user: string,
@@ -373,18 +375,34 @@ export const insertActivities = async (
     const result = await query(
       user,
       format(
-        `INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data)
-         SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.external_id, v.activity_type,
-                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.data::jsonb
-         FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, data)
-         ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
-           activity_type = ${type},
-           start_time = EXCLUDED.start_time,
-           end_time = EXCLUDED.end_time,
-           title = ${title},
-           data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
-         WHERE activities.deleted_at IS NULL
-         RETURNING id, source, external_id, activity_type, start_time`,
+        `WITH v AS (
+           SELECT v.id::uuid AS id, v.source, v.external_id, v.activity_type,
+                  v.start_time::timestamptz AS start_time, v.end_time::timestamptz AS end_time,
+                  v.title, v.data::jsonb AS data
+           FROM (VALUES %L) AS v(id, source, external_id, activity_type, start_time, end_time, title, data)
+         ), written AS (
+           INSERT INTO activities (id, source, external_id, activity_type, start_time, end_time, title, data)
+           SELECT COALESCE(v.id, gen_random_uuid()), v.source, v.external_id, v.activity_type,
+                  v.start_time, v.end_time, v.title, v.data
+           FROM v
+           ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL DO UPDATE SET
+             activity_type = ${type},
+             start_time = EXCLUDED.start_time,
+             end_time = EXCLUDED.end_time,
+             title = ${title},
+             data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
+           WHERE activities.deleted_at IS NULL
+             AND (activities.activity_type, activities.start_time, activities.end_time, activities.title, activities.data)
+                 IS DISTINCT FROM
+                 (${type}, EXCLUDED.start_time, EXCLUDED.end_time, ${title},
+                  COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
+           RETURNING id, source, external_id, activity_type, start_time
+         )
+         SELECT * FROM written
+         UNION ALL
+         SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time
+         FROM activities a JOIN v ON a.source = v.source AND a.external_id = v.external_id
+         WHERE a.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM written w WHERE w.id = a.id)`,
         values,
       ),
     )
@@ -406,16 +424,33 @@ export const insertActivities = async (
     const result = await query(
       user,
       format(
-        `INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
-         SELECT COALESCE(v.id::uuid, gen_random_uuid()), v.source, v.activity_type,
-                v.start_time::timestamptz, v.end_time::timestamptz, v.title, v.data::jsonb
-         FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, data)
-         ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
-           end_time = EXCLUDED.end_time,
-           title = ${title},
-           data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
-         WHERE activities.deleted_at IS NULL
-         RETURNING id, source, external_id, activity_type, start_time`,
+        `WITH v AS (
+           SELECT v.id::uuid AS id, v.source, v.activity_type,
+                  v.start_time::timestamptz AS start_time, v.end_time::timestamptz AS end_time,
+                  v.title, v.data::jsonb AS data
+           FROM (VALUES %L) AS v(id, source, activity_type, start_time, end_time, title, data)
+         ), written AS (
+           INSERT INTO activities (id, source, activity_type, start_time, end_time, title, data)
+           SELECT COALESCE(v.id, gen_random_uuid()), v.source, v.activity_type,
+                  v.start_time, v.end_time, v.title, v.data
+           FROM v
+           ON CONFLICT (source, activity_type, start_time) WHERE external_id IS NULL DO UPDATE SET
+             end_time = EXCLUDED.end_time,
+             title = ${title},
+             data = COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data
+           WHERE activities.deleted_at IS NULL
+             AND (activities.end_time, activities.title, activities.data)
+                 IS DISTINCT FROM
+                 (EXCLUDED.end_time, ${title}, COALESCE(activities.data, '{}'::jsonb) || EXCLUDED.data)
+           RETURNING id, source, external_id, activity_type, start_time
+         )
+         SELECT * FROM written
+         UNION ALL
+         SELECT a.id, a.source, a.external_id, a.activity_type, a.start_time
+         FROM activities a
+         JOIN v ON a.source = v.source AND a.activity_type = v.activity_type AND a.start_time = v.start_time
+         WHERE a.external_id IS NULL AND a.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM written w WHERE w.id = a.id)`,
         values,
       ),
     )

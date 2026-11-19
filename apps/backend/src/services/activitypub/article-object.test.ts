@@ -163,6 +163,22 @@ describe('renderArticleNote content', () => {
 })
 
 describe('renderArticleNote figures', () => {
+  test('labels a meal sensitivity by its flag name', () => {
+    const { content, figures } = renderArticleNote(
+      article([
+        { ...correlation, trigger: { flag: 'gluten-id', kind: 'sensitivity' } },
+        { ...WINDOW, activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' },
+      ]),
+      FIGURE_URL,
+      { 'gluten-id': 'gluten' },
+    )
+    expect(figures.map((f) => f.label)).toEqual([
+      expect.stringContaining('Meals with gluten (count) vs '),
+      'Impact of meals with gluten',
+    ])
+    expect(content).toContain('Figure 2: Impact of meals with gluten')
+  })
+
   test('a block figure points at its figure URL, sized as the chart plus the title band', () => {
     const { figures } = note([
       { markdown: 'Intro', type: 'prose' },

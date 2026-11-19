@@ -154,6 +154,41 @@ describe('spliceQuantExtension', () => {
     expect(Object.isFrozen(quantContextDocument)).toBe(true)
   })
 
+  describe('with options', () => {
+    const extraContext = Object.freeze({ joinMode: 'https://w3id.org/fep/8a8e/joinMode' })
+
+    test('dual-types with a custom type and appends the extra context after the quant entry', () => {
+      const out = spliceQuantExtension(
+        { '@context': ['https://www.w3.org/ns/activitystreams'], type: 'Event' },
+        { 'quant:metric': 'steps' },
+        { extraContext, type: 'quant:Challenge' },
+      )
+      expect(out).toEqual({
+        '@context': ['https://www.w3.org/ns/activitystreams', quantContextEntry, extraContext],
+        'quant:metric': 'steps',
+        type: ['Event', 'quant:Challenge'],
+      })
+    })
+
+    test('is idempotent on the custom type and the extra context', () => {
+      const options = { extraContext, type: 'quant:Challenge' }
+      const once = spliceQuantExtension(
+        { '@context': 'https://www.w3.org/ns/activitystreams', type: 'Event' },
+        {},
+        options,
+      )
+      expect(spliceQuantExtension(once, {}, options)).toEqual(once)
+    })
+
+    test('a custom type does not add quant:Exercise', () => {
+      const out = spliceQuantExtension({ type: 'Event' }, {}, { type: 'quant:Challenge' })
+      expect(out).toMatchObject({
+        '@context': ['https://www.w3.org/ns/activitystreams', quantContextEntry],
+        type: ['Event', 'quant:Challenge'],
+      })
+    })
+  })
+
   test('passes a non-record document through untouched', () => {
     expect(spliceQuantExtension('x', props)).toBe('x')
     expect(spliceQuantExtension(null, props)).toBe(null)
@@ -192,6 +227,19 @@ describe('withQuantJsonLd', () => {
       'quant:activityType': 'running',
       type: ['Note', 'quant:Exercise'],
     })
+  })
+
+  test('a clone keeps the custom type and extra context', async () => {
+    const extraContext = Object.freeze({ timezone: 'https://w3id.org/fep/8a8e/timezone' })
+    const wrapped = withQuantJsonLd(
+      new Note({ id: new URL('https://aurboda.net/users/fiddur/challenges/x') }),
+      {},
+      { extraContext, type: 'quant:Challenge' },
+    )
+    const doc = await wrapped.clone().toJsonLd()
+    expect(doc).toMatchObject({ type: ['Note', 'quant:Challenge'] })
+    if (typeof doc !== 'object' || doc === null || !('@context' in doc)) throw new Error('no @context')
+    expect(doc['@context']).toContainEqual(extraContext)
   })
 })
 

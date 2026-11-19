@@ -329,7 +329,9 @@ activity's (or the segment's) efforts are replaced in one transaction.
 
 **Where it runs**: the `track-analyse` job, after routes and features, against every segment
 for the written track (an activity that no longer covers a segment loses its efforts there);
-the `track-backfill` job, after its route matching, for every track it wrote; at creation
+the `track-backfill` job, after its route matching, and `POST /tracks/backfill` /
+`backfill_activity_tracks`, for every track they wrote (both skip it when the user has no
+segments); at creation
 against every track; `POST /segments/:id/match` / `match_segment` repeats that on
 demand; and a retype drops the activity's efforts and times its tracks again under the new
 type, next to the route re-match.
@@ -371,7 +373,9 @@ start_offset_s, elapsed_s, avg_hr, pace_s_per_km, approximate, matched_at)`; see
 
 - REST: `GET /segments` (`activity_type` keeps that type and its descendant types; `sort` is
   `last_effort` (default), `efforts`, `length` or `alphabetical`), `POST /segments`,
-  `GET /segments/:id` (the line, `near_named_location` and the efforts), `PATCH /segments/:id`
+  `GET /segments/:id` (the line, `near_named_location`, the efforts, and
+  `created_from_activity_title` / `created_from_route_name`: the title of the activity or the
+  name of the route it was cut from, resolved when read, null once that is deleted), `PATCH /segments/:id`
   (rename), `DELETE /segments/:id`, `POST /segments/:id/match`; `GET /activities/:id`, `/full`
   carry `segment_efforts: [{ segment_id, segment_name, start_offset_s, elapsed_s, avg_hr,
 pace_s_per_km, approximate, is_best, rank }]` in time order, absent when there are none.
@@ -385,7 +389,7 @@ pace_s_per_km, approximate, is_best, rank }]` in time order, absent when there a
   and best time, a rename field, the elapsed time over the efforts (approximate ones left
   out when there are timed ones), the efforts newest first (date linking to the activity,
   time, pace, average heart rate, "★ best", "approximate"), the activity or route it was
-  cut from, "Time again" (`POST /segments/:id/match`) and Delete. `near_named_location`
+  cut from (by its title or name, else "an activity" / "a route"), "Time again" (`POST /segments/:id/match`) and Delete. `near_named_location`
   is not shown until sharing exists.
 - Creating a segment in the web: on an activity with a stored track (not the raw-GPS
   fallback the map uses without one), "Create segment" under the map opens two sliders,
@@ -432,7 +436,10 @@ promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also 
 made from it is deleted); a similar pending one takes the larger activity count. Merging an
 activity type moves its suggestions with it; deleting one deletes them, pending and decided.
 Promoting claims the suggestion first (it is marked promoted before the segment is made, and
-made pending again when no segment comes of it), so two promotes of it make one segment.
+made pending again when no segment comes of it or linking it to its segment fails, in which case
+the segment just made is deleted first), so two
+promotes of it make one segment. A claim left without a segment for more than ten minutes (the
+process died in between) is made pending again by the next list or promote.
 
 **Where it runs**: the `track-analyse` job, after segment timing (a fourth step); the
 `track-backfill` job, one time-limited run (20 s) over tracked activities not looked at yet,

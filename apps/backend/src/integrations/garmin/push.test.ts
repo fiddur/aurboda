@@ -473,6 +473,44 @@ describe('processing a job', () => {
     ])
   })
 
+  describe('the SpO2 of a pushed sleep', () => {
+    const sleepWithSpo2 = {
+      durationInSeconds: 3600,
+      startTimeInSeconds: 1795305600,
+      summaryId: 's-1',
+      timeOffsetSleepSpo2: { '0': 95, '60': 96 },
+      userId: GARMIN_USER,
+    }
+
+    test('is written as spo2 points beside the sleep', async () => {
+      const deps = makeDeps()
+      await receive(deps, { sleeps: [sleepWithSpo2] })
+      await processJobs(deps)
+      expect(deps.processGarminData.mock.calls.map((call) => call[1])).toEqual(['sleep'])
+      expect(deps.insertTimeSeries).toHaveBeenCalledWith('alice', [
+        expect.objectContaining({ metric: 'spo2', time: new Date(1795305600 * 1000), value: 95 }),
+        expect.objectContaining({ metric: 'spo2', time: new Date(1795305660 * 1000), value: 96 }),
+      ])
+    })
+
+    test('is not written while spo2 is disabled, the sleep still is', async () => {
+      const deps = makeDeps({ disabled: ['spo2'] })
+      await receive(deps, { sleeps: [sleepWithSpo2] })
+      await processJobs(deps)
+      expect(deps.processGarminData.mock.calls.map((call) => call[1])).toEqual(['sleep'])
+      expect(deps.insertTimeSeries).not.toHaveBeenCalled()
+    })
+
+    test('does not keep the type alive while sleep is disabled', async () => {
+      const deps = makeDeps({ disabled: ['sleep'] })
+      await receive(deps, { sleeps: [sleepWithSpo2] })
+      await processJobs(deps)
+      expect(storedRecords(deps)).toEqual([])
+      expect(deps.processGarminData).not.toHaveBeenCalled()
+      expect(deps.insertTimeSeries).not.toHaveBeenCalled()
+    })
+  })
+
   test('a failing type is audited and marked, the others are still processed, and the job fails for a retry', async () => {
     const deps = makeDeps()
     deps.processGarminData.mockImplementation(async (_user, dataType) => {

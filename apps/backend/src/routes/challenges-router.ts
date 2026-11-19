@@ -16,6 +16,16 @@ import {
   type ChallengeResponse,
   type ChallengesResponse,
   type ChallengeStandingsResponse,
+  type ChallengeCommentBody,
+  challengeCommentBodySchema,
+  type ChallengeThreadEntryResponse,
+  type ChallengeThreadHideBody,
+  challengeThreadHideBodySchema,
+  type ChallengeThreadHideQuery,
+  challengeThreadHideQuerySchema,
+  type ChallengeThreadQuery,
+  challengeThreadQuerySchema,
+  type ChallengeThreadResponse,
   type CreateChallengeBody,
   createChallengeBodySchema,
   type DiscoverChallengesResponse,
@@ -23,9 +33,11 @@ import {
   joinChallengeBodySchema,
   type UpdateChallengeBody,
   updateChallengeBodySchema,
+  type JoinedChallengeResponse,
 } from '@aurboda/api-spec'
 
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
+import type { FeedDeliver } from './feed-router.ts'
 
 import { singleUpload } from '../api/upload.ts'
 import {
@@ -57,7 +69,18 @@ import {
   toSpecFields,
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
+import {
+  addChallengeComment,
+  readChallengeThread,
+  setChallengeThreadEntryHidden,
+} from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
+import {
+  createJoinedChallengeDeps,
+  getJoinedChallenge,
+  type JoinedChallengeDeps,
+} from '../services/joined-challenge.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -91,8 +114,17 @@ export const createChallengesRouter = (
   webHost: string,
   apiBaseUrl: string,
   discoverChallenges: DiscoverChallenges,
+  threadOpts: {
+    deliver?: FeedDeliver
+    isAdmin?: (user: string) => Promise<boolean>
+    federation?: ThreadFederation
+    joined?: JoinedChallengeDeps
+  } = {},
 ): TypedRouter => {
   const router = typedRouter()
+  const thread = createThreadDeps({ deliver: threadOpts.deliver, webHost, ...threadOpts.federation })
+  const isAdmin = threadOpts.isAdmin ?? (async () => false)
+  const joined = threadOpts.joined ?? createJoinedChallengeDeps()
 
   router.get<Record<string, never>, ChallengesResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
@@ -150,6 +182,69 @@ export const createChallengesRouter = (
         }
         throw error
       }
+    },
+  )
+
+  // The comment thread, before `/:id` like the routes above.
+  router.get<Record<string, never>, ChallengeThreadResponse, unknown, ChallengeThreadQuery>(
+    '/thread',
+    authMiddleware,
+    validateQuery(challengeThreadQuerySchema),
+    async (req, res) => {
+      const result = await readChallengeThread(thread, req.user!, req.query.challenge_url, req.query.cursor)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      const { ok: _ok, ...view } = result
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({ ...view, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ChallengeThreadEntryResponse, ChallengeCommentBody>(
+    '/thread/comments',
+    authMiddleware,
+    validateBody(challengeCommentBodySchema),
+    async (req, res) => {
+      const result = await addChallengeComment(thread, req.user!, req.body)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.status(201).json({ entry: result.entry, success: true })
+    },
+  )
+
+  router.post<{ entryId: string }, ChallengeThreadEntryResponse, ChallengeThreadHideBody>(
+    '/thread/entries/:entryId/hidden',
+    authMiddleware,
+    validateBody(challengeThreadHideBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await setChallengeThreadEntryHidden(
+        thread,
+        user,
+        await isAdmin(user),
+        req.body.challenge_url,
+        req.params.entryId,
+        true,
+      )
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ entry: result.entry, success: true })
+    },
+  )
+
+  router.delete<{ entryId: string }, ChallengeThreadEntryResponse, unknown, ChallengeThreadHideQuery>(
+    '/thread/entries/:entryId/hidden',
+    authMiddleware,
+    validateQuery(challengeThreadHideQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await setChallengeThreadEntryHidden(
+        thread,
+        user,
+        await isAdmin(user),
+        req.query.challenge_url,
+        req.params.entryId,
+        false,
+      )
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ entry: result.entry, success: true })
     },
   )
 
@@ -307,6 +402,7 @@ export const createChallengesRouter = (
           user,
           webHost,
         })
+        await thread.remote?.afterJoin(user, participation)
         res.json({ participation: serializeParticipation(participation), success: true })
       } catch (error) {
         if (error instanceof JoinChallengeError) {
@@ -314,6 +410,16 @@ export const createChallengesRouter = (
         }
         throw error
       }
+    },
+  )
+
+  router.get<{ id: string }, JoinedChallengeResponse>(
+    '/participations/:id',
+    authMiddleware,
+    async (req, res) => {
+      const result = await getJoinedChallenge(joined, req.user!, req.params.id, { webHost })
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json(result.response)
     },
   )
 

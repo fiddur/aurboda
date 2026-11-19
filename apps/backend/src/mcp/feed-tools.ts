@@ -36,7 +36,6 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import {
   createArticleDraft,
   createArticlePost,
-  createChallengePost,
   createDashboardPost,
   createExercisePost,
   createFeedPost,
@@ -64,14 +63,27 @@ import {
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
-import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
+import {
+  articleFlagNames,
+  articleWarningsField,
+  mergeArticleContent,
+  validateArticleContent,
+} from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
-import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { publishChallengeShare } from '../services/challenge-share.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
+import {
+  followPostDeleteInThread,
+  followPostEditInThread,
+  THREAD_VISIBILITY_LOCKED_MESSAGE,
+  threadVisibilityLocked,
+} from '../services/challenge-thread.ts'
 import {
   dashboardShareTags,
   previewDashboardShare,
   resolveDashboardShare,
 } from '../services/feed-dashboard-share.ts'
+import { deliverFeedPostEdit } from '../services/feed-deliver-guard.ts'
 import {
   exerciseShareTags,
   previewExerciseShare,
@@ -90,7 +102,6 @@ import { serializeFollowedTag, serializeFollowing, setFollowedTagNotify } from '
 import {
   activityKindTag,
   articleTexts,
-  CHALLENGE_KIND_TAG,
   loadEditedPostTags,
   resolvePostTags,
   retagPost,
@@ -125,6 +136,8 @@ export interface FeedToolsOptions {
   previewArticle?: ArticlePreviewer
   /** The tag actor host: boosts by its accounts are hashtag feeds, left out of `list_feed` counts and `list_feed_post_reactions`. */
   tagActorHost?: () => Promise<string>
+  /** How challenge comments are pushed and threads on other servers pulled. */
+  threadFederation?: ThreadFederation
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -138,8 +151,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     reactionActions,
     retroEnrichTimeline,
     tagActorHost = async () => DEFAULT_TAG_ACTOR_HOST,
+    threadFederation,
     webHost,
   } = options
+  const thread = webHost ? createThreadDeps({ deliver, webHost, ...threadFederation }) : undefined
 
   /** Answer a reaction toggle with the updated entry, or the failure as a tool error. */
   const reactionResult = (result: ReactionResult) =>
@@ -236,6 +251,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     { id: z.string().uuid().describe('Feed post ID'), ...updateFeedPostBodySchema.shape },
     async ({ id, ...body }) => {
       const message = normalizeFeedMessage(body.message)
+      const existing = await getFeedPostById(user, id)
+      if (!existing) return errorResponse('Feed post not found')
+      if (threadVisibilityLocked(existing, body.visibility)) {
+        return errorResponse(THREAD_VISIBILITY_LOCKED_MESSAGE)
+      }
       const retag = await loadEditedPostTags(user, id, { message, tags: body.tags })
       if (!retag.found) return errorResponse('Feed post not found')
       const record = await updateFeedPost(user, id, {
@@ -249,15 +269,8 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
-      // Federate the edit as an Update, same as the REST update route. Articles
-      // and challenge shares have no linked activity, so they must go through
-      // their own paths — the generic `updated` would silently no-op.
-      if (record.kind === 'article') deliver?.updatedArticle(user, record)
-      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
-      else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
-      else if (record.kind === 'dashboard') deliver?.updatedDashboard(user, record)
-      else if (record.kind === 'reply') deliver?.updatedReply(user, record)
-      else deliver?.updated(user, record)
+      deliverFeedPostEdit(deliver, user, record)
+      await followPostEditInThread(thread, user, record)
       return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
@@ -266,19 +279,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     'share_challenge',
     "Publish a challenge INVITATION to your feed: your personal note (markdown) plus the challenge's canonical join-by-URL link. Pass exactly one of `challenge_id` (one of your own challenges) or `participation_id` (a challenge you joined, possibly hosted elsewhere) — the server resolves the linked name/URL itself.",
     { ...shareChallengeBodySchema.shape },
-    async ({ challenge_id, include_chart, message, participation_id, tags, visibility }) => {
-      const resolved = await resolveChallengeShare(user, { challenge_id, participation_id }, webHost)
-      if (!resolved.ok) return errorResponse(resolved.error)
-      const note = normalizeFeedMessage(message) ?? null
-      const record = await createChallengePost(user, {
-        challenge: resolved.challenge,
-        include_chart,
-        message: note,
-        tags: await resolvePostTags(user, { explicit: tags, kindTag: CHALLENGE_KIND_TAG, texts: [note] }),
-        visibility,
-      })
-      deliver?.createdChallenge(user, record)
-      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
+    async (body) => {
+      const published = await publishChallengeShare(user, body, { deliver, thread, webHost })
+      if (!published.ok) return errorResponse(published.error)
+      return jsonResponse(await serializeFeedPost(user, published.record, { webHost }))
     },
   )
 
@@ -343,7 +347,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
     { ...createArticleBodySchema.shape },
     async (body) => {
       const built = await validateArticleContent({
@@ -359,13 +363,16 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       deliver?.createdArticle(user, record)
-      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
+      return jsonResponse({
+        ...(await serializeFeedPost(user, record, { webHost })),
+        ...(await articleWarningsField(user, built.article.blocks)),
+      })
     },
   )
 
   server.tool(
     'update_article',
-    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list.',
+    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
     { id: z.string().uuid().describe('Feed post ID'), ...updateArticleBodySchema.shape },
     async ({ id, ...body }) => {
       const existing = await getFeedPostById(user, id)
@@ -388,26 +395,32 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       })
       if (!record) return errorResponse('Article not found')
       deliver?.updatedArticle(user, record)
-      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
+      return jsonResponse({
+        ...(await serializeFeedPost(user, record, { webHost })),
+        ...(await articleWarningsField(user, built.article.blocks)),
+      })
     },
   )
 
   server.tool(
     'create_article_draft',
-    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`, an impact block without `activity`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published.',
+    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`, an impact block without `activity`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
     { ...createArticleDraftBodySchema.shape },
     async ({ article, visibility }) => {
       const record = await createArticleDraft(user, {
         article: article ? normalizeArticleDraftContent(article) : emptyArticleDraftContent(),
         visibility,
       })
-      return jsonResponse(serializeArticleDraft(record))
+      return jsonResponse({
+        ...serializeArticleDraft(record),
+        ...(await articleWarningsField(user, record.article.blocks)),
+      })
     },
   )
 
   server.tool(
     'update_article_draft',
-    'Update an ARTICLE DRAFT (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The draft stays private until `publish_article_draft`.',
+    'Update an ARTICLE DRAFT (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The draft stays private until `publish_article_draft`. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
     // The window bounds are re-declared without `.nullable()`: a nullable field makes
     // clients that validate the tool list (e.g. Claude) drop the whole tool.
     {
@@ -426,7 +439,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!existing) return errorResponse('Draft not found')
       const record = await updateArticleDraft(user, id, articleDraftPatch(existing.article, body))
       if (!record) return errorResponse('Draft not found')
-      return jsonResponse(serializeArticleDraft(record))
+      return jsonResponse({
+        ...serializeArticleDraft(record),
+        ...(await articleWarningsField(user, record.article.blocks)),
+      })
     },
   )
 
@@ -439,11 +455,15 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'get_article_draft',
-    'Get one private ARTICLE DRAFT by ID, with its full content.',
+    'Get one private ARTICLE DRAFT by ID, with its full content. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
     { id: z.string().uuid().describe('Draft ID') },
     async ({ id }) => {
       const record = await getArticleDraft(user, id)
-      return record ? jsonResponse(serializeArticleDraft(record)) : errorResponse('Draft not found')
+      if (!record) return errorResponse('Draft not found')
+      return jsonResponse({
+        ...serializeArticleDraft(record),
+        ...(await articleWarningsField(user, record.article.blocks)),
+      })
     },
   )
 
@@ -459,19 +479,22 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'publish_article_draft',
-    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own.",
+    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.",
     { id: z.string().uuid().describe('Draft ID'), ...publishArticleDraftBodySchema.shape },
     async ({ id, ...body }) => {
       const result = await publishArticleDraft(user, id, body)
       if (!result.ok) return errorResponse(result.error)
       deliver?.createdArticle(user, result.post)
-      return jsonResponse(await serializeFeedPost(user, result.post, { webHost }))
+      return jsonResponse({
+        ...(await serializeFeedPost(user, result.post, { webHost })),
+        ...(await articleWarningsField(user, result.post.article?.blocks ?? [])),
+      })
     },
   )
 
   server.tool(
     'preview_article',
-    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs.",
+    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.",
     { ...previewArticleBodySchema.shape },
     async (body) => {
       if (!previewArticle) return errorResponse('Article preview is not available')
@@ -504,6 +527,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
         await renderableArticleBlocks(user, post.id, post.article),
+        await articleFlagNames(user, post.article.blocks),
       )
       return jsonResponse({ markdown })
     },
@@ -519,6 +543,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const stamps = await deleteFeedPostWithQuotes(user, id)
       // Retract from followers with a Delete{Tombstone}, same as the REST route.
       deliver?.deleted(user, existing, stamps ?? [])
+      await followPostDeleteInThread(thread, user, existing)
       return jsonResponse({ deleted: true, id })
     },
   )

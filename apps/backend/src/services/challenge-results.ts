@@ -22,7 +22,7 @@ import type {
 import type { ChallengePostInput, ChallengeRecord, FeedPostRecord } from '../db/index.ts'
 
 import { auditError } from './audit-log.ts'
-import { buildShareUrl } from './share-urls.ts'
+import { buildChallengeObjectUrl, buildShareUrl } from './share-urls.ts'
 
 /** How long after the window closes the result is published (lets late syncs land). */
 export const RESULT_GRACE_MS = 6 * 60 * 60 * 1000
@@ -119,6 +119,7 @@ export const buildChallengeResultPost = (
   user: string,
 ): ChallengePostInput => ({
   challenge: { name: challenge.name, result, url: buildShareUrl(webHost, user, challenge.slug) },
+  challenge_uri: buildChallengeObjectUrl(webHost, user, challenge.slug),
   message: null,
   visibility: resultPostVisibility(challenge),
 })
@@ -135,6 +136,8 @@ export interface ChallengeResultsDeps {
   createPost: (user: string, input: ChallengePostInput) => Promise<FeedPostRecord>
   /** Fan the post out to followers + the tagged winners (fire-and-forget). */
   deliver: (user: string, post: FeedPostRecord) => void
+  /** Enter the result post into the challenge's comment thread (best-effort). */
+  admitToThread?: (user: string, post: FeedPostRecord) => Promise<unknown>
   webHost: string
   now?: () => Date
 }
@@ -181,6 +184,12 @@ export const publishFinishedChallengeResults = async (deps: ChallengeResultsDeps
           buildChallengeResultPost(challenge, result, deps.webHost, user),
         )
         deps.deliver(user, post)
+        await deps.admitToThread?.(user, post).catch((error: unknown) =>
+          auditError(user, 'data', 'Challenge result could not enter the thread', {
+            challenge_id: challenge.id,
+            error: String(error),
+          }),
+        )
         published++
       } catch (error) {
         auditError(user, 'data', 'Challenge result announcement failed', {

@@ -7,10 +7,15 @@ import type {
   ChallengePreviewResponse,
   ChallengeResponse,
   ChallengesResponse,
+  ChallengeCommentBody,
   ChallengeStanding,
   ChallengeStandingsResponse,
+  ChallengeThreadEntry,
+  ChallengeThreadEntryResponse,
+  ChallengeThreadResponse,
   CreateChallengeBody,
   DiscoverChallengesResponse,
+  JoinedChallengeResponse,
   PublicChallengeResponse,
   PublicSharedDashboardResponse,
   PublicSharedExerciseResponse,
@@ -21,6 +26,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { apiErrorMessage } from './feed'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -139,4 +145,98 @@ export const fetchPublicChallengeStandings = async (
     { params: options.bustCache ? { _: Date.now() } : undefined },
   )
   return res.data.members ?? []
+}
+
+/** A challenge the user joined, as their own server shows it; `null` when they are not in it. */
+export const fetchJoinedChallenge = async (
+  participationId: string,
+): Promise<JoinedChallengeResponse | null> => {
+  let res
+  try {
+    res = await axios.get<JoinedChallengeResponse>(
+      `${API_URL}/challenges/participations/${encodeURIComponent(participationId)}`,
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the challenge.'))
+  }
+  if (!res.data.participation) throw new Error(res.data.error ?? 'Couldn’t load the challenge.')
+  return res.data
+}
+
+/** A challenge's comment thread as the signed-in user sees it. */
+export const fetchChallengeThreadAsViewer = async (
+  challengeUrl: string,
+  cursor?: string,
+): Promise<ChallengeThreadResponse> => {
+  try {
+    const res = await axios.get<ChallengeThreadResponse>(`${API_URL}/challenges/thread`, {
+      headers: authHeaders(),
+      params: { challenge_url: challengeUrl, cursor },
+    })
+    return res.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the comments.'))
+  }
+}
+
+/**
+ * A challenge's comment thread: the viewer's view when signed in, else the public entries only.
+ */
+export const fetchChallengeThread = async (
+  username: string,
+  slug: string,
+  challengeUrl: string,
+  cursor?: string,
+): Promise<ChallengeThreadResponse> => {
+  if (auth.value.token) return fetchChallengeThreadAsViewer(challengeUrl, cursor)
+  try {
+    const res = await axios.get<ChallengeThreadResponse>(
+      `${API_URL}/public/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}/thread`,
+      { params: { cursor } },
+    )
+    return res.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the comments.'))
+  }
+}
+
+export const addChallengeComment = async (body: ChallengeCommentBody): Promise<ChallengeThreadEntry> => {
+  let res
+  try {
+    res = await axios.post<ChallengeThreadEntryResponse>(`${API_URL}/challenges/thread/comments`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t post the comment. Please try again.'))
+  }
+  if (!res.data.entry) throw new Error(res.data.error ?? 'Couldn’t post the comment.')
+  return res.data.entry
+}
+
+/** Hide (host) or unhide a thread entry. */
+export const setChallengeCommentHidden = async (
+  challengeUrl: string,
+  entryId: string,
+  hidden: boolean,
+): Promise<ChallengeThreadEntry> => {
+  const url = `${API_URL}/challenges/thread/entries/${encodeURIComponent(entryId)}/hidden`
+  let res
+  try {
+    res = hidden
+      ? await axios.post<ChallengeThreadEntryResponse>(
+          url,
+          { challenge_url: challengeUrl },
+          { headers: authHeaders() },
+        )
+      : await axios.delete<ChallengeThreadEntryResponse>(url, {
+          headers: authHeaders(),
+          params: { challenge_url: challengeUrl },
+        })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, hidden ? 'Couldn’t hide that.' : 'Couldn’t unhide that.'))
+  }
+  if (!res.data.entry) throw new Error(res.data.error ?? 'No entry returned')
+  return res.data.entry
 }

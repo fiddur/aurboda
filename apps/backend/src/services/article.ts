@@ -11,37 +11,89 @@
  * DB; `validateArticleContent` adds the one check that needs a lookup (a
  * challenge block's challenge, when it is hosted here, must exist).
  */
-import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
+import type {
+  ArticleBlock,
+  ArticleContent,
+  ArticleDraftBlock,
+  ArticleWarning,
+  FeedPostVisibility,
+} from '@aurboda/api-spec'
 
 import {
   articleBlockWindow,
   articleImpactLabel,
+  articleSensitivityFlagIds,
+  articleSharingWarnings,
   canonicalChallengeUrl,
   describeSelectorAxis,
   getMetricDisplayName,
+  impactActivityLabel,
   parseChallengeUrl,
 } from '@aurboda/api-spec'
 
+import type { SensitivityFlag } from '../db/index.ts'
+
 import { isValidUsername } from '../api/auth-routes.ts'
-import { isMissingDatabase } from '../db/index.ts'
+import { isMissingDatabase, listSensitivityFlags } from '../db/index.ts'
 import { isPubliclyVisible } from './activitypub/object.ts'
 import { configuredStructuredChallengeDeps } from './feed-structured-challenge.ts'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
 
+/** Sensitivity flag names by id, as `articleFlagNames` loads them for an article's blocks. */
+export type ArticleFlagNames = Record<string, string>
+
+/**
+ * The names of the sensitivity flags an article's blocks use, by id: resolved at render time,
+ * never stored in the article. A flag that no longer exists is left out. Without a block that
+ * uses a flag, nothing is looked up.
+ */
+export const articleFlagNames = async (
+  user: string,
+  blocks: ArticleDraftBlock[],
+  list: (user: string) => Promise<Pick<SensitivityFlag, 'id' | 'name'>[]> = listSensitivityFlags,
+): Promise<ArticleFlagNames> => {
+  const ids = new Set(articleSensitivityFlagIds(blocks))
+  if (ids.size === 0) return {}
+  return Object.fromEntries((await list(user)).filter((f) => ids.has(f.id)).map((f) => [f.id, f.name]))
+}
+
+/** What the article's blocks show readers that the author may want to think twice about. */
+export const articleWarnings = async (user: string, blocks: ArticleDraftBlock[]): Promise<ArticleWarning[]> =>
+  articleSharingWarnings(blocks, await articleFlagNames(user, blocks))
+
+/** `{ warnings }` for an article answer (REST and MCP), or nothing when there is none. */
+export const articleWarningsField = async (
+  user: string,
+  blocks: ArticleDraftBlock[],
+): Promise<{ warnings?: ArticleWarning[] }> => {
+  const warnings = await articleWarnings(user, blocks)
+  return warnings.length > 0 ? { warnings } : {}
+}
+
 /**
  * A human label for a non-prose block: its caption, else a label from its data.
  * Shared single source for the article Note's figure labels
  * (`renderArticleNote`) and the markdown export (`article-export.ts`) so
- * the two can't diverge. A blank caption falls back to the data label.
+ * the two can't diverge. A blank caption falls back to the data label. A meal
+ * sensitivity reads by its flag's name from `flagNames`, generically when the
+ * flag is gone.
  */
-export const articleBlockLabel = (block: Exclude<ArticleBlock, { type: 'prose' }>): string => {
+export const articleBlockLabel = (
+  block: Exclude<ArticleBlock, { type: 'prose' }>,
+  flagNames: ArticleFlagNames = {},
+): string => {
   if (block.caption) return block.caption
   if (block.type === 'challenge') return 'Challenge standings'
-  if (block.type === 'impact') return articleImpactLabel(block)
-  return block.type === 'chart'
-    ? getMetricDisplayName(block.metric)
-    : `${describeSelectorAxis(block.trigger)} vs ${describeSelectorAxis(block.outcome)}`
+  if (block.type === 'impact') {
+    if (block.activity_type !== 'meal_sensitivity') return articleImpactLabel(block)
+    const name = flagNames[block.activity] ?? 'a sensitivity flag'
+    return articleImpactLabel({ activity: impactActivityLabel(block.activity_type, name) })
+  }
+  if (block.type === 'chart') return getMetricDisplayName(block.metric)
+  const axis = (selector: typeof block.trigger): string =>
+    describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames[selector.flag] : undefined)
+  return `${axis(block.trigger)} vs ${axis(block.outcome)}`
 }
 
 /**
@@ -56,7 +108,7 @@ const articleBlockUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -79,7 +131,7 @@ export const articleBlockImageUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -98,7 +150,7 @@ export const articleBlockFigureUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,

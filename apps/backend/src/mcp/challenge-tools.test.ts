@@ -5,15 +5,39 @@ import type {
   ChallengeParticipationSnapshotPatch,
   ChallengePatch,
   ChallengeRecord,
+  ChallengeThreadEntryRecord,
 } from '../db/index.ts'
 import type { McpServer } from './helpers.ts'
 
 const db = vi.hoisted(() => ({
+  countChallengeThreadEntries: vi.fn(async () => 0),
+  countVisibleChallengeThreadEntries: vi.fn(async () => 0),
+  createReplyPost: vi.fn(),
+  deleteChallengeThreadEntry: vi.fn(async () => null),
+  deleteFeedPostWithQuotes: vi.fn(),
+  getChallengeThreadEntryById: vi.fn(async () => null),
+  getFeedPostById: vi.fn(async () => null),
+  getProfileAvatarVersion: vi.fn(async () => null),
+  getUserSettings: vi.fn(async () => null),
+  upsertChallengeThreadEntry: vi.fn(async () => null),
   deleteChallengeBanner: vi.fn(async () => true),
   getChallengeById: vi.fn<(user: string, id: string) => Promise<ChallengeRecord | null>>(),
   getChallengeBySlug: vi.fn<(user: string, slug: string) => Promise<ChallengeRecord | null>>(),
+  getChallengeThreadEntryByObjectUri: vi.fn(async () => null),
   getParticipationByUrl: vi.fn(async () => null),
+  deleteThreadCopyEntry: vi.fn(async () => 0),
+  getParticipationById: vi.fn(async () => null),
+  getParticipationByObjectUri: vi.fn(async () => null),
+  getThreadCopyEntryById: vi.fn(async () => null),
+  getThreadCopyEntryByObjectUri: vi.fn(async () => null),
+  listThreadCopy: vi.fn(async () => []),
+  replaceThreadCopy: vi.fn(async () => {}),
+  updateParticipationThreadState: vi.fn(async () => null),
+  upsertThreadCopyEntry: vi.fn(),
+  isMissingDatabase: () => false,
   listChallengeMembers: vi.fn(async () => []),
+  listChallengeThreadReplies: vi.fn(async () => []),
+  listChallengeThreadTopLevel: vi.fn(async () => []),
   listChallengeParticipations: vi.fn<(user: string) => Promise<ChallengeParticipationRecord[]>>(),
   updateChallengeParticipationSnapshot:
     vi.fn<
@@ -22,6 +46,15 @@ const db = vi.hoisted(() => ({
         id: string,
         patch: ChallengeParticipationSnapshotPatch,
       ) => Promise<ChallengeParticipationRecord | null>
+    >(),
+  setChallengeThreadEntryHidden:
+    vi.fn<
+      (
+        user: string,
+        challengeId: string,
+        id: string,
+        hidden: boolean,
+      ) => Promise<ChallengeThreadEntryRecord | null>
     >(),
   updateChallenge:
     vi.fn<
@@ -67,12 +100,12 @@ const challenge: ChallengeRecord = {
   updated_at: new Date('2026-10-01T00:00:00Z'),
 }
 
-const setup = () => {
+const setup = (deps: Parameters<typeof registerChallengeTools>[2] = { webHost: 'https://aurboda.test' }) => {
   const tools = new Map<string, ToolHandler>()
   const server = {
     tool: (name: string, _desc: string, _shape: unknown, handler: ToolHandler) => tools.set(name, handler),
   } as unknown as McpServer
-  registerChallengeTools(server, 'alice', { webHost: 'https://aurboda.test' })
+  registerChallengeTools(server, 'alice', deps)
   const call = async (name: string, params: Record<string, unknown> = {}) =>
     (await tools.get(name)!(params)).content[0]!.text
   return { call }
@@ -198,6 +231,12 @@ describe('list_joined_challenges', () => {
       data_token: 'tok',
       end_ts: new Date('2026-10-20T00:00:00Z'),
       host_checked_at: null,
+      challenge_object_uri: null,
+      host_actor_uri: null,
+      thread_attendees: [],
+      thread_audiences: [],
+      thread_synced_at: null,
+      thread_url: null,
       host_identity: 'https://aurboda.test/u/bob',
       id: 'p1',
       name: 'Old name',
@@ -213,6 +252,12 @@ describe('list_joined_challenges', () => {
       ...joined,
       ...patch,
       host_checked_at: null,
+      challenge_object_uri: null,
+      host_actor_uri: null,
+      thread_attendees: [],
+      thread_audiences: [],
+      thread_synced_at: null,
+      thread_url: null,
     }))
     const { call } = setup()
     const body = JSON.parse(await call('list_joined_challenges'))
@@ -223,5 +268,88 @@ describe('list_joined_challenges', () => {
     expect(body).toEqual([
       expect.objectContaining({ end_ts: '2026-11-01T00:00:00.000Z', id: 'p1', name: 'Push-ups' }),
     ])
+  })
+})
+
+describe('challenge thread tools', () => {
+  const entryId = '00000000-0000-4000-8000-0000000000e1'
+  const entry: ChallengeThreadEntryRecord = {
+    actor_uri: 'https://aurboda.test/api/users/carol',
+    audience: 'public',
+    avatar_url: null,
+    challenge_id: challenge.id,
+    content: '<p>Hi</p>',
+    created_at: new Date('2026-10-02T00:00:00Z'),
+    display_name: 'Carol',
+    edited_at: null,
+    handle: '@carol@aurboda.test',
+    hidden_at: new Date('2026-10-03T00:00:00Z'),
+    id: entryId,
+    images: [],
+    in_reply_to_uri: null,
+    kind: 'comment',
+    object_uri: 'https://aurboda.test/api/users/carol/feed/1',
+    published_at: new Date('2026-10-02T00:00:00Z'),
+    root_entry_id: null,
+    url: null,
+  }
+
+  beforeEach(() => {
+    db.getChallengeBySlug.mockReset().mockResolvedValue(challenge)
+    db.setChallengeThreadEntryHidden.mockReset().mockResolvedValue(entry)
+  })
+
+  test('get_challenge_thread reads the host view of an own challenge', async () => {
+    const { call } = setup()
+    const body = JSON.parse(
+      await call('get_challenge_thread', { challenge_url: 'https://aurboda.test/u/alice/abc' }),
+    )
+    expect(db.getChallengeBySlug).toHaveBeenCalledWith('alice', 'abc')
+    expect(body).toEqual({
+      entries: [],
+      next_cursor: null,
+      total: 0,
+      viewer: { audiences: ['public', 'participants'], can_comment: true, role: 'host' },
+    })
+  })
+
+  test('get_challenge_thread on another server needs a participation there', async () => {
+    const { call } = setup()
+    expect(
+      await call('get_challenge_thread', { challenge_url: 'https://elsewhere.test/u/bob/abc' }),
+    ).toContain('Join this challenge')
+  })
+
+  test('hide_challenge_comment is for the host, or an admin', async () => {
+    const url = 'https://aurboda.test/u/bob/abc'
+    expect(await setup().call('hide_challenge_comment', { challenge_url: url, entry_id: entryId })).toContain(
+      'Only the host',
+    )
+    expect(db.setChallengeThreadEntryHidden).not.toHaveBeenCalled()
+
+    const admin = setup({ isAdmin: async () => true, webHost: 'https://aurboda.test' })
+    const body = JSON.parse(
+      await admin.call('hide_challenge_comment', { challenge_url: url, entry_id: entryId }),
+    )
+    expect(db.setChallengeThreadEntryHidden).toHaveBeenCalledWith('bob', challenge.id, entryId, true)
+    expect(body).toMatchObject({ hidden: true, id: entryId, kind: 'comment' })
+  })
+
+  test('unhide_challenge_comment clears the hide on an own challenge', async () => {
+    db.setChallengeThreadEntryHidden.mockResolvedValue({ ...entry, hidden_at: null })
+    const body = JSON.parse(
+      await setup().call('unhide_challenge_comment', {
+        challenge_url: 'https://aurboda.test/u/alice/abc',
+        entry_id: entryId,
+      }),
+    )
+    expect(db.setChallengeThreadEntryHidden).toHaveBeenCalledWith('alice', challenge.id, entryId, false)
+    expect(body.hidden).toBe(false)
+  })
+
+  test('the thread tools need a configured web host', async () => {
+    const { call } = setup({})
+    const params = { audience: 'public', challenge_url: 'https://aurboda.test/u/alice/abc', message: 'Hi' }
+    expect(await call('add_challenge_comment', params)).toContain('not configured')
   })
 })

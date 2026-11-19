@@ -1,11 +1,17 @@
-import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
+import type {
+  ActivityTypeDefinition,
+  DashboardConfig,
+  DashboardWidget,
+  DayOverviewConfig,
+} from '@aurboda/api-spec'
 
 import { barChartConfigSchema, percentChange, trendChartConfigSchema } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type * as ActivityRecords from './activity-records.ts'
 
-vi.mock('../db/index.ts', () => ({}))
+vi.mock('../db/index.ts', () => ({ getAllActivityTypeNames: vi.fn() }))
+vi.mock('./activity-type-definitions.ts', () => ({ listActivityTypeDefinitions: vi.fn() }))
 vi.mock('./chart-data.ts', () => ({ getChartData: vi.fn() }))
 vi.mock('./trends.ts', () => ({ getTrend: vi.fn() }))
 vi.mock('./custom-metrics.ts', () => ({ getCustomMetrics: vi.fn().mockResolvedValue([]) }))
@@ -28,18 +34,30 @@ vi.mock('./queries/index.ts', () => ({
   getPlacesSummary: vi.fn(),
   getTopApps: vi.fn(),
   getTopMedia: vi.fn(),
+  queryActivities: vi.fn(),
   queryMetrics: vi.fn(),
+  queryMetricsBucketed: vi.fn(),
 }))
 
 const { getChartData } = await import('./chart-data.ts')
 const { getTrend } = await import('./trends.ts')
 const { getActivityRecords } = await import('./activity-records.ts')
-const { getActivityTypeSummary, getPeriodSummary, getPlacesSummary, getTopApps, getTopMedia } =
-  await import('./queries/index.ts')
+const {
+  getActivityTypeSummary,
+  getPeriodSummary,
+  getPlacesSummary,
+  getTopApps,
+  getTopMedia,
+  queryActivities,
+  queryMetricsBucketed,
+} = await import('./queries/index.ts')
+const { getAllActivityTypeNames } = await import('../db/index.ts')
+const { listActivityTypeDefinitions } = await import('./activity-type-definitions.ts')
+const { getActivityImpact } = await import('./correlations/activity-impact.ts')
 const { getBaseline } = await import('./correlations/baseline.ts')
 const { getLatestSleep } = await import('./latest-sleep.ts')
 const { getCurrentSleepDebt } = await import('./sleep-debt.ts')
-const { resolveDashboardData, resolvePeriodDashboard, sinceLookbackDays, sinceRange } =
+const { dayOverviewSpan, resolveDashboardData, resolvePeriodDashboard, sinceLookbackDays, sinceRange } =
   await import('./shared-dashboard-data.ts')
 
 const board = (widget: DashboardWidget): DashboardConfig => ({
@@ -850,9 +868,38 @@ describe('resolveDashboardData: top_list_card and places_card', () => {
 })
 
 describe('resolveDashboardData: day_overview', () => {
-  test('is skipped: no entry, no query and no error', async () => {
+  const dayWidget = (config: Partial<DayOverviewConfig>): DashboardWidget => ({
+    config: { metrics: ['stress_level', 'body_battery'], window: 'rolling_24h', ...config },
+    id: 'day',
+    type: 'day_overview',
+  })
+  const definition = (name: string, extra: Partial<ActivityTypeDefinition>): ActivityTypeDefinition => ({
+    color: '#123456',
+    display_category: 'exercise',
+    display_name: name,
+    is_builtin: true,
+    name,
+    show_on_timeline: true,
+    ...extra,
+  })
+  const now = new Date('2026-03-15T10:00:00.000Z')
+
+  beforeEach(() => {
+    vi.mocked(queryMetricsBucketed).mockReset()
+    vi.mocked(queryActivities).mockReset()
+    vi.mocked(getAllActivityTypeNames).mockResolvedValue(['sleep', 'running', 'hidden', 'work'])
+    vi.mocked(listActivityTypeDefinitions).mockResolvedValue([
+      definition('sleep', { display_category: 'sleep_rest', display_name: 'Sleep' }),
+      definition('running', { display_name: 'Running', icon: '🏃' }),
+      definition('hidden', { show_on_timeline: false }),
+      definition('work', { display_category: 'productivity' }),
+    ])
+  })
+
+  test('is skipped without visible_to_visitors: no entry, no query and no error', async () => {
     vi.mocked(getChartData).mockReset()
     vi.mocked(getPeriodSummary).mockReset()
+    vi.mocked(getCurrentSleepDebt).mockResolvedValue(null)
     const config: DashboardConfig = {
       sections: [
         {
@@ -860,23 +907,219 @@ describe('resolveDashboardData: day_overview', () => {
           title: 'x',
           type: 'charts',
           widgets: [
-            {
-              config: { metrics: ['stress_level', 'body_battery'], window: 'rolling_24h' },
-              id: 'day',
-              type: 'day_overview',
-            },
+            dayWidget({}),
+            { ...dayWidget({ visible_to_visitors: false }), id: 'off' },
             { config: {}, id: 'debt', type: 'sleep_debt' },
           ],
         },
       ],
       version: 1,
     }
-    vi.mocked(getCurrentSleepDebt).mockResolvedValue(null)
 
     const data = await resolveDashboardData('alice', config)
 
     expect(Object.keys(data)).toEqual(['debt'])
     expect(getChartData).not.toHaveBeenCalled()
     expect(getPeriodSummary).not.toHaveBeenCalled()
+    expect(queryMetricsBucketed).not.toHaveBeenCalled()
+    expect(queryActivities).not.toHaveBeenCalled()
+  })
+
+  test('resolves an opted-in card: bars, line, lane filters, sleep clipped, earlier activities left out', async () => {
+    vi.mocked(queryMetricsBucketed).mockResolvedValue({
+      bucket: '5m',
+      buckets: [
+        {
+          end: '2026-03-15T08:05:00.000Z',
+          metrics: {
+            body_battery: { avg: 60, count: 1, first_time: '', last_time: '', max: 60, min: 60 },
+            stress_level: { avg: 30, count: 1, first_time: '', last_time: '', max: 30, min: 30 },
+          },
+          start: '2026-03-15T08:00:00.000Z',
+        },
+        {
+          end: '2026-03-15T08:10:00.000Z',
+          metrics: { body_battery: { avg: 58, count: 1, first_time: '', last_time: '', max: 58, min: 58 } },
+          start: '2026-03-15T08:05:00.000Z',
+        },
+      ],
+      end: now.toISOString(),
+      start: '2026-03-14T10:00:00.000Z',
+    } as Awaited<ReturnType<typeof queryMetricsBucketed>>)
+    vi.mocked(queryActivities).mockResolvedValue([
+      {
+        activity_type: 'sleep',
+        end_time: '2026-03-14T14:00:00.000Z',
+        start_time: '2026-03-14T03:00:00.000Z',
+      },
+      {
+        activity_type: 'sleep',
+        end_time: '2026-03-15T05:00:00.000Z',
+        start_time: '2026-03-14T21:00:00.000Z',
+      },
+      { activity_type: 'running', start_time: '2026-03-14T08:00:00.000Z' },
+      { activity_type: 'running', start_time: '2026-03-15T07:00:00.000Z', title: 'Morning run' },
+      { activity_type: 'running', start_time: '2026-03-15T08:00:00.000Z' },
+      { activity_type: 'hidden', start_time: '2026-03-15T08:00:00.000Z' },
+      { activity_type: 'work', start_time: '2026-03-15T08:00:00.000Z' },
+    ] as Awaited<ReturnType<typeof queryActivities>>)
+
+    const data = await resolveDashboardData('alice', board(dayWidget({ visible_to_visitors: true })), {
+      now,
+    })
+
+    expect(data['day']).toEqual({
+      data: {
+        activities: [
+          {
+            activity_type: 'running',
+            color: '#123456',
+            icon: '🏃',
+            label: 'Morning run',
+            time: '2026-03-15T07:00:00.000Z',
+          },
+          {
+            activity_type: 'running',
+            color: '#123456',
+            icon: '🏃',
+            label: 'Running',
+            time: '2026-03-15T08:00:00.000Z',
+          },
+        ],
+        bars: [{ end: '2026-03-15T08:05:00.000Z', start: '2026-03-15T08:00:00.000Z', value: 30 }],
+        end: now.toISOString(),
+        line: [
+          { end: '2026-03-15T08:05:00.000Z', start: '2026-03-15T08:00:00.000Z', value: 60 },
+          { end: '2026-03-15T08:10:00.000Z', start: '2026-03-15T08:05:00.000Z', value: 58 },
+        ],
+        sleep: [
+          { end: '2026-03-14T14:00:00.000Z', label: 'Sleep', start: '2026-03-14T10:00:00.000Z' },
+          { end: '2026-03-15T05:00:00.000Z', label: 'Sleep', start: '2026-03-14T21:00:00.000Z' },
+        ],
+        start: '2026-03-14T10:00:00.000Z',
+        tz: 'Europe/Stockholm',
+      },
+      type: 'day_overview',
+    })
+    expect(vi.mocked(queryMetricsBucketed).mock.calls[0]).toEqual([
+      'alice',
+      ['stress_level', 'body_battery'],
+      new Date('2026-03-14T10:00:00.000Z'),
+      now,
+      '5m',
+      { customMetrics: [], tz: 'Europe/Stockholm' },
+    ])
+    expect(vi.mocked(queryActivities).mock.calls[0]).toEqual([
+      'alice',
+      ['sleep', 'running', 'hidden', 'work'],
+      new Date('2026-03-13T22:00:00.000Z'),
+      now,
+    ])
+  })
+
+  test('one metric leaves the line empty; today reads up to now only', async () => {
+    vi.mocked(queryMetricsBucketed).mockResolvedValue({
+      bucket: '5m',
+      buckets: [],
+      end: now.toISOString(),
+      start: now.toISOString(),
+    } as Awaited<ReturnType<typeof queryMetricsBucketed>>)
+    vi.mocked(queryActivities).mockResolvedValue([])
+
+    const data = await resolveDashboardData(
+      'alice',
+      board(dayWidget({ metrics: ['heart_rate'], visible_to_visitors: true, window: 'today' })),
+      { now },
+    )
+
+    expect(data['day']).toMatchObject({
+      data: { end: '2026-03-15T23:00:00.000Z', line: [], start: '2026-03-14T23:00:00.000Z' },
+    })
+    expect(vi.mocked(queryMetricsBucketed).mock.calls[0]?.slice(1, 4)).toEqual([
+      ['heart_rate'],
+      new Date('2026-03-14T23:00:00.000Z'),
+      now,
+    ])
+  })
+
+  test('is null in a period', async () => {
+    const data = await resolveDashboardData('alice', board(dayWidget({ visible_to_visitors: true })), {
+      window: { end: new Date('2026-03-01T00:00:00Z'), start: new Date('2026-02-01T00:00:00Z') },
+    })
+    expect(data['day']).toEqual({ data: null, type: 'day_overview' })
+    expect(queryMetricsBucketed).not.toHaveBeenCalled()
+  })
+})
+
+describe('dayOverviewSpan', () => {
+  const now = new Date('2026-03-15T10:00:00.000Z')
+
+  test('rolling_24h is the 24 hours up to now', () => {
+    expect(dayOverviewSpan('rolling_24h', now, 'America/New_York')).toEqual({
+      end: now,
+      start: new Date('2026-03-14T10:00:00.000Z'),
+    })
+  })
+
+  test('today and yesterday are local days in the owner timezone', () => {
+    expect(dayOverviewSpan('today', now, 'America/New_York')).toEqual({
+      end: new Date('2026-03-16T04:00:00.000Z'),
+      start: new Date('2026-03-15T04:00:00.000Z'),
+    })
+    expect(dayOverviewSpan('yesterday', now, 'America/New_York')).toEqual({
+      end: new Date('2026-03-15T04:00:00.000Z'),
+      start: new Date('2026-03-14T04:00:00.000Z'),
+    })
+  })
+})
+
+describe('resolveDashboardData: correlation', () => {
+  test('meal_sensitivity carries the flag name as activity_label', async () => {
+    vi.mocked(getActivityImpact).mockResolvedValue({
+      activity: 'Gluten',
+      hrv_timeline: { after30min: { mean: 40 }, before30min: { mean: 45 }, during: { mean: 42 } },
+      occurrences: 7,
+    } as Awaited<ReturnType<typeof getActivityImpact>>)
+
+    const data = await resolveDashboardData(
+      'alice',
+      board({
+        config: { activity: 'flag-1', activity_type: 'meal_sensitivity' },
+        id: 'impact',
+        type: 'correlation',
+      }),
+    )
+
+    expect(data['impact']).toEqual({
+      data: { activity_label: 'Gluten', hrv_after30: 40, hrv_before30: 45, hrv_during: 42, occurrences: 7 },
+      type: 'correlation',
+    })
+    expect(vi.mocked(getActivityImpact).mock.calls[0]?.slice(0, 3)).toEqual([
+      'alice',
+      'flag-1',
+      'meal_sensitivity',
+    ])
+  })
+
+  test('a deleted flag carries no activity_label, so the card never shows its id', async () => {
+    vi.mocked(getActivityImpact).mockResolvedValue({
+      activity: 'flag-1',
+      hrv_timeline: { after30min: { mean: null }, before30min: { mean: null }, during: { mean: null } },
+      occurrences: 0,
+    } as Awaited<ReturnType<typeof getActivityImpact>>)
+
+    const data = await resolveDashboardData(
+      'alice',
+      board({
+        config: { activity: 'flag-1', activity_type: 'meal_sensitivity' },
+        id: 'impact',
+        type: 'correlation',
+      }),
+    )
+
+    expect(data['impact']).toEqual({
+      data: { hrv_after30: null, hrv_before30: null, hrv_during: null, occurrences: 0 },
+      type: 'correlation',
+    })
   })
 })

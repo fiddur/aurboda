@@ -3,6 +3,7 @@ import type { SegmentEffort } from '@aurboda/api-spec'
 import { describe, expect, it } from 'vitest'
 
 import {
+  cutFromLink,
   formatEffortCount,
   formatMatchResult,
   formatPassedOn,
@@ -15,6 +16,42 @@ import {
   segmentsQueryFromParams,
   shouldScanAgain,
 } from './format'
+
+describe('cutFromLink', () => {
+  const none = {
+    created_from_activity_id: null,
+    created_from_activity_title: null,
+    created_from_route_id: null,
+    created_from_route_name: null,
+  }
+
+  it('names the activity by its title, or says an activity when it has none', () => {
+    expect(
+      cutFromLink({ ...none, created_from_activity_id: 'a1', created_from_activity_title: 'Morning run' }),
+    ).toEqual({ href: '/detail/activity/a1', label: 'Morning run' })
+    expect(cutFromLink({ ...none, created_from_activity_id: 'a1' })).toEqual({
+      href: '/detail/activity/a1',
+      label: 'an activity',
+    })
+  })
+
+  it('names the route by its name, or says a route when it is unknown', () => {
+    expect(
+      cutFromLink({ ...none, created_from_route_id: 'r1', created_from_route_name: 'Lake loop' }),
+    ).toEqual({
+      href: '/routes/r1',
+      label: 'Lake loop',
+    })
+    expect(cutFromLink({ ...none, created_from_route_id: 'r1' })).toEqual({
+      href: '/routes/r1',
+      label: 'a route',
+    })
+  })
+
+  it('is nothing when the segment names neither', () => {
+    expect(cutFromLink(none)).toBeNull()
+  })
+})
 
 describe('segmentsQueryFromParams', () => {
   it('reads the type and a non-default sort', () => {

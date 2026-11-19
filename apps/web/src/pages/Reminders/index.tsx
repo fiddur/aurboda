@@ -151,8 +151,8 @@ function ReminderEditor({ initial, timezone, submitLabel, onSubmit, onCancel }: 
         </button>
       </div>
       <p class="reminder-note">
-        Times follow your time zone{timezone ? ` (${timezone})` : ''}, which is set in{' '}
-        <a href="/settings">Settings</a>.
+        Times follow your time zone{timezone ? ` (${timezone})` : ''}. Change it in{' '}
+        <a href="/settings#time-zone">Settings</a>.
       </p>
     </form>
   )

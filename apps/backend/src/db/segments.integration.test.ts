@@ -11,7 +11,7 @@ import {
   rematchActivitySegments,
 } from '../services/segments.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { insertActivity, insertOverride } from './activities/index.ts'
+import { deleteActivity, insertActivity, insertOverride } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertNamedLocation } from './locations.ts'
 import { createRouteWithPair, deleteRoute } from './routes.ts'
@@ -22,6 +22,7 @@ import {
   getSegmentById,
   getSegmentLine,
   getTimingTrack,
+  hasSegments,
   insertSegment,
   listActivitySegmentEfforts,
   listSegmentEfforts,
@@ -371,8 +372,10 @@ describe('Segments integration', () => {
   describe('list, rename and delete', () => {
     test('lists by type and order, renames, and deletes with the efforts', async () => {
       const user = getTestUser()
+      expect(await hasSegments(user)).toBe(false)
       const first = await addTrackedActivity(L_SHAPE)
       const segment = await cutFirstLeg(first)
+      expect(await hasSegments(user)).toBe(true)
       const wkt = 'LINESTRING(18.2 59.4, 18.21 59.4)'
       const quiet = await insertSegment(user, { activity_type: 'walking', name: 'A walk', wkt })
 
@@ -397,6 +400,54 @@ describe('Segments integration', () => {
       expect(await getSegmentById(user, segment.id)).toBeNull()
       const left = await query(user, `SELECT COUNT(*)::int AS n FROM segment_efforts`)
       expect(left.rows[0].n).toBe(0)
+    })
+
+    test('names the activity it was cut from, as the activity reads now, and forgets it once deleted', async () => {
+      const user = getTestUser()
+      const activityId = await addTrackedActivity(L_SHAPE)
+      const segment = await cutFirstLeg(activityId)
+      expect(segment).toMatchObject({ created_from_activity_title: null, created_from_route_name: null })
+
+      await query(user, `UPDATE activities SET title = 'Morning run' WHERE id = $1`, [activityId])
+      expect((await getSegmentById(user, segment.id))!.created_from_activity_title).toBe('Morning run')
+      expect((await listSegments(user))[0]!.created_from_activity_title).toBe('Morning run')
+
+      const { end_time, start_time } = (
+        await query(user, `SELECT start_time, end_time FROM activities WHERE id = $1`, [activityId])
+      ).rows[0] as { start_time: Date; end_time: Date }
+      await insertOverride(user, [activityId], {
+        activity_type: 'running',
+        end_time,
+        start_time,
+        title: 'Hill reps',
+      })
+      expect((await getSegmentById(user, segment.id))!.created_from_activity_title).toBe('Hill reps')
+
+      await deleteActivity(user, activityId)
+      const after = await getSegmentDetail(user, segment.id, defaultSegmentDeps)
+      expect(after).toMatchObject({ created_from_activity_id: activityId, created_from_activity_title: null })
+    })
+
+    test('names the route it was cut from, and forgets it once deleted', async () => {
+      const user = getTestUser()
+      const activityId = await addTrackedActivity(L_SHAPE)
+      const routeId = (await createRouteWithPair(user, {
+        canonical: { activity_id: activityId, name: 'L' },
+      }))!
+      const result = await createSegment(
+        user,
+        { end_km: 1.2, route_id: routeId, start_km: 0.8 },
+        defaultSegmentDeps,
+      )
+      if (!result.ok) throw new Error(result.error)
+      expect(result.segment).toMatchObject({
+        created_from_activity_title: null,
+        created_from_route_id: routeId,
+        created_from_route_name: 'L',
+      })
+
+      await deleteRoute(user, routeId)
+      expect((await getSegmentById(user, result.segment.id))!.created_from_route_name).toBeNull()
     })
 
     test('the ops list filters by a parent type with its descendants', async () => {

@@ -4,7 +4,7 @@ import type {
   DashboardShare,
   ExerciseShare,
   FeedPostKind,
-  FeedVisibility,
+  FeedPostVisibility,
 } from '@aurboda/api-spec'
 /**
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
@@ -47,7 +47,7 @@ import {
 import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/index.ts'
 
 import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
-import { articleBlockFigureUrl } from '../article.ts'
+import { type ArticleFlagNames, articleBlockFigureUrl, articleFlagNames } from '../article.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
@@ -75,7 +75,7 @@ const noteHashtags = (ctx: Context<void>, user: string, tags: readonly string[] 
  * `addressingFor` uses for the JSON object model, mapped through `URL` so the
  * two can't drift.
  */
-export const recipients = (visibility: FeedVisibility, followers: URL): { to: URL[]; cc: URL[] } => {
+export const recipients = (visibility: FeedPostVisibility, followers: URL): { to: URL[]; cc: URL[] } => {
   const { cc, to } = addressingFor(visibility, followers.href)
   return { cc: cc.map((u) => new URL(u)), to: to.map((u) => new URL(u)) }
 }
@@ -85,7 +85,7 @@ export const recipients = (visibility: FeedVisibility, followers: URL): { to: UR
  * may quote", so every Note declares one: anyone for public/unlisted posts, only
  * the author (Mastodon's own form of "just me") for followers-only ones.
  */
-export const quoteInteractionPolicy = (visibility: FeedVisibility, actorUri: URL): InteractionPolicy =>
+export const quoteInteractionPolicy = (visibility: FeedPostVisibility, actorUri: URL): InteractionPolicy =>
   new InteractionPolicy({
     canQuote: new InteractionRule({
       automaticApprovals: [isPubliclyVisible(visibility) ? PUBLIC_COLLECTION : actorUri],
@@ -99,6 +99,8 @@ export interface FeedDeliveryDeps {
   /** Public API base, e.g. `https://aurboda.net/api` — image attachment URLs hang off this. */
   apiBaseUrl: string
   listRelayRecipients?: () => Promise<RelayRecipient[]>
+  /** Local users holding a boost card of this Note by this author without following them (usernames). */
+  listLocalBoostCardHolders?: (noteUri: string, authorUri: string) => Promise<string[]>
   /** Records this server's public posts on the public tag pages (`services/public-tags.ts`). */
   publicTagPosts?: LocalPublicTagPosts
 }
@@ -121,7 +123,7 @@ export interface DeliverablePost {
   included_metrics: string[]
   /** Metric keys whose series were explicitly shared (drive `quant:series` links). */
   series_metrics: string[]
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   /** The author's personal message (plain text); null/undefined = none shared. */
   message?: string | null
   created_at: Date
@@ -513,7 +515,7 @@ export const revokeQuoteStamps = async (
 /** The delivery-facing view of an article post (its `article` guaranteed present). */
 export interface DeliverableArticle {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   image_token: string
@@ -559,20 +561,24 @@ export const buildArticleNote = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const hashtags = noteHashtags(ctx, user, post.tags)
-  const { content, figures } = renderArticleNote(post.article, (index) =>
-    articleBlockFigureUrl(
-      apiBaseUrl,
-      user,
-      post.id,
-      post.visibility,
-      post.image_token,
-      post.updated_at,
-      index,
-    ),
+  const { content, figures } = renderArticleNote(
+    post.article,
+    (index) =>
+      articleBlockFigureUrl(
+        apiBaseUrl,
+        user,
+        post.id,
+        post.visibility,
+        post.image_token,
+        post.updated_at,
+        index,
+      ),
+    flagNames,
   )
   return new Note({
     attachments: figures.map(articleFigureImage),
@@ -596,6 +602,7 @@ export const buildArticleNoteCreate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -603,7 +610,7 @@ export const buildArticleNoteCreate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
@@ -615,6 +622,7 @@ export const buildArticleNoteUpdate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -622,7 +630,7 @@ export const buildArticleNoteUpdate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
     tos: to,
   })
 }
@@ -633,7 +641,8 @@ export const deliverFeedArticlePost = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl)
+  const flagNames = await articleFlagNames(user, post.article.blocks)
+  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl, flagNames)
   await fanOut(deps, ctx, user, create, { relayActivity: relayCreate(post, create) })
 }
 
@@ -643,7 +652,8 @@ export const deliverFeedArticleUpdate = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl)
+  const flagNames = await articleFlagNames(user, post.article.blocks)
+  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl, flagNames)
   await fanOut(deps, ctx, user, update, { relayActivity: relayEdit(ctx, user, post, update) })
 }
 
@@ -654,10 +664,20 @@ export const deliverFeedArticleUpdate = async (
 // like any post. No activity to resolve; an opted-in post delivered to
 // followers attaches the standings race chart (`standings.png`).
 
+/** A post's challenge thread as the Note's `context`; nothing when absent or unparsable. */
+export const challengeContext = (challengeUri: string | null | undefined): { contexts?: URL[] } => {
+  if (challengeUri == null) return {}
+  try {
+    return { contexts: [new URL(challengeUri)] }
+  } catch {
+    return {}
+  }
+}
+
 /** The delivery-facing view of a challenge post (its `challenge` guaranteed present). */
 export interface DeliverableChallenge {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   challenge: ChallengeShare
@@ -667,12 +687,15 @@ export interface DeliverableChallenge {
   /** Capability token appended to a `followers`-only post's image URL. */
   image_token: string
   tags?: readonly string[]
+  /** The challenge object whose thread the post belongs to, federated as `context`. */
+  challenge_uri?: string | null
 }
 
 export const toDeliverableChallenge = (post: FeedPostRecord): DeliverableChallenge | null =>
   post.kind === 'challenge' && post.challenge != null
     ? {
         challenge: post.challenge,
+        challenge_uri: post.challenge_uri,
         created_at: post.created_at,
         id: post.id,
         image_token: post.image_token,
@@ -807,6 +830,7 @@ export const buildChallengeNote = (
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: linkifyHashtags(renderChallengeShareHtml(post.challenge, post.message), hashtags),
+    ...challengeContext(post.challenge_uri),
     id: noteId,
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.challenge.name,
@@ -911,9 +935,9 @@ const deliverToMentioned = async (
 }
 
 /** Mastodon pushes public posts only to relays: not unlisted, not followers-only. */
-const toRelays = (post: { visibility: FeedVisibility }): boolean => post.visibility === 'public'
+const toRelays = (post: { visibility: FeedPostVisibility }): boolean => post.visibility === 'public'
 
-const relayCreate = (post: { visibility: FeedVisibility }, create: Activity): Activity | null =>
+const relayCreate = (post: { visibility: FeedPostVisibility }, create: Activity): Activity | null =>
   toRelays(post) ? create : null
 
 /**
@@ -925,7 +949,7 @@ const relayCreate = (post: { visibility: FeedVisibility }, create: Activity): Ac
 const relayEdit = (
   ctx: Context<void>,
   user: string,
-  post: { id: string; visibility: FeedVisibility },
+  post: { id: string; visibility: FeedPostVisibility },
   update: Activity,
 ): Activity => (toRelays(post) ? update : buildFeedDelete(ctx, user, { id: post.id, visibility: 'public' }))
 
@@ -982,6 +1006,46 @@ const recordPublicTagPost = async (
   }
 }
 
+const isPublicNote = (note: Note): boolean =>
+  [...note.toIds, ...note.ccIds].some((url) => url.href === PUBLIC_COLLECTION.href)
+
+/**
+ * An edit reaches the local users who hold a boost card of the Note through a followed tag
+ * without following the author: a tag actor forwards no edits. They get the Update while the
+ * post is public or unlisted, else the public Delete `relayEdit` built, so a holder who is no
+ * follower loses the card rather than receiving a post narrowed to followers.
+ */
+const deliverToLocalCardHolders = async (
+  deps: Pick<FeedDeliveryDeps, 'listLocalBoostCardHolders'>,
+  ctx: Context<void>,
+  user: string,
+  activity: Activity,
+  relayActivity: Activity | null,
+): Promise<void> => {
+  if (deps.listLocalBoostCardHolders == null || !(activity instanceof Update)) return
+  try {
+    const note = await activity.getObject()
+    if (!(note instanceof Note) || note.id == null) return
+    const toSend = isPublicNote(note) ? activity : relayActivity instanceof Delete ? relayActivity : null
+    if (toSend == null) return
+    const holders = await deps.listLocalBoostCardHolders(note.id.href, ctx.getActorUri(user).href)
+    for (const holder of holders) {
+      if (holder === user) continue
+      try {
+        await ctx.sendActivity(
+          { identifier: user },
+          { id: ctx.getActorUri(holder), inboxId: ctx.getInboxUri(holder) },
+          toSend,
+        )
+      } catch (error) {
+        console.warn(`⚠️ Edit delivery to local card holder ${holder} failed:`, error)
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Edit delivery to local card holders failed:', error)
+  }
+}
+
 /**
  * Fan an activity out to followers, to each tagged actor and (`relayActivity`,
  * when set) to the accepted relays — as independent deliveries. Without an outbox queue
@@ -1002,6 +1066,7 @@ const fanOut = async (
     mentions.length > 0 ? deliverToMentioned(ctx, user, mentions, activity) : Promise.resolve(),
     relayActivity == null ? Promise.resolve() : deliverToRelays(deps, ctx, user, relayActivity),
     relayActivity == null ? Promise.resolve() : recordPublicTagPost(deps, ctx, user, relayActivity),
+    deliverToLocalCardHolders(deps, ctx, user, activity, relayActivity),
   ])
   if (followers.status === 'rejected') throw followers.reason
 }
@@ -1058,7 +1123,7 @@ export const deliverFeedChallengeUpdate = async (
 /** The delivery-facing view of an exercise post (its `exercise` guaranteed present). */
 export interface DeliverableExercise {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   exercise: ExerciseShare
@@ -1241,7 +1306,7 @@ export const deliverFeedExerciseUpdate = async (
 /** The delivery-facing view of a dashboard post (its `dashboard` guaranteed present). */
 export interface DeliverableDashboard {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   dashboard: DashboardShare
@@ -1359,7 +1424,7 @@ export const deliverFeedDashboardUpdate = async (
 /** The delivery-facing view of a reply post (its reply target guaranteed present). */
 export interface DeliverableReply {
   id: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   created_at: Date
   updated_at: Date
   message: string | null
@@ -1367,11 +1432,16 @@ export interface DeliverableReply {
   in_reply_to_actor_uri: string
   in_reply_to_handle: string | null
   tags?: readonly string[]
+  /** The challenge object whose thread the reply belongs to, federated as `context`. */
+  challenge_uri?: string | null
+  /** The actors a challenge comment is pushed to; a participants-only one is addressed to them alone. */
+  thread_recipients?: readonly string[]
 }
 
 export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | null =>
   post.kind === 'reply' && post.in_reply_to_uri != null && post.in_reply_to_actor_uri != null
     ? {
+        challenge_uri: post.challenge_uri,
         created_at: post.created_at,
         id: post.id,
         in_reply_to_actor_uri: post.in_reply_to_actor_uri,
@@ -1403,6 +1473,18 @@ export const replyMentions = (
   return [{ actorUri, handle: replyMentionName({ ...post, message: null }), ...(inbox && { inbox }) }]
 }
 
+const threadRecipientUrls = (actors: readonly string[]): URL[] => {
+  const urls: URL[] = []
+  for (const actor of new Set(actors)) {
+    try {
+      urls.push(new URL(actor))
+    } catch {
+      continue
+    }
+  }
+  return urls
+}
+
 /**
  * Addressing for a reply: the visibility table, plus the replied-to author in
  * `cc` (Mastodon-style — a mention is addressed as well as tagged, so their
@@ -1413,8 +1495,11 @@ const replyAddressing = (
   user: string,
   post: DeliverableReply,
 ): { to: URL[]; cc: URL[]; mentions: MentionRecipient[] } => {
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const mentions = replyMentions(post)
+  if (post.visibility === 'participants' && post.thread_recipients != null) {
+    return { cc: [], mentions, to: threadRecipientUrls(post.thread_recipients) }
+  }
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return { cc: [...cc, ...mentions.map((m) => m.actorUri)], mentions, to }
 }
 
@@ -1432,6 +1517,7 @@ export const buildReplyNote = (ctx: Context<void>, user: string, post: Deliverab
     attribution: ctx.getActorUri(user),
     ccs: cc,
     content: linkifyHashtags(renderReplyContent(post), hashtags),
+    ...challengeContext(post.challenge_uri),
     id: noteId,
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     published: dateToTemporalInstant(post.created_at),
@@ -1499,3 +1585,53 @@ export const deliverFeedReplyUpdate = async (
   const update = buildReplyNoteUpdate(ctx, user, post)
   await fanOut(deps, ctx, user, update, { mentions: replyMentions(post), relayActivity: null })
 }
+
+const threadMentions = (actors: readonly string[]): MentionRecipient[] =>
+  threadRecipientUrls(actors).map((actorUri) => ({ actorUri, handle: actorUri.href }))
+
+/**
+ * Push a challenge comment's `Create` or `Update` to the thread's recipients only: each inbox on
+ * its own and best effort, the author's own actor skipped. Never the followers or relays.
+ */
+export const deliverThreadReply = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableReply,
+  change: 'create' | 'update',
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const activity =
+    change === 'create' ? buildReplyNoteCreate(ctx, user, post) : buildReplyNoteUpdate(ctx, user, post)
+  await deliverToMentioned(ctx, user, threadMentions(post.thread_recipients ?? []), activity)
+}
+
+/** Push the `Delete` of a challenge comment to the thread's recipients only. */
+export const deliverThreadReplyDelete = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: Pick<DeliverableReply, 'id' | 'thread_recipients' | 'visibility'>,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await deliverToMentioned(
+    ctx,
+    user,
+    threadMentions(post.thread_recipients ?? []),
+    buildFeedDelete(ctx, user, post),
+  )
+}
+
+/** The thread push of a challenge comment through the two functions above; fire and forget. */
+export const createThreadPush =
+  (deps: FeedDeliveryDeps) =>
+  (user: string, post: FeedPostRecord, change: 'create' | 'update' | 'delete', actors: string[]): void => {
+    const reply = toDeliverableReply(post)
+    if (reply == null) return
+    const target = { ...reply, thread_recipients: actors }
+    const work =
+      change === 'delete'
+        ? deliverThreadReplyDelete(deps, user, target)
+        : deliverThreadReply(deps, user, target, change)
+    void work.catch((error: unknown) => {
+      console.warn(`⚠️ challenge comment push (${change}) failed for post ${post.id}:`, error)
+    })
+  }

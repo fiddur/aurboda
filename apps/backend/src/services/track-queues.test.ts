@@ -12,6 +12,7 @@ const emptyDeps = {
   ensureDefaultRules: vi.fn(async () => undefined),
   getGarminCandidates: vi.fn(async () => []),
   getStravaCandidates: vi.fn(async () => []),
+  hasSegments: vi.fn(async () => true),
   listActivitiesWithoutFeatures: vi.fn(async (): Promise<{ activity_id: string }[]> => []),
   matchRoutes: vi.fn(async () => ({ created: 0, matched: 0 })),
   matchSegments: vi.fn(async () => ({ efforts: 0 })),
@@ -97,6 +98,22 @@ describe('runTrackBackfillJob', () => {
       activity_id: 's2',
       error: 'Error: boom',
     })
+  })
+
+  test('skips segment timing when the user has no segments', async () => {
+    const deps = {
+      ...emptyDeps,
+      getStravaCandidates: vi.fn(async () => [
+        { activity_id: 's1', elapsed_seconds: 60, polyline: '_p~iF~ps|U_ulLnnqC', start_time: new Date() },
+      ]),
+      hasSegments: vi.fn(async () => false),
+    }
+
+    const result = await runTrackBackfillJob({ user: 'alice' }, deps)
+
+    expect(result.segments).toEqual({ efforts: 0 })
+    expect(deps.hasSegments).toHaveBeenCalledWith('alice')
+    expect(deps.matchSegments).not.toHaveBeenCalled()
   })
 
   test('matches routes after the backfill and audits what it matched', async () => {

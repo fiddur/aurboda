@@ -29,7 +29,13 @@ import type {
 
 import { toWireKey } from './activitypub/quant-wire.ts'
 import { effectiveBucketSize, type MemberSeries, specToApi } from './challenge-spec.ts'
-import { buildActorUrl, buildProfileUrl, buildShareUrl } from './share-urls.ts'
+import {
+  buildActorUrl,
+  buildChallengeObjectUrl,
+  buildChallengeThreadUrl,
+  buildProfileUrl,
+  buildShareUrl,
+} from './share-urls.ts'
 
 export interface QuantMetric {
   key: string
@@ -198,7 +204,7 @@ const memberActor = (member: ChallengeMemberRecord, webHost: string): string | n
   member.actor ??
   (member.kind === 'local' && member.local_user ? buildActorUrl(webHost, member.local_user) : null)
 
-const challengeApiUrl = (ctx: HostContext, slug: string, rest = ''): string =>
+export const challengeApiUrl = (ctx: HostContext, slug: string, rest = ''): string =>
   `${ctx.apiBaseUrl.replace(/\/+$/, '')}/public/${encodeURIComponent(ctx.username)}/challenges/${encodeURIComponent(slug)}${rest}`
 
 /** A hosted challenge as listed publicly: the document without `joinToken` and `members`. */
@@ -216,6 +222,7 @@ export const buildChallengeListItem = (
       name: ctx.username,
       url: buildProfileUrl(ctx.webHost, ctx.username),
     },
+    id: buildChallengeObjectUrl(ctx.webHost, ctx.username, challenge.slug),
     joinMode: challenge.end_ts.getTime() <= ctx.now.getTime() ? 'none' : 'free',
     kind: 'challenge',
     metric: key,
@@ -223,6 +230,7 @@ export const buildChallengeListItem = (
     scoring: challenge.spec.aggregation,
     standingsUrl: challengeApiUrl(ctx, challenge.slug, '/standings'),
     startTime: challenge.start_ts.toISOString(),
+    threadUrl: buildChallengeThreadUrl(ctx.webHost, ctx.username, challenge.slug),
     timezone: challenge.timezone,
     unit,
     url: buildShareUrl(ctx.webHost, ctx.username, challenge.slug),

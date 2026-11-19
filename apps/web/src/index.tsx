@@ -9,6 +9,7 @@ import { GuestBar } from './components/GuestBar.jsx'
 import { Header } from './components/Header.jsx'
 import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
+import { useBrowserTimezoneDefault } from './components/useBrowserTimezoneDefault.js'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
@@ -29,6 +30,7 @@ const AdminUserDetail = lazyPage(() => import('./pages/AdminUsers/Detail.jsx'), 
 const AuditLog = lazyPage(() => import('./pages/AuditLog/index.jsx'), 'AuditLog')
 const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Challenges')
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
+const JoinedChallenge = lazyPage(() => import('./pages/Challenges/JoinedChallenge.jsx'), 'JoinedChallenge')
 const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
 const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
 const Dashboards = lazyPage(() => import('./pages/Dashboards/index.jsx'), 'Dashboards')
@@ -132,6 +134,7 @@ function AppShell() {
   const showGuestBar = !embedded && shouldShowGuestBar(path, isLoggedIn)
   // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
   const showPlanBanner = shouldShowPlanBanner(path, isLoggedIn)
+  useBrowserTimezoneDefault()
 
   return (
     <>
@@ -149,6 +152,7 @@ function AppShell() {
             <Route path="/dashboards" component={Dashboards} />
             <Route path="/shared-dashboards" component={Dashboards} />
             <Route path="/challenges/join" component={ChallengeJoin} />
+            <Route path="/challenges/joined/:id" component={JoinedChallenge} />
             <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />
             <Route path="/blog" component={OfficialFeed} />

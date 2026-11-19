@@ -1,4 +1,4 @@
-import type { FeedVisibility } from '@aurboda/api-spec'
+import type { FeedPostVisibility } from '@aurboda/api-spec'
 
 /**
  * `public`/`unlisted` posts are always served. A `followers`-only post is served
@@ -22,9 +22,11 @@ export const tokenMatches = (provided: string, expected: string): boolean => {
 /**
  * Whether a request (optionally carrying `token`) may see this post's shared
  * data: `public`/`unlisted` always; a `followers`-only post only with a matching
- * capability token.
+ * capability token. A `participants` post never, token or not: it is never served publicly.
  */
 export const isCapabilityAuthorized = (
-  post: { visibility: FeedVisibility; image_token: string },
+  post: { visibility: FeedPostVisibility; image_token: string },
   token: string | undefined,
-): boolean => isPubliclyVisible(post.visibility) || (token != null && tokenMatches(token, post.image_token))
+): boolean =>
+  isPubliclyVisible(post.visibility) ||
+  (post.visibility === 'followers' && token != null && tokenMatches(token, post.image_token))

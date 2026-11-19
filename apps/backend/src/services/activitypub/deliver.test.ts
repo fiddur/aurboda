@@ -49,6 +49,8 @@ import {
   hasDrawableStandings,
   hasDrawableTrend,
   deliverFeedReplyPost,
+  deliverThreadReply,
+  deliverThreadReplyDelete,
   type FeedDeliveryDeps,
   imageAttachments,
   imageAvailability,
@@ -390,6 +392,20 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
     )
   })
 
+  test('names its challenge thread as `context`, and nothing without one', async () => {
+    const ctx = await contextFor()
+    const thread = `${ORIGIN}/users/fiddur/challenges/august-10k`
+    const inThread = buildChallengeNote(ctx, 'fiddur', {
+      ...deliverableChallenge('public'),
+      challenge_uri: thread,
+    })
+    expect(hrefs([...inThread.contextIds])).toEqual([thread])
+    expect((await inThread.toJsonLd()) as Record<string, unknown>).toMatchObject({ context: thread })
+    expect(buildChallengeNote(ctx, 'fiddur', deliverableChallenge('public')).contextIds).toEqual([])
+    const garbled = { ...deliverableChallenge('public'), challenge_uri: 'not a url' }
+    expect(buildChallengeNote(ctx, 'fiddur', garbled).contextIds).toEqual([])
+  })
+
   test('an invitation carries no Mention tags', async () => {
     const ctx = await contextFor()
     const note = buildChallengeNote(ctx, 'fiddur', deliverableChallenge('public'))
@@ -706,6 +722,17 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
     expect(buildReplyNote(ctx, 'fiddur', edited).updated?.epochMilliseconds).toBe(edited.updated_at.getTime())
   })
 
+  test('a challenge comment names its challenge thread as `context`, and nothing without one', async () => {
+    const ctx = await contextFor()
+    const thread = `${ORIGIN}/users/alice/challenges/abc`
+    const comment = buildReplyNote(ctx, 'fiddur', deliverableReply('unlisted', { challenge_uri: thread }))
+    expect(hrefs([...comment.contextIds])).toEqual([thread])
+    expect(buildReplyNote(ctx, 'fiddur', deliverableReply()).contextIds).toEqual([])
+    expect(
+      buildReplyNote(ctx, 'fiddur', deliverableReply('unlisted', { challenge_uri: '::' })).contextIds,
+    ).toEqual([])
+  })
+
   test('tags the replied-to author with a Mention naming their handle', async () => {
     const ctx = await contextFor()
     const note = buildReplyNote(ctx, 'fiddur', deliverableReply())
@@ -747,6 +774,7 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       activity_id: null,
       article: null,
       autoshare_rule_id: null,
+      challenge_uri: null,
       challenge: null,
       dashboard: null,
       exercise: null,
@@ -767,6 +795,8 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       visibility: 'unlisted' as const,
     }
     expect(toDeliverableReply({ ...base, kind: 'reply' })?.in_reply_to_uri).toBe(TARGET)
+    const thread = 'https://aurboda.example/users/alice/challenges/abc'
+    expect(toDeliverableReply({ ...base, challenge_uri: thread, kind: 'reply' })?.challenge_uri).toBe(thread)
     expect(toDeliverableReply({ ...base, kind: 'activity' })).toBeNull()
     expect(toDeliverableReply({ ...base, in_reply_to_uri: null, kind: 'reply' })).toBeNull()
   })
@@ -841,6 +871,87 @@ describe('reply fan-out to the answered author (#1079 shape)', () => {
   })
 })
 
+describe('challenge comments pushed to the thread', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const HOST = 'https://host.example/users/freja'
+  const MEMBER = 'https://far.example/users/ola'
+  const SELF = `${ORIGIN}/users/fiddur`
+  const comment = (over: Partial<DeliverableReply> = {}): DeliverableReply => ({
+    challenge_uri: 'https://host.example/users/freja/challenges/nov',
+    created_at: new Date('2026-09-01T00:00:00Z'),
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    in_reply_to_actor_uri: HOST,
+    in_reply_to_handle: '@freja@host.example',
+    in_reply_to_uri: 'https://host.example/users/freja/challenges/nov',
+    message: 'Go team',
+    thread_recipients: [HOST, MEMBER, SELF, HOST],
+    updated_at: new Date('2026-09-01T00:00:00Z'),
+    visibility: 'participants',
+    ...over,
+  })
+
+  const fakeDeps = async (
+    send: (sender: unknown, recipient: { id?: URL }, activity?: unknown) => Promise<void> = async () => {},
+  ) => {
+    const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+    const sendActivity = vi.fn(send)
+    const lookupObject = vi.fn(async (uri: URL) => new Person({ id: uri }))
+    Object.assign(ctx, { lookupObject, sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+    }
+    return { ctx, deps, sendActivity }
+  }
+
+  const sentTo = (sendActivity: { mock: { calls: unknown[][] } }) =>
+    sendActivity.mock.calls.map(([, recipient]) => (recipient as { id?: URL }).id?.href)
+
+  test('a participants comment is addressed to the thread recipients alone', async () => {
+    const { ctx } = await fakeDeps()
+    const note = buildReplyNote(ctx, 'fiddur', comment())
+    expect(hrefs([...note.toIds])).toEqual([HOST, MEMBER, SELF])
+    expect(note.ccIds).toEqual([])
+    const create = buildReplyNoteCreate(ctx, 'fiddur', comment())
+    expect(hrefs([...create.toIds])).toEqual([HOST, MEMBER, SELF])
+    expect(hrefs([...create.ccIds])).not.toContain(`${ORIGIN}/users/fiddur/followers`)
+  })
+
+  test('a public comment keeps its ordinary addressing', async () => {
+    const { ctx } = await fakeDeps()
+    const note = buildReplyNote(ctx, 'fiddur', comment({ visibility: 'unlisted' }))
+    expect(hrefs([...note.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
+    expect(hrefs([...note.ccIds])).toContain(PUBLIC)
+  })
+
+  test('the Create and Update go to each recipient once, never to followers or the author', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverThreadReply(deps, 'fiddur', comment(), 'create')
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+    expect(sendActivity.mock.calls[0][2]).toBeInstanceOf(Create)
+    sendActivity.mockClear()
+    await deliverThreadReply(deps, 'fiddur', comment(), 'update')
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+    expect(sendActivity.mock.calls[0][2]).toBeInstanceOf(Update)
+  })
+
+  test('one failing recipient does not cost the others', async () => {
+    const { deps, sendActivity } = await fakeDeps(async (_sender, recipient) => {
+      if (recipient.id?.href === HOST) throw new Error('connect ECONNREFUSED')
+    })
+    await expect(deliverThreadReply(deps, 'fiddur', comment(), 'create')).resolves.toBeUndefined()
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+  })
+
+  test('the Delete goes to the same recipients', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverThreadReplyDelete(deps, 'fiddur', comment())
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+    for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+  })
+})
+
 describe('exercise shares (#1398)', () => {
   const ORIGIN = 'https://aurboda.example'
   const contextFor = () => createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
@@ -870,6 +981,7 @@ describe('exercise shares (#1398)', () => {
       activity_id: null,
       article: null,
       autoshare_rule_id: null,
+      challenge_uri: null,
       challenge: null,
       created_at: new Date(),
       dashboard: null,
@@ -1028,6 +1140,7 @@ describe('dashboard-period shares (#1505)', () => {
       activity_id: null,
       article: null,
       autoshare_rule_id: null,
+      challenge_uri: null,
       challenge: null,
       created_at: new Date(),
       dashboard: deliverableDashboard().dashboard,
@@ -1689,5 +1802,126 @@ describe('relay push of public posts (#1541)', () => {
     const { deps, sendActivity } = await fakeDeps({ listRelayRecipients: null })
     await deliverFeedArticlePost(deps, 'fiddur', article('public'))
     expect(sentTo(sendActivity)).toEqual(['followers'])
+  })
+})
+
+describe('edits reach local holders of a boost card (#1852)', () => {
+  const ORIGIN = 'https://aurboda.example'
+
+  const fakeDeps = async (
+    overrides: {
+      sendActivity?: unknown
+      listLocalBoostCardHolders?: FeedDeliveryDeps['listLocalBoostCardHolders'] | null
+    } = {},
+  ) => {
+    const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+    const sendActivity =
+      (overrides.sendActivity as ReturnType<typeof vi.fn>) ?? vi.fn().mockResolvedValue(undefined)
+    Object.assign(ctx, { sendActivity })
+    const listLocalBoostCardHolders =
+      overrides.listLocalBoostCardHolders === null
+        ? undefined
+        : (overrides.listLocalBoostCardHolders ?? vi.fn(async () => ['anna', 'fiddur', 'bert']))
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      listLocalBoostCardHolders,
+      origin: ORIGIN,
+    }
+    return { deps, listLocalBoostCardHolders, sendActivity }
+  }
+
+  const article = (visibility: DeliverableArticle['visibility']): DeliverableArticle => ({
+    article: { blocks: [{ markdown: 'Hello', type: 'prose' }], title: 'Hi' },
+    created_at: new Date('2026-07-03T00:00:00Z'),
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    image_token: 'tok',
+    updated_at: new Date('2026-07-04T00:00:00Z'),
+    visibility,
+  })
+  const noteId = `${ORIGIN}/users/fiddur/feed/${article('public').id}`
+  const inboxOf = (user: string) => `${ORIGIN}/users/${user}/inbox`
+
+  const holderCalls = (sendActivity: ReturnType<typeof vi.fn>) =>
+    sendActivity.mock.calls
+      .filter(([, recipient]) => typeof recipient !== 'string')
+      .map(([sender, recipient, activity]) => ({
+        activity,
+        actor: recipient.id.href,
+        inbox: recipient.inboxId.href,
+        sender,
+      }))
+
+  test.each(['public', 'unlisted'] as const)(
+    'the Update of a %s post goes to each holder’s inbox, never the author’s own',
+    async (visibility) => {
+      const { deps, listLocalBoostCardHolders, sendActivity } = await fakeDeps()
+      await deliverFeedArticleUpdate(deps, 'fiddur', article(visibility))
+      expect(listLocalBoostCardHolders).toHaveBeenCalledWith(noteId, `${ORIGIN}/users/fiddur`)
+      const calls = holderCalls(sendActivity).filter((c) => c.inbox.startsWith(ORIGIN))
+      expect(calls.map((c) => [c.actor, c.inbox])).toEqual([
+        [`${ORIGIN}/users/anna`, inboxOf('anna')],
+        [`${ORIGIN}/users/bert`, inboxOf('bert')],
+      ])
+      for (const call of calls) {
+        expect(call.sender).toEqual({ identifier: 'fiddur' })
+        expect(call.activity).toBeInstanceOf(Update)
+      }
+    },
+  )
+
+  test('a post narrowed to followers sends holders the public Delete instead', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverFeedArticleUpdate(deps, 'fiddur', article('followers'))
+    const calls = holderCalls(sendActivity)
+    expect(calls.map((c) => c.inbox)).toEqual([inboxOf('anna'), inboxOf('bert')])
+    for (const call of calls) {
+      expect(call.activity).toBeInstanceOf(Delete)
+      expect((call.activity as Delete).objectId?.href).toBe(noteId)
+      expect((call.activity as Delete).toIds.map((u) => u.href)).toEqual([PUBLIC])
+    }
+  })
+
+  test('a Create sends holders nothing', async () => {
+    const { deps, listLocalBoostCardHolders, sendActivity } = await fakeDeps()
+    await deliverFeedArticlePost(deps, 'fiddur', article('public'))
+    expect(holderCalls(sendActivity)).toEqual([])
+    expect(listLocalBoostCardHolders).not.toHaveBeenCalled()
+  })
+
+  test('a holder whose send fails costs neither the followers nor the other holders', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sendActivity = vi.fn(async (_sender: unknown, recipient: unknown) => {
+      if (typeof recipient !== 'string' && (recipient as { inboxId: URL }).inboxId.href === inboxOf('anna')) {
+        throw new Error('anna down')
+      }
+    })
+    const { deps } = await fakeDeps({ sendActivity })
+    await expect(deliverFeedArticleUpdate(deps, 'fiddur', article('public'))).resolves.toBeUndefined()
+    expect(
+      sendActivity.mock.calls.map(([, r]) =>
+        typeof r === 'string' ? r : (r as { inboxId: URL }).inboxId.href,
+      ),
+    ).toEqual(['followers', inboxOf('anna'), inboxOf('bert')])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('anna'), expect.any(Error))
+    warn.mockRestore()
+  })
+
+  test('an unreadable holder list does not fail the delivery', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { deps, sendActivity } = await fakeDeps({
+      listLocalBoostCardHolders: async () => {
+        throw new Error('db down')
+      },
+    })
+    await expect(deliverFeedArticleUpdate(deps, 'fiddur', article('public'))).resolves.toBeUndefined()
+    expect(holderCalls(sendActivity)).toEqual([])
+    warn.mockRestore()
+  })
+
+  test('without the dependency, an edit goes to followers only', async () => {
+    const { deps, sendActivity } = await fakeDeps({ listLocalBoostCardHolders: null })
+    await deliverFeedArticleUpdate(deps, 'fiddur', article('public'))
+    expect(sendActivity.mock.calls.map(([, r]) => r)).toEqual(['followers'])
   })
 })

@@ -32,7 +32,6 @@ import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
-  deleteRuleActivities,
   emitTimelineNotify,
   expandAncestorTypes,
   getDeductionRulesByIds,
@@ -101,6 +100,10 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
+import {
+  createChallengeThreadFederationRouter,
+  createSignedActorOf,
+} from './routes/challenge-thread-federation-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
@@ -123,6 +126,7 @@ import {
   deliverFeedReplyPost,
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
+  createThreadPush,
   deliverQuoteStampDeletes,
   revokeQuoteStamps,
   toDeliverableArticle,
@@ -138,6 +142,7 @@ import {
   deliverActorDelete,
   deliverActorUpdate,
 } from './services/activitypub/federation.ts'
+import { createLocalBoostCardHolders } from './services/activitypub/local-card-holders.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { createPostUpdateResender, deliverPostUpdate } from './services/activitypub/post-update-resend.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
@@ -159,6 +164,12 @@ import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './servi
 import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
 import { publishFinishedChallengeResults } from './services/challenge-results.ts'
 import { getChallengeStandings } from './services/challenge-standings.ts'
+import {
+  createSignedThreadFetch,
+  createThreadDeps,
+  type ThreadFederation,
+} from './services/challenge-thread-remote.ts'
+import { syncThreadEntryForPost } from './services/challenge-thread.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -166,6 +177,7 @@ import {
   createDeductionQueue,
   type DeductionQueue,
 } from './services/deduction-queue.ts'
+import { removeRuleActivities } from './services/deduction-rule-activities.ts'
 import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
@@ -173,6 +185,7 @@ import { createMailer } from './services/email.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
 import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
+import { withoutParticipantsDelivery } from './services/feed-deliver-guard.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -206,7 +219,7 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
-import { notificationStore, notifier } from './services/notifications.ts'
+import { notificationStore, notifier, notifyAdminsOfUnfinishedSignup } from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -519,7 +532,7 @@ const main = async () => {
     try {
       deductionQueue = await createDeductionQueue(boss, {
         buildFullWindow: (user) => buildFullWindow(user, engineDeps),
-        deleteRuleActivities,
+        deleteRuleActivities: (user, ruleId) => removeRuleActivities(user, ruleId),
         engineDeps,
         evaluateAllRules,
         expandAncestorTypes,
@@ -718,6 +731,12 @@ const main = async () => {
       discover: createDiscoveryCache(oidcClient),
       invitationAuth,
       loginMethods,
+      notifyAdminsOfSignup: signupDeps.notifyAdmins,
+      notifyAdminsOfUnfinishedSignup: (user) =>
+        void notifyAdminsOfUnfinishedSignup({
+          getAdmins: centralDb.getAdmins,
+          raiseBestEffort: notifier.raiseBestEffort,
+        })(user),
       redirectUri: oidcRedirect,
       startEmailVerification,
       store: centralDb,
@@ -775,6 +794,7 @@ const main = async () => {
   const feedDeps = {
     apiBaseUrl,
     federation: feedFederation,
+    listLocalBoostCardHolders: createLocalBoostCardHolders({ listUsers: () => listUserNames(userDb) }),
     listRelayRecipients: () => relayRecipients(centralDb),
     origin: webHost,
     publicTagPosts: createLocalPublicTagPosts({
@@ -783,6 +803,10 @@ const main = async () => {
       store: centralDb,
     }),
     tagActorHost,
+  }
+  const threadFederation: ThreadFederation = {
+    fetchThread: createSignedThreadFetch(feedFederation, webHost),
+    push: createThreadPush(feedDeps),
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
   const publicTagModeration = createPublicTagModeration({
@@ -886,7 +910,7 @@ const main = async () => {
   const revokeUnsharedStamps = (user: string, post: FeedPostRecord): void => {
     void revokeQuoteStamps(feedDeps, user, post).catch(onDeliverError('quote stamp revoke', user, post.id))
   }
-  const feedDeliver: FeedDeliver = {
+  const feedDeliver: FeedDeliver = withoutParticipantsDelivery({
     // Expand the already-resolved activity to its merged span so the delivered
     // Note reports what the user shared, not just the anchor sub-activity (#881).
     created: (user, post, activity) => {
@@ -997,8 +1021,14 @@ const main = async () => {
         void deliverFeedReplyUpdate(feedDeps, user, reply).catch(onDeliverError('update', user, post.id))
       }
     },
-  }
+  })
   feedUpdated = feedDeliver.updated
+  const challengeThreadDeps = createThreadDeps({
+    deliver: feedDeliver,
+    notify: notifier.raiseBestEffort,
+    webHost,
+    ...threadFederation,
+  })
   // Auto-share rules (#903): evaluate settled activities against enabled rules
   // after a stabilisation delay, publishing matches through the SAME
   // feedDeliver.created fan-out a manual share fires. The deps double as the
@@ -1162,6 +1192,7 @@ const main = async () => {
         sweep: () =>
           publishFinishedChallengeResults({
             claim: markChallengeResultPublished,
+            admitToThread: (user, post) => syncThreadEntryForPost(challengeThreadDeps, user, post),
             createPost: createChallengePost,
             deliver: feedDeliver.createdChallenge,
             listAwaiting: listChallengesAwaitingResult,
@@ -1271,6 +1302,7 @@ const main = async () => {
       discoverChallenges,
       engineDeps,
       feedDeliver,
+      threadFederation,
       followActions,
       followerActions,
       garmin,
@@ -1307,6 +1339,13 @@ const main = async () => {
   // client isn't loopback, so it can't spoof them. `TRUST_PROXY` adds a proxy in
   // front of nginx (docs/docker.md).
   httpd.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY))
+  // The signed thread document of a hosted challenge, ahead of Fedify, which owns `/users/`.
+  httpd.use(
+    createChallengeThreadFederationRouter({
+      signedActorOf: createSignedActorOf(feedFederation),
+      webHost,
+    }),
+  )
   // Any representation will do for a wildcard or absent Accept on an actor URL,
   // and the default is the actor document: hand Fedify the type it serves.
   httpd.use(createActorAcceptNormalizer())
@@ -1475,6 +1514,7 @@ const main = async () => {
     discoverChallenges,
     engineDeps,
     feedDeliver,
+    threadFederation,
     followActions,
     followerActions,
     garmin,

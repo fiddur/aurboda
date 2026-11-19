@@ -240,6 +240,31 @@ count once). Unlisted challenges are not discoverable, by design; a peer from be
 listing carried windows lists name + link only and is skipped rather than shown as
 "ongoing".
 
+## The challenge as an ActivityPub object
+
+Every hosted challenge also resolves as an ActivityStreams object at
+`<public-base>/users/<username>/challenges/<slug>` (QuantPub Challenges §2), served by
+Fedify to a request that asks for ActivityPub (a wildcard or absent `Accept` counts);
+a browser asking for HTML is redirected (`302`) to the page `/u/<username>/<slug>`.
+The object is an `Event` dual-typed `quant:Challenge` carrying `name`, `startTime`,
+`endTime`, `published`, `updated`, `attributedTo` (the host actor), `url` (the page), a
+short `content` (name, what is measured, the dates, the page link), the FEP-8a8e
+`timezone` and `joinMode` (`free`, or `none` once the challenge has ended), and
+`quant:metric`, `quant:unit`, `quant:scoring`, `quant:bucket` and `quant:structuredUrl`
+(the §3 document), all taken from the same functions as the HTTP document. The
+FEP-8a8e terms are defined inline in `@context`, so nobody has to fetch the FEP's
+context to read them.
+
+Both public and unlisted challenges resolve, exactly like the HTTP document: anyone
+holding the slug can read it. Only a public one is addressed `to` the public
+collection, and the object carries no member names, counts or standings. The HTTP
+document's `id` is this object's id. A public challenge's page links it with
+`<link rel="alternate" type="application/activity+json">`; an unlisted one's does not.
+
+The object is only served for now: joining and leaving are still HTTP (§4.2), and no
+`Create{Event}` is delivered, nor are `Join` / `Leave` accepted in the inbox, nor
+`attendees` or `replies` published.
+
 ## Join from your own app
 
 Any app can join a challenge hosted on an Aurboda instance; it does not need to run
@@ -385,6 +410,130 @@ not notified.
 
 The older Aurboda-only shape (`/.well-known/aurboda`, `POST /public/<user>/<slug>/members`
 with a `{ total, buckets }` data URL) still works; see the legacy table above.
+
+## Comment thread
+
+A challenge hosted here has one comment thread, kept in the host's database
+(`challenge_thread_entries`, deleted with the challenge). Its entries are comments and
+replies, the personal note of a share of the challenge (a share without a note is not an
+entry) and the host's result post. Every entry has an **audience**:
+
+- **`public`** — read by anyone who can see the challenge, signed in or not. Only a
+  public challenge has public entries.
+- **`participants`** — read and written only by the host and the challenge's active
+  members. Every entry of an unlisted challenge is `participants`.
+
+The rules:
+
+1. Who may comment: the host and members with either audience on a public challenge,
+   anyone else signed in with `public` only; on an unlisted challenge the host and
+   members with `participants` only. Anything else is refused (`403`).
+2. Replies nest one level: a reply to a reply hangs under the same top-level entry. A
+   reply may not be wider than the entry it answers (`400`): a reply to a
+   `participants` entry is `participants`.
+3. A comment is a feed post of its author (kind `reply`, visibility `unlisted` for a
+   public comment and `participants` for a participants one, see
+   [Feed posts](./feed.md#feed-posts)), so it is edited and deleted through
+   `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
+   thread follows. Its audience cannot change after posting (`400`), and an edit always
+   reaches the thread, also after its author left the challenge. A public comment is
+   delivered like any reply; a participants one goes only to the host and the members on
+   other servers (see _Members on other servers_), never to followers. Deleting a
+   top-level entry takes its replies out of the thread with it, other people's included;
+   their own feed posts stay.
+4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
+   hidden entry hides the replies under it. Hiding is undone by unhiding.
+5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
+6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
+   the host and every local member except its author.
+7. A challenge hosted on another server is read and commented on from here by its
+   members (see _Members on other servers_). Anyone else gets `403`.
+
+**Comments from other servers.** A `Note` delivered to any local user's inbox enters the
+thread of a challenge hosted here when it replies to the challenge object, to a local post
+of its thread (a comment, a share or the result), or to an entry of a thread that user
+hosts. Its author is the signature-verified sender, and the Note must be on the sender's
+server and attributed to them. A Note addressed to `Public` is a `public` entry; any other
+is a `participants` entry, and only when its `context` names the challenge and its author
+is a participant. The rules above apply as for a local comment (an unlisted challenge
+takes nothing from a non-member), and someone who is not a participant adds at most 30
+entries a day to one thread. An `Update` of the Note rewrites the entry and a `Delete` from
+its author removes it. The same Note may also become a timeline card for the recipient; it
+then raises no second notification beside `challenge_comment`. A reply to a commenter on
+another server only reaches the thread when it is delivered to the host's inbox (Mastodon
+does so when the reply keeps the host's mention).
+
+Every comment and share of a challenge hosted here that Aurboda federates names the challenge
+object as its `context`.
+
+**Members on other servers.** A member reads and writes a remote challenge's thread from
+their own server, through the same routes and tools, with the challenge's page URL on the
+host.
+
+- **What the member's server keeps.** It keeps a copy of the host's thread
+  (`challenge_thread_copies`, deleted with the participation). It remembers, on the
+  participation:
+  - the thread URL, the challenge object id and the host actor, all from the challenge
+    document at join, or fetched on first use for an older participation;
+  - the audiences the member may post with;
+  - the thread's attendees.
+- **The pull.** The member's server pulls the thread document, signed as the member, right
+  after joining. It pulls again when the copy is more than five minutes old.
+  - The host stamps the member it matches by the signature as **verified**, and answers
+    with every visible entry.
+  - When the pull fails, the last copy is shown. With no copy yet, the answer is `502`.
+- **The push.** A comment the member writes is a feed post like any other: it enters the
+  copy, and is delivered to the host and the attendees. A participants comment is
+  addressed to them alone. Editing or deleting it pushes the `Update` or `Delete`.
+  - The host delivers every comment written, edited or deleted on its side to its verified
+    members.
+  - A Note from someone who is not the host or an attendee is not taken into the copy; it
+    marks the copy for a fresh pull instead.
+  - A comment pushed into the copy raises `challenge_comment`, linking to the member's page
+    for the challenge.
+- **What is not pushed.** A fediverse reply or a share the host took in arrives with the
+  next pull.
+- **Hiding.** Hiding and unhiding happen on the host's server only (`403` elsewhere).
+
+The member's page for a joined challenge reads `GET /challenges/participations/:id`
+(MCP `get_joined_challenge`). It answers the participation, `host_page_url` and, when the
+host can be read, the challenge and standings as the host's page shows them. When the host
+cannot be read, those two are left out.
+
+A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
+with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
+`role` (`host`, `member` or `visitor`), the audiences they may comment with and
+`can_comment`. An entry the viewer wrote carries `own_post_id` and `message` (the markdown
+source).
+
+API: `GET /challenges/thread?challenge_url=<page url>[&cursor=]`,
+`POST /challenges/thread/comments` (`{ challenge_url, audience, message, in_reply_to_id? }`,
+`201` with the entry), `POST /challenges/thread/entries/:entryId/hidden` (body
+`{ challenge_url }`) and `DELETE /challenges/thread/entries/:entryId/hidden?challenge_url=`.
+The logged-out view is `GET /public/<user>/challenges/<slug>/thread[?cursor=]` (public
+entries only). MCP: `get_challenge_thread`, `add_challenge_comment`,
+`hide_challenge_comment`, `unhide_challenge_comment`.
+
+On the web, the challenge page (`/u/<user>/<slug>`, embedded as is by the Android app)
+shows the thread in a **Comments** section (`#comments`, where notifications link) under
+the leaderboard: a composer, then the top-level entries newest first with "Show more",
+each with its replies indented under it. An entry shows its author, time, an "edited"
+mark, a "🔒 People in the challenge" badge on `participants` entries (public ones carry
+none) and a label on a share or the result; Reply, Edit and Delete (own entries) and Hide
+/ Unhide (the host, who sees a hidden entry dimmed) act on it. The composer offers both
+audiences only when the viewer has both, defaulting to _People in the challenge_ and
+remembering the last choice in the browser; with one, it says which. A reply to a
+`participants` entry is `participants`. Signed out, a "Sign in to comment" link stands in
+for the composer; a signed-in visitor of an unlisted challenge is told only people in the
+challenge can comment. The author's own feed card of a comment reads "in <challenge>".
+
+A member of a challenge hosted on another server follows it on their own server, at
+`/challenges/joined/<participation id>`, where the _Joined_ rows of `/challenges` link
+(a challenge hosted here keeps linking to its own page). The page shows the same banner,
+race chart and leaderboard as the host's page, or, when the host could not be read, the
+challenge's name and window with a note that the standings are on the host's page. Its
+actions are "Open on <host>" (the host's page, in a new tab) and Leave; under them is the
+same **Comments** section, read and written as the signed-in member.
 
 ## Completion & winner announcement
 
@@ -535,9 +684,11 @@ See `docs/android-app.md` → _Home-screen widgets_.
 `GET /:id/standings`, `GET /:id/members`, `DELETE /:id/members/:memberId`,
 `GET /challenges/participations/mine`, `GET /challenges/discover`,
 `GET /challenges/preview?challenge_url=<url>`, `POST /challenges/join`,
-`DELETE /challenges/participations/:id`. The same CRUD + join is available over MCP
-(`create/list/update/delete_challenge`, `join_challenge`, `list_joined_challenges`, `discover_challenges`,
-`preview_challenge`). A preview reads the challenge the way a join would — in-process for
+`GET /challenges/participations/:id` (one joined challenge, with the host's challenge
+and standings when they can be read), `DELETE /challenges/participations/:id`. The same
+CRUD + join is available over MCP (`create/list/update/delete_challenge`, `join_challenge`,
+`list_joined_challenges`, `get_joined_challenge`, `discover_challenges`,
+`preview_challenge`). The comment thread has its own routes and tools (see _Comment thread_). A preview reads the challenge the way a join would — in-process for
 this instance, else from the host's QuantPub document or Aurboda public resolver — and
 answers its name, host (`host_identity`, `host_handle`), window, timezone and spec without
 joining; it fails with the join's statuses (400 not a challenge link, 404 no such challenge

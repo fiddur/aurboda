@@ -35,6 +35,8 @@ Actor collections are advertised at `…/inbox`, `…/outbox`, and `…/follower
 
 - Actor document + published public key.
 - WebFinger discovery.
+- Hosted challenges as `["Event", "quant:Challenge"]` objects at
+  `/users/<username>/challenges/<slug>` (see [Challenges](#challenges-http-outside-activitypub)).
 - Inbox/outbox/followers endpoints are registered (the outbox and followers
   collections are currently empty; the inbox accepts but does not yet process
   inbound activities).
@@ -100,6 +102,58 @@ requests are answered per [FEP-044f](https://w3id.org/fep/044f):
 Posts federated before quote policies were added keep Mastodon's cached "nobody"
 policy until an `Update` of them reaches it; editing the post sends one.
 
+## Challenge threads
+
+A challenge hosted here has a comment thread (see
+[docs/features/challenges.md](docs/features/challenges.md#comment-thread)), and comments
+reach it over ActivityPub:
+
+- **Outgoing.** A challenge comment (a reply `Note`) and a share of a challenge carry the
+  challenge object id (`/users/<username>/challenges/<slug>`) as `context`. A public
+  comment is addressed like any reply. A participants-only comment pushed to a thread is
+  addressed `to` the host and the thread's attendees alone, with an empty `cc`: never
+  `as:Public` or followers.
+- **Thread document.** `GET /users/<username>/challenges/<slug>/thread` (outside the API
+  base, `no-store`) serves a hosted challenge's thread as a QuantPub `challengeThread`
+  document, named by `threadUrl` on the challenge document.
+  - The request is verified with Fedify. A signer matched to an active remote member
+    (by its actor, or the actor its identity resolves to) is stamped verified. It gets
+    every visible entry, both audiences and the attendees.
+  - Anyone else gets the public entries only.
+  - A member's server pulls it signed as the member (RSA key, through the SSRF-guarded
+    fetch), at join and when its copy is more than five minutes old.
+- **Push.** The host delivers each comment written, edited or deleted on its side
+  (`Create`, `Update`, `Delete`) to its verified members. A member's server delivers its
+  user's comments to the host and the attendees.
+- **Member inbox.** A `Note` in a member's inbox goes into the member's copy of a remote
+  thread under these conditions:
+  - its `context` names the challenge object of an active participation;
+  - the sender is that challenge's host actor or one of the thread's attendees;
+  - the sender is not the member themselves;
+  - the Note passes the same authority check as below.
+    A copy row written by another actor is never overwritten. A Note from anyone else marks
+    the copy for a fresh pull. A `Delete` from the author removes the copy row.
+- **Incoming.** A `Create{Note}` in any local user's inbox enters the thread when its
+  `inReplyTo` is the challenge object, a local post of the thread, or an entry of a thread
+  the recipient hosts. Authority is the timeline's: the Note's id is on the sender's host
+  and its `attributedTo` names the sender.
+- **Audience.** A Note addressed to `as:Public` is a public entry. Any other Note is a
+  participants-only entry, admitted only when its `context` names the challenge and the
+  sender is the host or an active member, so a followers-only reply is never widened. An
+  unlisted challenge takes participants-only entries from its participants alone.
+- **Rate limit.** A sender who is not a participant adds at most 30 new entries a day to
+  one thread; an `Update` of an entry they already have is not counted.
+- **Delivery limit.** A reply to a remote commenter's comment is only seen when it is
+  delivered to the host's inbox, which Mastodon does when the reply keeps the host's
+  mention.
+- **Update and Delete.** An `Update` rewrites the entry; a `Delete` from its author removes
+  it (with its replies), and an actor deleting itself loses every entry it wrote in the
+  threads the recipient hosts. A
+  `Delete` from anyone else changes nothing.
+
+A Note admitted to a thread still becomes a timeline card where it would have before, but
+the recipient who already gets `challenge_comment` for it gets no second notification.
+
 ## Challenges (HTTP, outside ActivityPub)
 
 Federated challenges use the HTTP half of the
@@ -108,7 +162,9 @@ Federated challenges use the HTTP half of the
 (`GET /api/public/<username>/challenges[/<slug>]`), HTTP join and leave
 (`POST` / `DELETE …/challenges/<slug>/members`), standings
 (`GET …/challenges/<slug>/standings`) and a member's entry
-(`GET /api/public/<username>/challenge-entries/<token>`). The ActivityPub half (the
-challenge as an `Event`, `Join` / `Leave`) is not implemented yet. Aurboda's older
+(`GET /api/public/<username>/challenge-entries/<token>`). Of the ActivityPub half,
+each hosted challenge (public or unlisted) is served as an `["Event", "quant:Challenge"]`
+object at `/users/<username>/challenges/<slug>`; `Join` / `Leave` and delivering the
+`Event` are not implemented yet. Aurboda's older
 challenge protocol (`/.well-known/aurboda`) is still served for instances that predate
 it. See [docs/features/challenges.md](docs/features/challenges.md).

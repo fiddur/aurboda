@@ -3,7 +3,9 @@
  * Its two representations are the ActivityPub actor document and, for a human,
  * the public profile page the SPA serves at `/u/:username` (a 302). A post's id
  * `/users/:username/feed/:postId` negotiates the same way between its Note and
- * the permalink page `/u/:username/posts/:postId`.
+ * the permalink page `/u/:username/posts/:postId`, and a hosted challenge's id
+ * `/users/:username/challenges/:slug` between its `Event` and the challenge page
+ * `/u/:username/:slug`.
  *
  * Fedify serves the actor only to a request that NAMES an ActivityPub type and
  * `next()`s everything else, so a wildcard or absent `Accept` — which by the
@@ -13,14 +15,15 @@
  * Fedify answers it. `createActorHtmlRouter`, mounted AFTER it, redirects a
  * request whose best match is HTML and answers `406` when an existing actor has
  * no acceptable representation. An unknown actor falls through to its 404 in
- * every case. A post id of an existing account redirects a browser whatever
- * the post's visibility or existence — the permalink page says when it isn't
- * public — so the answer leaks nothing; it never answers 406.
+ * every case. A post or challenge id of an existing account redirects a
+ * browser whatever the post's or challenge's visibility or existence — the
+ * page says when there is nothing to show — so the answer leaks nothing; it
+ * never answers 406.
  */
 import { Router, type RequestHandler } from 'express'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { buildPostUrl, buildProfileUrl } from '../services/share-urls.ts'
+import { buildPostUrl, buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { UUID_RE } from '../utils.ts'
 
 export interface ActorHtmlDeps {
@@ -36,6 +39,7 @@ const HTML_TYPES = ['text/html', 'application/xhtml+xml']
 const ACTOR_TYPE = 'application/activity+json'
 const ACTOR_PATH = /^\/users\/([^/]+)$/
 const NOTE_PATH = /^\/users\/([^/]+)\/feed\/([^/]+)$/
+const CHALLENGE_PATH = /^\/users\/([^/]+)\/challenges\/([^/]+)$/
 
 /** One `Accept` entry: its media type (lowercased) and quality weight. */
 const parseAcceptEntry = (raw: string): { type: string; q: number } => {
@@ -75,11 +79,12 @@ export const negotiateActor = (acceptHeader: string | undefined): ActorRepresent
 
 /**
  * Hand a request whose best representation is the actor document (or a post's
- * Note) to Fedify with the `Accept` it recognises. Only the bare actor path and
- * a post id: the other sub-resources (outbox, followers) negotiate on their own.
+ * Note, or a challenge's Event) to Fedify with the `Accept` it recognises. Only
+ * the bare actor path, a post id and a challenge id: the other sub-resources
+ * (outbox, followers) negotiate on their own.
  */
 export const createActorAcceptNormalizer = (): RequestHandler => (req, res, next) => {
-  const match = ACTOR_PATH.exec(req.path) ?? NOTE_PATH.exec(req.path)
+  const match = ACTOR_PATH.exec(req.path) ?? NOTE_PATH.exec(req.path) ?? CHALLENGE_PATH.exec(req.path)
   if ((req.method === 'GET' || req.method === 'HEAD') && match && isValidUsername(match[1])) {
     res.setHeader('Vary', 'Accept')
     if (negotiateActor(req.headers.accept) === 'activitypub') req.headers.accept = ACTOR_TYPE
@@ -118,6 +123,20 @@ export const createActorHtmlRouter = (deps: ActorHtmlDeps): Router => {
         if (!exists) return next()
         res.setHeader('Vary', 'Accept')
         res.redirect(302, buildPostUrl(deps.origin, username, postId))
+      })
+      .catch(next)
+  })
+
+  router.get('/users/:username/challenges/:slug', (req, res, next) => {
+    const { slug, username } = req.params
+    if (!isValidUsername(username)) return next()
+    if (negotiateActor(req.headers.accept) !== 'html') return next()
+    void deps
+      .userExists(username)
+      .then((exists) => {
+        if (!exists) return next()
+        res.setHeader('Vary', 'Accept')
+        res.redirect(302, buildShareUrl(deps.origin, username, slug))
       })
       .catch(next)
   })
