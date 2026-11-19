@@ -416,8 +416,11 @@ card from the tag, and so nothing through it. A post carrying several followed t
 (#1767): the first tag's `Announce` makes the card, every further tag's joins it as a carrier
 (`timeline_entry.boost_carriers`), and the card shows the first tag. It stays while any of those
 tags is followed: an `Undo{Announce}` or an unfollow of one tag drops only that carrier (the card
-then shows the next one), and only the last one removes the card. A person's boost of the same post
-is still its own card. The Android fallback notifier for servers without `/notifications` still reads only the
+then shows the next one), and only the last one removes the card. A tag that re-announces after its
+`Undo` joins the carriers again, even on the card its first `Announce` made. Two tags' `Announce`s
+arriving at the same moment can each make a card; the later one is then folded into the earlier
+(its carriers join, the card goes). A carrier's handle and name follow its `Update{Person}` like a
+booster's. A person's boost of the same post is still its own card. The Android fallback notifier for servers without `/notifications` still reads only the
 people list. A card boosted by a followed tag actor carries `boosted_by.tag` and
 shows a `#running` chip in place of the "🔄 X boosted" line. The tag accounts also boost each of
 the user's own public posts back to them; those are not counted as boosts (see
@@ -888,6 +891,13 @@ their server delivers the `Update` to us (which recipients it reaches is up to t
 Only the card's own author can do this: the card is matched on the signature-verified sender
 as well as the Note, and the edited Note must still be on that author's host and attributed to
 them. The card keeps its boost time.
+
+A **local** author's edit also reaches every local user who holds a boost card of the Note and
+does not follow the author (typically a card that came through a followed tag, since a tag actor
+forwards no edits): their inbox gets the `Update` while the post is public or unlisted, and the
+public `Delete` that relays get once it is narrowed to followers, so the card goes rather than
+showing the narrowed text. A remote server's user who holds such a card only through a tag actor
+is not reached: that is a limit of the tag actor.
 
 A boost card's `published_at` is the boost time, so it sorts where the boost happened. And a
 boost is never treated as a _reply_, even when
