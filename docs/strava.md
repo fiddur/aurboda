@@ -123,6 +123,15 @@ Strava webhooks provide near-real-time notifications when activities are created
 - `strava_client_id` and `strava_client_secret` must be configured
 - A verify token is auto-generated for webhook validation
 
+## Identifiers
+
+From 2027-06-01 Strava activity and athlete ids can be 64-bit integers, past what a JavaScript number holds exactly. Aurboda handles them as exact decimal strings end to end:
+
+- Strava API responses and webhook events are parsed without rounding: an integer too large for a safe JavaScript number keeps its exact digits as a string
+- `id_str` is preferred where Strava sends it; webhook events have no string variant, so their `object_id` and `owner_id` rely on the lossless parse
+- `strava_athlete_mappings.strava_athlete_id` (central database) is `BIGINT`
+- `activities.data.strava_activity_id` is a string, and `external_id` is `strava-activity-<id>`
+
 ## Disconnecting
 
 To disconnect Strava:

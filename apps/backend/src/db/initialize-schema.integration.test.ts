@@ -35,6 +35,7 @@ const FAILING_TAGS = `failing_tags_${suffix}`
 const UNKNOWN_EXERCISE = `unknown_exercise_${suffix}`
 const YOGA_DEFINITION = `yoga_definition_${suffix}`
 const SLEEP_TIMES = `sleep_times_${suffix}`
+const STRAVA_IDS = `strava_ids_${suffix}`
 
 /** A new database prepared the way `makeNewUserDb` prepares one, routed to `user`. */
 const freshUserDb = async (user: string, database = `init_${user}`): Promise<UserDb> => {
@@ -200,6 +201,57 @@ describe('initializeSchema', () => {
         { end_time: new Date('2026-09-22T05:00:00Z'), start_time: new Date('2026-09-21T21:00:00Z') },
       ])
       expect(await schemaUpToDate(db, schemaFingerprint())).toBe(true)
+    },
+    SCHEMA_TIMEOUT,
+  )
+
+  test(
+    'an unforced migration from the previous revision turns numeric Strava activity ids into strings, once',
+    async () => {
+      const db = await freshUserDb(STRAVA_IDS, `aurboda_${STRAVA_IDS}`)
+      await initializeSchema(STRAVA_IDS)
+      const previous = _hashSchema(
+        MIGRATION_REVISION - 1,
+        tableCreationOrder.map((key) => [key, createTableStatements[key]]),
+      )
+      await db.query(
+        `DELETE FROM schema_migrations WHERE name LIKE 'schema@%' OR name = 'strava_activity_id_to_string_v1'`,
+      )
+      await db.query(`INSERT INTO schema_migrations (name) VALUES ($1)`, [`schema@${previous}`])
+      const insertActivity = async (externalId: string, data: string): Promise<string> =>
+        (
+          await db.query(
+            `INSERT INTO activities (source, external_id, activity_type, start_time, end_time, data)
+             VALUES ('strava', $1, 'running', '2026-09-22T07:00:00Z', '2026-09-22T08:00:00Z', $2::jsonb)
+             RETURNING id`,
+            [externalId, data],
+          )
+        ).rows[0].id as string
+      const numeric = await insertActivity(
+        'strava-activity-12345',
+        '{"strava_activity_id": 12345, "distance": 10}',
+      )
+      const string = await insertActivity(
+        'strava-activity-9007199254740993',
+        '{"strava_activity_id": "9007199254740993"}',
+      )
+      const without = await insertActivity('strava-activity-1', '{"distance": 5}')
+      const dataOf = async (id: string): Promise<unknown> =>
+        (await db.query(`SELECT data FROM activities WHERE id = $1`, [id])).rows[0].data
+
+      expect(await migrateSchema(STRAVA_IDS)).toBe(true)
+
+      expect(await dataOf(numeric)).toEqual({ distance: 10, strava_activity_id: '12345' })
+      expect(await dataOf(string)).toEqual({ strava_activity_id: '9007199254740993' })
+      expect(await dataOf(without)).toEqual({ distance: 5 })
+      const applied = await db.query(
+        `SELECT 1 FROM schema_migrations WHERE name = 'strava_activity_id_to_string_v1'`,
+      )
+      expect(applied.rowCount).toBe(1)
+
+      await db.query(`UPDATE activities SET data = '{"strava_activity_id": 777}' WHERE id = $1`, [without])
+      await migrateSchema(STRAVA_IDS, { force: true })
+      expect(await dataOf(without)).toEqual({ strava_activity_id: 777 })
     },
     SCHEMA_TIMEOUT,
   )

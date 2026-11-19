@@ -6,19 +6,23 @@
  * One subscription per application covers all athletes.
  */
 
-import { Router } from 'express'
+import { json, type RequestHandler, Router } from 'express'
 
 import type { StravaWebhookEvent } from './types.ts'
 
 import { auditInfo } from '../../services/audit-log.ts'
 import { PRIORITY_WEBHOOK } from '../../services/strava-queue.ts'
+import { losslessIntegerReviver, toStravaId } from './ids.ts'
+
+/** Webhook events carry ids only as JSON numbers, so they are parsed without rounding. */
+export const stravaWebhookBodyParser = (): RequestHandler => json({ reviver: losslessIntegerReviver })
 
 export interface StravaWebhookRouterDeps {
   verifyToken: string
-  getUsernameByStravaAthleteId: (stravaAthleteId: number) => Promise<string | null>
-  enqueueActivityFetch: (user: string, activityId: number, priority: number) => Promise<void>
-  softDeleteStravaActivity: (user: string, stravaActivityId: number) => Promise<void>
-  handleDeauthorization: (stravaAthleteId: number) => Promise<void>
+  getUsernameByStravaAthleteId: (stravaAthleteId: string) => Promise<string | null>
+  enqueueActivityFetch: (user: string, activityId: string, priority: number) => Promise<void>
+  softDeleteStravaActivity: (user: string, stravaActivityId: string) => Promise<void>
+  handleDeauthorization: (stravaAthleteId: string) => Promise<void>
 }
 
 export const createStravaWebhookRouter = (deps: StravaWebhookRouterDeps): Router => {
@@ -51,20 +55,26 @@ export const createStravaWebhookRouter = (deps: StravaWebhookRouterDeps): Router
 }
 
 const handleEvent = async (event: StravaWebhookEvent, deps: StravaWebhookRouterDeps): Promise<void> => {
+  const ownerId = toStravaId(event.owner_id)
+  if (!ownerId) return
+
   if (event.object_type === 'activity') {
-    const username = await deps.getUsernameByStravaAthleteId(event.owner_id)
+    const activityId = toStravaId(event.object_id)
+    if (!activityId) return
+
+    const username = await deps.getUsernameByStravaAthleteId(ownerId)
     if (!username) return
 
     if (event.aspect_type === 'create' || event.aspect_type === 'update') {
-      auditInfo(username, 'sync', `🏃 Strava webhook: ${event.aspect_type} activity ${event.object_id}`)
-      await deps.enqueueActivityFetch(username, event.object_id, PRIORITY_WEBHOOK)
+      auditInfo(username, 'sync', `🏃 Strava webhook: ${event.aspect_type} activity ${activityId}`)
+      await deps.enqueueActivityFetch(username, activityId, PRIORITY_WEBHOOK)
     } else if (event.aspect_type === 'delete') {
-      auditInfo(username, 'sync', `🗑️ Strava webhook: delete activity ${event.object_id}`)
-      await deps.softDeleteStravaActivity(username, event.object_id)
+      auditInfo(username, 'sync', `🗑️ Strava webhook: delete activity ${activityId}`)
+      await deps.softDeleteStravaActivity(username, activityId)
     }
   }
 
   if (event.object_type === 'athlete' && event.aspect_type === 'delete') {
-    await deps.handleDeauthorization(event.owner_id)
+    await deps.handleDeauthorization(ownerId)
   }
 }

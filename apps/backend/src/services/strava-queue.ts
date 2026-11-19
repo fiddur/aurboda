@@ -23,6 +23,7 @@ import type {
 } from '../integrations/strava/types.ts'
 import type { Job, PgBoss } from './pg-boss.ts'
 
+import { stravaIdOf, toStravaId } from '../integrations/strava/ids.ts'
 import { processStravaActivity } from '../integrations/strava/process.ts'
 import { parseRateLimitHeaders } from '../integrations/strava/types.ts'
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
@@ -33,8 +34,8 @@ export interface StravaQueueDeps {
     token: string,
     params: { before?: number; after?: number; page?: number; per_page?: number },
   ) => Promise<StravaApiResponse<StravaSummaryActivity[]>>
-  getActivity: (token: string, activityId: number) => Promise<StravaApiResponse<StravaDetailedActivity>>
-  getActivityStreams: (token: string, activityId: number) => Promise<StravaApiResponse<StravaStreamsResponse>>
+  getActivity: (token: string, activityId: string) => Promise<StravaApiResponse<StravaDetailedActivity>>
+  getActivityStreams: (token: string, activityId: string) => Promise<StravaApiResponse<StravaStreamsResponse>>
   processDeps: StravaProcessDeps
   updateSyncState: (user: string, dataType: string, updates: Record<string, unknown>) => Promise<void>
   /**
@@ -51,7 +52,7 @@ export interface StravaQueueStatus {
 
 export interface StravaQueue {
   enqueueSync: (user: string, options: { fullResync?: boolean; after?: number }) => Promise<void>
-  enqueueActivityFetch: (user: string, activityId: number, priority: number) => Promise<void>
+  enqueueActivityFetch: (user: string, activityId: string, priority: number) => Promise<void>
   getStatus: () => Promise<StravaQueueStatus>
 }
 
@@ -141,7 +142,10 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
 
     const priority = (listParams?.after ? PRIORITY_INCREMENTAL : PRIORITY_BACKFILL) + 1
     for (const activity of activities) {
-      await enqueueJob({ request_type: 'fetch_activity', strava_activity_id: activity.id, user }, priority)
+      await enqueueJob(
+        { request_type: 'fetch_activity', strava_activity_id: stravaIdOf(activity), user },
+        priority,
+      )
     }
 
     if (activities.length === 200) {
@@ -156,7 +160,7 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
     }
   }
 
-  const handleFetchActivity = async (user: string, token: string, activityId: number): Promise<void> => {
+  const handleFetchActivity = async (user: string, token: string, activityId: string): Promise<void> => {
     const detailResult = await deps.getActivity(token, activityId)
     updateRateLimit(detailResult.rateLimit)
     await sleep(calculateDelay())
@@ -223,8 +227,9 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
 
         if (request_type === 'list_activities') {
           await handleListActivities(user, token, list_params)
-        } else if (request_type === 'fetch_activity' && strava_activity_id) {
-          await handleFetchActivity(user, token, strava_activity_id)
+        } else if (request_type === 'fetch_activity') {
+          const activityId = toStravaId(strava_activity_id)
+          if (activityId) await handleFetchActivity(user, token, activityId)
         }
 
         await sleep(calculateDelay())
@@ -292,7 +297,7 @@ export const createStravaQueue = async (boss: PgBoss, deps: StravaQueueDeps): Pr
   console.info('🏃 Strava sync queue ready (with dead-letter handler)')
 
   return {
-    enqueueActivityFetch: async (user: string, activityId: number, priority: number): Promise<void> => {
+    enqueueActivityFetch: async (user: string, activityId: string, priority: number): Promise<void> => {
       await boss.send(
         QUEUE_NAME,
         { request_type: 'fetch_activity', strava_activity_id: activityId, user } satisfies StravaSyncJobData,
