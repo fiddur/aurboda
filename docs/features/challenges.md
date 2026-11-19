@@ -444,6 +444,23 @@ The rules:
    the host and every local member except its author.
 7. Comments on a challenge hosted on another server are not available yet (`400`).
 
+**Comments from other servers.** A `Note` delivered to any local user's inbox enters the
+thread of a challenge hosted here when it replies to the challenge object, to a local post
+of its thread (a comment, a share or the result), or to an entry of a thread that user
+hosts. Its author is the signature-verified sender, and the Note must be on the sender's
+server and attributed to them. A Note addressed to `Public` is a `public` entry; any other
+is a `participants` entry, and only when its `context` names the challenge and its author
+is a participant. The rules above apply as for a local comment (an unlisted challenge
+takes nothing from a non-member), and someone who is not a participant adds at most 30
+entries a day to one thread. An `Update` of the Note rewrites the entry and a `Delete` from
+its author removes it. The same Note may also become a timeline card for the recipient; it
+then raises no second notification beside `challenge_comment`. A reply to a commenter on
+another server only reaches the thread when it is delivered to the host's inbox (Mastodon
+does so when the reply keeps the host's mention).
+
+Every comment and share of a challenge hosted here that Aurboda federates names the challenge
+object as its `context`.
+
 A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
 with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
 `role` (`host`, `member` or `visitor`), the audiences they may comment with and

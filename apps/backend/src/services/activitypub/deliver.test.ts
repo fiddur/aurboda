@@ -390,6 +390,20 @@ describe('buildChallengeNote / buildChallengeNoteCreate', () => {
     )
   })
 
+  test('names its challenge thread as `context`, and nothing without one', async () => {
+    const ctx = await contextFor()
+    const thread = `${ORIGIN}/users/fiddur/challenges/august-10k`
+    const inThread = buildChallengeNote(ctx, 'fiddur', {
+      ...deliverableChallenge('public'),
+      challenge_uri: thread,
+    })
+    expect(hrefs([...inThread.contextIds])).toEqual([thread])
+    expect((await inThread.toJsonLd()) as Record<string, unknown>).toMatchObject({ context: thread })
+    expect(buildChallengeNote(ctx, 'fiddur', deliverableChallenge('public')).contextIds).toEqual([])
+    const garbled = { ...deliverableChallenge('public'), challenge_uri: 'not a url' }
+    expect(buildChallengeNote(ctx, 'fiddur', garbled).contextIds).toEqual([])
+  })
+
   test('an invitation carries no Mention tags', async () => {
     const ctx = await contextFor()
     const note = buildChallengeNote(ctx, 'fiddur', deliverableChallenge('public'))
@@ -706,6 +720,17 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
     expect(buildReplyNote(ctx, 'fiddur', edited).updated?.epochMilliseconds).toBe(edited.updated_at.getTime())
   })
 
+  test('a challenge comment names its challenge thread as `context`, and nothing without one', async () => {
+    const ctx = await contextFor()
+    const thread = `${ORIGIN}/users/alice/challenges/abc`
+    const comment = buildReplyNote(ctx, 'fiddur', deliverableReply('unlisted', { challenge_uri: thread }))
+    expect(hrefs([...comment.contextIds])).toEqual([thread])
+    expect(buildReplyNote(ctx, 'fiddur', deliverableReply()).contextIds).toEqual([])
+    expect(
+      buildReplyNote(ctx, 'fiddur', deliverableReply('unlisted', { challenge_uri: '::' })).contextIds,
+    ).toEqual([])
+  })
+
   test('tags the replied-to author with a Mention naming their handle', async () => {
     const ctx = await contextFor()
     const note = buildReplyNote(ctx, 'fiddur', deliverableReply())
@@ -768,6 +793,8 @@ describe('buildReplyNote / buildReplyNoteCreate', () => {
       visibility: 'unlisted' as const,
     }
     expect(toDeliverableReply({ ...base, kind: 'reply' })?.in_reply_to_uri).toBe(TARGET)
+    const thread = 'https://aurboda.example/users/alice/challenges/abc'
+    expect(toDeliverableReply({ ...base, challenge_uri: thread, kind: 'reply' })?.challenge_uri).toBe(thread)
     expect(toDeliverableReply({ ...base, kind: 'activity' })).toBeNull()
     expect(toDeliverableReply({ ...base, in_reply_to_uri: null, kind: 'reply' })).toBeNull()
   })

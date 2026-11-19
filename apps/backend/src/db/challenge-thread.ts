@@ -245,6 +245,31 @@ export const deleteChallengeThreadEntry = async (
   return result.rows[0] ? mapEntry(result.rows[0]) : null
 }
 
+/** The entries `actorUri` added to a challenge's thread since `since`: what the inbound rate limit counts. */
+export const countChallengeThreadEntriesByActorSince = async (
+  user: string,
+  challengeId: string,
+  actorUri: string,
+  since: Date,
+): Promise<number> => {
+  const result = await query<{ count: number }>(
+    user,
+    `SELECT count(*)::int AS count FROM challenge_thread_entries
+      WHERE challenge_id = $1 AND actor_uri = $2 AND created_at >= $3`,
+    [challengeId, actorUri, since],
+  )
+  return Number(result.rows[0]?.count ?? 0)
+}
+
+/** Delete every entry `actorUri` wrote, in every thread (an actor deleting itself). The number deleted. */
+export const deleteChallengeThreadEntriesByActor = async (
+  user: string,
+  actorUri: string,
+): Promise<number> => {
+  const result = await query(user, `DELETE FROM challenge_thread_entries WHERE actor_uri = $1`, [actorUri])
+  return result.rowCount ?? 0
+}
+
 /** Hide (stamp `hidden_at`, keeping an earlier stamp) or unhide an entry of a challenge. */
 export const setChallengeThreadEntryHidden = async (
   user: string,
