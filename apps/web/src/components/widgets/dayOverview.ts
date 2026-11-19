@@ -57,11 +57,61 @@ export const dayOverviewRange = (window: DayOverviewWindow, now: Date): TimeRang
     : { end: today, start: addDays(today, -1) }
 }
 
+const zonedFormatters = new Map<string, Intl.DateTimeFormat>()
+
+const zonedFormatter = (tz: string): Intl.DateTimeFormat => {
+  const cached = zonedFormatters.get(tz)
+  if (cached) return cached
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+    month: 'long',
+    timeZone: tz,
+    weekday: 'long',
+  })
+  zonedFormatters.set(tz, formatter)
+  return formatter
+}
+
+const zonedParts = (date: Date, tz: string): Record<string, string> =>
+  Object.fromEntries(
+    zonedFormatter(tz)
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  )
+
+export type DayPattern = 'HH' | 'HH:mm' | 'EEE d MMM HH:mm' | 'EEEE d MMMM'
+
+/** `date-fns` format in the browser's zone, or the same text in `tz` (a visitor reads the owner's day). */
+export const formatAt = (date: Date, pattern: DayPattern, tz?: string): string => {
+  if (!tz) return format(date, pattern)
+  const p = zonedParts(date, tz)
+  const time = `${p.hour}:${p.minute}`
+  switch (pattern) {
+    case 'HH':
+      return p.hour ?? ''
+    case 'HH:mm':
+      return time
+    case 'EEE d MMM HH:mm':
+      return `${p.weekday?.slice(0, 3)} ${p.day} ${p.month?.slice(0, 3)} ${time}`
+    case 'EEEE d MMMM':
+      return `${p.weekday} ${p.day} ${p.month}`
+  }
+}
+
+const localClock = (date: Date, tz?: string): { hour: number; minute: number } => {
+  if (!tz) return { hour: date.getHours(), minute: date.getMinutes() }
+  const p = zonedParts(date, tz)
+  return { hour: Number(p.hour), minute: Number(p.minute) }
+}
+
 /** The window's dates for the header: one day, or the two days a rolling window touches. */
-export const formatRangeLabel = (window: DayOverviewWindow, range: TimeRange): string =>
+export const formatRangeLabel = (window: DayOverviewWindow, range: TimeRange, tz?: string): string =>
   window === 'rolling_24h'
-    ? `${format(range.start, 'EEE d MMM HH:mm')} – ${format(range.end, 'EEE d MMM HH:mm')}`
-    : format(range.start, 'EEEE d MMMM')
+    ? `${formatAt(range.start, 'EEE d MMM HH:mm', tz)} – ${formatAt(range.end, 'EEE d MMM HH:mm', tz)}`
+    : formatAt(range.start, 'EEEE d MMMM', tz)
 
 export interface BucketValue {
   start: Date
@@ -148,22 +198,22 @@ export const collapseIcons = <T extends { x: number }>(items: T[], minGap: numbe
       return groups
     }, [])
 
-/** Hour ticks on whole local hours: every 3 hours, every 6 on a narrow card. */
-export const hourTicks = (range: TimeRange, width: number): Date[] => {
+const QUARTER_MS = 15 * 60_000
+
+/**
+ * Hour ticks on whole local hours (in `tz` when given): every 3 hours, every 6 on a narrow card.
+ * Every zone offset is a whole number of quarter hours, so each local hour starts on a quarter.
+ */
+export const hourTicks = (range: TimeRange, width: number, tz?: string): Date[] => {
   const step = width < 420 ? 6 : 3
-  const first = new Date(range.start)
-  first.setMinutes(0, 0, 0)
-  if (first < range.start) first.setHours(first.getHours() + 1)
   const ticks: Date[] = []
-  for (const t = new Date(first); t <= range.end; t.setHours(t.getHours() + 1)) {
-    if (t.getHours() % step === 0) ticks.push(new Date(t))
+  const first = Math.ceil(range.start.getTime() / QUARTER_MS) * QUARTER_MS
+  for (let t = first; t <= range.end.getTime(); t += QUARTER_MS) {
+    const { hour, minute } = localClock(new Date(t), tz)
+    if (minute === 0 && hour % step === 0) ticks.push(new Date(t))
   }
   return ticks
 }
-
-/** The sleep types drawn as a shaded band behind the plot instead of an icon. */
-export const isSleepType = (type: string, parentType: string | undefined): boolean =>
-  type === 'sleep' || type === 'nap' || parentType === 'sleep'
 
 export type DayStatus = 'loading' | 'failed' | 'empty' | 'ready'
 

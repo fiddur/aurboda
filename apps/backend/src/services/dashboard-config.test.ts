@@ -1,6 +1,7 @@
 import {
   type BarChartConfig,
   type DashboardConfig,
+  type DashboardWidget,
   MUSCLE_GROUP_FILTER_NEEDS_GROUP,
   MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
   MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN,
@@ -8,7 +9,7 @@ import {
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
-import { dashboardConfigError, sanitizeConfig } from './dashboard-config.ts'
+import { dashboardConfigError, isShownToVisitors, sanitizeConfig } from './dashboard-config.ts'
 
 describe('sanitizeConfig', () => {
   test('neutralizes quick-link hrefs and leaves other widgets untouched', () => {
@@ -63,7 +64,16 @@ describe('sanitizeConfig', () => {
     expect('period' in sanitizeConfig({ sections: [], version: 1 })).toBe(false)
   })
 
-  test('leaves out day overview widgets', () => {
+  test('leaves out a day overview unless the owner showed it to visitors', () => {
+    const day = (id: string, visible_to_visitors?: boolean): DashboardWidget => ({
+      config: {
+        metrics: ['stress_level', 'body_battery'],
+        window: 'rolling_24h',
+        ...(visible_to_visitors === undefined ? {} : { visible_to_visitors }),
+      },
+      id,
+      type: 'day_overview',
+    })
     const config: DashboardConfig = {
       sections: [
         {
@@ -71,18 +81,17 @@ describe('sanitizeConfig', () => {
           title: 'Today',
           type: 'charts',
           widgets: [
-            {
-              config: { metrics: ['stress_level', 'body_battery'], window: 'rolling_24h' },
-              id: 'day',
-              type: 'day_overview',
-            },
+            day('unset'),
+            day('off', false),
+            day('on', true),
             { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc', type: 'metric_card' },
           ],
         },
       ],
       version: 1,
     }
-    expect(sanitizeConfig(config).sections[0].widgets.map((w) => w.id)).toEqual(['mc'])
+    expect(sanitizeConfig(config).sections[0].widgets.map((w) => w.id)).toEqual(['on', 'mc'])
+    expect(config.sections[0].widgets.filter(isShownToVisitors).map((w) => w.id)).toEqual(['on', 'mc'])
   })
 })
 

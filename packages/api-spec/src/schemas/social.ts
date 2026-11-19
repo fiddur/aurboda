@@ -275,12 +275,60 @@ export const placesCardDataSchema = placesSummarySchema
 
 export const correlationDataSchema = z
   .object({
+    activity_label: z
+      .string()
+      .optional()
+      .meta({ description: 'For meal_sensitivity: the sensitivity flag name, resolved at read time' }),
     hrv_after30: z.number().nullable().meta({ description: 'Mean HRV 30 min after the activity' }),
     hrv_before30: z.number().nullable().meta({ description: 'Mean HRV 30 min before the activity' }),
     hrv_during: z.number().nullable().meta({ description: 'Mean HRV during the activity' }),
     occurrences: z.number().meta({ description: 'Number of occurrences analyzed' }),
   })
   .meta({ id: 'CorrelationData' })
+
+export const dayOverviewBucketSchema = z
+  .object({
+    end: z.string().meta({ description: 'Bucket end (ISO 8601)' }),
+    start: z.string().meta({ description: 'Bucket start (ISO 8601)' }),
+    value: z.number().meta({ description: "The metric's average over the bucket" }),
+  })
+  .meta({ id: 'DayOverviewBucket' })
+
+export const dayOverviewSleepSchema = z
+  .object({
+    end: z.string().meta({ description: 'End, clipped to the span (ISO 8601)' }),
+    label: z.string().meta({ description: 'The sleep type display name' }),
+    start: z.string().meta({ description: 'Start, clipped to the span (ISO 8601)' }),
+  })
+  .meta({ id: 'DayOverviewSleep' })
+
+export const dayOverviewActivitySchema = z
+  .object({
+    activity_type: z.string().meta({ description: 'The activity type name' }),
+    color: z.string().optional().meta({ description: "The activity type's colour, when set" }),
+    icon: z.string().optional().meta({ description: "The activity type's icon, when set" }),
+    label: z.string().meta({ description: "The activity's title, else its type's display name" }),
+    time: z.string().meta({ description: 'Start time (ISO 8601)' }),
+  })
+  .meta({ id: 'DayOverviewActivity' })
+
+export const dayOverviewDataSchema = z
+  .object({
+    activities: z
+      .array(dayOverviewActivitySchema)
+      .meta({ description: 'Activities starting in the span, drawn as icons' }),
+    bars: z
+      .array(dayOverviewBucketSchema)
+      .meta({ description: 'The first metric in 5-minute buckets, drawn as bars' }),
+    end: z.string().meta({ description: 'End of the axis span (ISO 8601)' }),
+    line: z.array(dayOverviewBucketSchema).meta({
+      description: 'The second metric in 5-minute buckets, drawn as a line; empty with one metric',
+    }),
+    sleep: z.array(dayOverviewSleepSchema).meta({ description: 'Sleep and naps, shaded behind the plot' }),
+    start: z.string().meta({ description: 'Start of the axis span (ISO 8601)' }),
+    tz: z.string().meta({ description: "The owner's IANA timezone the span was cut in" }),
+  })
+  .meta({ description: 'Exactly what a day overview card draws', id: 'DayOverviewData' })
 
 /**
  * Aggregated activity stats — exactly the figures the ActivitySummary widget
@@ -376,6 +424,7 @@ export const widgetDataSchema = z
     z.object({ data: activityTypeCardDataSchema.nullable(), type: z.literal('activity_type_card') }),
     z.object({ data: topListCardDataSchema.nullable(), type: z.literal('top_list_card') }),
     z.object({ data: placesCardDataSchema.nullable(), type: z.literal('places_card') }),
+    z.object({ data: dayOverviewDataSchema.nullable(), type: z.literal('day_overview') }),
   ])
   .meta({ id: 'WidgetData' })
 
@@ -396,6 +445,7 @@ export type RecordCardData = z.infer<typeof recordCardDataSchema>
 export type ActivityTypeCardData = z.infer<typeof activityTypeCardDataSchema>
 export type TopListCardData = z.infer<typeof topListCardDataSchema>
 export type PlacesCardData = z.infer<typeof placesCardDataSchema>
+export type DayOverviewData = z.infer<typeof dayOverviewDataSchema>
 
 export const widgetDataMapSchema = z.record(z.string(), widgetDataSchema).meta({ id: 'WidgetDataMap' })
 

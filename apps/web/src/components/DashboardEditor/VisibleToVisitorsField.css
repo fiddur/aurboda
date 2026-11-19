@@ -1,0 +1,22 @@
+.visible-to-visitors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.visible-to-visitors label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.visible-to-visitors .form-warning {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-cta);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-cta) 12%, transparent);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
