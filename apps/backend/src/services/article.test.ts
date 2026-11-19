@@ -6,6 +6,7 @@ import {
   articleDraftBlockSchema,
   articleSensitivityFlagIds,
   articleSharingWarnings,
+  resolvedImpactActivityLabel,
 } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -216,6 +217,14 @@ describe('impact blocks', () => {
     const block = { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' } as const
     expect(articleBlockLabel(block, { 'gluten-id': 'gluten' })).toBe('Impact of meals with gluten')
     expect(articleBlockLabel(block)).toBe('Impact of meals with a sensitivity flag')
+  })
+
+  test('an impact that comes back named by the flag id reads generically, any other by its name', () => {
+    expect(resolvedImpactActivityLabel('meal_sensitivity', 'gluten-id', 'gluten')).toBe('meals with gluten')
+    expect(resolvedImpactActivityLabel('meal_sensitivity', 'gluten-id', 'gluten-id')).toBe(
+      'meals with a sensitivity flag',
+    )
+    expect(resolvedImpactActivityLabel('activity_type', 'yoga', 'yoga')).toBe('yoga')
   })
 
   test('the schema takes a meal sensitivity impact', () => {

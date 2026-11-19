@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { chartFilterFieldSchema } from './chart-data.ts'
 import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import { activityImpactTypeSchema } from './correlations.ts'
 import { mediaPlaySourceSchema } from './media.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
@@ -337,10 +338,13 @@ export type PlacesCardConfig = z.infer<typeof placesCardConfigSchema>
 
 export const correlationConfigSchema = z
   .object({
-    activity: z.string().min(1).meta({ description: 'Activity or tag to analyze' }),
-    activity_type: z
-      .enum(['productivity_category', 'productivity_app', 'location', 'tag', 'activity_type'])
-      .meta({ description: 'Type of activity' }),
+    activity: z
+      .string()
+      .min(1)
+      .meta({ description: 'Activity or tag to analyze; for meal_sensitivity, the sensitivity flag id' }),
+    activity_type: activityImpactTypeSchema.meta({
+      description: 'Type of activity; for meal_sensitivity, activity is the sensitivity flag id',
+    }),
     period_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     title: z.string().optional().meta({ description: 'Widget title' }),
     window_minutes: z
@@ -450,11 +454,15 @@ export const dayOverviewConfigSchema = z
       .string()
       .optional()
       .meta({ description: 'Card title (default: "Last 24 hours", "Yesterday" or "Today" by window)' }),
+    visible_to_visitors: z.boolean().optional().meta({
+      description:
+        'Show the card to visitors of a shared dashboard (default: false, only the owner sees it). Visitors then see the whole day hour by hour: the metrics in 5-minute steps, sleep and naps, and the name and start time of every activity',
+    }),
     window: dayOverviewWindowSchema.default('rolling_24h'),
   })
   .meta({
     description:
-      'One day at a glance on a single time axis: bars and a line of two metrics, sleep shaded behind, activities as icons. Not shown on shared dashboards',
+      'One day at a glance on a single time axis: bars and a line of two metrics, sleep shaded behind, activities as icons. Shown to visitors of a shared dashboard only with visible_to_visitors',
     id: 'DayOverviewConfig',
   })
 

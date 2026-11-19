@@ -1,4 +1,9 @@
-import { type BarChartConfig, chartFilterError, type DashboardConfig } from '@aurboda/api-spec'
+import {
+  type BarChartConfig,
+  chartFilterError,
+  type DashboardConfig,
+  type DashboardWidget,
+} from '@aurboda/api-spec'
 
 type BarsFilter = Pick<BarChartConfig, 'breakdown_fields' | 'filter_field' | 'filter_value' | 'measure'>
 
@@ -23,10 +28,16 @@ export const dashboardConfigError = (config: DashboardConfig): string | undefine
 }
 
 /**
+ * A day overview shows a whole day hour by hour, so visitors see it only when the owner opted in;
+ * a stored config without the flag keeps it private.
+ */
+export const isShownToVisitors = (widget: DashboardWidget): boolean =>
+  widget.type !== 'day_overview' || widget.config.visible_to_visitors === true
+
+/**
  * Strip viewer-useless / internal fields from a config before exposing it.
  * Quick links point into the owner's private app, so neutralize their hrefs.
- * A day overview shows a whole day hour by hour, more than a shared dashboard
- * exposes, so it is left out.
+ * Widgets not shown to visitors are left out.
  */
 export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
   // Author prose is meant for public viewers — preserve it (section descriptions
@@ -36,7 +47,7 @@ export const sanitizeConfig = (config: DashboardConfig): DashboardConfig => ({
   sections: config.sections.map((section) => ({
     ...section,
     widgets: section.widgets
-      .filter((widget) => widget.type !== 'day_overview')
+      .filter(isShownToVisitors)
       .map((widget) =>
         widget.type === 'quick_link' ? { ...widget, config: { ...widget.config, href: '#' } } : widget,
       ),

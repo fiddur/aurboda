@@ -5,13 +5,16 @@ import {
   recordMeasures,
   type SectionType,
 } from '@aurboda/api-spec'
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { fetchCorrelationSelectors } from '../../state/api'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { ActivityTypePicker } from '../ActivityTypePicker'
 import { MetricPicker } from '../MetricPicker'
 import { offeredWidgetTypes } from './periodWidgets'
 import { blankRequiredFields } from './requiredConfig'
+import { VisibleToVisitorsField } from './VisibleToVisitorsField'
 import './style.css'
 
 interface DashboardEditorProps {
@@ -21,7 +24,7 @@ interface DashboardEditorProps {
   onClose: () => void
   /** A period dashboard: hide the widgets that have no meaning for a past period. */
   periodMode?: boolean
-  /** A shared dashboard: hide the widgets it never shows. */
+  /** A dashboard other than the home one, which visitors may see once it is published. */
   sharedBoard?: boolean
 }
 
@@ -234,6 +237,27 @@ const topListSourceOptions = [
 
 const isMediaTopListSource = (source: string) => source.startsWith('media_')
 
+const SensitivityFlagField = ({ value, onChange }: { value: string; onChange: (flag: string) => void }) => {
+  const { data: selectors } = useQuery({
+    queryFn: fetchCorrelationSelectors,
+    queryKey: ['correlationSelectors'],
+    staleTime: 5 * 60_000,
+  })
+  return (
+    <div class="form-group">
+      <label>Sensitivity flag</label>
+      <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+        {value === '' && <option value="">Pick a flag</option>}
+        {selectors?.sensitivities.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 /** A text field whose key is dropped from the config while blank, so an optional `min(1)` field stays valid. */
 const OptionalTextField = ({
   configKey,
@@ -277,7 +301,6 @@ export function DashboardEditor({
   const availableTemplates = offeredWidgetTypes(
     widgetTemplates.filter((t) => t.allowedSections.includes(sectionType)),
     periodMode,
-    sharedBoard,
   )
 
   const handleSelectTemplate = (template: WidgetTemplate) => {
@@ -609,30 +632,46 @@ export function DashboardEditor({
           </div>
         )
 
-      case 'correlation':
+      case 'correlation': {
+        const activityType = (configValues.activity_type as string) ?? 'activity_type'
         return (
           <div class="config-form">
             <div class="form-group">
               <label>Activity Type</label>
               <select
-                value={(configValues.activity_type as string) ?? 'activity_type'}
-                onChange={(e) => updateConfig('activity_type', (e.target as HTMLSelectElement).value)}
+                value={activityType}
+                onChange={(e) => {
+                  const value = (e.target as HTMLSelectElement).value
+                  if ((value === 'meal_sensitivity') !== (activityType === 'meal_sensitivity')) {
+                    updateConfig('activity', '')
+                  }
+                  updateConfig('activity_type', value)
+                }}
               >
                 <option value="activity_type">Activity Type</option>
                 <option value="location">Location</option>
+                <option value="meal_sensitivity">Meal sensitivity</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>Activity/Tag Name</label>
-              <input
-                type="text"
+            {activityType === 'meal_sensitivity' ? (
+              <SensitivityFlagField
                 value={(configValues.activity as string) ?? ''}
-                onChange={(e) => updateConfig('activity', (e.target as HTMLInputElement).value)}
-                placeholder="e.g., coffee, exercise, gym"
+                onChange={(flag) => updateConfig('activity', flag)}
               />
-            </div>
+            ) : (
+              <div class="form-group">
+                <label>Activity/Tag Name</label>
+                <input
+                  type="text"
+                  value={(configValues.activity as string) ?? ''}
+                  onChange={(e) => updateConfig('activity', (e.target as HTMLInputElement).value)}
+                  placeholder="e.g., coffee, exercise, gym"
+                />
+              </div>
+            )}
           </div>
         )
+      }
 
       case 'hr_zones':
         return (
@@ -748,6 +787,12 @@ export function DashboardEditor({
               placeholder="Last 24 hours, Yesterday or Today"
               setConfigValues={setConfigValues}
             />
+            {sharedBoard && (
+              <VisibleToVisitorsField
+                checked={configValues.visible_to_visitors === true}
+                onChange={(checked) => updateConfig('visible_to_visitors', checked)}
+              />
+            )}
           </div>
         )
       }
