@@ -13,7 +13,7 @@ import type { FeedStructuredPost, TimelineImage } from '@aurboda/api-spec'
 import type { FeedFollowingRecord } from './feed-following.ts'
 import type { CachedActorPresentation } from './types.ts'
 
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 
 export interface TimelineEntryRecord {
   id: string
@@ -264,6 +264,16 @@ export const updateTimelineActorPresentation = async (
      WHERE boosted_by_actor_uri = $1`,
     [actorUri, presentation.handle, presentation.display_name],
   )
+  await query(
+    user,
+    `UPDATE timeline_entry SET boost_carriers = (
+       SELECT jsonb_agg(CASE WHEN c->>'actor_uri' = $1
+                             THEN c || jsonb_build_object('handle', $2::text, 'display_name', $3::text)
+                             ELSE c END ORDER BY ord)
+         FROM jsonb_array_elements(boost_carriers) WITH ORDINALITY AS e(c, ord))
+     WHERE boost_carriers @> jsonb_build_array(jsonb_build_object('actor_uri', $1::text))`,
+    [actorUri, presentation.handle, presentation.display_name],
+  )
 }
 
 /**
@@ -281,7 +291,9 @@ export const hasCachedActorPresentation = async (user: string, actorUri: string)
     `SELECT true AS cached
        WHERE EXISTS (SELECT 1 FROM feed_follower WHERE actor_uri = $1)
           OR EXISTS (SELECT 1 FROM feed_following WHERE actor_uri = $1)
-          OR EXISTS (SELECT 1 FROM timeline_entry WHERE actor_uri = $1 OR boosted_by_actor_uri = $1)
+          OR EXISTS (SELECT 1 FROM timeline_entry
+                      WHERE actor_uri = $1 OR boosted_by_actor_uri = $1
+                         OR boost_carriers @> jsonb_build_array(jsonb_build_object('actor_uri', $1::text)))
           OR EXISTS (SELECT 1 FROM feed_post_reaction WHERE actor_uri = $1)`,
     [actorUri],
   )
@@ -627,7 +639,8 @@ const keepCardWithoutCarriers = async (
  * A followed tag announcing a Note whose boost card from another followed tag is already in
  * the timeline: record it as one more carrier of that card instead of adding a second card.
  * Returns false when there is no such card. A redelivered `Announce` already listed changes
- * nothing; the card's own `Announce` is not matched, so its redelivery refreshes the card.
+ * nothing. The card's own `Announce` is matched only once it has left the listed carriers (an
+ * `Undo` and a re-announce), and joins again; otherwise its redelivery refreshes the card.
  */
 export const addTagBoostCarrier = async (
   user: string,
@@ -639,7 +652,10 @@ export const addTagBoostCarrier = async (
     `WITH card AS (
        SELECT te.id FROM timeline_entry te
        JOIN feed_following ff ON ff.actor_uri = te.boosted_by_actor_uri AND ff.tag IS NOT NULL
-       WHERE te.boost_of_uri = $1 AND te.object_uri <> $2
+       WHERE te.boost_of_uri = $1
+         AND (te.object_uri <> $2
+              OR (te.boost_carriers IS NOT NULL
+                  AND NOT te.boost_carriers @> jsonb_build_array(jsonb_build_object('announce_uri', $2::text))))
        ORDER BY te.received_at, te.id
        LIMIT 1
        FOR UPDATE OF te
@@ -654,6 +670,65 @@ export const addTagBoostCarrier = async (
     [noteUri, carrier.announce_uri, carrier.actor_uri, carrier.handle, carrier.display_name],
   )
   return (result.rowCount ?? 0) > 0
+}
+
+/**
+ * Fold the cards of one Note shown by followed tags into the earliest of them: two tag
+ * `Announce`s that arrive together both pass `addTagBoostCarrier` before either card exists.
+ * The later cards' carriers join the earliest card's list and the later cards go. Locked in
+ * one order, so a concurrent fold waits and then finds the later cards gone.
+ */
+export const foldTagBoostCards = async (user: string, noteUri: string): Promise<void> => {
+  await withUserTransaction(user, async (tx) => {
+    const locked = await query<{ id: string }>(
+      tx,
+      `SELECT te.id FROM timeline_entry te
+       JOIN feed_following ff ON ff.actor_uri = te.boosted_by_actor_uri AND ff.tag IS NOT NULL
+       WHERE te.boost_of_uri = $1
+       ORDER BY te.received_at, te.id
+       FOR UPDATE OF te`,
+      [noteUri],
+    )
+    if (locked.rows.length < 2) return
+    const ids = locked.rows.map((r) => r.id)
+    const cards = await query<{ id: string; carriers: BoostCarrier[] }>(
+      tx,
+      `SELECT id, ${CARRIERS_SQL} AS carriers FROM timeline_entry WHERE id = ANY($1::uuid[])`,
+      [ids],
+    )
+    const carriersById = new Map(cards.rows.map((r) => [r.id, r.carriers]))
+    const [first, ...later] = ids
+    const merged = [...(carriersById.get(first) ?? [])]
+    for (const id of later) {
+      for (const c of carriersById.get(id) ?? []) {
+        if (!merged.some((m) => m.announce_uri === c.announce_uri)) merged.push(c)
+      }
+    }
+    await query(tx, `UPDATE timeline_entry SET boost_carriers = $2::jsonb WHERE id = $1`, [
+      first,
+      JSON.stringify(merged),
+    ])
+    await query(tx, `DELETE FROM timeline_entry WHERE id = ANY($1::uuid[])`, [later])
+  })
+}
+
+/**
+ * Whether a local user holds a boost card of this Note by this author without being an
+ * accepted follower of the author — such a holder gets no copy of the author's edits
+ * through the followers delivery.
+ */
+export const holdsBoostCardWithoutFollowing = async (
+  user: string,
+  noteUri: string,
+  authorUri: string,
+): Promise<boolean> => {
+  const result = await query<{ holds: boolean }>(
+    user,
+    `SELECT EXISTS (SELECT 1 FROM timeline_entry WHERE boost_of_uri = $1 AND actor_uri = $2)
+        AND NOT EXISTS (SELECT 1 FROM feed_following WHERE actor_uri = $2 AND accepted) AS holds`,
+    [noteUri, authorUri],
+  )
+  return result.rows[0]?.holds === true
 }
 
 /**

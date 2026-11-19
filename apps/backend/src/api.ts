@@ -138,6 +138,7 @@ import {
   deliverActorDelete,
   deliverActorUpdate,
 } from './services/activitypub/federation.ts'
+import { createLocalBoostCardHolders } from './services/activitypub/local-card-holders.ts'
 import { configureFederationLogging } from './services/activitypub/logging.ts'
 import { createPostUpdateResender, deliverPostUpdate } from './services/activitypub/post-update-resend.ts'
 import { createTimelineBackfiller } from './services/activitypub/timeline-backfill.ts'
@@ -775,6 +776,7 @@ const main = async () => {
   const feedDeps = {
     apiBaseUrl,
     federation: feedFederation,
+    listLocalBoostCardHolders: createLocalBoostCardHolders({ listUsers: () => listUserNames(userDb) }),
     listRelayRecipients: () => relayRecipients(centralDb),
     origin: webHost,
     publicTagPosts: createLocalPublicTagPosts({
