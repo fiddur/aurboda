@@ -32,7 +32,12 @@ import {
   getArticleImpact,
 } from './article-block-data.ts'
 import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
-import { articleBlockImageUrl, articleBlockLabel, isZeroDurationBucket } from './article.ts'
+import {
+  type ArticleFlagNames,
+  articleBlockImageUrl,
+  articleBlockLabel,
+  isZeroDurationBucket,
+} from './article.ts'
 import { isDrawableImpact } from './charts/post-chart-svg.ts'
 import { resolveChallengeRaceByUrl } from './feed-structured-challenge.ts'
 
@@ -163,6 +168,7 @@ export const buildArticleMarkdown = (
   updatedAt: Date,
   article: ArticleContent,
   renderableBlocks?: ReadonlySet<number>,
+  flagNames: ArticleFlagNames = {},
 ): string => {
   const sections = [`# ${inlineText(article.title)}`]
   article.blocks.forEach((block, index) => {
@@ -170,7 +176,7 @@ export const buildArticleMarkdown = (
       sections.push(block.markdown)
       return
     }
-    const label = inlineText(articleBlockLabel(block))
+    const label = inlineText(articleBlockLabel(block, flagNames))
     const drawable = renderableBlocks === undefined || renderableBlocks.has(index)
     if (block.type === 'challenge') {
       const lines: string[] = []

@@ -8,6 +8,8 @@
  */
 import type { ArticleContent, FeedPost, FeedPostVisibility } from '@aurboda/api-spec'
 
+import type { ArticleFlagNames } from './article.ts'
+
 import { renderProse } from './activitypub/article-object.ts'
 import { renderChallengeShareHtml } from './activitypub/challenge-object.ts'
 import { buildArticleMarkdown } from './article-export.ts'
@@ -113,6 +115,7 @@ export const articleEntryHtml = (
   username: string,
   source: AtomArticleSource,
   renderableBlocks?: ReadonlySet<number>,
+  flagNames: ArticleFlagNames = {},
 ): string => {
   const markdown = buildArticleMarkdown(
     apiBaseUrl,
@@ -123,6 +126,7 @@ export const articleEntryHtml = (
     source.updated_at,
     source.article,
     renderableBlocks,
+    flagNames,
   )
   const titleEnd = markdown.indexOf('\n\n')
   return titleEnd === -1 ? '' : renderProse(markdown.slice(titleEnd + 2))

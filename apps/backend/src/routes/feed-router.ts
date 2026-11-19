@@ -81,7 +81,12 @@ import {
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
-import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
+import {
+  articleFlagNames,
+  articleWarningsField,
+  mergeArticleContent,
+  validateArticleContent,
+} from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
 import { publishChallengeShare } from '../services/challenge-share.ts'
 import {
@@ -385,7 +390,11 @@ export const createFeedRouter = (
           : emptyArticleDraftContent(),
         visibility: req.body.visibility,
       })
-      res.json({ draft: serializeArticleDraft(record), success: true })
+      res.json({
+        draft: serializeArticleDraft(record),
+        ...(await articleWarningsField(req.user!, record.article.blocks)),
+        success: true,
+      })
     },
   )
 
@@ -395,7 +404,11 @@ export const createFeedRouter = (
     async (req, res) => {
       const record = UUID_RE.test(req.params.id) ? await getArticleDraft(req.user!, req.params.id) : null
       if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
-      res.json({ draft: serializeArticleDraft(record), success: true })
+      res.json({
+        draft: serializeArticleDraft(record),
+        ...(await articleWarningsField(req.user!, record.article.blocks)),
+        success: true,
+      })
     },
   )
 
@@ -413,7 +426,11 @@ export const createFeedRouter = (
         articleDraftPatch(existing.article, req.body),
       )
       if (!record) return res.status(404).json({ error: 'Draft not found', success: false })
-      res.json({ draft: serializeArticleDraft(record), success: true })
+      res.json({
+        draft: serializeArticleDraft(record),
+        ...(await articleWarningsField(user, record.article.blocks)),
+        success: true,
+      })
     },
   )
 
@@ -435,7 +452,11 @@ export const createFeedRouter = (
       const result = await publishArticleDraft(user, req.params.id, req.body)
       if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
       deliver?.createdArticle(user, result.post)
-      res.json({ post: await serializeFeedPost(user, result.post, { webHost }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, result.post, { webHost }),
+        ...(await articleWarningsField(user, result.post.article?.blocks ?? [])),
+        success: true,
+      })
     },
   )
 
@@ -678,7 +699,11 @@ export const createFeedRouter = (
         visibility: req.body.visibility,
       })
       deliver?.createdArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { webHost }),
+        ...(await articleWarningsField(user, built.article.blocks)),
+        success: true,
+      })
     },
   )
 
@@ -708,7 +733,11 @@ export const createFeedRouter = (
       })
       if (!record) return res.status(404).json({ error: 'Article not found', success: false })
       deliver?.updatedArticle(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
+      res.json({
+        post: await serializeFeedPost(user, record, { webHost }),
+        ...(await articleWarningsField(user, built.article.blocks)),
+        success: true,
+      })
     },
   )
 
@@ -748,6 +777,7 @@ export const createFeedRouter = (
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
         await renderableArticleBlocks(user, post.id, post.article),
+        await articleFlagNames(user, post.article.blocks),
       )
       res.json({ markdown, success: true })
     },

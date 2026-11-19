@@ -17,10 +17,12 @@ import type { TargetedDragEvent } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
+import { VisibleToVisitorsField } from '../DashboardEditor/VisibleToVisitorsField'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
 import { useCustomMetricDefinitions } from '../widgets/useMetricBetter'
 import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
 import { useVisibleSections } from './useWaitingWidgets'
+import { setVisibleToVisitors } from './visibleToVisitors'
 
 const generateSectionId = () => `section-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -181,6 +183,7 @@ function DashboardSectionComponent({
   customMetrics,
   onRemoveWidget,
   onMoveWidget,
+  onSetVisibleToVisitors,
   onAddWidgetClick,
   onDeleteSection,
   onRenameSection,
@@ -196,6 +199,7 @@ function DashboardSectionComponent({
   periodLabel?: string
   customMetrics?: CustomMetricDefinition[]
   onRemoveWidget?: (widgetId: string) => void
+  onSetVisibleToVisitors?: (widgetId: string, visible: boolean) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
   onAddWidgetClick?: () => void
   onDeleteSection?: () => void
@@ -368,6 +372,12 @@ function DashboardSectionComponent({
                     </svg>
                   </button>
                 </div>
+              )}
+              {isEditing && boardId !== 'home' && widget.type === 'day_overview' && (
+                <VisibleToVisitorsField
+                  checked={widget.config.visible_to_visitors === true}
+                  onChange={(visible) => onSetVisibleToVisitors?.(widget.id, visible)}
+                />
               )}
               {widgetData &&
               widgetDataLoading &&
@@ -686,6 +696,9 @@ export function EditableDashboard({
           periodLabel={periodLabel}
           customMetrics={customMetrics}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
+          onSetVisibleToVisitors={(widgetId, visible) =>
+            onChange(setVisibleToVisitors(config, widgetId, visible))
+          }
           onMoveWidget={(widgetId, direction) => handleMoveWidget(section.id, widgetId, direction)}
           onAddWidgetClick={() => setShowWidgetPicker(section.id)}
           onDeleteSection={() => handleDeleteSection(section.id)}

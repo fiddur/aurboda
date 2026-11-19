@@ -13,6 +13,7 @@ import {
   draftSnapshot,
   draftsFromPost,
   draftUpdateBody,
+  editorBlockWarnings,
   emptyChallengeDraft,
   emptyCorrelationDraft,
   emptyImpactDraft,
@@ -439,6 +440,70 @@ describe('impact blocks', () => {
       extra: { activity: 'coffee', activityType: 'tag' },
       groups: [],
     })
+  })
+
+  it('offers each meal sensitivity flag under Meals, shown by name', () => {
+    const { groups } = impactPickerOptions(
+      { ...correlations, meals: [{ flag_id: 'gluten-id', flag_name: 'gluten' }] },
+      emptyImpactDraft(),
+    )
+    expect(groups.map((g) => g.label)).toEqual(['Activities', 'Locations', 'Meals'])
+    expect(groups[2].options).toEqual([
+      expect.objectContaining({
+        activity: 'gluten-id',
+        activityType: 'meal_sensitivity',
+        label: 'Meals with gluten',
+      }),
+    ])
+  })
+
+  it('shows an unlisted meal sensitivity generically', () => {
+    const { extra } = impactPickerOptions(correlations, {
+      activity: 'gone-id',
+      activityType: 'meal_sensitivity',
+    })
+    expect(extra).toMatchObject({ activity: 'gone-id', label: 'Meals with a sensitivity flag' })
+  })
+
+  it('builds a meal sensitivity impact block', () => {
+    const block = { ...emptyImpactDraft(), activity: 'gluten-id', activityType: 'meal_sensitivity' as const }
+    const result = buildArticleBody(
+      state({
+        blocks: [block],
+        defaultEnd: toInputValue(WINDOW.end),
+        defaultStart: toInputValue(WINDOW.start),
+      }),
+    )
+    expect(result.ok && result.body.blocks).toEqual([
+      { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact', window_minutes: 30 },
+    ])
+  })
+})
+
+describe('editorBlockWarnings', () => {
+  const selectors = { sensitivities: [{ label: 'gluten', value: 'gluten-id' }] }
+
+  it('builds a correlation block with a sensitivity selector and warns about it, by name', () => {
+    const corr = { ...emptyCorrelationDraft(), trigger: { flag: 'gluten-id', kind: 'sensitivity' as const } }
+    const editor = state({ blocks: [{ markdown: 'Intro', type: 'prose' }, corr] })
+    expect(buildDraftContent(editor).blocks[1]).toMatchObject({
+      trigger: { flag: 'gluten-id', kind: 'sensitivity' },
+    })
+    expect(editorBlockWarnings(editor, selectors)).toEqual([
+      [],
+      [
+        'Readers see your meal sensitivity "gluten" by name, and how many meals carried it on each day of the window.',
+      ],
+    ])
+  })
+
+  it('warns generically before the flags load', () => {
+    const block = { ...emptyImpactDraft(), activity: 'gluten-id', activityType: 'meal_sensitivity' as const }
+    expect(editorBlockWarnings(state({ blocks: [block] }), undefined)).toEqual([
+      [
+        'Readers see a meal sensitivity flag by name, and how your HRV, heart rate and stress moved around the meals that carried it.',
+      ],
+    ])
   })
 })
 

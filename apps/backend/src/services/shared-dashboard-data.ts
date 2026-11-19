@@ -5,16 +5,20 @@
  * by calling the SAME user-scoped services the authenticated dashboard uses,
  * with parameters taken EXCLUSIVELY from the stored widget config. No viewer
  * input ever reaches these calls, and each resolver returns only the minimal
- * fields the widget renders (never raw rows with notes, titles, or locations).
+ * fields the widget renders (never raw rows with notes or locations). Activity
+ * titles are served only by a day overview the owner opted in to show visitors.
  *
  * The result is keyed by widget id so a public viewer (and, later, a single
  * embeddable chart) can match data to the widget it belongs to.
  */
 import type {
   ActivitySummaryData,
+  ActivityTypeDefinition,
   CombinedChartLayerData,
   DashboardConfig,
   DashboardWidget,
+  DayOverviewData,
+  DayOverviewWindow,
   PeriodWindow,
   TopListFigures,
   TrendHistoryPoint,
@@ -23,7 +27,10 @@ import type {
 } from '@aurboda/api-spec'
 
 import {
+  ACTIVITY_LANE_CATEGORIES,
+  dayOverviewDefaultMetrics,
   hrZoneMetrics,
+  isSleepType,
   metricCardLookbackDays,
   percentChange,
   periodGranularityOf,
@@ -33,13 +40,19 @@ import {
   windowDays,
 } from '@aurboda/api-spec'
 
+import type { MetricType } from '../schema.ts'
+
+import { getAllActivityTypeNames } from '../db/index.ts'
 import { getActivityRecords, publicRecord } from './activity-records.ts'
+import { listActivityTypeDefinitions } from './activity-type-definitions.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
+import { humanizeName } from './correlations/utils.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
-import { dayKey, dayStartInTz } from './day-keys.ts'
+import { isShownToVisitors } from './dashboard-config.ts'
+import { dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { getGoalsProgress } from './goals.ts'
 import { getLatestSleep } from './latest-sleep.ts'
 import {
@@ -51,12 +64,16 @@ import {
   previousWindow,
 } from './periods.ts'
 import {
+  type BucketMetricStats,
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
   getTopApps,
   getTopMedia,
+  type MetricBucket,
+  queryActivities,
   queryMetrics,
+  queryMetricsBucketed,
 } from './queries/index.ts'
 import { getEffectiveHrZones, getUserTimezone } from './settings.ts'
 import { getCurrentSleepDebt } from './sleep-debt.ts'
@@ -86,6 +103,7 @@ export interface ResolveWindow {
  * figure widgets also resolve the previous window and report how they compare.
  */
 export interface ResolveOptions {
+  now?: Date
   previous?: ResolveWindow
   window?: ResolveWindow
 }
@@ -523,12 +541,145 @@ const resolveCorrelation = async (
   )
   return {
     data: {
+      ...(config.activity_type === 'meal_sensitivity' && result.activity !== config.activity
+        ? { activity_label: result.activity }
+        : {}),
       hrv_after30: result.hrv_timeline.after30min.mean,
       hrv_before30: result.hrv_timeline.before30min.mean,
       hrv_during: result.hrv_timeline.during.mean,
       occurrences: result.occurrences,
     },
     type: 'correlation',
+  }
+}
+
+const HOUR_MS = 3_600_000
+const SLEEP_LOOKBEHIND_MS = 12 * HOUR_MS
+
+/** The axis span in `tz`: 24 hours up to now, or a whole local day (today runs to the coming midnight). */
+export const dayOverviewSpan = (window: DayOverviewWindow, now: Date, tz: string): Range => {
+  if (window === 'rolling_24h') return { end: now, start: new Date(now.getTime() - 24 * HOUR_MS) }
+  const today = dayKey(now, tz)
+  return window === 'today'
+    ? { end: dayStartInTz(shiftDayKey(today, 1), tz), start: dayStartInTz(today, tz) }
+    : { end: dayStartInTz(today, tz), start: dayStartInTz(shiftDayKey(today, -1), tz) }
+}
+
+interface DayActivity {
+  activity_type: string
+  end_time?: string
+  start_time: string
+  title?: string
+}
+
+const bucketSeries = (buckets: MetricBucket[], metric: string | undefined) =>
+  metric
+    ? buckets.flatMap((b) => {
+        const stats = (b.metrics as Record<string, BucketMetricStats | undefined>)[metric]
+        return stats ? [{ end: b.end, start: b.start, value: stats.avg }] : []
+      })
+    : []
+
+/** Exactly what a day overview card draws, from the reads behind it. */
+export const dayOverviewData = (input: {
+  activities: DayActivity[]
+  barMetric: string
+  buckets: MetricBucket[]
+  definitions: ActivityTypeDefinition[]
+  lineMetric: string | undefined
+  span: Range
+  tz: string
+}): DayOverviewData => {
+  const { span } = input
+  const defs = new Map(input.definitions.map((d) => [d.name, d]))
+  const typeLabel = (type: string) => defs.get(type)?.display_name ?? humanizeName(type)
+  const shown = input.activities.filter((a) => {
+    const def = defs.get(a.activity_type)
+    return def?.show_on_timeline !== false && ACTIVITY_LANE_CATEGORIES.has(def?.display_category ?? 'other')
+  })
+  const isSleep = (a: DayActivity) => isSleepType(a.activity_type, defs.get(a.activity_type)?.parent_type)
+  const sleep = shown.filter(isSleep).flatMap((a) => {
+    if (!a.end_time) return []
+    const start = Math.max(new Date(a.start_time).getTime(), span.start.getTime())
+    const end = Math.min(new Date(a.end_time).getTime(), span.end.getTime())
+    return end > start
+      ? [
+          {
+            end: new Date(end).toISOString(),
+            label: typeLabel(a.activity_type),
+            start: new Date(start).toISOString(),
+          },
+        ]
+      : []
+  })
+  const activities = shown
+    .filter((a) => {
+      const start = new Date(a.start_time)
+      return !isSleep(a) && start >= span.start && start <= span.end
+    })
+    .map((a) => {
+      const def = defs.get(a.activity_type)
+      return {
+        activity_type: a.activity_type,
+        label: a.title ?? typeLabel(a.activity_type),
+        time: new Date(a.start_time).toISOString(),
+        ...(def?.icon ? { icon: def.icon } : {}),
+        ...(def?.color ? { color: def.color } : {}),
+      }
+    })
+  return {
+    activities,
+    bars: bucketSeries(input.buckets, input.barMetric),
+    end: span.end.toISOString(),
+    line: bucketSeries(input.buckets, input.lineMetric),
+    sleep,
+    start: span.start.toISOString(),
+    tz: input.tz,
+  }
+}
+
+const resolveDayOverview = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'day_overview' }>['config'],
+  tz: string,
+  options: ResolveOptions,
+): Promise<WidgetData> => {
+  if (options.window) return { data: null, type: 'day_overview' }
+  const now = options.now ?? new Date()
+  const span = dayOverviewSpan(config.window ?? 'rolling_24h', now, tz)
+  const dataEnd = span.end < now ? span.end : now
+  const metrics = config.metrics?.length ? config.metrics : [...dayOverviewDefaultMetrics]
+  const [barMetric = dayOverviewDefaultMetrics[0], lineMetric] = metrics
+  const [customMetrics, types, definitions] = await Promise.all([
+    getCustomMetrics(user),
+    getAllActivityTypeNames(user),
+    listActivityTypeDefinitions(user),
+  ])
+  const [bucketed, activities] = await Promise.all([
+    queryMetricsBucketed(
+      user,
+      (lineMetric ? [barMetric, lineMetric] : [barMetric]) as MetricType[],
+      span.start,
+      dataEnd,
+      '5m',
+      {
+        customMetrics,
+        tz,
+      },
+    ),
+    queryActivities(user, types, new Date(span.start.getTime() - SLEEP_LOOKBEHIND_MS), dataEnd),
+  ])
+  return {
+    data: dayOverviewData({
+      activities,
+      barMetric,
+      buckets: bucketed.buckets,
+      definitions,
+      lineMetric,
+      span,
+      tz,
+    }),
+    type: 'day_overview',
   }
 }
 
@@ -642,16 +793,11 @@ const resolveGoalProgress = async (user: string): Promise<WidgetData> => {
   return { data: { goals }, type: 'goal_progress' }
 }
 
-/** A day overview is never served on a shared dashboard, so it has no resolved data. */
-type ResolvedWidget = Exclude<DashboardWidget, { type: 'day_overview' }>
-
-const isResolvedWidget = (widget: DashboardWidget): widget is ResolvedWidget => widget.type !== 'day_overview'
-
 /** Resolve one widget to its minimal data payload. */
 // eslint-disable-next-line complexity -- one arm per widget type
 const resolveWidget = async (
   user: string,
-  widget: ResolvedWidget,
+  widget: DashboardWidget,
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
@@ -688,12 +834,14 @@ const resolveWidget = async (
       return resolvePlacesCard(user, widget.config, tz, options)
     case 'quick_link':
       return { data: null, type: 'quick_link' }
+    case 'day_overview':
+      return resolveDayOverview(user, widget.config, tz, options)
   }
 }
 
 /** Null-data fallback for a widget whose resolver threw. */
 // eslint-disable-next-line complexity -- one arm per widget type
-const nullData = (type: ResolvedWidget['type']): WidgetData => {
+const nullData = (type: DashboardWidget['type']): WidgetData => {
   switch (type) {
     case 'metric_card':
       return { data: null, type }
@@ -727,6 +875,8 @@ const nullData = (type: ResolvedWidget['type']): WidgetData => {
       return { data: null, type }
     case 'quick_link':
       return { data: null, type }
+    case 'day_overview':
+      return { data: null, type }
   }
 }
 
@@ -748,7 +898,7 @@ export const resolveDashboardData = async (
   config: DashboardConfig,
   options: ResolveOptions = {},
 ): Promise<WidgetDataMap> => {
-  const allWidgets = config.sections.flatMap((section) => section.widgets).filter(isResolvedWidget)
+  const allWidgets = config.sections.flatMap((section) => section.widgets).filter(isShownToVisitors)
   if (allWidgets.length > MAX_RESOLVED_WIDGETS) {
     console.warn(
       `Dashboard for ${user} has ${allWidgets.length} widgets; resolving only the first ${MAX_RESOLVED_WIDGETS}.`,

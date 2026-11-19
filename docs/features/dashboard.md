@@ -225,19 +225,32 @@ at that range. With nothing recorded in the window it says so ("No data for the 
 **Configuration:** `window`, one of `rolling_24h` (the 24 hours up to now, default), `yesterday` or
 `today` (local days); `metrics`, one or two metric names (default `stress_level`, `body_battery`):
 the first drawn as bars, the second as the line; optional `title` (default "Last 24 hours",
-"Yesterday" or "Today"). The card reads the bucketed metrics (`GET /metrics/bucketed`, 5-minute
-buckets) and the activities (`GET /activities`) of the window; it has no endpoint of its own.
+"Yesterday" or "Today"); optional `visible_to_visitors` (default false), whether visitors of a
+shared dashboard see the card. Your own card reads the bucketed metrics (`GET /metrics/bucketed`,
+5-minute buckets) and the activities (`GET /activities`) of the window; it has no endpoint of its own.
 
-It is a card for your own dashboards only: a shared dashboard leaves it out (it shows a whole day hour
-by hour, more than a shared dashboard exposes), so the editor of a shared dashboard does not offer it
-and a published copy, a feed share or a public visitor never sees it. It does not follow a period
-dashboard's period either, so a period dashboard's editor does not offer it.
+The editor offers it on every rolling dashboard, the home one and the others. It does not follow a
+period dashboard's period, so a period dashboard's editor does not offer it, and on a period
+dashboard it resolves to no data.
+
+Visitors see it only when you turn on **Show to visitors** (`visible_to_visitors: true`); it is off
+by default, so a day overview you had before, for example on a copy of the home dashboard, stays
+private. The editor of every dashboard but the home one shows the switch with a warning: visitors of
+the dashboard then see the whole day hour by hour, the two metrics in 5-minute steps, when you slept
+and napped, and the name and start time of every activity. The switch is in the add dialog and, in
+edit mode, on the card itself, so a day overview already on the dashboard can be turned on too. With
+the switch off, the card on a dashboard other than home carries the note "Only you see this card". For visitors the server
+resolves the card from the stored config alone, in your timezone: the axis span, the two metrics per
+5-minute bucket, sleep and naps clipped to the span (labelled with the type's name) and the
+activities of the Timeline's Activity lane that start in it (their title, else the type's name, with
+the type's icon and colour). The visitor's card shows hours and dates in your timezone and does not
+link to the Timeline.
 
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
 
-**Configuration:** Activity type (tag, activity, location, productivity category, or app), activity name, analysis period (default 90 days), window size in minutes before/after (default 30).
+**Configuration:** Activity type (tag, activity, location, productivity category, app, or meal sensitivity), activity name, analysis period (default 90 days), window size in minutes before/after (default 30). For `meal_sensitivity` the activity is the sensitivity flag's id, and the editor offers a select of your flags; the card's default title names the flag ("Meals with gluten impact"), resolved when the card is read, so renaming the flag renames the card. A shared dashboard's resolved data carries the name as `activity_label`.
 
 ### Quick Link
 
