@@ -3,6 +3,7 @@ import {
   ianaTimezoneSchema,
   isKnownTimezone,
   nutrientPeriodSummaryQuerySchema,
+  updateSettingsInputSchema,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
@@ -32,5 +33,11 @@ describe('ianaTimezoneSchema', () => {
       expect(nutrientPeriodSummaryQuerySchema.safeParse({ ...nutrient, tz }).success).toBe(false)
     }
     expect(nutrientPeriodSummaryQuerySchema.safeParse(nutrient).success).toBe(true)
+  })
+
+  test('the settings update takes it as tz, and null clears it', () => {
+    expect(updateSettingsInputSchema.safeParse({ tz: 'Europe/Stockholm' }).data?.tz).toBe('Europe/Stockholm')
+    expect(updateSettingsInputSchema.safeParse({ tz: 'Mars/Olympus' }).success).toBe(false)
+    expect(updateSettingsInputSchema.safeParse({ tz: null }).data?.tz).toBeNull()
   })
 })

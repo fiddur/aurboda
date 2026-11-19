@@ -64,3 +64,16 @@ describe('hidden_pages through the settings MCP tools', () => {
     expect((await call('get_user_settings')).hidden_pages).toEqual([])
   })
 })
+
+describe('tz through the settings MCP tools', () => {
+  test('update_user_settings sets the time zone and null clears it', async () => {
+    const call = setup()
+
+    const updated = await call('update_user_settings', { tz: 'Asia/Kolkata' })
+    expect(updated.tz).toBe('Asia/Kolkata')
+    expect(store.settings.device_timezone).toBe('Asia/Kolkata')
+
+    expect((await call('update_user_settings', { tz: null })).tz).toBeNull()
+    expect(store.settings).not.toHaveProperty('device_timezone')
+  })
+})
