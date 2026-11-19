@@ -13,6 +13,7 @@ import { TrendLineChart } from '../../components/charts/TrendLineChart'
 import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
 import { competitionRanks, podiumMedal } from '../../utils/podium'
+import { ChallengeThread, challengeThreadKey } from './ChallengeThread'
 import { joinPagePath } from './join-query'
 import { memberColor } from './member-colors'
 import { formatChallengeWindow, formatUpdated, toCumulativeSeries } from './race-series'
@@ -52,6 +53,7 @@ export function PublicChallenge({
     onError: (e) => alert(e instanceof Error ? e.message : 'Failed to join.'),
     onSuccess: async () => {
       setJoined(true)
+      void queryClient.invalidateQueries({ queryKey: challengeThreadKey(username, slug) })
       // Refetch with the cache buster so the just-joined member shows up immediately
       // (a plain refetch can be served the pre-join list from the endpoint's 60s HTTP
       // cache), and seed the query cache with the fresh result so no stale refetch races.
@@ -181,6 +183,8 @@ export function PublicChallenge({
           ))}
         </tbody>
       </table>
+
+      <ChallengeThread username={username} slug={slug} challenge={challenge} />
     </div>
   )
 }

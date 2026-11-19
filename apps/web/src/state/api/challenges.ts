@@ -7,8 +7,12 @@ import type {
   ChallengePreviewResponse,
   ChallengeResponse,
   ChallengesResponse,
+  ChallengeCommentBody,
   ChallengeStanding,
   ChallengeStandingsResponse,
+  ChallengeThreadEntry,
+  ChallengeThreadEntryResponse,
+  ChallengeThreadResponse,
   CreateChallengeBody,
   DiscoverChallengesResponse,
   PublicChallengeResponse,
@@ -21,6 +25,7 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { apiErrorMessage } from './feed'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -139,4 +144,68 @@ export const fetchPublicChallengeStandings = async (
     { params: options.bustCache ? { _: Date.now() } : undefined },
   )
   return res.data.members ?? []
+}
+
+/**
+ * A challenge's comment thread: the viewer's view when signed in, else the public entries only.
+ */
+export const fetchChallengeThread = async (
+  username: string,
+  slug: string,
+  challengeUrl: string,
+  cursor?: string,
+): Promise<ChallengeThreadResponse> => {
+  try {
+    const res = auth.value.token
+      ? await axios.get<ChallengeThreadResponse>(`${API_URL}/challenges/thread`, {
+          headers: authHeaders(),
+          params: { challenge_url: challengeUrl, cursor },
+        })
+      : await axios.get<ChallengeThreadResponse>(
+          `${API_URL}/public/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}/thread`,
+          { params: { cursor } },
+        )
+    return res.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t load the comments.'))
+  }
+}
+
+export const addChallengeComment = async (body: ChallengeCommentBody): Promise<ChallengeThreadEntry> => {
+  let res
+  try {
+    res = await axios.post<ChallengeThreadEntryResponse>(`${API_URL}/challenges/thread/comments`, body, {
+      headers: authHeaders(),
+    })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t post the comment. Please try again.'))
+  }
+  if (!res.data.entry) throw new Error(res.data.error ?? 'Couldn’t post the comment.')
+  return res.data.entry
+}
+
+/** Hide (host) or unhide a thread entry. */
+export const setChallengeCommentHidden = async (
+  challengeUrl: string,
+  entryId: string,
+  hidden: boolean,
+): Promise<ChallengeThreadEntry> => {
+  const url = `${API_URL}/challenges/thread/entries/${encodeURIComponent(entryId)}/hidden`
+  let res
+  try {
+    res = hidden
+      ? await axios.post<ChallengeThreadEntryResponse>(
+          url,
+          { challenge_url: challengeUrl },
+          { headers: authHeaders() },
+        )
+      : await axios.delete<ChallengeThreadEntryResponse>(url, {
+          headers: authHeaders(),
+          params: { challenge_url: challengeUrl },
+        })
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, hidden ? 'Couldn’t hide that.' : 'Couldn’t unhide that.'))
+  }
+  if (!res.data.entry) throw new Error(res.data.error ?? 'No entry returned')
+  return res.data.entry
 }

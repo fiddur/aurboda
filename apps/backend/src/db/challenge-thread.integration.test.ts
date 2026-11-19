@@ -5,7 +5,9 @@ import type { ChallengeThreadEntryInput } from './challenge-thread.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   countChallengeThreadEntries,
+  countChallengeThreadEntriesByActorSince,
   countVisibleChallengeThreadEntries,
+  deleteChallengeThreadEntriesByActor,
   deleteChallengeThreadEntry,
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
@@ -195,6 +197,35 @@ describe('challenge thread entries (integration)', () => {
     expect(await deleteChallengeThreadEntry(user, root.object_uri, ALICE)).toBeNull()
     expect((await deleteChallengeThreadEntry(user, root.object_uri, BOB))?.id).toBe(root.id)
     expect(await countChallengeThreadEntries(user, challenge.id)).toBe(0)
+  })
+
+  test("counts an actor's entries in one challenge created since a moment", async () => {
+    const user = getTestUser()
+    const challenge = await newChallenge(user)
+    const other = await newChallenge(user)
+    await upsertChallengeThreadEntry(user, input(challenge.id, 1))
+    await upsertChallengeThreadEntry(user, input(challenge.id, 2))
+    await upsertChallengeThreadEntry(user, input(challenge.id, 3, { actor_uri: ALICE }))
+    await upsertChallengeThreadEntry(user, input(other.id, 4))
+    const hourAgo = new Date(Date.now() - 3_600_000)
+    expect(await countChallengeThreadEntriesByActorSince(user, challenge.id, BOB, hourAgo)).toBe(2)
+    expect(await countChallengeThreadEntriesByActorSince(user, challenge.id, ALICE, hourAgo)).toBe(1)
+    expect(await countChallengeThreadEntriesByActorSince(user, other.id, BOB, hourAgo)).toBe(1)
+    const inAnHour = new Date(Date.now() + 3_600_000)
+    expect(await countChallengeThreadEntriesByActorSince(user, challenge.id, BOB, inAnHour)).toBe(0)
+  })
+
+  test('deletes every entry of one actor across threads', async () => {
+    const user = getTestUser()
+    const challenge = await newChallenge(user)
+    const other = await newChallenge(user)
+    await upsertChallengeThreadEntry(user, input(challenge.id, 1))
+    await upsertChallengeThreadEntry(user, input(other.id, 2))
+    await upsertChallengeThreadEntry(user, input(challenge.id, 3, { actor_uri: ALICE }))
+    expect(await deleteChallengeThreadEntriesByActor(user, BOB)).toBe(2)
+    expect(await countChallengeThreadEntries(user, challenge.id)).toBe(1)
+    expect(await countChallengeThreadEntries(user, other.id)).toBe(0)
+    expect(await deleteChallengeThreadEntriesByActor(user, BOB)).toBe(0)
   })
 
   test('deleting the challenge deletes its thread', async () => {

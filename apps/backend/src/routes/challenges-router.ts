@@ -21,6 +21,8 @@ import {
   type ChallengeThreadEntryResponse,
   type ChallengeThreadHideBody,
   challengeThreadHideBodySchema,
+  type ChallengeThreadHideQuery,
+  challengeThreadHideQuerySchema,
   type ChallengeThreadQuery,
   challengeThreadQuerySchema,
   type ChallengeThreadResponse,
@@ -216,10 +218,10 @@ export const createChallengesRouter = (
     },
   )
 
-  router.delete<{ entryId: string }, ChallengeThreadEntryResponse, unknown, ChallengeThreadHideBody>(
+  router.delete<{ entryId: string }, ChallengeThreadEntryResponse, unknown, ChallengeThreadHideQuery>(
     '/thread/entries/:entryId/hidden',
     authMiddleware,
-    validateQuery(challengeThreadHideBodySchema),
+    validateQuery(challengeThreadHideQuerySchema),
     async (req, res) => {
       const user = req.user!
       const result = await setChallengeThreadEntryHidden(
