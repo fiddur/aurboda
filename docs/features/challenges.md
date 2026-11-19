@@ -437,7 +437,8 @@ The rules:
    `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
    thread follows. Its audience cannot change after posting (`400`), and an edit always
    reaches the thread, also after its author left the challenge. A public comment is
-   delivered like any reply; a participants one never leaves the instance. Deleting a
+   delivered like any reply; a participants one goes only to the host and the members on
+   other servers (see _Members on other servers_), never to followers. Deleting a
    top-level entry takes its replies out of the thread with it, other people's included;
    their own feed posts stay.
 4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
