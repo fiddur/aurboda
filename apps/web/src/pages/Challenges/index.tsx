@@ -59,6 +59,7 @@ import {
   thisMonthRange,
   thisWeekRange,
 } from './date-range'
+import { joinedChallengeHref } from './joined-link'
 import {
   aggregationOptions,
   buildSpec,
@@ -480,6 +481,7 @@ function JoinedRow({ now, participation }: { now: Date; participation: Challenge
     onError: () => alert('Failed to leave the challenge.'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['challengeParticipations'] }),
   })
+  const href = joinedChallengeHref(participation.challenge_url, participation.id, window.location.origin)
 
   return (
     <li class="challenge-row">
@@ -491,10 +493,10 @@ function JoinedRow({ now, participation }: { now: Date; participation: Challenge
         role="joined"
         startTs={participation.start_ts}
         timezone={participation.timezone}
-        url={participation.challenge_url}
+        url={href}
       />
       <div class="challenge-row-actions">
-        <a class="btn-secondary" href={participation.challenge_url}>
+        <a class="btn-secondary" href={href}>
           View
         </a>
         <button class="btn-secondary" onClick={() => setSharing(true)}>

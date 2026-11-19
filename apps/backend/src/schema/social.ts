@@ -143,6 +143,11 @@ export const socialTables: Record<string, string> = {
   challenge_members_actor_column: `
     ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS actor TEXT;
   `,
+  // When the member's actor last proved itself with a signed thread request; only then is a
+  // comment pushed to it. Additive (idempotent).
+  challenge_members_actor_verified_column: `
+    ALTER TABLE challenge_members ADD COLUMN IF NOT EXISTS actor_verified_at TIMESTAMPTZ;
+  `,
 
   // The host-set banner image of a challenge, apart from `challenges` so listing
   // challenges never loads image bytes.
@@ -204,6 +209,42 @@ export const socialTables: Record<string, string> = {
   // at most every few hours. Additive (idempotent).
   challenge_participations_host_checked_column: `
     ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS host_checked_at TIMESTAMPTZ;
+  `,
+  // Where the host's comment thread is and the state of the local copy of it, for a challenge
+  // hosted on another server. Additive (idempotent).
+  challenge_participations_thread_columns: `
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS challenge_object_uri TEXT;
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS host_actor_uri TEXT;
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS thread_url TEXT;
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS thread_synced_at TIMESTAMPTZ;
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS thread_attendees JSONB;
+    ALTER TABLE challenge_participations ADD COLUMN IF NOT EXISTS thread_audiences JSONB;
+    CREATE INDEX IF NOT EXISTS idx_challenge_participations_object_uri
+      ON challenge_participations (challenge_object_uri);
+  `,
+
+  // The member's copy of the comment thread of a challenge hosted on another server. Apart from
+  // challenge_thread_entries, which holds only threads hosted here.
+  challenge_thread_copies: `
+    CREATE TABLE IF NOT EXISTS challenge_thread_copies (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      participation_id UUID NOT NULL REFERENCES challenge_participations(id) ON DELETE CASCADE,
+      object_uri       TEXT NOT NULL,
+      in_reply_to_uri  TEXT,
+      kind             VARCHAR(10) NOT NULL,
+      audience         VARCHAR(12) NOT NULL,
+      actor_uri        TEXT NOT NULL,
+      handle           TEXT,
+      display_name     TEXT,
+      avatar_url       TEXT,
+      content          TEXT NOT NULL,
+      images           JSONB NOT NULL DEFAULT '[]',
+      url              TEXT,
+      published_at     TIMESTAMPTZ NOT NULL,
+      edited_at        TIMESTAMPTZ,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (participation_id, object_uri)
+    )
   `,
 
   // Challenges the user LEFT (#1093). Leaving hard-deletes the participation

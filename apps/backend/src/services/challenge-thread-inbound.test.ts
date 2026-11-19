@@ -62,6 +62,7 @@ const challenge = (over: Partial<ChallengeRecord> = {}): ChallengeRecord => ({
 
 const member = (over: Partial<ChallengeMemberRecord>): ChallengeMemberRecord => ({
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',
@@ -401,6 +402,26 @@ describe('admitInboundThreadNote', () => {
       edited_at: new Date('2026-11-10T11:00:00Z'),
     })
     expect(fake.notified).toEqual([])
+  })
+
+  test('an author who left still rewrites their participants entry', async () => {
+    const fake = fakeDeps({
+      entries: {
+        [`alice:${CAROL_NOTE}`]: storedEntry(
+          { ...entryInput(CAROL_NOTE, CAROL), audience: 'participants' },
+          'e1',
+        ),
+      },
+    })
+    const result = await admit(
+      fake,
+      note({ content: '<p>edited</p>', context: CHALLENGE_URI, public: false }),
+    )
+    expect(result).not.toBeNull()
+    expect(fake.entries.get(`alice:${CAROL_NOTE}`)).toMatchObject({
+      audience: 'participants',
+      content: '<p>edited</p>',
+    })
   })
 
   test('no presentation, no entry', async () => {

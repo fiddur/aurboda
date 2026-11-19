@@ -71,8 +71,8 @@ import {
 } from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
 import { publishChallengeShare } from '../services/challenge-share.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
 import {
-  createChallengeThreadDeps,
   followPostDeleteInThread,
   followPostEditInThread,
   THREAD_VISIBILITY_LOCKED_MESSAGE,
@@ -136,6 +136,8 @@ export interface FeedToolsOptions {
   previewArticle?: ArticlePreviewer
   /** The tag actor host: boosts by its accounts are hashtag feeds, left out of `list_feed` counts and `list_feed_post_reactions`. */
   tagActorHost?: () => Promise<string>
+  /** How challenge comments are pushed and threads on other servers pulled. */
+  threadFederation?: ThreadFederation
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
@@ -149,9 +151,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     reactionActions,
     retroEnrichTimeline,
     tagActorHost = async () => DEFAULT_TAG_ACTOR_HOST,
+    threadFederation,
     webHost,
   } = options
-  const thread = webHost ? createChallengeThreadDeps({ deliver, webHost }) : undefined
+  const thread = webHost ? createThreadDeps({ deliver, webHost, ...threadFederation }) : undefined
 
   /** Answer a reaction toggle with the updated entry, or the failure as a tool error. */
   const reactionResult = (result: ReactionResult) =>

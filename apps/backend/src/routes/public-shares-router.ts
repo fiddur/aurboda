@@ -38,24 +38,17 @@ import {
   listPublicSharedExercises,
   upsertChallengeMember,
 } from '../db/index.ts'
-import { bannerUrlFor } from '../services/challenge-banner.ts'
 import { toPublicChallengeListItem } from '../services/challenge-discovery.ts'
 import { fetchMemberData, MAX_CHALLENGE_MEMBERS } from '../services/challenge-federation.ts'
-import {
-  echoMismatchMessage,
-  effectiveBucketSize,
-  memberEchoMatches,
-  specToApi,
-} from '../services/challenge-spec.ts'
-import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { echoMismatchMessage, memberEchoMatches } from '../services/challenge-spec.ts'
 import { sanitizeConfig } from '../services/dashboard-config.ts'
 import { publicPeriodFor } from '../services/period-lock.ts'
 import { PeriodError } from '../services/periods.ts'
+import { publicChallengeStandings, toPublicChallenge } from '../services/public-challenge.ts'
 import { getUserTimezone } from '../services/settings.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
-import { isPublicToVisibility } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -127,17 +120,9 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         // No `refresh` here: this endpoint is unauthenticated, so honoring it would
         // let anyone force N parallel outbound fetches. The TTL cache still keeps
         // standings reasonably fresh; the owner can force-refresh via the authed route.
-        const members = await getChallengeStandings(username, challenge)
+        const standings = await publicChallengeStandings(username, challenge)
         res.setHeader('Cache-Control', 'public, max-age=60')
-        res.json({
-          effective_bucket_size: effectiveBucketSize(
-            challenge.spec.bucket_size,
-            challenge.start_ts,
-            challenge.end_ts,
-          ),
-          members,
-          success: true,
-        })
+        res.json({ ...standings, success: true })
       } catch (error) {
         if (isMissingDatabase(error)) {
           return res.status(404).json({ error: 'Challenge not found', success: false })
@@ -246,27 +231,7 @@ export const createPublicSharesRouter = (webHost: string): TypedRouter => {
         const members = await listChallengeMembers(username, challenge.id)
         res.setHeader('Cache-Control', 'public, max-age=60')
         return res.json({
-          challenge: {
-            banner_url: bannerUrlFor(challenge, webHost, username),
-            effective_bucket_size: effectiveBucketSize(
-              challenge.spec.bucket_size,
-              challenge.start_ts,
-              challenge.end_ts,
-            ),
-            end_ts: challenge.end_ts.toISOString(),
-            host_identity: buildProfileUrl(webHost, username),
-            join_token: challenge.join_token,
-            members: members
-              .filter((m) => m.status === 'active')
-              .map((m) => ({ display_name: m.display_name, identity_base_url: m.identity_base_url })),
-            name: challenge.name,
-            profile_url: buildProfileUrl(webHost, username),
-            share_url: buildShareUrl(webHost, username, challenge.slug),
-            spec: specToApi(challenge.spec),
-            start_ts: challenge.start_ts.toISOString(),
-            timezone: challenge.timezone,
-            visibility: isPublicToVisibility(challenge.is_public),
-          },
+          challenge: toPublicChallenge(challenge, members, webHost, username),
           success: true,
           type: 'challenge',
         })

@@ -49,6 +49,8 @@ import {
   hasDrawableStandings,
   hasDrawableTrend,
   deliverFeedReplyPost,
+  deliverThreadReply,
+  deliverThreadReplyDelete,
   type FeedDeliveryDeps,
   imageAttachments,
   imageAvailability,
@@ -865,6 +867,87 @@ describe('reply fan-out to the answered author (#1079 shape)', () => {
       visibility: 'unlisted',
     })
     expect(sentTo(sendActivity).sort()).toEqual(['followers', TARGET_ACTOR])
+    for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+  })
+})
+
+describe('challenge comments pushed to the thread', () => {
+  const ORIGIN = 'https://aurboda.example'
+  const HOST = 'https://host.example/users/freja'
+  const MEMBER = 'https://far.example/users/ola'
+  const SELF = `${ORIGIN}/users/fiddur`
+  const comment = (over: Partial<DeliverableReply> = {}): DeliverableReply => ({
+    challenge_uri: 'https://host.example/users/freja/challenges/nov',
+    created_at: new Date('2026-09-01T00:00:00Z'),
+    id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+    in_reply_to_actor_uri: HOST,
+    in_reply_to_handle: '@freja@host.example',
+    in_reply_to_uri: 'https://host.example/users/freja/challenges/nov',
+    message: 'Go team',
+    thread_recipients: [HOST, MEMBER, SELF, HOST],
+    updated_at: new Date('2026-09-01T00:00:00Z'),
+    visibility: 'participants',
+    ...over,
+  })
+
+  const fakeDeps = async (
+    send: (sender: unknown, recipient: { id?: URL }, activity?: unknown) => Promise<void> = async () => {},
+  ) => {
+    const ctx = await createFeedFederation(ORIGIN, `${ORIGIN}/api`).createContext(new URL(ORIGIN))
+    const sendActivity = vi.fn(send)
+    const lookupObject = vi.fn(async (uri: URL) => new Person({ id: uri }))
+    Object.assign(ctx, { lookupObject, sendActivity })
+    const deps: FeedDeliveryDeps = {
+      apiBaseUrl: `${ORIGIN}/api`,
+      federation: { createContext: async () => ctx } as unknown as FeedDeliveryDeps['federation'],
+      origin: ORIGIN,
+    }
+    return { ctx, deps, sendActivity }
+  }
+
+  const sentTo = (sendActivity: { mock: { calls: unknown[][] } }) =>
+    sendActivity.mock.calls.map(([, recipient]) => (recipient as { id?: URL }).id?.href)
+
+  test('a participants comment is addressed to the thread recipients alone', async () => {
+    const { ctx } = await fakeDeps()
+    const note = buildReplyNote(ctx, 'fiddur', comment())
+    expect(hrefs([...note.toIds])).toEqual([HOST, MEMBER, SELF])
+    expect(note.ccIds).toEqual([])
+    const create = buildReplyNoteCreate(ctx, 'fiddur', comment())
+    expect(hrefs([...create.toIds])).toEqual([HOST, MEMBER, SELF])
+    expect(hrefs([...create.ccIds])).not.toContain(`${ORIGIN}/users/fiddur/followers`)
+  })
+
+  test('a public comment keeps its ordinary addressing', async () => {
+    const { ctx } = await fakeDeps()
+    const note = buildReplyNote(ctx, 'fiddur', comment({ visibility: 'unlisted' }))
+    expect(hrefs([...note.toIds])).toEqual([`${ORIGIN}/users/fiddur/followers`])
+    expect(hrefs([...note.ccIds])).toContain(PUBLIC)
+  })
+
+  test('the Create and Update go to each recipient once, never to followers or the author', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverThreadReply(deps, 'fiddur', comment(), 'create')
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+    expect(sendActivity.mock.calls[0][2]).toBeInstanceOf(Create)
+    sendActivity.mockClear()
+    await deliverThreadReply(deps, 'fiddur', comment(), 'update')
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+    expect(sendActivity.mock.calls[0][2]).toBeInstanceOf(Update)
+  })
+
+  test('one failing recipient does not cost the others', async () => {
+    const { deps, sendActivity } = await fakeDeps(async (_sender, recipient) => {
+      if (recipient.id?.href === HOST) throw new Error('connect ECONNREFUSED')
+    })
+    await expect(deliverThreadReply(deps, 'fiddur', comment(), 'create')).resolves.toBeUndefined()
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
+  })
+
+  test('the Delete goes to the same recipients', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    await deliverThreadReplyDelete(deps, 'fiddur', comment())
+    expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
     for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
   })
 })

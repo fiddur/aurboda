@@ -30,6 +30,7 @@ const AdminUserDetail = lazyPage(() => import('./pages/AdminUsers/Detail.jsx'), 
 const AuditLog = lazyPage(() => import('./pages/AuditLog/index.jsx'), 'AuditLog')
 const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Challenges')
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
+const JoinedChallenge = lazyPage(() => import('./pages/Challenges/JoinedChallenge.jsx'), 'JoinedChallenge')
 const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
 const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
 const Dashboards = lazyPage(() => import('./pages/Dashboards/index.jsx'), 'Dashboards')
@@ -151,6 +152,7 @@ function AppShell() {
             <Route path="/dashboards" component={Dashboards} />
             <Route path="/shared-dashboards" component={Dashboards} />
             <Route path="/challenges/join" component={ChallengeJoin} />
+            <Route path="/challenges/joined/:id" component={JoinedChallenge} />
             <Route path="/challenges" component={Challenges} />
             <Route path="/" component={Home} />
             <Route path="/blog" component={OfficialFeed} />

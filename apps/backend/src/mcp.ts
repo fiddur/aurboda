@@ -28,6 +28,7 @@ import type { ArticlePreviewer } from './services/article-preview.ts'
 import type { SkipAutoshare } from './services/autoshare-skip.ts'
 import type { CentralDb } from './services/central-db.ts'
 import type { DiscoverChallenges } from './services/challenge-discovery.ts'
+import type { ThreadFederation } from './services/challenge-thread-remote.ts'
 import type { DeductionEngineDeps } from './services/deduction-engine.ts'
 import type { ActivityNotifier, DeductionQueue } from './services/deduction-queue.ts'
 import type { DumpLinkIssuer } from './services/export-dump.ts'
@@ -156,6 +157,7 @@ interface McpDeps {
   discoverChallenges?: DiscoverChallenges
   engineDeps?: DeductionEngineDeps
   feedDeliver?: FeedDeliver
+  threadFederation?: ThreadFederation
   followActions?: FollowActions
   followerActions?: FollowerActions
   garmin?: GarminClient
@@ -276,6 +278,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,
     followActions: deps.followActions,
+    threadFederation: deps.threadFederation,
     followerActions: deps.followerActions,
     previewArticle: deps.previewArticle,
     publicTagActions: deps.publicTagActions,
@@ -290,6 +293,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     deliver: deps.feedDeliver,
     discoverChallenges: deps.discoverChallenges,
     isAdmin: deps.centralDb?.isAdmin,
+    threadFederation: deps.threadFederation,
     webHost: deps.webHost,
   })
   registerScreentimeCategoryTools(server, user)

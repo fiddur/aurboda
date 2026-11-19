@@ -1,10 +1,9 @@
-import type { ChallengeThreadResponse, PublicChallenge } from '@aurboda/api-spec'
+import type { ChallengeThreadResponse } from '@aurboda/api-spec'
 import type { InfiniteData } from '@tanstack/react-query'
 
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'preact/hooks'
 
-import { fetchChallengeThread } from '../../state/api'
 import { auth } from '../../state/auth'
 import '../Feed/FeedPostCard.css'
 import { allowedAudiences, composerHint, flattenThreadPages } from './challenge-thread-view'
@@ -15,18 +14,21 @@ import { ChallengeThreadItem } from './ChallengeThreadEntry'
 export const challengeThreadKey = (username: string, slug: string) =>
   ['challengeThread', username, slug] as const
 
+/**
+ * The Comments section of a challenge page. `queryKey` is also what a posted, edited or hidden
+ * entry invalidates.
+ */
 export function ChallengeThread({
-  username,
-  slug,
-  challenge,
+  challengeUrl,
+  queryKey,
+  fetchPage,
 }: {
-  username: string
-  slug: string
-  challenge: PublicChallenge
+  challengeUrl: string
+  queryKey: readonly string[]
+  fetchPage: (cursor?: string) => Promise<ChallengeThreadResponse>
 }) {
   const queryClient = useQueryClient()
   const isLoggedIn = Boolean(auth.value.token)
-  const challengeUrl = challenge.share_url
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useInfiniteQuery<
       ChallengeThreadResponse,
@@ -37,13 +39,13 @@ export function ChallengeThread({
     >({
       getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
       initialPageParam: undefined,
-      queryFn: ({ pageParam }) => fetchChallengeThread(username, slug, challengeUrl, pageParam),
-      queryKey: [...challengeThreadKey(username, slug), isLoggedIn ? 'viewer' : 'public'],
+      queryFn: ({ pageParam }) => fetchPage(pageParam),
+      queryKey,
     })
 
   const { entries, viewer } = flattenThreadPages(data?.pages)
   const hint = composerHint(isLoggedIn, viewer)
-  const refresh = () => queryClient.invalidateQueries({ queryKey: challengeThreadKey(username, slug) })
+  const refresh = () => queryClient.invalidateQueries({ queryKey })
 
   const sectionRef = useRef<HTMLElement>(null)
   const scrolled = useRef(false)

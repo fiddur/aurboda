@@ -18,6 +18,8 @@ import {
   challengeCommentNotifications,
   challengeThreadRole,
   decideAdmission,
+  followPostDeleteInThread,
+  followPostEditInThread,
   isThreadParticipant,
   MAX_THREAD_ENTRIES,
   OTHER_SERVER_MESSAGE,
@@ -25,9 +27,14 @@ import {
   parseChallengeObjectUrl,
   parseChallengePageUrl,
   readableAudiences,
+  readChallengeThread,
+  type RemoteThreadBranch,
   resolveHostedChallenge,
+  setChallengeThreadEntryHidden,
   type ThreadCandidate,
+  type ThreadPushChange,
   threadVisibilityLocked,
+  verifiedRemoteActors,
 } from './challenge-thread.ts'
 
 const WEB = 'https://aurboda.test'
@@ -64,6 +71,7 @@ const challenge = (over: Partial<ChallengeRecord> = {}): ChallengeRecord => ({
 
 const member = (over: Partial<ChallengeMemberRecord>): ChallengeMemberRecord => ({
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',
@@ -482,8 +490,15 @@ describe('addChallengeComment', () => {
   })
 
   const fakeDeps = (
-    over: { count?: number; members?: ChallengeMemberRecord[]; upsertFails?: boolean } = {},
+    over: {
+      count?: number
+      existing?: ChallengeThreadEntryRecord
+      members?: ChallengeMemberRecord[]
+      remote?: RemoteThreadBranch
+      upsertFails?: boolean
+    } = {},
   ) => {
+    const pushes: { change: ThreadPushChange; recipients: string[]; user: string }[] = []
     const created: ReplyPostInput[] = []
     const deleted: string[] = []
     const upserts: ChallengeThreadEntryInput[] = []
@@ -502,7 +517,7 @@ describe('addChallengeComment', () => {
       },
       deliver: { createdReply: (_user, record) => delivered.push(record.id) },
       getEntryById: async () => null,
-      getEntryByObjectUri: async () => null,
+      getEntryByObjectUri: async () => over.existing ?? null,
       getOwnPost: async () => null,
       listMembers: async () => over.members ?? MEMBERS,
       listReplies: async () => [],
@@ -511,6 +526,10 @@ describe('addChallengeComment', () => {
       notify: async (user) => {
         notified.push(user)
       },
+      push: (user, _post, change, recipients) => {
+        pushes.push({ change, recipients, user })
+      },
+      ...(over.remote == null ? {} : { remote: over.remote }),
       presentation: async (user) => ({
         avatar_url: null,
         display_name: null,
@@ -524,7 +543,7 @@ describe('addChallengeComment', () => {
       },
       webHost: WEB,
     }
-    return { created, deleted, delivered, deps, notified, upserts }
+    return { created, deleted, delivered, deps, notified, pushes, upserts }
   }
 
   const body = { audience: 'participants' as const, challenge_url: `${WEB}/u/alice/abc`, message: ' Go! ' }
@@ -578,5 +597,128 @@ describe('addChallengeComment', () => {
     const { deleted, deps } = fakeDeps({ upsertFails: true })
     expect(await addChallengeComment(deps, 'bob', body)).toMatchObject({ ok: false })
     expect(deleted).toEqual([POST_ID])
+  })
+
+  const OLA = 'https://home.example/users/ola'
+  const ZED = 'https://far.example/users/zed'
+  const OTHER_URL = 'https://host.example/u/freja/nov'
+  const remoteMembers = [
+    ...MEMBERS,
+    member({ actor: OLA, actor_verified_at: new Date(), id: 'm3', kind: 'remote', local_user: null }),
+    member({ actor: ZED, id: 'm4', kind: 'remote', local_user: null }),
+    member({
+      actor: 'https://gone.example/users/x',
+      actor_verified_at: new Date(),
+      id: 'm5',
+      kind: 'remote',
+      local_user: null,
+      status: 'withdrawn',
+    }),
+  ]
+
+  const remoteBranch = () => {
+    const calls: string[] = []
+    const branch: RemoteThreadBranch = {
+      afterJoin: async () => {},
+      comment: async (user, input) => {
+        calls.push(`comment ${user} ${input.challenge_url}`)
+        return { error: 'remote', ok: false, status: 502 }
+      },
+      followDelete: async (user, record) => calls.push(`delete ${user} ${record.id}`),
+      followEdit: async (user, record) => calls.push(`edit ${user} ${record.id}`),
+      read: async (user, url) => {
+        calls.push(`read ${user} ${url}`)
+        return { error: 'remote', ok: false, status: 502 }
+      },
+    }
+    return { branch, calls }
+  }
+
+  const reply = (over: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
+    ...post({
+      challenge_uri: CHALLENGE_URI,
+      in_reply_to_actor_uri: `${WEB}/users/alice`,
+      in_reply_to_uri: CHALLENGE_URI,
+      message: 'Edited',
+      visibility: 'participants',
+    }),
+    ...over,
+  })
+
+  test('a comment admitted here is pushed to the verified, active members on other servers only', async () => {
+    const { deps, pushes } = fakeDeps({ members: remoteMembers })
+    await addChallengeComment(deps, 'bob', body)
+    expect(pushes).toEqual([{ change: 'create', recipients: [OLA], user: 'bob' }])
+  })
+
+  test('with no verified member on another server nothing is pushed', async () => {
+    const { deps, pushes } = fakeDeps()
+    await addChallengeComment(deps, 'bob', body)
+    expect(pushes).toEqual([])
+  })
+
+  test('verifiedRemoteActors falls back to the identity for a verified member with no actor', () => {
+    expect(
+      verifiedRemoteActors([
+        member({
+          actor: null,
+          actor_verified_at: new Date(),
+          identity_base_url: 'https://home.example/u/ola',
+          kind: 'remote',
+          local_user: null,
+        }),
+      ]),
+    ).toEqual([OLA])
+  })
+
+  test('a comment on a challenge hosted elsewhere goes to the remote branch', async () => {
+    const { branch, calls } = remoteBranch()
+    const { created, deps } = fakeDeps({ remote: branch })
+    await addChallengeComment(deps, 'bob', { ...body, challenge_url: OTHER_URL })
+    expect(calls).toEqual([`comment bob ${OTHER_URL}`])
+    expect(created).toEqual([])
+  })
+
+  test('reading a thread hosted elsewhere goes to the remote branch, one hosted here does not', async () => {
+    const { branch, calls } = remoteBranch()
+    const { deps } = fakeDeps({ remote: branch })
+    expect(await readChallengeThread(deps, 'bob', OTHER_URL)).toMatchObject({ ok: false, status: 502 })
+    expect(await readChallengeThread(deps, 'bob', `${WEB}/u/alice/abc`)).toMatchObject({ ok: true })
+    expect(calls).toEqual([`read bob ${OTHER_URL}`])
+  })
+
+  test('hiding is refused for a challenge hosted on another server', async () => {
+    const { deps } = fakeDeps()
+    expect(await setChallengeThreadEntryHidden(deps, 'bob', true, OTHER_URL, 'e1', true)).toMatchObject({
+      error: "Only on the host's own server",
+      ok: false,
+      status: 403,
+    })
+  })
+
+  test('an edited comment here is re-admitted and the Update pushed to verified members', async () => {
+    const { deps, pushes, upserts } = fakeDeps({
+      existing: entry({ audience: 'participants' }),
+      members: remoteMembers,
+    })
+    await followPostEditInThread(deps, 'bob', reply())
+    expect(upserts).toHaveLength(1)
+    expect(pushes).toEqual([{ change: 'update', recipients: [OLA], user: 'bob' }])
+  })
+
+  test('a deleted comment here leaves the thread and the Delete is pushed to verified members', async () => {
+    const { deps, pushes } = fakeDeps({ members: remoteMembers })
+    await followPostDeleteInThread(deps, 'bob', reply())
+    expect(pushes).toEqual([{ change: 'delete', recipients: [OLA], user: 'bob' }])
+  })
+
+  test('an edit or delete of a comment in a thread hosted elsewhere goes to the remote branch', async () => {
+    const { branch, calls } = remoteBranch()
+    const { deps, pushes } = fakeDeps({ remote: branch })
+    const elsewhere = reply({ challenge_uri: 'https://host.example/users/freja/challenges/nov' })
+    await followPostEditInThread(deps, 'bob', elsewhere)
+    await followPostDeleteInThread(deps, 'bob', elsewhere)
+    expect(calls).toEqual([`edit bob ${POST_ID}`, `delete bob ${POST_ID}`])
+    expect(pushes).toEqual([])
   })
 })

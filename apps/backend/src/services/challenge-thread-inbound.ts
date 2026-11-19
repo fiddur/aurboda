@@ -6,7 +6,12 @@ import type { ChallengeThreadAudience } from '@aurboda/api-spec'
  */
 import type { Note } from '@fedify/fedify/vocab'
 
-import type { ChallengeRecord, FeedPostRecord, TimelineEntryRecord } from '../db/index.ts'
+import type {
+  ChallengeRecord,
+  ChallengeThreadEntryRecord,
+  FeedPostRecord,
+  TimelineEntryRecord,
+} from '../db/index.ts'
 
 import {
   countChallengeThreadEntriesByActorSince,
@@ -183,16 +188,16 @@ const hostOf = (uri: string): string | null => {
 }
 
 /** The timeline's authority rule: the Note lives on the sender's host and names the sender as author. */
-const isSendersNote = (noteId: URL, note: Note, actorUri: string): boolean =>
+export const isSendersNote = (noteId: URL, note: Note, actorUri: string): boolean =>
   noteId.host === hostOf(actorUri) && note.attributionIds.some((uri) => uri.href === actorUri)
 
 /** `public` for a Note addressed to Public; else `participants`, only with the challenge as `context`. */
-const inboundAudience = (note: Note, challengeObjectUri: string): ChallengeThreadAudience | null => {
+export const inboundAudience = (note: Note, challengeObjectUri: string): ChallengeThreadAudience | null => {
   if ([...note.toIds, ...note.ccIds].some((uri) => uri.href === AS_PUBLIC)) return 'public'
   return note.contextIds.some((uri) => uri.href === challengeObjectUri) ? 'participants' : null
 }
 
-const clampToNow = (date: Date, now: number): Date => new Date(Math.min(date.getTime(), now))
+export const clampToNow = (date: Date, now: number): Date => new Date(Math.min(date.getTime(), now))
 
 const inboundCandidate = async (
   note: Note,
@@ -214,6 +219,20 @@ const inboundCandidate = async (
     published_at: clampToNow(publishedAt, now),
     url: noteLinkUrl(note, noteId),
   }
+}
+
+/**
+ * Whether someone who is not a participant is kept out: a participants entry is theirs to write
+ * only as a rewrite of their own entry (they have left since).
+ */
+const closedToOutsider = (
+  challenge: Pick<ChallengeRecord, 'is_public'>,
+  audience: ChallengeThreadAudience,
+  existing: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'audience'> | null,
+  actorUri: string,
+): boolean => {
+  if (challenge.is_public && audience === 'public') return false
+  return !(existing?.actor_uri === actorUri && existing.audience === 'participants')
 }
 
 const admitIntoThread = async (
@@ -239,7 +258,7 @@ const admitIntoThread = async (
   const audience = inboundAudience(note, buildChallengeObjectUrl(origin, host, challenge.slug))
   if (audience == null) return null
   const participant = isThreadParticipant(origin, host, members, actorUri)
-  if (!participant && (audience === 'participants' || !challenge.is_public)) return null
+  if (!participant && closedToOutsider(challenge, audience, existing, actorUri)) return null
   const now = deps.now()
   if (!participant && existing == null) {
     const recent = await deps.countByActorSince(host, challenge.id, actorUri, new Date(now - DAY_MS))
