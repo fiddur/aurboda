@@ -108,6 +108,21 @@ describe('GET /u/:username/:slug', () => {
     expect(res.text).toMatch(/og:description" content="Steps challenge, [^"]*Be the first to join/)
   })
 
+  test("links a public challenge's ActivityPub object as an alternate", async () => {
+    const app = buildApp({ resolveChallenge: async () => publicChallenge() })
+    const res = await supertest(app).get('/u/fiddur/xyz')
+    expect(res.text).toContain(
+      '<link rel="alternate" type="application/activity+json" href="https://aurboda.net/users/fiddur/challenges/xyz">',
+    )
+  })
+
+  test('an unlisted challenge page keeps the default meta and gets no ActivityPub link', async () => {
+    const app = buildApp({ resolveChallenge: async () => publicChallenge({ is_public: false }) })
+    const res = await supertest(app).get('/u/fiddur/xyz')
+    expect(res.text).not.toContain('Step Count')
+    expect(res.text).not.toContain('application/activity+json')
+  })
+
   test('counts who joined besides the host', async () => {
     const app = buildApp({
       resolveChallenge: async () =>

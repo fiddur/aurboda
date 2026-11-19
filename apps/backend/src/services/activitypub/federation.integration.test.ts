@@ -20,6 +20,7 @@ import supertest from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity } from '../../db/activities/index.ts'
+import { createChallenge } from '../../db/challenges.ts'
 import { query } from '../../db/connection.ts'
 import { getFeedFollowerByActor, upsertFeedFollower } from '../../db/feed-follower.ts'
 import {
@@ -79,6 +80,27 @@ const sharePost = (user: string, activityId: string, overrides: Partial<FeedPost
     series_metrics: [],
     visibility: 'public',
     ...overrides,
+  })
+
+const hostChallenge = (user: string, is_public: boolean) =>
+  createChallenge(user, {
+    announce_winner: false,
+    end_ts: new Date('2999-02-01T00:00:00Z'),
+    is_public,
+    name: 'Step Count',
+    spec: {
+      activity_type_id: null,
+      aggregation: 'sum',
+      bucket_size: '1d',
+      filter_field: null,
+      filter_value: null,
+      measure: null,
+      pattern: 'steps',
+      source_type: 'metric',
+      unit: 'steps',
+    },
+    start_ts: new Date('2999-01-01T00:00:00Z'),
+    timezone: 'Europe/Stockholm',
   })
 
 const notFound = () => new Response('nope', { status: 404 })
@@ -336,6 +358,41 @@ describe('Feed federation actor + WebFinger', () => {
     // remote servers order it correctly.
     expect(doc.published).toBeDefined()
     expect(new Date(doc.published ?? '').getTime()).toBe(post.created_at.getTime())
+  })
+
+  test('serves a hosted challenge, public or unlisted, as a dual-typed Event at its id', async () => {
+    const user = getTestUser()
+    for (const isPublic of [true, false]) {
+      const challenge = await hostChallenge(user, isPublic)
+      const res = await fetchAs2(`/users/${user}/challenges/${challenge.slug}`)
+      expect(res.status).toBe(200)
+      const doc = (await res.json()) as Record<string, unknown>
+      expect(doc).toMatchObject({
+        attributedTo: `${ORIGIN}/users/${user}`,
+        id: `${ORIGIN}/users/${user}/challenges/${challenge.slug}`,
+        joinMode: 'free',
+        name: 'Step Count',
+        'quant:bucket': '1d',
+        'quant:metric': 'steps',
+        'quant:scoring': 'sum',
+        'quant:structuredUrl': `${ORIGIN}/api/public/${user}/challenges/${challenge.slug}`,
+        'quant:unit': '1',
+        timezone: 'Europe/Stockholm',
+        type: ['Event', 'quant:Challenge'],
+        url: `${ORIGIN}/u/${user}/${challenge.slug}`,
+      })
+      expect(doc['@context']).toContainEqual({
+        joinMode: 'https://w3id.org/fep/8a8e/joinMode',
+        timezone: 'https://w3id.org/fep/8a8e/timezone',
+      })
+      if (isPublic) expect(doc.to).toBeDefined()
+      else expect(doc).not.toHaveProperty('to')
+    }
+  })
+
+  test('404s an unknown challenge slug', async () => {
+    const res = await fetchAs2(`/users/${getTestUser()}/challenges/nosuchslug`)
+    expect(res.status).toBe(404)
   })
 
   test('a served post object carries the QuantPub extension (#896)', async () => {

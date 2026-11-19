@@ -304,6 +304,7 @@ describe('challenge documents', () => {
       bucket: '1d',
       endTime: END.toISOString(),
       host: { actor: 'https://qs.example/users/freja', name: 'freja', url: 'https://qs.example/u/freja' },
+      id: 'https://qs.example/users/freja/challenges/nov',
       joinMode: 'free',
       joinToken: 'jt',
       kind: 'challenge',
@@ -325,6 +326,10 @@ describe('challenge documents', () => {
     const item = buildChallengeListItem(challenge(), ctx)
     expect(item).not.toHaveProperty('joinToken')
     expect(item).not.toHaveProperty('members')
+  })
+
+  test('the id is the ActivityPub object URL, also on the listing', () => {
+    expect(buildChallengeListItem(challenge(), ctx).id).toBe('https://qs.example/users/freja/challenges/nov')
   })
 
   test('an ended challenge is closed to joins', () => {

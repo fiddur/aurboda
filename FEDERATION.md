@@ -35,6 +35,8 @@ Actor collections are advertised at `…/inbox`, `…/outbox`, and `…/follower
 
 - Actor document + published public key.
 - WebFinger discovery.
+- Hosted challenges as `["Event", "quant:Challenge"]` objects at
+  `/users/<username>/challenges/<slug>` (see [Challenges](#challenges-http-outside-activitypub)).
 - Inbox/outbox/followers endpoints are registered (the outbox and followers
   collections are currently empty; the inbox accepts but does not yet process
   inbound activities).
@@ -108,7 +110,9 @@ Federated challenges use the HTTP half of the
 (`GET /api/public/<username>/challenges[/<slug>]`), HTTP join and leave
 (`POST` / `DELETE …/challenges/<slug>/members`), standings
 (`GET …/challenges/<slug>/standings`) and a member's entry
-(`GET /api/public/<username>/challenge-entries/<token>`). The ActivityPub half (the
-challenge as an `Event`, `Join` / `Leave`) is not implemented yet. Aurboda's older
+(`GET /api/public/<username>/challenge-entries/<token>`). Of the ActivityPub half,
+each hosted challenge (public or unlisted) is served as an `["Event", "quant:Challenge"]`
+object at `/users/<username>/challenges/<slug>`; `Join` / `Leave` and delivering the
+`Event` are not implemented yet. Aurboda's older
 challenge protocol (`/.well-known/aurboda`) is still served for instances that predate
 it. See [docs/features/challenges.md](docs/features/challenges.md).

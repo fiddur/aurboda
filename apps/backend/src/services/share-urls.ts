@@ -52,3 +52,7 @@ export const buildBannerUrl = (webHost: string, username: string, slug: string, 
 /** A user's ActivityPub actor id. */
 export const buildActorUrl = (webHost: string, username: string): string =>
   joinUrl(webHost, `users/${encodeURIComponent(username)}`)
+
+/** A hosted challenge's ActivityPub object id. */
+export const buildChallengeObjectUrl = (webHost: string, username: string, slug: string): string =>
+  joinUrl(webHost, `users/${encodeURIComponent(username)}/challenges/${encodeURIComponent(slug)}`)

@@ -34,6 +34,8 @@ export interface ShareMeta {
   oembedUrl?: string
   /** Optional Atom feed URL (adds a feed-discovery `<link rel="alternate">`). */
   feedUrl?: string
+  /** Optional ActivityPub object id (adds an `application/activity+json` `<link rel="alternate">`). */
+  activityUrl?: string
 }
 
 /** oEmbed discovery URL for a resource (consumers fetch this for a rich unfurl). */
@@ -88,6 +90,11 @@ export const renderShareMetaTags = (meta: ShareMeta): string => {
   if (meta.feedUrl) {
     tags.push(
       `<link rel="alternate" type="application/atom+xml" title="${escapeAttr(meta.title)}" href="${escapeAttr(meta.feedUrl)}">`,
+    )
+  }
+  if (meta.activityUrl) {
+    tags.push(
+      `<link rel="alternate" type="application/activity+json" href="${escapeAttr(meta.activityUrl)}">`,
     )
   }
   if (meta.jsonLd) tags.push(jsonLdScript(meta.jsonLd))
