@@ -9,6 +9,8 @@ describe('POST /tracks/backfill', () => {
     const deps = {
       getGarminCandidates: vi.fn(async () => []),
       getStravaCandidates: vi.fn(async () => []),
+      hasSegments: vi.fn(async () => false),
+      matchSegments: vi.fn(async () => ({ efforts: 0 })),
       upsertActivityTrack: vi.fn(async () => undefined),
     }
     const app = express()

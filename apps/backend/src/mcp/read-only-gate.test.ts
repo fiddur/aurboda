@@ -15,6 +15,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'list_notifications',
     'mark_notification_read',
     'mark_all_notifications_read',
+    'list_reminders',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([
@@ -26,6 +27,9 @@ describe('isToolAllowedWhenReadOnly', () => {
     'set_notification_preference',
     'run_notification_action',
     'skip_autoshare',
+    'add_reminder',
+    'update_reminder',
+    'delete_reminder',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 
