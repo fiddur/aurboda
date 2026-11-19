@@ -37,7 +37,7 @@ describe('MCP sync_lastfm tool', () => {
     vi.mocked(syncLastFmData).mockResolvedValue({ scrobbles_processed: 2, status: 'success' })
     const notifier = vi.fn()
     const { server, tools } = buildFakeServer()
-    registerSyncTools(server, 'alice', undefined, undefined, undefined, notifier)
+    registerSyncTools(server, 'alice', { notifier })
 
     await tools.get('sync_lastfm')!({})
 
@@ -51,7 +51,7 @@ describe('MCP sync_lastfm tool', () => {
     vi.mocked(syncLastFmData).mockResolvedValue({ scrobbles_processed: 0, status: 'success' })
     const notifier = vi.fn()
     const { server, tools } = buildFakeServer()
-    registerSyncTools(server, 'alice', undefined, undefined, undefined, notifier)
+    registerSyncTools(server, 'alice', { notifier })
 
     await tools.get('sync_lastfm')!({})
 
@@ -62,20 +62,7 @@ describe('MCP sync_lastfm tool', () => {
 describe('MCP reprocess_garmin_pushes tool', () => {
   const register = (reprocess?: (user: string, since?: Date) => Promise<number>) => {
     const { server, tools } = buildFakeServer()
-    registerSyncTools(
-      server,
-      'alice',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      reprocess,
-    )
+    registerSyncTools(server, 'alice', { reprocessGarminPushes: reprocess })
     return tools.get('reprocess_garmin_pushes')!
   }
 

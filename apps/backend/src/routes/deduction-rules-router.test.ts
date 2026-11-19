@@ -11,7 +11,7 @@ import { createDeductionRulesRouter } from './deduction-rules-router.ts'
 vi.mock('../db/index.ts', () => ({
   activityTypeExists: vi.fn().mockResolvedValue(true),
   deleteDeductionRule: vi.fn(),
-  deleteRuleActivities: vi.fn(),
+  deleteRuleActivities: vi.fn().mockResolvedValue({ count: 0, earliest_by_type: [] }),
   ensureActivityType: vi.fn().mockResolvedValue(true),
   getDeductionRule: vi.fn(),
   getDeductionRules: vi.fn(),
@@ -25,7 +25,10 @@ vi.mock('../services/deduction-engine.ts', () => ({
   evaluateAllRules: vi.fn().mockResolvedValue({ activities_created: 3 }),
 }))
 
+vi.mock('../services/training-load/dirty.ts', () => ({ markWorkoutHoursDirty: vi.fn() }))
+
 const db = await import('../db/index.ts')
+const { markWorkoutHoursDirty } = await import('../services/training-load/dirty.ts')
 
 const RULE_ID = '0f8b2a39-1d0e-4c64-9d8c-6b3b3c2f7a01'
 
@@ -265,5 +268,30 @@ describe('deduction-rules output_activity_type from the built-in catalogue', () 
       .send(body({ output_activity_type: 'not_a_type' }))
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Unknown activity type: "not_a_type"')
+  })
+})
+
+describe("removing a rule's activities marks the training load hours dirty", () => {
+  const earliest_by_type = [{ activity_type: 'running', start_time: new Date('2026-06-01T08:00:00Z') }]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.deleteRuleActivities).mockResolvedValue({ count: 2, earliest_by_type })
+  })
+
+  test('deleting the rule', async () => {
+    vi.mocked(db.deleteDeductionRule).mockResolvedValue(true)
+    const res = await supertest(buildApp()).delete(`/${RULE_ID}`)
+    expect(res.status).toBe(200)
+    expect(db.deleteRuleActivities).toHaveBeenCalledExactlyOnceWith('tester', RULE_ID)
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('tester', earliest_by_type)
+  })
+
+  test('disabling the rule', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule())
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule({ enabled: false }))
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ enabled: false })
+    expect(res.status).toBe(200)
+    expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('tester', earliest_by_type)
   })
 })

@@ -32,7 +32,6 @@ import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
-  deleteRuleActivities,
   emitTimelineNotify,
   expandAncestorTypes,
   getDeductionRulesByIds,
@@ -167,6 +166,7 @@ import {
   createDeductionQueue,
   type DeductionQueue,
 } from './services/deduction-queue.ts'
+import { removeRuleActivities } from './services/deduction-rule-activities.ts'
 import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
@@ -520,7 +520,7 @@ const main = async () => {
     try {
       deductionQueue = await createDeductionQueue(boss, {
         buildFullWindow: (user) => buildFullWindow(user, engineDeps),
-        deleteRuleActivities,
+        deleteRuleActivities: (user, ruleId) => removeRuleActivities(user, ruleId),
         engineDeps,
         evaluateAllRules,
         expandAncestorTypes,

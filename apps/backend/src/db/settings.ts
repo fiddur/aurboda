@@ -3,8 +3,8 @@ import type { TrainingLoadSettings } from '@aurboda/api-spec'
 import type { Queryable } from './pool.ts'
 import type { UserSettings } from './types.ts'
 
-import { withStoredInternalFields } from '../services/training-load/state.ts'
 import { query, withUserTransaction } from './connection.ts'
+import { withStoredInternalFields } from './training-load-internal.ts'
 
 // One-time migration from camelCase to snake_case JSONB keys.
 const topLevelRenames: Record<string, string> = {

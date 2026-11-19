@@ -7,7 +7,6 @@ import type { DeductionQueue } from '../services/deduction-queue.ts'
 import {
   activityTypeExists,
   deleteDeductionRule,
-  deleteRuleActivities,
   ensureActivityType,
   getDeductionRule,
   getDeductionRules,
@@ -18,6 +17,7 @@ import {
 import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { removeRuleActivities } from '../services/deduction-rule-activities.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -115,7 +115,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
           cleanup_rule_ids: [id],
         })
       } else if (!updated.enabled) {
-        await deleteRuleActivities(user, id)
+        await removeRuleActivities(user, id)
       }
 
       return jsonResponse(updated)
@@ -127,7 +127,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
     'Delete a deduction rule and all activities it created.',
     { id: z.string().uuid().describe('ID of the rule to delete') },
     async ({ id }) => {
-      await deleteRuleActivities(user, id)
+      await removeRuleActivities(user, id)
       const deleted = await deleteDeductionRule(user, id)
       if (!deleted) return errorResponse('Deduction rule not found')
       return jsonResponse({ deleted: true, id })

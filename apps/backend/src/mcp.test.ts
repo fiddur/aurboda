@@ -71,7 +71,7 @@ vi.mock('./db', () => ({
   deleteActivityTypeDefinition: vi.fn().mockResolvedValue(false),
   deleteDeductionRule: vi.fn().mockResolvedValue(false),
   deleteGarminActivityWithWrongType: vi.fn().mockResolvedValue(null),
-  deleteRuleActivities: vi.fn().mockResolvedValue(0),
+  deleteRuleActivities: vi.fn().mockResolvedValue({ count: 0, earliest_by_type: [] }),
   deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
   getActivityTypeDefinition: vi.fn().mockResolvedValue(null),
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),

@@ -227,20 +227,18 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   if (deps.autosharePreviewDeps) {
     registerAutoshareRuleTools(server, user, deps.autosharePreviewDeps, deps.skipAutoshare)
   }
-  registerSyncTools(
-    server,
-    user,
-    deps.oura,
-    deps.garmin,
-    deps.stravaQueue,
-    deps.onActivityMutated,
-    deps.gravl,
-    deps.onActivityDetailSynced,
-    deps.onTrackWritten,
-    deps.syncHomeAssistant,
-    deps.homeAssistant,
-    deps.reprocessGarminPushes,
-  )
+  registerSyncTools(server, user, {
+    garmin: deps.garmin,
+    gravl: deps.gravl,
+    homeAssistant: deps.homeAssistant,
+    notifier: deps.onActivityMutated,
+    onDetailSynced: deps.onActivityDetailSynced,
+    onTrackWritten: deps.onTrackWritten,
+    oura: deps.oura,
+    reprocessGarminPushes: deps.reprocessGarminPushes,
+    stravaQueue: deps.stravaQueue,
+    syncHomeAssistant: deps.syncHomeAssistant,
+  })
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
   registerCorrelationTools(server, user, deps.sync)
