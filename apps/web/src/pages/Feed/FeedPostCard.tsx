@@ -7,7 +7,7 @@
  * the same card renders both the viewer's own posts and (later) remote actors'.
  * `footer` carries per-post controls (Edit / Unshare) for the viewer's own posts.
  */
-import type { FeedPost, FeedPostKind, FeedVisibility } from '@aurboda/api-spec'
+import type { FeedPost, FeedPostKind, FeedPostVisibility } from '@aurboda/api-spec'
 import type { ComponentChildren, FunctionComponent } from 'preact'
 
 import { formatDistanceToNow } from 'date-fns'
@@ -45,8 +45,9 @@ export interface PostAuthor {
   profileUrl?: string
 }
 
-const VISIBILITY: Record<FeedVisibility, { icon: string; label: string }> = {
+const VISIBILITY: Record<FeedPostVisibility, { icon: string; label: string }> = {
   followers: { icon: '🔒', label: 'Followers only' },
+  participants: { icon: '👥', label: 'People in the challenge' },
   public: { icon: '🌐', label: 'Public' },
   unlisted: { icon: '🔓', label: 'Unlisted' },
 }

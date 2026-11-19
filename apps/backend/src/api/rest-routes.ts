@@ -385,7 +385,13 @@ export const mountRestRouters = ({
       tagActorHost,
     ),
   )
-  httpd.use('/challenges', createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges))
+  httpd.use(
+    '/challenges',
+    createChallengesRouter(authMiddleware, webHost, apiBaseUrl, discoverChallenges, {
+      deliver: feedDeliver,
+      isAdmin: centralDb.isAdmin,
+    }),
+  )
   httpd.use(createChallengeDataRouter())
   // Public feed series must be mounted before the generic /public/:username/:slug
   // resolver so `series` is not matched as a share slug.

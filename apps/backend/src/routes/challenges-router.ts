@@ -16,6 +16,14 @@ import {
   type ChallengeResponse,
   type ChallengesResponse,
   type ChallengeStandingsResponse,
+  type ChallengeCommentBody,
+  challengeCommentBodySchema,
+  type ChallengeThreadEntryResponse,
+  type ChallengeThreadHideBody,
+  challengeThreadHideBodySchema,
+  type ChallengeThreadQuery,
+  challengeThreadQuerySchema,
+  type ChallengeThreadResponse,
   type CreateChallengeBody,
   createChallengeBodySchema,
   type DiscoverChallengesResponse,
@@ -26,6 +34,7 @@ import {
 } from '@aurboda/api-spec'
 
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
+import type { FeedDeliver } from './feed-router.ts'
 
 import { singleUpload } from '../api/upload.ts'
 import {
@@ -57,6 +66,13 @@ import {
   toSpecFields,
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import {
+  addChallengeComment,
+  createChallengeThreadDeps,
+  getChallengeThread,
+  resolveHostedChallenge,
+  setChallengeThreadEntryHidden,
+} from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
@@ -91,8 +107,11 @@ export const createChallengesRouter = (
   webHost: string,
   apiBaseUrl: string,
   discoverChallenges: DiscoverChallenges,
+  threadOpts: { deliver?: FeedDeliver; isAdmin?: (user: string) => Promise<boolean> } = {},
 ): TypedRouter => {
   const router = typedRouter()
+  const thread = createChallengeThreadDeps({ deliver: threadOpts.deliver, webHost })
+  const isAdmin = threadOpts.isAdmin ?? (async () => false)
 
   router.get<Record<string, never>, ChallengesResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
@@ -150,6 +169,69 @@ export const createChallengesRouter = (
         }
         throw error
       }
+    },
+  )
+
+  // The comment thread, before `/:id` like the routes above.
+  router.get<Record<string, never>, ChallengeThreadResponse, unknown, ChallengeThreadQuery>(
+    '/thread',
+    authMiddleware,
+    validateQuery(challengeThreadQuerySchema),
+    async (req, res) => {
+      const resolved = await resolveHostedChallenge(webHost, req.query.challenge_url, thread.loadChallenge)
+      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
+      const view = await getChallengeThread(thread, resolved, req.user!, req.query.cursor)
+      res.setHeader('Cache-Control', 'no-store')
+      res.json({ ...view, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, ChallengeThreadEntryResponse, ChallengeCommentBody>(
+    '/thread/comments',
+    authMiddleware,
+    validateBody(challengeCommentBodySchema),
+    async (req, res) => {
+      const result = await addChallengeComment(thread, req.user!, req.body)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.status(201).json({ entry: result.entry, success: true })
+    },
+  )
+
+  router.post<{ entryId: string }, ChallengeThreadEntryResponse, ChallengeThreadHideBody>(
+    '/thread/entries/:entryId/hidden',
+    authMiddleware,
+    validateBody(challengeThreadHideBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await setChallengeThreadEntryHidden(
+        thread,
+        user,
+        await isAdmin(user),
+        req.body.challenge_url,
+        req.params.entryId,
+        true,
+      )
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ entry: result.entry, success: true })
+    },
+  )
+
+  router.delete<{ entryId: string }, ChallengeThreadEntryResponse, unknown, ChallengeThreadHideBody>(
+    '/thread/entries/:entryId/hidden',
+    authMiddleware,
+    validateQuery(challengeThreadHideBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await setChallengeThreadEntryHidden(
+        thread,
+        user,
+        await isAdmin(user),
+        req.query.challenge_url,
+        req.params.entryId,
+        false,
+      )
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ entry: result.entry, success: true })
     },
   )
 

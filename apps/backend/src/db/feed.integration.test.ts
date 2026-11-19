@@ -591,6 +591,21 @@ describe('Feed posts integration', () => {
       expect(post.include_chart).toBe(true)
       expect((await getFeedPostById(user, post.id))?.include_chart).toBe(true)
     })
+
+    test('createChallengePost stores the challenge object uri, null by default', async () => {
+      const user = getTestUser()
+      const challenge = { name: 'August 10k', url: 'https://aurboda.example/u/me/aug10k' }
+      const linked = await createChallengePost(user, {
+        challenge,
+        challenge_uri: 'https://aurboda.example/api/users/me/challenges/aug10k',
+        visibility: 'public',
+      })
+      const plain = await createChallengePost(user, { challenge, visibility: 'public' })
+      expect((await getFeedPostById(user, linked.id))?.challenge_uri).toBe(
+        'https://aurboda.example/api/users/me/challenges/aug10k',
+      )
+      expect(plain.challenge_uri).toBeNull()
+    })
   })
 
   describe('exercise posts (#1398)', () => {
@@ -763,6 +778,25 @@ describe('Feed posts integration', () => {
       const user = getTestUser()
       await createReplyPost(user, replyInput({ visibility: 'followers' }))
       expect(await listPublicFeedPosts(user)).toEqual([])
+    })
+
+    test('a participants reply keeps its challenge and never reaches the outbox listing', async () => {
+      const user = getTestUser()
+      const challengeUri = 'https://aurboda.example/api/users/me/challenges/aug10k'
+      const post = await createReplyPost(
+        user,
+        replyInput({
+          challenge_uri: challengeUri,
+          in_reply_to_uri: challengeUri,
+          visibility: 'participants',
+        }),
+      )
+      const fetched = await getFeedPostById(user, post.id)
+      expect(fetched).toMatchObject({ challenge_uri: challengeUri, visibility: 'participants' })
+      expect((await listFeedPosts(user, 10)).map((p) => p.id)).toContain(post.id)
+      expect(await listPublicFeedPosts(user)).toEqual([])
+      expect(await listPublicFeedPostsPage(user, 10, 0)).toEqual([])
+      expect(await countPublicFeedPosts(user)).toBe(0)
     })
   })
 })

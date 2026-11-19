@@ -287,7 +287,9 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
   registerChallengeTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
+    deliver: deps.feedDeliver,
     discoverChallenges: deps.discoverChallenges,
+    isAdmin: deps.centralDb?.isAdmin,
     webHost: deps.webHost,
   })
   registerScreentimeCategoryTools(server, user)

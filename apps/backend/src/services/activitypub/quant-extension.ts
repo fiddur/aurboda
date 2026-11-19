@@ -24,7 +24,7 @@
  * RSA Linked-Data signature and HTTP signatures both operate on the spliced
  * document, so they stay valid.
  */
-import type { FeedStructuredExercise, FeedVisibility } from '@aurboda/api-spec'
+import type { FeedStructuredExercise, FeedPostVisibility } from '@aurboda/api-spec'
 import type { Object as APObject } from '@fedify/fedify/vocab'
 
 import type { ScalarMetric } from './object.ts'
@@ -75,7 +75,7 @@ export interface QuantExerciseInput {
   postId: string
   /** Capability token appended for `followers`-only posts (FEP §9). */
   imageToken: string
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   activityType: string
   startTime: Date
   endTime?: Date

@@ -17,6 +17,7 @@ export const notificationTypes = [
   'feed_like',
   'feed_boost',
   'feed_post',
+  'challenge_comment',
   'autoshare_pending',
   'garmin_key_expiring',
   'reminder',
@@ -107,6 +108,12 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
       'A new post or boost from an account, or a new post in a tag, whose bell is on in your Following and Followed tags lists',
     group: 'feed',
     label: 'New posts',
+  },
+  challenge_comment: {
+    admin_only: false,
+    description: 'Someone commented in a challenge you host or take part in',
+    group: 'feed',
+    label: 'Challenge comments',
   },
   autoshare_pending: {
     admin_only: false,

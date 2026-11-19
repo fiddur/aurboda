@@ -10,6 +10,9 @@
 import type { Response } from 'express'
 
 import {
+  type ChallengeThreadResponse,
+  type PublicChallengeThreadQuery,
+  publicChallengeThreadQuerySchema,
   type QuantChallengeDocument,
   type QuantChallengeEntry,
   type QuantChallengeJoinBody,
@@ -48,8 +51,9 @@ import {
 } from '../services/challenge-quantpub.ts'
 import { echoMismatchMessage, memberEchoMatches, resolveMemberSeries } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { createChallengeThreadDeps, getChallengeThread } from '../services/challenge-thread.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
-import { validateBody } from '../validation.ts'
+import { validateBody, validateQuery } from '../validation.ts'
 
 export interface ChallengeQuantpubRouterConfig {
   webHost: string
@@ -78,6 +82,7 @@ const findChallenge = async (username: string, slug: string): Promise<ChallengeR
 export const createChallengeQuantpubRouter = (config: ChallengeQuantpubRouterConfig): TypedRouter => {
   const router = typedRouter()
   const now = config.now ?? (() => new Date())
+  const thread = createChallengeThreadDeps({ webHost: config.webHost })
   const ctx = (username: string): HostContext => ({
     apiBaseUrl: config.apiBaseUrl,
     now: now(),
@@ -210,6 +215,26 @@ export const createChallengeQuantpubRouter = (config: ChallengeQuantpubRouterCon
         // The slug is an unlisted challenge's only gate, so its standings must not linger in caches.
         res.setHeader('Cache-Control', challenge.is_public ? 'public, max-age=60' : 'no-store')
         res.json(buildStandingsDocument(challenge, standings, members, ctx(username)))
+      })
+    },
+  )
+
+  router.get<
+    { username: string; slug: string },
+    ChallengeThreadResponse,
+    unknown,
+    PublicChallengeThreadQuery
+  >(
+    '/public/:username/challenges/:slug/thread',
+    validateQuery(publicChallengeThreadQuerySchema),
+    async (req, res) => {
+      const { slug, username } = req.params
+      await orMissing(res, 'Challenge not found', async () => {
+        const challenge = await findChallenge(username, slug)
+        if (!challenge) return res.status(404).json({ error: 'Challenge not found', success: false })
+        const view = await getChallengeThread(thread, { challenge, host: username }, null, req.query.cursor)
+        res.setHeader('Cache-Control', challenge.is_public ? 'public, max-age=60' : 'no-store')
+        res.json({ ...view, success: true })
       })
     },
   )
