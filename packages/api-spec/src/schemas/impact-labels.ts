@@ -3,7 +3,7 @@
  * around its sessions). Shared by the web Analyze page and article block and the
  * backend's server-side impact image, so the two read the same.
  */
-import type { ImpactBucket, WindowEffect } from './correlations.ts'
+import type { ActivityImpactType, ImpactBucket, WindowEffect } from './correlations.ts'
 
 export const IMPACT_WINDOW_OPTIONS = [30, 60, 120, 240, 480, 720, 1440] as const
 export const DEFAULT_IMPACT_WINDOW_MINUTES = 30
@@ -40,3 +40,7 @@ export const impactEffectSummary = (
 }
 
 export const articleImpactLabel = (block: { activity: string }): string => `Impact of ${block.activity}`
+
+/** What to call an impact activity: a meal sensitivity's activity reads `meals with <flag name>`. */
+export const impactActivityLabel = (activityType: ActivityImpactType, name: string): string =>
+  activityType === 'meal_sensitivity' ? `meals with ${name}` : name

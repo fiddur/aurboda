@@ -26,6 +26,7 @@ export const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = [
   'nutrition',
   'productivity_category',
   'productivity_app',
+  'sensitivity',
 ]
 
 function SensitivityFlagSelect({

@@ -26,7 +26,7 @@ import { quantChallengeDocumentSchema, quantStandingsSchema } from './challenges
 import { challengeResultSchema } from './challenges.ts'
 import { iso8601DateTimeSchema } from './common.ts'
 import {
-  articleImpactTypeSchema,
+  activityImpactTypeSchema,
   alignedPointSchema,
   groupComparisonSchema,
   impactBucketSchema,
@@ -249,6 +249,10 @@ export const feedStructuredArticleCorrelationBlockSchema = z
   .object({
     caption: z.string().optional().meta({ description: 'Optional caption' }),
     end: iso8601DateTimeSchema.meta({ description: "Block's locked window end (ISO 8601)" }),
+    flag_names: z.record(z.string(), z.string()).optional().meta({
+      description:
+        'Names of the sensitivity flags its selectors use, by flag id; absent when neither selector is a sensitivity',
+    }),
     group_comparison: groupComparisonSchema
       .nullable()
       .meta({ description: 'Present-vs-absent group comparison; null when there is no split to compare' }),
@@ -298,7 +302,11 @@ export type FeedStructuredArticleChallengeBlock = z.infer<typeof feedStructuredA
 export const feedStructuredArticleImpactBlockSchema = z
   .object({
     activity: z.string().meta({ description: 'The activity grouping key, matched exactly' }),
-    activity_type: articleImpactTypeSchema,
+    activity_label: z.string().optional().meta({
+      description:
+        'What to call the activity; set for `meal_sensitivity`, whose `activity` is a flag id (e.g. "meals with gluten")',
+    }),
+    activity_type: activityImpactTypeSchema,
     avg_duration_min: z.number().meta({ description: 'Average session duration in minutes' }),
     caption: z.string().optional().meta({ description: 'Optional caption' }),
     end: iso8601DateTimeSchema.meta({ description: "Block's locked window end (ISO 8601)" }),

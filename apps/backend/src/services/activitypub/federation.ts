@@ -78,6 +78,7 @@ import {
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
+import { articleFlagNames } from '../article.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { notifier } from '../notifications.ts'
 import { buildProfileUrl } from '../share-urls.ts'
@@ -1275,7 +1276,10 @@ export const createFeedFederation = (
       // An article and an activity share this Note id (a post is one or the
       // other). An article's Note is built from its stored content — no activity.
       const article = toDeliverableArticle(post)
-      if (article != null) return buildArticleNote(ctx, identifier, article, apiBaseUrl)
+      if (article != null) {
+        const flagNames = await articleFlagNames(identifier, article.article.blocks)
+        return buildArticleNote(ctx, identifier, article, apiBaseUrl, flagNames)
+      }
       const challenge = toDeliverableChallenge(post)
       if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
       const exercise = toDeliverableExercise(post)
@@ -1349,7 +1353,10 @@ export const createFeedFederation = (
             // (no linked activity); every other post as `Create{Note}` from its
             // resolved activity.
             const article = toDeliverableArticle(post)
-            if (article != null) return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl)
+            if (article != null) {
+              const flagNames = await articleFlagNames(identifier, article.article.blocks)
+              return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl, flagNames)
+            }
             const challenge = toDeliverableChallenge(post)
             if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)
             const exercise = toDeliverableExercise(post)

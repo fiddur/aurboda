@@ -39,7 +39,10 @@ and 0 when no meal carried the flag; any other day is unknown, not 0. Its
 complete days (`nutrition_completeness: "complete_only"`, `n_complete`) are the
 days marked meal log completed. The selector stores the flag id, so a renamed
 flag keeps its correlations; the axis label resolves the name ("Meals with
-gluten (count)"). See [Meal sensitivities](features/correlations.md#meal-sensitivities).
+gluten (count)"). An article correlation block may use a `sensitivity` selector too;
+readers see the flag's name, and the article answers warn about it without refusing it
+(see [Sharing warnings](features/feed.md#sharing-warnings)). See
+[Meal sensitivities](features/correlations.md#meal-sensitivities).
 
 `tag` and `activity` both match `activity_type` by regex and behave identically —
 tags were long ago merged into activities. The API still accepts both for
@@ -335,7 +338,8 @@ stress }`: the before buckets oldest first, then `during`, then the after
   given together) fix the analysed period instead of the last `period_days`
   days: `start` inclusive, `end` exclusive. One without the other, or a `start`
   not before `end`, is a 400 (an error from the MCP tool). An article's impact
-  block uses this with `match=exact` and its own window.
+  block uses this with `match=exact` and its own window; one of
+  `meal_sensitivity` is labelled "Impact of meals with <flag name>".
 - `GET /correlations/impact-metrics?period_days=30` and MCP
   `get_impact_metrics`: the metrics dense enough to pass as `metrics`.
 

@@ -6,6 +6,8 @@
  */
 import type { ActivityImpactType, CorrelationSelector } from '@aurboda/api-spec'
 
+import { impactActivityLabel } from '@aurboda/api-spec'
+
 import type { MetricType } from '../schema.ts'
 import type { ImpactSvgData } from './charts/impact-svg.ts'
 import type { ScatterSvgData } from './charts/scatter-svg.ts'
@@ -103,10 +105,27 @@ export interface ImpactBlockParams {
 /**
  * An article impact block's numbers over its locked window (`start` inclusive,
  * `end` exclusive), matching the activity exactly. Starts no freshness sync: a
- * public render must not trigger the author's syncs.
+ * public render must not trigger the author's syncs. `activity` is what to call
+ * it: a meal sensitivity reads `meals with <flag name>`.
  */
-export const getArticleImpact = (
+export const getArticleImpact = async (
   user: string,
   { activity, activityType, end, start, windowMinutes }: ImpactBlockParams,
-): Promise<ImpactSvgData> =>
-  getActivityImpact(user, activity, activityType, windowMinutes, 90, undefined, end, start, 'exact')
+): Promise<ImpactSvgData> => {
+  const impact = await getActivityImpact(
+    user,
+    activity,
+    activityType,
+    windowMinutes,
+    90,
+    undefined,
+    end,
+    start,
+    'exact',
+  )
+  const flagGone = activityType === 'meal_sensitivity' && impact.activity === activity
+  return {
+    ...impact,
+    activity: impactActivityLabel(activityType, flagGone ? 'a sensitivity flag' : impact.activity),
+  }
+}
