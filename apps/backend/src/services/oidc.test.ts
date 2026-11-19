@@ -164,6 +164,8 @@ const setup = ({
   const startEmailVerification = vi.fn()
   const discardAccount = vi.fn(async (_username: string) => {})
   const audit = vi.fn(async (_username: string, _message: string, _details?: Record<string, unknown>) => {})
+  const notifyAdminsOfSignup = vi.fn((_username: string) => {})
+  const notifyAdminsOfUnfinishedSignup = vi.fn((_username: string) => {})
   const deps: OidcServiceDeps = {
     audit,
     createAccount,
@@ -176,6 +178,8 @@ const setup = ({
     } as never,
     log: { error: vi.fn(), warn: vi.fn() },
     loginMethods: vi.fn(async () => loginMethods),
+    notifyAdminsOfSignup,
+    notifyAdminsOfUnfinishedSignup,
     now: () => new Date(clock),
     randomToken: () => `random-${++counter}`,
     redirectUri: REDIRECT,
@@ -209,6 +213,8 @@ const setup = ({
     discardAccount,
     exchange,
     memory,
+    notifyAdminsOfSignup,
+    notifyAdminsOfUnfinishedSignup,
     service,
     startAndCallback,
     startEmailVerification,
@@ -490,6 +496,7 @@ describe('OIDC flow service', () => {
       expect(createAccount).toHaveBeenCalledWith({
         display_name: 'Ada',
         invitation: undefined,
+        notify_admins: false,
         password: expect.any(String),
         username: 'ada',
       })
@@ -550,6 +557,32 @@ describe('OIDC flow service', () => {
       })
     })
 
+    test('a linked sign-up notifies the admins once', async () => {
+      const { service, startAndCallback, notifyAdminsOfSignup, notifyAdminsOfUnfinishedSignup, verifier } =
+        signupSetup()
+      const code = fragmentCode(await startAndCallback())
+      await service.signup({ code, username: 'ada', verifier: verifier() })
+      expect(notifyAdminsOfSignup).toHaveBeenCalledTimes(1)
+      expect(notifyAdminsOfSignup).toHaveBeenCalledWith('ada')
+      expect(notifyAdminsOfUnfinishedSignup).not.toHaveBeenCalled()
+    })
+
+    test('a rolled-back sign-up notifies nobody', async () => {
+      const {
+        service,
+        startAndCallback,
+        memory,
+        notifyAdminsOfSignup,
+        notifyAdminsOfUnfinishedSignup,
+        verifier,
+      } = signupSetup()
+      const code = fragmentCode(await startAndCallback())
+      memory.store.insertOidcLink.mockImplementationOnce(async () => null)
+      await service.signup({ code, username: 'ada', verifier: verifier() })
+      expect(notifyAdminsOfSignup).not.toHaveBeenCalled()
+      expect(notifyAdminsOfUnfinishedSignup).not.toHaveBeenCalled()
+    })
+
     test('a link insert that throws rolls the new account back', async () => {
       const { service, startAndCallback, memory, discardAccount, verifier } = signupSetup()
       const code = fragmentCode(await startAndCallback())
@@ -562,8 +595,17 @@ describe('OIDC flow service', () => {
       expect(discardAccount).toHaveBeenCalledWith('ada')
     })
 
-    test('a failed rollback keeps the account, audits it and still refuses the sign-up', async () => {
-      const { service, startAndCallback, memory, discardAccount, audit, verifier } = signupSetup()
+    test('a failed rollback keeps the account, audits it, tells the admins and still refuses the sign-up', async () => {
+      const {
+        service,
+        startAndCallback,
+        memory,
+        discardAccount,
+        audit,
+        notifyAdminsOfSignup,
+        notifyAdminsOfUnfinishedSignup,
+        verifier,
+      } = signupSetup()
       const code = fragmentCode(await startAndCallback())
       memory.store.insertOidcLink.mockImplementationOnce(async () => null)
       discardAccount.mockRejectedValueOnce(new Error('drop failed'))
@@ -576,6 +618,9 @@ describe('OIDC flow service', () => {
       expect(audit).toHaveBeenCalledWith('ada', expect.stringContaining('could not link'), {
         provider_id: 'google',
       })
+      expect(notifyAdminsOfUnfinishedSignup).toHaveBeenCalledTimes(1)
+      expect(notifyAdminsOfUnfinishedSignup).toHaveBeenCalledWith('ada')
+      expect(notifyAdminsOfSignup).not.toHaveBeenCalled()
       expect(await service.signup({ code, username: 'ada2', verifier: verifier() })).toMatchObject({
         ok: false,
         status: 400,

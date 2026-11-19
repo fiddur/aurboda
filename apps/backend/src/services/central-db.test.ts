@@ -8,6 +8,8 @@ import {
   type CentralDb,
   getCentralDb,
   type SignupMode,
+  signupEnvNotice,
+  signupEnvWarning,
   signupModeFromEnv,
 } from './central-db.ts'
 
@@ -118,10 +120,65 @@ describe('central-db', () => {
     test.each([
       ['false', 'closed'],
       ['0', 'closed'],
+      ['no', 'closed'],
+      ['off', 'closed'],
+      [' FALSE ', 'closed'],
       ['true', 'open'],
+      ['1', 'open'],
+      ['Yes', 'open'],
+      ['ON', 'open'],
+      [' true\n', 'open'],
+      ['', 'open'],
       [undefined, 'open'],
-    ] as const)('ALLOW_SIGNUP=%s starts a fresh install %s', (env, mode) => {
+      ['nope', 'closed'],
+    ] as const)('ALLOW_SIGNUP=%j starts a fresh install %s', (env, mode) => {
       expect(signupModeFromEnv(env)).toBe(mode)
+    })
+  })
+
+  describe('signupEnvWarning', () => {
+    test.each([undefined, '', 'true', 'FALSE', ' off ', '1', '0', 'yes', 'no', 'on'])(
+      'accepts ALLOW_SIGNUP=%j silently',
+      (env) => {
+        expect(signupEnvWarning(env)).toBeNull()
+      },
+    )
+
+    test('names the accepted values for an unrecognised value', () => {
+      const warning = signupEnvWarning('nope')
+      expect(warning).toContain('ALLOW_SIGNUP=nope')
+      expect(warning).toContain('true, 1, yes, on')
+      expect(warning).toContain('false, 0, no, off')
+    })
+  })
+
+  describe('signupEnvNotice', () => {
+    test('says nothing when the variable is unset', () => {
+      expect(signupEnvNotice(undefined, false, 'closed')).toBeNull()
+    })
+
+    test('says nothing on a fresh install', () => {
+      expect(signupEnvNotice('false', true, 'closed')).toBeNull()
+    })
+
+    test.each([
+      ['true', 'open'],
+      ['false', 'closed'],
+      ['nope', 'closed'],
+    ] as const)('says nothing when ALLOW_SIGNUP=%s agrees with the stored %s mode', (env, stored) => {
+      expect(signupEnvNotice(env, false, stored)).toBeNull()
+    })
+
+    test('names both the variable and the stored mode when they differ', () => {
+      expect(signupEnvNotice('false', false, 'open')).toBe(
+        'ALLOW_SIGNUP=false is ignored: signups are open in the admin settings, which decide after the first start.',
+      )
+      expect(signupEnvNotice('true', false, 'closed')).toContain('signups are closed in the admin settings')
+    })
+
+    test('treats invitation only as differing from both open and closed', () => {
+      expect(signupEnvNotice('true', false, 'invite_only')).toContain('by invitation only')
+      expect(signupEnvNotice('false', false, 'invite_only')).toContain('by invitation only')
     })
   })
 

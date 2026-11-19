@@ -207,7 +207,7 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
-import { notificationStore, notifier } from './services/notifications.ts'
+import { notificationStore, notifier, notifyAdminsOfUnfinishedSignup } from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -719,6 +719,12 @@ const main = async () => {
       discover: createDiscoveryCache(oidcClient),
       invitationAuth,
       loginMethods,
+      notifyAdminsOfSignup: signupDeps.notifyAdmins,
+      notifyAdminsOfUnfinishedSignup: (user) =>
+        void notifyAdminsOfUnfinishedSignup({
+          getAdmins: centralDb.getAdmins,
+          raiseBestEffort: notifier.raiseBestEffort,
+        })(user),
       redirectUri: oidcRedirect,
       startEmailVerification,
       store: centralDb,
