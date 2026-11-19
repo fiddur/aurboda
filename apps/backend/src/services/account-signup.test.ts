@@ -52,6 +52,14 @@ describe('createAccount', () => {
     expect(deps.centralDb.addAdmin).not.toHaveBeenCalled()
   })
 
+  test("leaves the admins' notice to a caller that asks to send it itself", async () => {
+    const deps = setup()
+    expect(
+      await createAccount(deps, { notify_admins: false, password: 'pw', username: 'ada' }),
+    ).toMatchObject({ ok: true })
+    expect(deps.notifyAdmins).not.toHaveBeenCalled()
+  })
+
   test('the first user becomes admin', async () => {
     const deps = setup({ admins: 0 })
     expect(await createAccount(deps, { password: 'pw', username: 'ada' })).toMatchObject({ is_admin: true })

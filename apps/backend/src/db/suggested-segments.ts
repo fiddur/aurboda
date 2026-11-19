@@ -287,6 +287,22 @@ export const settleSuggestedSegmentClaim = async (
   )
 }
 
+export const STALE_CLAIM_MINUTES = 10
+
+/**
+ * Makes pending again every suggestion claimed more than ten minutes ago that never got its
+ * segment: the process that claimed it died before settling.
+ */
+export const releaseStaleSuggestedSegmentClaims = async (user: string): Promise<void> => {
+  await query(
+    user,
+    `UPDATE suggested_segments SET status = 'pending', decided_at = NULL
+     WHERE status = 'promoted' AND segment_id IS NULL
+       AND decided_at < NOW() - make_interval(mins => $1)`,
+    [STALE_CLAIM_MINUTES],
+  )
+}
+
 /** Dismisses or promotes a pending suggestion; false when there is none pending with this id. */
 export const decideSuggestedSegment = async (
   user: string,

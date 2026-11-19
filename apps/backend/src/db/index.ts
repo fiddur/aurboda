@@ -116,6 +116,7 @@ export {
 } from './flagged-windows.ts'
 
 export {
+  type DeletedRuleActivities,
   deleteDeductionRule,
   deleteRuleActivities,
   deleteStaleRuleActivities,

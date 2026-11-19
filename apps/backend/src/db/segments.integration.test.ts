@@ -22,6 +22,7 @@ import {
   getSegmentById,
   getSegmentLine,
   getTimingTrack,
+  hasSegments,
   insertSegment,
   listActivitySegmentEfforts,
   listSegmentEfforts,
@@ -371,8 +372,10 @@ describe('Segments integration', () => {
   describe('list, rename and delete', () => {
     test('lists by type and order, renames, and deletes with the efforts', async () => {
       const user = getTestUser()
+      expect(await hasSegments(user)).toBe(false)
       const first = await addTrackedActivity(L_SHAPE)
       const segment = await cutFirstLeg(first)
+      expect(await hasSegments(user)).toBe(true)
       const wkt = 'LINESTRING(18.2 59.4, 18.21 59.4)'
       const quiet = await insertSegment(user, { activity_type: 'walking', name: 'A walk', wkt })
 

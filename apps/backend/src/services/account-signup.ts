@@ -59,6 +59,8 @@ export interface AccountSignupInput extends SignupProfile {
   username: string
   password: string
   invitation?: string
+  /** False for a caller that can still discard the account and so sends the admins' notice itself. */
+  notify_admins?: boolean
 }
 
 export type AccountSignupResult =
@@ -126,7 +128,7 @@ export const createAccount = async (
     isAdmin = true
     log.info(`First user ${username} automatically made admin`)
   }
-  deps.notifyAdmins(username)
+  if (input.notify_admins !== false) deps.notifyAdmins(username)
 
   return { is_admin: isAdmin, ok: true, token, username }
 }

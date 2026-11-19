@@ -95,6 +95,7 @@ const makeDeps = (overrides: Partial<SuggestedSegmentDeps> = {}): SuggestedSegme
   listUnscannedTrackedActivities: vi.fn(async () => []),
   markSuggestionsScanned: vi.fn(async () => undefined),
   now: () => 0,
+  releaseStaleSuggestedSegmentClaims: vi.fn(async () => undefined),
   segment: segmentDeps(),
   settleSuggestedSegmentClaim: vi.fn(async () => undefined),
   suggestedSegmentLine: vi.fn(async () => ({ line: segmentLine(), ok: true as const })),
@@ -231,6 +232,7 @@ describe('listSuggestedSegmentsWithNames', () => {
         source_activity_id: 'a1',
       },
     ])
+    expect(deps.releaseStaleSuggestedSegmentClaims).toHaveBeenCalledWith('u')
   })
 })
 
@@ -267,6 +269,23 @@ describe('promoteSuggestedSegment', () => {
     const deps = makeDeps({ suggestedSegmentLine: vi.fn(async () => Promise.reject(new Error('db down'))) })
     await expect(promoteSuggestedSegment('u', 'sug1', {}, deps)).rejects.toThrow('db down')
     expect(deps.settleSuggestedSegmentClaim).toHaveBeenCalledWith('u', 'sug1', null)
+  })
+
+  test('a failure while linking the segment gives the claim back and rethrows', async () => {
+    const settle = vi.fn(async (_u: string, _id: string, segmentId: string | null) => {
+      if (segmentId) throw new Error('db down')
+    })
+    const deps = makeDeps({ settleSuggestedSegmentClaim: settle })
+    await expect(promoteSuggestedSegment('u', 'sug1', {}, deps)).rejects.toThrow('db down')
+    expect(settle.mock.calls.map((c) => c[2])).toEqual(['seg1', null])
+  })
+
+  test('stale claims are released before claiming', async () => {
+    const deps = makeDeps()
+    await promoteSuggestedSegment('u', 'sug1', {}, deps)
+    expect(vi.mocked(deps.releaseStaleSuggestedSegmentClaims).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(deps.claimSuggestedSegment).mock.invocationCallOrder[0]!,
+    )
   })
 
   test('refusals carry the sentence and make the suggestion pending again', async () => {

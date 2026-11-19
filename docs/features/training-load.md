@@ -50,7 +50,7 @@ What marks stored hours dirty (moves `training_load.impulse_watermark` back to t
 
 - new heart rate data, through the active calories computed from it;
 - adding, editing (type, times or data), deleting, merging or restoring a workout through the app, the API or MCP, including retyping a session into or out of a workout type;
-- deduction rules that create, retype or remove a workout session;
+- deduction rules that create, retype or remove a workout session, including the workouts a rule created being deleted when the rule is deleted, disabled or re-evaluated after an edit;
 - activity type changes that make a type a workout type or stop it being one (a category change, a merge, a rename or a delete), from that type's first session.
 
 Bulk inserts by the sync integrations do not mark hours by themselves: synced workouts arrive with heart rate or calorie data, which marks them.

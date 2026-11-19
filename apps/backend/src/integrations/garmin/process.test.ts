@@ -333,6 +333,30 @@ describe('processGarminData', () => {
       expect(mockDeps.auditWarn).not.toHaveBeenCalled()
     })
 
+    test.each(['', '   '])('a blank answer (%j) is neither stored nor warned about', async (data) => {
+      expect(await processGarminData(user, 'hrv', data, mockDeps, '2026-01-02')).toBe(0)
+      expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
+      expect(mockDeps.auditWarn).not.toHaveBeenCalled()
+    })
+
+    test('an unexpected scalar answer is stored as an object under the requested date', async () => {
+      expect(await processGarminData(user, 'hrv', 'Service unavailable', mockDeps, '2026-01-02')).toBe(0)
+
+      expect(mockDeps.insertRawRecord).toHaveBeenCalledWith(user, {
+        data: { value: 'Service unavailable' },
+        external_id: 'garmin-hrv-2026-01-02',
+        record_type: 'garmin_hrv',
+        recorded_at: noonUTC('2026-01-02'),
+        source: 'garmin',
+      })
+      expect(mockDeps.auditWarn).toHaveBeenCalledWith(
+        user,
+        'sync',
+        expect.stringContaining('payload not recognised'),
+        expect.objectContaining({ data_type: 'hrv', date: '2026-01-02' }),
+      )
+    })
+
     test('returns 1 on success', async () => {
       expect(
         await processGarminData(user, 'hrv', { calendarDate: '2025-01-15', lastNightAvg: 42 }, mockDeps),
@@ -1432,6 +1456,12 @@ describe('processGarminData', () => {
       expect(mockDeps.auditWarn).not.toHaveBeenCalled()
     })
 
+    test.each(['', '  ', null])('a blank answer (%j) is neither stored nor warned about', async (data) => {
+      expect(await processGarminData(user, 'trainingReadiness', data, mockDeps, '2025-01-15')).toBe(0)
+      expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
+      expect(mockDeps.auditWarn).not.toHaveBeenCalled()
+    })
+
     test('without any date it returns 0 and warns', async () => {
       expect(await processGarminData(user, 'trainingReadiness', { overallScore: 72 }, mockDeps)).toBe(0)
       expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
@@ -1576,6 +1606,12 @@ describe('processGarminData', () => {
         expect.any(String),
         expect.objectContaining({ data_type: 'intensityMinutes' }),
       )
+    })
+
+    test('a blank answer is neither stored nor warned about', async () => {
+      expect(await processGarminData(user, 'intensityMinutes', '', mockDeps, '2025-01-15')).toBe(0)
+      expect(mockDeps.insertRawRecord).not.toHaveBeenCalled()
+      expect(mockDeps.auditWarn).not.toHaveBeenCalled()
     })
 
     test('returns 1 on success', async () => {

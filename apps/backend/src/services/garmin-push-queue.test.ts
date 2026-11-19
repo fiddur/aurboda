@@ -7,6 +7,7 @@ import {
   garminReprocessSince,
   inProcessGarminPushQueue,
   reprocessGarminPushes,
+  runGarminPushJob,
 } from './garmin-push-queue.ts'
 
 const NOW = new Date('2026-11-18T12:00:00Z')
@@ -89,5 +90,49 @@ describe('inProcessGarminPushQueue', () => {
     await queue.enqueue({ records: [], user: 'carol' })
     await vi.waitFor(() => expect(order).toEqual(['alice', 'bob', 'carol']))
     expect(errors).toHaveLength(1)
+  })
+})
+
+describe('runGarminPushJob', () => {
+  const data: GarminPushJob = {
+    records: [
+      { external_id: 'sl-1', type: 'sleeps' },
+      { external_id: 'sd-1', type: 'dailies' },
+      { external_id: 'sd-2', type: 'dailies' },
+    ],
+    user: 'alice',
+  }
+  const run = (retryCount: number, process: (job: GarminPushJob) => Promise<void>) => {
+    const audit = vi.fn()
+    const result = runGarminPushJob({ data, id: 'job-1', retryCount, retryLimit: 3 }, process, audit)
+    return { audit, result }
+  }
+  const failing = async () => {
+    throw new Error('boom')
+  }
+
+  test('runs the job and audits nothing when it succeeds', async () => {
+    const process = vi.fn(async (_job: GarminPushJob) => {})
+    const { audit, result } = run(3, process)
+    await result
+    expect(process).toHaveBeenCalledWith(data)
+    expect(audit).not.toHaveBeenCalled()
+  })
+
+  test('rethrows an attempt with retries left without auditing', async () => {
+    const { audit, result } = run(2, failing)
+    await expect(result).rejects.toThrow('boom')
+    expect(audit).not.toHaveBeenCalled()
+  })
+
+  test('audits the final failure with the data types and job id, never the records, and rethrows', async () => {
+    const { audit, result } = run(3, failing)
+    await expect(result).rejects.toThrow('boom')
+    expect(audit).toHaveBeenCalledExactlyOnceWith(
+      'alice',
+      'sync',
+      'Garmin push processing failed after its last retry',
+      { attempts: 4, data_types: ['dailies', 'sleeps'], error: 'boom', job_id: 'job-1', record_count: 3 },
+    )
   })
 })

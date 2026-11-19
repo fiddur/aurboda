@@ -413,9 +413,12 @@ export const updateAdminSettingsBodySchema = z
       .trim()
       .max(320)
       .refine(
-        (value) => value === '' || /^(?:[^@\s<>]+@[^@\s<>]+|[^<>]*<[^@\s<>]+@[^@\s<>]+>)$/.test(value),
+        (value) =>
+          value === '' ||
+          (!/[,;]/.test(value) && /^(?:[^@\s<>]+@[^@\s<>]+|[^<>]*<[^@\s<>]+@[^@\s<>]+>)$/.test(value)),
         {
-          message: 'A sender address, e.g. no-reply@example.org or Aurboda <no-reply@example.org>',
+          message:
+            'A single sender address without commas or semicolons, e.g. no-reply@example.org or Aurboda <no-reply@example.org>',
         },
       )
       .nullable()

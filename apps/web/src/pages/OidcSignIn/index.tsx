@@ -8,8 +8,14 @@ import {
   fetchOidcSignupInfo,
   oidcSignup,
 } from '../../state/api'
-import { auth } from '../../state/auth'
-import { codeFromHash, loginReturningTo, takeOidcVerifier } from '../../utils/oidc'
+import { auth, logout } from '../../state/auth'
+import {
+  codeFromHash,
+  isUnauthorized,
+  linkPageForRetry,
+  loginReturningTo,
+  takeOidcVerifier,
+} from '../../utils/oidc'
 import { apiErrorText } from '../../utils/profile'
 import '../Login/style.css'
 import '../Signup/style.css'
@@ -232,7 +238,15 @@ function LinkOidcSignedIn() {
     if (!code || !verifier) return
     completeOidcLink(code, verifier)
       .then(() => route('/settings?oidc=linked#sign-in-providers', true))
-      .catch((err: unknown) => setError(apiErrorMessage(err, 'The provider could not be linked.')))
+      .catch((err: unknown) => {
+        if (!isUnauthorized(err)) {
+          setError(apiErrorMessage(err, 'The provider could not be linked.'))
+          return
+        }
+        // Signing out re-renders LinkOidc as LinkOidcSignedOut, which logs in and returns here.
+        history.replaceState(null, '', linkPageForRetry(code, verifier, window.location))
+        logout()
+      })
   }, [code])
 
   return (

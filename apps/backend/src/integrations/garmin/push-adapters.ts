@@ -15,6 +15,8 @@ import type { GarminDataType } from './process.ts'
 export interface GarminPushTypeInfo {
   /** The pull data types this summary type fills; a user who disabled them all gets nothing stored. */
   feeds: GarminDataType[]
+  /** Data types the summary also writes points for without vouching for them, so the automatic pull keeps them. */
+  sideFeeds?: GarminDataType[]
 }
 
 const rawOnly: GarminPushTypeInfo = { feeds: [] }
@@ -38,7 +40,7 @@ export const garminPushTypes: Record<string, GarminPushTypeInfo> = {
   moveIQActivities: rawOnly,
   pulseox: { feeds: ['spo2'] },
   skinTemp: rawOnly,
-  sleeps: { feeds: ['sleep'] },
+  sleeps: { feeds: ['sleep'], sideFeeds: ['spo2'] },
   stressDetails: { feeds: ['stress', 'bodyBattery'] },
   userMetrics: rawOnly,
 }
@@ -49,11 +51,16 @@ export const garminPushLifecycleTypes = ['deregistrations', 'userPermissionsChan
 export const garminPushFeeds = (type: string): GarminDataType[] =>
   (Object.hasOwn(garminPushTypes, type) ? garminPushTypes[type]?.feeds : undefined) ?? []
 
+export const garminPushSideFeeds = (type: string): GarminDataType[] =>
+  (Object.hasOwn(garminPushTypes, type) ? garminPushTypes[type]?.sideFeeds : undefined) ?? []
+
 export interface GarminPushAdapted {
   /** Payloads for `processGarminData`, each under the pull data type it reads as. */
   garmin: { dataType: GarminDataType; data: unknown }[]
   /** Points written directly, for types the pull processors keep only as a daily figure. */
   points: TimeSeriesPoint[]
+  /** Points that belong to one data type, written only while that type is enabled. */
+  feedPoints?: { dataType: GarminDataType; points: TimeSeriesPoint[] }[]
 }
 
 const NOTHING: GarminPushAdapted = { garmin: [], points: [] }
@@ -225,8 +232,10 @@ const adaptSleeps = (item: Item): GarminPushAdapted => {
   const calendarDate = isCalendarDate(item.calendarDate) ? item.calendarDate : utcDate((end ?? start) * 1000)
   if (!calendarDate) return NOTHING
   const score = sleepScore(item.overallSleepScore)
+  const spo2 = samplePoints('spo2', offsetSamples(item.timeOffsetSleepSpo2, start))
 
   return {
+    ...(spo2.length > 0 ? { feedPoints: [{ dataType: 'spo2' as const, points: spo2 }] } : {}),
     garmin: [
       {
         data: {

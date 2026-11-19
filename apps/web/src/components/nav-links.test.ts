@@ -33,6 +33,8 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/data-sources')).toBe('Data Sources')
     expect(pageTitleForPath('/settings')).toBe('Settings')
     expect(pageTitleForPath('/help')).toBe('Help & support')
+    expect(pageTitleForPath('/reminders')).toBe('Reminders')
+    expect(pageTitleForPath('/audit-log')).toBe('Audit log')
   })
 
   test('ignores the query string, hash and a trailing slash', () => {

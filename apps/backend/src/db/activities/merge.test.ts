@@ -385,6 +385,27 @@ describe('blendData — sets imported from Garmin never hide logged sets', () =>
     })
     expect(blendData({ sets_source: 'garmin' }, { sets: logged })).toEqual({ sets: logged })
   })
+
+  test('garmin_sets_origin travels with the garmin sets that win', () => {
+    const fit = { garmin_sets_origin: 'fit', sets: fromGarmin, sets_source: 'garmin' }
+    expect(blendData({ average_hr: 120 }, fit)).toEqual({ average_hr: 120, ...fit })
+    expect(blendData(fit, { average_hr: 120 })).toEqual({ average_hr: 120, ...fit })
+  })
+
+  test('garmin_sets_origin is dropped when logged sets win', () => {
+    const fit = { garmin_sets_origin: 'fit', sets: fromGarmin, sets_source: 'garmin' }
+    expect(blendData({ sets: logged }, fit)).toEqual({ sets: logged })
+    expect(blendData(fit, { sets: logged })).toEqual({ sets: logged })
+  })
+
+  test('garmin_sets_origin is absent when the winning garmin sets carry none', () => {
+    const fit = { garmin_sets_origin: 'fit', sets: fromGarmin, sets_source: 'garmin' }
+    const later = [{ exercise: 'Barbell Bench Press', reps: 9 }]
+    expect(blendData(fit, { sets: later, sets_source: 'garmin' })).toEqual({
+      sets: later,
+      sets_source: 'garmin',
+    })
+  })
 })
 
 describe('blendGroupData — a session logged in Aurboda next to the watch (#1777)', () => {

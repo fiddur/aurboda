@@ -17,7 +17,6 @@ import type { DeductionQueue } from '../services/deduction-queue.ts'
 import {
   activityTypeExists,
   deleteDeductionRule,
-  deleteRuleActivities,
   ensureActivityType,
   getDeductionRule,
   getDeductionRules,
@@ -28,6 +27,7 @@ import {
 import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
+import { removeRuleActivities } from '../services/deduction-rule-activities.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -185,7 +185,7 @@ export const createDeductionRulesRouter = (
           cleanup_rule_ids: [id],
         })
       } else if (!updated.enabled) {
-        await deleteRuleActivities(user, id)
+        await removeRuleActivities(user, id)
       }
 
       res.json({ data: updated, success: true })
@@ -196,7 +196,7 @@ export const createDeductionRulesRouter = (
     const { id } = req.params
     const user = req.user!
 
-    await deleteRuleActivities(user, id)
+    await removeRuleActivities(user, id)
 
     const deleted = await deleteDeductionRule(user, id)
     if (!deleted) {

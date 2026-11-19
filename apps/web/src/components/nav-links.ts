@@ -221,7 +221,6 @@ const OTHER_PAGE_TITLES = [
   { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
   { href: '/notifications', label: 'Notifications' },
-  { href: '/reminders', label: 'Reminders' },
   { href: '/strength', label: 'Strength session' },
   { href: '/strength/plan', label: 'Strength plan' },
   HELP_LINK,
@@ -238,6 +237,7 @@ const PAGE_TITLES: { href: string; title: string }[] = [
     href: l.path,
     label: l.label,
   })),
+  ...APP_ONLY_LINKS,
   ...OTHER_PAGE_TITLES,
 ].map((l) => ({ href: l.href, title: l.label.replace(/^\+\s*/, '') }))
 

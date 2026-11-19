@@ -12,6 +12,7 @@ import type { GarminPushJob, GarminPushRecordRef } from '../integrations/garmin/
 import type { PgBoss } from './pg-boss.ts'
 
 import { createSerialQueue, garminPushTypeOfRecordType } from '../integrations/garmin/push.ts'
+import { auditError } from './audit-log.ts'
 
 export const GARMIN_PUSH_QUEUE = 'garmin-push-process'
 
@@ -36,6 +37,35 @@ export const chunkGarminPushJob = (
   return chunks
 }
 
+export interface GarminPushJobRun {
+  id: string
+  data: GarminPushJob
+  retryCount: number
+  retryLimit: number
+}
+
+/** A failure on the attempt that used the last retry is audited for the user, then rethrown so pg-boss marks the job failed. */
+export const runGarminPushJob = async (
+  job: GarminPushJobRun,
+  process: (job: GarminPushJob) => Promise<void>,
+  audit: typeof auditError = auditError,
+): Promise<void> => {
+  try {
+    await process(job.data)
+  } catch (error) {
+    if (job.retryCount >= job.retryLimit) {
+      audit(job.data.user, 'sync', 'Garmin push processing failed after its last retry', {
+        attempts: job.retryCount + 1,
+        data_types: [...new Set(job.data.records.map((r) => r.type))].sort(),
+        error: error instanceof Error ? error.message : String(error),
+        job_id: job.id,
+        record_count: job.data.records.length,
+      })
+    }
+    throw error
+  }
+}
+
 /* v8 ignore start -- requires real pg-boss instance */
 export const createGarminPushQueue = async (
   boss: PgBoss,
@@ -46,9 +76,9 @@ export const createGarminPushQueue = async (
   // One job per fetch and one worker: a throwing job is retried alone, with backoff.
   await boss.work<GarminPushJob>(
     GARMIN_PUSH_QUEUE,
-    { batchSize: 1, localConcurrency: 1, pollingIntervalSeconds: 2 },
+    { batchSize: 1, includeMetadata: true, localConcurrency: 1, pollingIntervalSeconds: 2 },
     async ([job]) => {
-      if (job) await process(job.data)
+      if (job) await runGarminPushJob(job, process)
     },
   )
 

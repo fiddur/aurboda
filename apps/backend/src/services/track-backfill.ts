@@ -5,6 +5,7 @@ import type {
   TrackBackfillPage,
 } from '../db/tracks.ts'
 
+import { hasSegments } from '../db/segments.ts'
 import {
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
@@ -22,11 +23,15 @@ export interface TrackBackfillDeps {
   getGarminCandidates: (user: string, page: TrackBackfillPage) => Promise<GarminBackfillCandidate[]>
   getStravaCandidates: (user: string, page: TrackBackfillPage) => Promise<StravaBackfillCandidate[]>
   upsertActivityTrack: (user: string, input: ActivityTrackInput) => Promise<void>
+  hasSegments: (user: string) => Promise<boolean>
+  matchSegments: (user: string, activityId: string) => Promise<{ efforts: number }>
 }
 
 export const defaultTrackBackfillDeps: TrackBackfillDeps = {
   getGarminCandidates: getGarminTrackBackfillCandidates,
   getStravaCandidates: getStravaTrackBackfillCandidates,
+  hasSegments,
+  matchSegments: (user, activityId) => matchActivitySegments(user, activityId, defaultSegmentDeps),
   upsertActivityTrack,
 }
 
@@ -37,7 +42,6 @@ export const defaultTrackBackfillDeps: TrackBackfillDeps = {
  */
 export interface TrackBackfillJobDeps extends TrackBackfillDeps, FeatureBackfillDeps {
   matchRoutes: (user: string) => Promise<{ matched: number; created: number }>
-  matchSegments: (user: string, activityId: string) => Promise<{ efforts: number }>
   scanSuggestedSegments: (user: string) => Promise<{ scanned: number; suggested: number; remaining: number }>
 }
 
@@ -45,8 +49,28 @@ export const defaultTrackBackfillJobDeps: Omit<TrackBackfillJobDeps, 'notify'> =
   ...defaultTrackBackfillDeps,
   ...defaultFeatureBackfillDeps,
   matchRoutes: (user) => matchUnroutedTracks(user, defaultRouteMatchDeps),
-  matchSegments: (user, activityId) => matchActivitySegments(user, activityId, defaultSegmentDeps),
   scanSuggestedSegments: (user) => scanSuggestedSegments(user, defaultSuggestedSegmentDeps),
+}
+
+/** Times the segments each written track covers; a failing activity is audited and the rest go on. */
+export const timeWrittenTracks = async (
+  user: string,
+  activityIds: string[],
+  deps: Pick<TrackBackfillDeps, 'hasSegments' | 'matchSegments'>,
+): Promise<{ efforts: number }> => {
+  const segments = { efforts: 0 }
+  if (activityIds.length === 0 || !(await deps.hasSegments(user))) return segments
+  for (const activityId of activityIds) {
+    try {
+      segments.efforts += (await deps.matchSegments(user, activityId)).efforts
+    } catch (error) {
+      auditError(user, 'data', 'Segment matching failed', {
+        activity_id: activityId,
+        error: String(error),
+      })
+    }
+  }
+  return segments
 }
 
 export interface TrackBackfillResult {
@@ -137,6 +161,7 @@ export const backfillUserTracks = async (
   deps: TrackBackfillDeps,
   batch = 50,
 ): Promise<TrackBackfillResult> => {
-  const { activity_ids: _written, ...counts } = await backfillUserTracksWithIds(user, deps, batch)
+  const { activity_ids: written, ...counts } = await backfillUserTracksWithIds(user, deps, batch)
+  await timeWrittenTracks(user, written, deps)
   return counts
 }

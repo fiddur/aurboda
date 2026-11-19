@@ -27,7 +27,10 @@ public profile.
 ### Signup notification
 
 Every admin gets an `admin_signup` [notification](features/notifications.md) when an account is
-created, by password or passkey: "New signup: alice", linking to the account on the Users page.
+created, by password, passkey or single sign-on: "New signup: alice", linking to the account on
+the Users page. A single sign-on sign-up notifies only once the identity is linked, so one that is
+rolled back notifies nobody; if rolling it back fails, the admins instead get "Sign-up of alice needs
+attention", since the kept account has no way to sign in.
 The very first account, which becomes the admin, notifies nobody. An admin can turn it off under the
 bell or as a push in Settings → **Notifications**.
 

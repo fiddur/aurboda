@@ -181,6 +181,8 @@ describe('OIDC sign-in end to end, against a fake issuer', () => {
         countPasskeys: async () => 0,
         getPasswordLogin: accounts.getPasswordLogin,
       }),
+      notifyAdminsOfSignup: () => {},
+      notifyAdminsOfUnfinishedSignup: () => {},
       redirectUri: REDIRECT,
       store,
       usernameTaken: async () => false,
