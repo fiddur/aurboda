@@ -43,6 +43,7 @@ import {
   countFeedFollowers,
   countPublicFeedPosts,
   addTagBoostCarrier,
+  foldTagBoostCards,
   getChallengeBySlug,
   deleteBoostEntry,
   deleteFeedQuoteAuthorizationsByActor,
@@ -418,6 +419,10 @@ const resolveBoostAuthor = async (
   return presentation == null ? null : { ...presentation, actor_uri: attributionId.href }
 }
 
+const foldIfTagCard = async (me: string, tag: string | null, noteUri: string): Promise<void> => {
+  if (tag != null) await foldTagBoostCards(me, noteUri)
+}
+
 /**
  * A followee boosted somebody else's post → a **boost card** in our timeline
  * (Mastodon's "🔄 X boosted"). The card is its own row keyed on the `Announce`
@@ -432,7 +437,8 @@ const resolveBoostAuthor = async (
  * and declare `attributedTo`; and a post ALREADY in this timeline directly gets
  * no boost card (Mastodon hides a reblog of a post you have). A followed tag's
  * `Announce` of a Note another followed tag already carded joins that card as a
- * carrier (`addTagBoostCarrier`): one card, no second notification.
+ * carrier (`addTagBoostCarrier`): one card, no second notification. Two that arrive together
+ * both make a card, and `foldTagBoostCards` folds them into one.
  */
 const ingestBoostedNote = async (
   ctx: InboxContext<void>,
@@ -468,6 +474,7 @@ const ingestBoostedNote = async (
       notify: { source: booster },
       onNewEntry,
     })
+    await foldIfTagCard(me, booster.tag, announced.uri)
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
