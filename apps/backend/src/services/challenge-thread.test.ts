@@ -359,6 +359,23 @@ describe('assembleThread', () => {
     expect(thread[1]?.replies).toEqual([])
   })
 
+  test('a hidden reply takes what answers it out of a non-host view', () => {
+    const top = entry({ id: 't1', object_uri: `${WEB}/users/bob/feed/t1` })
+    const reply = (id: string, answers: string, hidden = false) =>
+      entry({
+        hidden_at: hidden ? new Date() : null,
+        id,
+        in_reply_to_uri: `${WEB}/users/bob/feed/${answers}`,
+        object_uri: `${WEB}/users/bob/feed/${id}`,
+        root_entry_id: 't1',
+      })
+    const replies = [reply('r1', 't1', true), reply('r2', 'r1'), reply('r3', 'r2'), reply('r4', 't1')]
+    const ids = (includeHidden: boolean) =>
+      assembleThread([top], replies, () => null, includeHidden)[0]?.replies.map((r) => r.id)
+    expect(ids(false)).toEqual(['r4'])
+    expect(ids(true)).toEqual(['r1', 'r2', 'r3', 'r4'])
+  })
+
   test('flags hidden entries', () => {
     const [shown] = assembleThread([entry({ hidden_at: new Date() })], [], () => null)
     expect(shown?.hidden).toBe(true)
