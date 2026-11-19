@@ -7,7 +7,7 @@
  */
 import type { ActivityImpactType } from '@aurboda/api-spec'
 
-import { impactActivityLabel } from '@aurboda/api-spec'
+import { resolvedImpactActivityLabel } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import { ImpactFigure, type ImpactFigureData } from '../../components/charts/ImpactFigure'
@@ -73,7 +73,12 @@ export const ArticleImpactBlock = ({
       ) : isError || !data ? (
         <p class="article-chart-note">Couldn't load this impact chart.</p>
       ) : (
-        <ImpactBody data={{ ...data, activity_label: impactActivityLabel(activityType, data.activity) }} />
+        <ImpactBody
+          data={{
+            ...data,
+            activity_label: resolvedImpactActivityLabel(activityType, activity, data.activity),
+          }}
+        />
       )}
       {caption && <figcaption class="article-chart-caption">{caption}</figcaption>}
     </figure>

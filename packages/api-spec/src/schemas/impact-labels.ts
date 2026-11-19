@@ -44,3 +44,17 @@ export const articleImpactLabel = (block: { activity: string }): string => `Impa
 /** What to call an impact activity: a meal sensitivity's activity reads `meals with <flag name>`. */
 export const impactActivityLabel = (activityType: ActivityImpactType, name: string): string =>
   activityType === 'meal_sensitivity' ? `meals with ${name}` : name
+
+/**
+ * The label for an impact that was asked for by `requested` and came back named `resolved`.
+ * A deleted flag's impact comes back named by its id, which must never be shown.
+ */
+export const resolvedImpactActivityLabel = (
+  activityType: ActivityImpactType,
+  requested: string,
+  resolved: string,
+): string =>
+  impactActivityLabel(
+    activityType,
+    activityType === 'meal_sensitivity' && resolved === requested ? 'a sensitivity flag' : resolved,
+  )
