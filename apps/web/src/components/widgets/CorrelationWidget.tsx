@@ -146,10 +146,9 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const displayTitle = correlationTitle(
-    config,
-    activity_type === 'meal_sensitivity' ? impactQuery.data?.activity : undefined,
-  )
+  const flagName = impactQuery.data?.activity
+  const activityLabel = activity_type === 'meal_sensitivity' && flagName !== activity ? flagName : undefined
+  const displayTitle = correlationTitle(config, activityLabel)
 
   if (impactQuery.isLoading) {
     return (
@@ -171,7 +170,7 @@ export function CorrelationWidget({ config }: CorrelationWidgetProps) {
 
   const impact = impactQuery.data
   const data: CorrelationData = {
-    ...(activity_type === 'meal_sensitivity' ? { activity_label: impact.activity } : {}),
+    ...(activityLabel === undefined ? {} : { activity_label: activityLabel }),
     hrv_after30: impact.hrv_timeline.after30min.mean,
     hrv_before30: impact.hrv_timeline.before30min.mean,
     hrv_during: impact.hrv_timeline.during.mean,

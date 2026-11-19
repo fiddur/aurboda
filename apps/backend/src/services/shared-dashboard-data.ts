@@ -541,7 +541,9 @@ const resolveCorrelation = async (
   )
   return {
     data: {
-      ...(config.activity_type === 'meal_sensitivity' ? { activity_label: result.activity } : {}),
+      ...(config.activity_type === 'meal_sensitivity' && result.activity !== config.activity
+        ? { activity_label: result.activity }
+        : {}),
       hrv_after30: result.hrv_timeline.after30min.mean,
       hrv_before30: result.hrv_timeline.before30min.mean,
       hrv_during: result.hrv_timeline.during.mean,

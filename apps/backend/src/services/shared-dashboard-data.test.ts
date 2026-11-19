@@ -1100,4 +1100,26 @@ describe('resolveDashboardData: correlation', () => {
       'meal_sensitivity',
     ])
   })
+
+  test('a deleted flag carries no activity_label, so the card never shows its id', async () => {
+    vi.mocked(getActivityImpact).mockResolvedValue({
+      activity: 'flag-1',
+      hrv_timeline: { after30min: { mean: null }, before30min: { mean: null }, during: { mean: null } },
+      occurrences: 0,
+    } as Awaited<ReturnType<typeof getActivityImpact>>)
+
+    const data = await resolveDashboardData(
+      'alice',
+      board({
+        config: { activity: 'flag-1', activity_type: 'meal_sensitivity' },
+        id: 'impact',
+        type: 'correlation',
+      }),
+    )
+
+    expect(data['impact']).toEqual({
+      data: { hrv_after30: null, hrv_before30: null, hrv_during: null, occurrences: 0 },
+      type: 'correlation',
+    })
+  })
 })
