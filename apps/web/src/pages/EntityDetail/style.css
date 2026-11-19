@@ -754,7 +754,7 @@ details.list-field-detail:not([open]) > summary h3 {
   cursor: not-allowed;
 }
 
-.btn-secondary {
+.entity-detail-page .btn-secondary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: transparent;
@@ -764,11 +764,11 @@ details.list-field-detail:not([open]) > summary h3 {
   cursor: pointer;
 }
 
-.btn-secondary:hover {
+.entity-detail-page .btn-secondary:hover {
   background: #f3f4f6;
 }
 
-a.btn-secondary {
+.entity-detail-page a.btn-secondary {
   display: inline-flex;
   align-items: center;
   line-height: normal;
@@ -1030,12 +1030,12 @@ a.btn-secondary {
     border-color: #6b7280;
   }
 
-  .btn-secondary {
+  .entity-detail-page .btn-secondary {
     border-color: #4b5563;
     color: #d1d5db;
   }
 
-  .btn-secondary:hover {
+  .entity-detail-page .btn-secondary:hover {
     background: #374151;
   }
 

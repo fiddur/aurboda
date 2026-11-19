@@ -272,7 +272,9 @@ export const getSegmentDetail = async (
   return {
     ...serializeSegment(segment),
     created_from_activity_id: segment.created_from_activity_id,
+    created_from_activity_title: segment.created_from_activity_title,
     created_from_route_id: segment.created_from_route_id,
+    created_from_route_name: segment.created_from_route_name,
     efforts: efforts.map(serializeEffort),
     near_named_location: { end, start },
     points,

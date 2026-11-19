@@ -43,7 +43,8 @@
 }
 
 .timeline-nav .nav-btn,
-.timeline-orientation-toggle .nav-btn {
+.timeline-orientation-toggle .nav-btn,
+.timeline-controls .timeline-refresh-btn {
   background: transparent;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -61,28 +62,21 @@
 }
 
 .timeline-nav .nav-btn:hover,
-.timeline-orientation-toggle .nav-btn:hover {
+.timeline-orientation-toggle .nav-btn:hover,
+.timeline-controls .timeline-refresh-btn:hover {
   background: #e5e7eb;
   border-color: #9ca3af;
 }
 
 .timeline-nav .nav-btn:active,
-.timeline-orientation-toggle .nav-btn:active {
+.timeline-orientation-toggle .nav-btn:active,
+.timeline-controls .timeline-refresh-btn:active {
   background: #d1d5db;
 }
 
 .timeline-nav .nav-today {
   padding: 0.25rem 0.625rem;
   font-weight: 500;
-}
-
-/* Refresh button — inline flex like orientation toggle */
-.timeline-refresh-btn {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem 0.4rem !important;
-  line-height: 0;
 }
 
 .timeline-refresh-spinning {
@@ -104,12 +98,18 @@
 }
 
 /* Orientation toggle button — contains SVG, needs flex centering */
-.timeline-orientation-toggle .nav-btn {
+.timeline-orientation-toggle .nav-btn,
+.timeline-controls .timeline-refresh-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0.25rem 0.4rem;
   line-height: 0;
+}
+
+.timeline-refresh-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 .timeline-range-presets {
@@ -460,19 +460,22 @@
   }
 
   .timeline-nav .nav-btn,
-  .timeline-orientation-toggle .nav-btn {
+  .timeline-orientation-toggle .nav-btn,
+  .timeline-controls .timeline-refresh-btn {
     color: #d1d5db;
     border-color: #4b5563;
   }
 
   .timeline-nav .nav-btn:hover,
-  .timeline-orientation-toggle .nav-btn:hover {
+  .timeline-orientation-toggle .nav-btn:hover,
+  .timeline-controls .timeline-refresh-btn:hover {
     background: #374151;
     border-color: #6b7280;
   }
 
   .timeline-nav .nav-btn:active,
-  .timeline-orientation-toggle .nav-btn:active {
+  .timeline-orientation-toggle .nav-btn:active,
+  .timeline-controls .timeline-refresh-btn:active {
     background: #4b5563;
   }
 

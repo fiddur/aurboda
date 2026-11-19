@@ -1,4 +1,5 @@
 import {
+  type SegmentDetail,
   type SegmentEffort,
   type SegmentMatchResult,
   type SegmentsQuery,
@@ -6,6 +7,31 @@ import {
   segmentSortOrders,
   type SuggestedSegmentScanResult,
 } from '@aurboda/api-spec'
+
+/** Where the segment was cut from, named when the activity's title or the route's name is known. */
+export const cutFromLink = (
+  segment: Pick<
+    SegmentDetail,
+    | 'created_from_activity_id'
+    | 'created_from_activity_title'
+    | 'created_from_route_id'
+    | 'created_from_route_name'
+  >,
+): { href: string; label: string } | null => {
+  if (segment.created_from_activity_id) {
+    return {
+      href: `/detail/activity/${segment.created_from_activity_id}`,
+      label: segment.created_from_activity_title || 'an activity',
+    }
+  }
+  if (segment.created_from_route_id) {
+    return {
+      href: `/routes/${segment.created_from_route_id}`,
+      label: segment.created_from_route_name || 'a route',
+    }
+  }
+  return null
+}
 
 const isSegmentSort = (value: string | undefined): value is SegmentSort =>
   segmentSortOrders.some((order) => order === value)

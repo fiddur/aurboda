@@ -9,6 +9,7 @@ import { displayNameInputSchema } from './profile.ts'
 import { reportImportMappingSchema } from './reports.ts'
 import { defaultSleepNeedMinutes, sleepNeedMinutesSchema } from './sleep.ts'
 import { garminDataTypeSchema } from './sync.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 import { trainingLoadSettingsSchema } from './training-load.ts'
 
 const hrZoneThresholdSchema = z.number().int().positive()
@@ -324,6 +325,10 @@ export const updateSettingsInputSchema = z
     training_load: trainingLoadSettingsSchema.nullable().optional().meta({
       description: 'Training load (Banister model) parameters (set to null to reset to defaults)',
     }),
+    tz: ianaTimezoneSchema.nullable().optional().meta({
+      description:
+        'Time zone (IANA, e.g. Europe/Stockholm) that reminders and daily figures follow; the Android app also sets it from the phone when it syncs (set to null to clear, which means UTC)',
+    }),
     garmin_disabled_data_types: z.array(garminDataTypeSchema).nullable().optional().meta({
       description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
     }),
@@ -557,7 +562,8 @@ export const userSettingsResponseSchema = baseResponseSchema
       .default(null)
       .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
     tz: z.string().nullable().default(null).meta({
-      description: 'User timezone (IANA format, e.g. Europe/Stockholm). Auto-detected from device.',
+      description:
+        'User time zone (IANA). Set from the browser or in Settings on the web, and from the phone by the Android app; null means UTC.',
     }),
   })
   .meta({ id: 'UserSettingsResponse' })

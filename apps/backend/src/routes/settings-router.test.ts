@@ -74,3 +74,18 @@ describe('hidden_pages over GET/PATCH /user/settings', () => {
     expect(store.settings).toEqual({})
   })
 })
+
+describe('tz over PATCH /user/settings', () => {
+  test('stores the zone as device_timezone and answers it as tz', async () => {
+    const res = await supertest(app()).patch('/user/settings').send({ tz: 'Europe/Stockholm' })
+    expect(res.status).toBe(200)
+    expect(res.body.tz).toBe('Europe/Stockholm')
+    expect(store.settings).toEqual({ device_timezone: 'Europe/Stockholm' })
+  })
+
+  test('refuses an unknown zone', async () => {
+    const res = await supertest(app()).patch('/user/settings').send({ tz: 'Mars/Olympus' })
+    expect(res.status).toBe(400)
+    expect(store.settings).toEqual({})
+  })
+})

@@ -283,7 +283,7 @@
   background: #b91c1c;
 }
 
-.btn-secondary {
+.report-detail-page .btn-secondary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: transparent;
@@ -293,7 +293,7 @@
   cursor: pointer;
 }
 
-.btn-secondary:hover {
+.report-detail-page .btn-secondary:hover {
   background: #f3f4f6;
 }
 
@@ -420,12 +420,12 @@
     border-color: #374151;
   }
 
-  .btn-secondary {
+  .report-detail-page .btn-secondary {
     border-color: #4b5563;
     color: #d1d5db;
   }
 
-  .btn-secondary:hover {
+  .report-detail-page .btn-secondary:hover {
     background: #374151;
   }
 

@@ -15,3 +15,10 @@ export const effectiveData = (alias: string): string => `COALESCE(
      JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
      WHERE ot.target_id = ${alias}.id LIMIT 1),
     ${alias}.data)`
+
+/** The title the merged view shows for activity row `alias`: its live override's, else its own. */
+export const effectiveTitle = (alias: string): string => `COALESCE(
+    (SELECT o.title FROM activity_override_targets ot
+     JOIN activities o ON o.id = ot.override_id AND o.deleted_at IS NULL
+     WHERE ot.target_id = ${alias}.id LIMIT 1),
+    ${alias}.title)`

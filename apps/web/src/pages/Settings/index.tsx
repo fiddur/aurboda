@@ -17,6 +17,7 @@ import { ProfileSettings } from '../../components/ProfileSettings'
 import { type SaveStatus, SaveStatusIndicator } from '../../components/SaveStatusIndicator'
 import { SettingsSection } from '../../components/SettingsSection'
 import { SharingSettings } from '../../components/SharingSettings'
+import { TimeZoneSettings } from '../../components/TimeZoneSettings'
 import { TrainingLoadSettings } from '../../components/TrainingLoadSettings'
 import { fetchUserSettings, updateUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -210,6 +211,7 @@ export function Settings() {
       <AvatarSettings />
 
       <ProfileSettings />
+      <TimeZoneSettings />
 
       <SettingsSection
         title="Personal Information"
