@@ -4,7 +4,7 @@
  * `buildShareBody`).
  */
 import type {
-  ArticleImpactType,
+  ActivityImpactType,
   ArticleBlock,
   ArticleContent,
   ArticleDraftBlock,
@@ -12,6 +12,7 @@ import type {
   ChallengeParticipation,
   ArticleDraftContent,
   CorrelationSelector,
+  CorrelationSelectorsData,
   CreateArticleBody,
   FeedVisibility,
   HrvActivitiesData,
@@ -19,7 +20,12 @@ import type {
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
 
-import { DEFAULT_IMPACT_WINDOW_MINUTES, isCompleteArticleBlock, isValidMetric } from '@aurboda/api-spec'
+import {
+  articleSharingWarnings,
+  DEFAULT_IMPACT_WINDOW_MINUTES,
+  isCompleteArticleBlock,
+  isValidMetric,
+} from '@aurboda/api-spec'
 
 import { stillUploading } from './MarkdownEditor/image-upload'
 
@@ -60,7 +66,7 @@ export interface ImpactDraft {
   type: 'impact'
   /** The grouping key ('' = not chosen yet). */
   activity: string
-  activityType: ArticleImpactType
+  activityType: ActivityImpactType
   windowMinutes: number
   /** `datetime-local` value ('' = inherit the article default window). */
   start: string
@@ -83,7 +89,9 @@ export interface ImpactOption {
   /** Encodes both the type and the name, so one `<select>` value picks the pair. */
   value: string
   activity: string
-  activityType: ArticleImpactType
+  activityType: ActivityImpactType
+  /** What the picker shows; a meal sensitivity's `activity` is a flag id. */
+  label: string
 }
 
 export interface ImpactOptionGroup {
@@ -91,19 +99,24 @@ export interface ImpactOptionGroup {
   options: ImpactOption[]
 }
 
-const impactOption = (activityType: ArticleImpactType, activity: string): ImpactOption => ({
+const impactOption = (
+  activityType: ActivityImpactType,
+  activity: string,
+  label: string = activity,
+): ImpactOption => ({
   activity,
   activityType,
+  label,
   value: `${activityType}\u0000${activity}`,
 })
 
 /** A picked option's value back to its pair, or null for the empty pick. */
 export const parseImpactOptionValue = (
   value: string,
-): { activity: string; activityType: ArticleImpactType } | null => {
+): { activity: string; activityType: ActivityImpactType } | null => {
   const at = value.indexOf('\u0000')
   if (at < 0) return null
-  return { activity: value.slice(at + 1), activityType: value.slice(0, at) as ArticleImpactType }
+  return { activity: value.slice(at + 1), activityType: value.slice(0, at) as ActivityImpactType }
 }
 
 /**
@@ -118,9 +131,10 @@ export const impactPickerOptions = (
         activities: Pick<HrvActivitiesData['correlations']['activities'][number], 'activity_type'>[]
         locations: Pick<HrvActivitiesData['correlations']['locations'][number], 'location_name'>[]
         productivity: Pick<HrvActivitiesData['correlations']['productivity'][number], 'category'>[]
+        meals?: Pick<HrvActivitiesData['correlations']['meals'][number], 'flag_id' | 'flag_name'>[]
       }
     | undefined,
-  selected: { activity: string; activityType: ArticleImpactType },
+  selected: { activity: string; activityType: ActivityImpactType },
 ): { groups: ImpactOptionGroup[]; extra: ImpactOption | null } => {
   const groups: ImpactOptionGroup[] = [
     {
@@ -137,9 +151,18 @@ export const impactPickerOptions = (
         impactOption('productivity_category', p.category),
       ),
     },
+    {
+      label: 'Meals',
+      options: (correlations?.meals ?? []).map((m) =>
+        impactOption('meal_sensitivity', m.flag_id, `Meals with ${m.flag_name}`),
+      ),
+    },
   ].filter((group) => group.options.length > 0)
   if (!selected.activity) return { extra: null, groups }
-  const wanted = impactOption(selected.activityType, selected.activity)
+  const wanted =
+    selected.activityType === 'meal_sensitivity'
+      ? impactOption(selected.activityType, selected.activity, 'Meals with a sensitivity flag')
+      : impactOption(selected.activityType, selected.activity)
   const listed = groups.some((group) => group.options.some((o) => o.value === wanted.value))
   return { extra: listed ? null : wanted, groups }
 }
@@ -359,6 +382,19 @@ export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBo
     tags: content.tags ?? null,
     visibility: state.visibility,
   }
+}
+
+/**
+ * Each block's sharing warnings, in block order, from the blocks as the editor would save them:
+ * a meal sensitivity is named from the discovered selectors' flags. Never blocks publishing.
+ */
+export const editorBlockWarnings = (
+  state: ArticleEditorState,
+  selectors: Pick<CorrelationSelectorsData, 'sensitivities'> | undefined,
+): string[][] => {
+  const flagNames = Object.fromEntries((selectors?.sensitivities ?? []).map((s) => [s.value, s.label]))
+  const warnings = articleSharingWarnings(buildDraftContent(state).blocks, flagNames)
+  return state.blocks.map((_, i) => warnings.filter((w) => w.block === i).map((w) => w.message))
 }
 
 /** True while any prose block still holds a picture placeholder, so nothing saves it. */

@@ -28,7 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { articleImpactTypeSchema, articleSelectorSchema, selectorSchema } from './correlations.ts'
+import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -454,15 +454,15 @@ export const articleCorrelationBlockSchema = z
       .int()
       .optional()
       .meta({ description: 'Days the outcome lags the trigger (default: 0)' }),
-    outcome: articleSelectorSchema.meta({
-      description: 'Outcome dimension; sensitivity is not offered, as its flag id means nothing to a reader',
+    outcome: selectorSchema.meta({
+      description: "Outcome dimension; a `sensitivity` selector is shown to readers by the flag's name",
     }),
     start: iso8601DateTimeSchema
       .optional()
       .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
-    trigger: articleSelectorSchema.meta({
+    trigger: selectorSchema.meta({
       description:
-        'Trigger / predictor dimension; sensitivity is not offered, as its flag id means nothing to a reader',
+        "Trigger / predictor dimension; a `sensitivity` selector is shown to readers by the flag's name",
     }),
     type: z.literal('correlation'),
   })
@@ -478,9 +478,10 @@ export const articleCorrelationBlockSchema = z
 export const articleImpactBlockSchema = z
   .object({
     activity: z.string().min(1).max(200).meta({
-      description: 'The activity, location or category, exactly as the Analyze context table lists it',
+      description:
+        "The activity, location or category, exactly as the Analyze context table lists it; for `meal_sensitivity`, the sensitivity flag's id, which readers see by the flag's name",
     }),
-    activity_type: articleImpactTypeSchema,
+    activity_type: activityImpactTypeSchema,
     caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the chart' }),
     end: iso8601DateTimeSchema
       .optional()
@@ -673,8 +674,26 @@ export const feedPostSchema = z
 
 export type FeedPost = z.infer<typeof feedPostSchema>
 
+export const articleWarningSchema = z
+  .object({
+    block: z.number().int().min(0).meta({ description: 'The 0-based index of the block in `blocks`' }),
+    message: z.string().meta({ description: 'What the block shows readers, in one plain sentence' }),
+  })
+  .meta({
+    description: 'Something an article block shows readers that the author may want to think twice about',
+    id: 'ArticleWarning',
+  })
+
+export type ArticleWarning = z.infer<typeof articleWarningSchema>
+
 export const feedPostResponseSchema = baseResponseSchema
-  .extend({ post: feedPostSchema.optional() })
+  .extend({
+    post: feedPostSchema.optional(),
+    warnings: z.array(articleWarningSchema).optional().meta({
+      description:
+        'What the article shows readers that you may want to think twice about sharing, such as a meal sensitivity by name. Never a refusal; only on the article create, update and publish answers; absent when there is nothing to warn about',
+    }),
+  })
   .meta({ id: 'FeedPostResponse' })
 
 export type FeedPostResponse = z.infer<typeof feedPostResponseSchema>
@@ -969,7 +988,13 @@ export const articleDraftSchema = z
 export type ArticleDraft = z.infer<typeof articleDraftSchema>
 
 export const articleDraftResponseSchema = baseResponseSchema
-  .extend({ draft: articleDraftSchema.optional() })
+  .extend({
+    draft: articleDraftSchema.optional(),
+    warnings: z.array(articleWarningSchema).optional().meta({
+      description:
+        'What the article shows readers that you may want to think twice about sharing, such as a meal sensitivity by name. Never a refusal; absent when there is nothing to warn about',
+    }),
+  })
   .meta({ id: 'ArticleDraftResponse' })
 
 export type ArticleDraftResponse = z.infer<typeof articleDraftResponseSchema>
@@ -1111,6 +1136,10 @@ export const articlePreviewResponseSchema = baseResponseSchema
     tags: z.array(z.string()).optional().meta({
       description:
         'The hashtags the article would carry (lowercase, without `#`): the explicit or default ones plus typed ones',
+    }),
+    warnings: z.array(articleWarningSchema).optional().meta({
+      description:
+        'What the article shows readers that you may want to think twice about sharing, such as a meal sensitivity by name. Never a refusal; absent when there is nothing to warn about',
     }),
   })
   .meta({ id: 'ArticlePreviewResponse' })

@@ -37,6 +37,7 @@ import {
   deriveSubmitError,
   draftSnapshot,
   draftUpdateBody,
+  editorBlockWarnings,
   emptyChallengeDraft,
   emptyCorrelationDraft,
   emptyImpactDraft,
@@ -286,12 +287,12 @@ const ImpactBlockFields = ({
           onChange={(e) => onSelect((e.target as HTMLSelectElement).value)}
         >
           <option value="">Choose an activity…</option>
-          {extra && <option value={extra.value}>{extra.activity}</option>}
+          {extra && <option value={extra.value}>{extra.label}</option>}
           {groups.map((group) => (
             <optgroup key={group.label} label={group.label}>
               {group.options.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.activity}
+                  {o.label}
                 </option>
               ))}
             </optgroup>
@@ -346,6 +347,7 @@ const ArticleBlockEditor = ({
   index,
   total,
   selectors,
+  warnings,
   onPatch,
   onMove,
   onRemove,
@@ -354,6 +356,7 @@ const ArticleBlockEditor = ({
   index: number
   total: number
   selectors: CorrelationSelectorsData | undefined
+  warnings: string[]
   onPatch: (patch: BlockPatch) => void
   onMove: (dir: -1 | 1) => void
   onRemove: () => void
@@ -417,6 +420,11 @@ const ArticleBlockEditor = ({
         </label>
       </div>
     )}
+    {warnings.map((warning) => (
+      <p key={warning} class="article-block-warning" role="note">
+        {warning}
+      </p>
+    ))}
   </div>
 )
 
@@ -585,6 +593,7 @@ export const ArticleEditorDialog = ({
   })
   const dirty = !editing && draftSnapshot(editorState()) !== savedSnapshot
   const previewState = withStoredTags(editorState(), storedTags)
+  const blockWarnings = editorBlockWarnings(editorState(), selectors)
 
   const patchBlock = (i: number, patch: BlockPatch) =>
     setBlocks((bs) =>
@@ -732,6 +741,7 @@ export const ArticleEditorDialog = ({
                 index={i}
                 total={blocks.length}
                 selectors={selectors}
+                warnings={blockWarnings[i] ?? []}
                 onPatch={(patch) => patchBlock(i, patch)}
                 onMove={(dir) => moveBlock(i, dir)}
                 onRemove={() => removeBlock(i)}

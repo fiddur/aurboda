@@ -158,3 +158,13 @@
 .article-editor .share-dialog-actions {
   flex-wrap: wrap;
 }
+
+.article-block-warning {
+  margin: 0.5rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--color-cta);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-cta) 12%, transparent);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
