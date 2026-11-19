@@ -455,14 +455,36 @@ export const ownPostIdOf = (
   return /^[0-9a-f-]{36}$/i.test(postId) ? postId : null
 }
 
-/** Nest each page's replies under their top-level entry; `in_reply_to_id` resolved within the group. Pure. */
+/** A top-level entry's replies as a viewer sees them: without hidden ones and what answers them, unless `includeHidden`. */
+const visibleReplies = (
+  group: readonly ChallengeThreadEntryRecord[],
+  includeHidden: boolean,
+): ChallengeThreadEntryRecord[] => {
+  if (includeHidden) return [...group]
+  const dropped = new Set<string>()
+  return group.filter((reply) => {
+    const gone =
+      reply.hidden_at != null || (reply.in_reply_to_uri != null && dropped.has(reply.in_reply_to_uri))
+    if (gone) dropped.add(reply.object_uri)
+    return !gone
+  })
+}
+
+/**
+ * Nest each page's replies (oldest first) under their top-level entry; `in_reply_to_id` resolved
+ * within the group. Pure.
+ */
 export const assembleThread = (
   tops: readonly ChallengeThreadEntryRecord[],
   replies: readonly ChallengeThreadEntryRecord[],
   ownOf: (record: ChallengeThreadEntryRecord) => OwnEntry | null,
+  includeHidden = true,
 ): ChallengeThreadEntry[] =>
   tops.map((top) => {
-    const group = replies.filter((reply) => reply.root_entry_id === top.id)
+    const group = visibleReplies(
+      replies.filter((reply) => reply.root_entry_id === top.id),
+      includeHidden,
+    )
     const idByUri = new Map([top, ...group].map((record) => [record.object_uri, record.id]))
     return {
       ...serializeThreadReply(top, null, ownOf(top)),
@@ -561,12 +583,12 @@ export const getChallengeThread = async (
   const replies = await deps.listReplies(
     host,
     page.map((row) => row.id),
-    visibility,
+    { audiences, include_hidden: true },
     MAX_REPLIES_PER_ENTRY,
   )
   const own = await loadOwn(deps, viewer, [...page, ...replies])
   return {
-    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null),
+    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null, role === 'host'),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     total,
     viewer: viewerInfo,
