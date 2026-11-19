@@ -399,9 +399,10 @@ standings (§6) — alongside the old protocol, prefers it when joining a host t
 advertises `challenges: true`, and reads either shape from members, so instances
 on either side of the move keep competing. Its documents carry a vendor `aurboda`
 block (the exact spec on a challenge, the measure echo on an entry) that other
-implementations ignore. The ActivityPub half — the `Event` object (§2), `Join` /
-`Leave` in the inbox (§4.1) and `attendees` — is not yet implemented, nor is
-`joinMode: restricted`.
+implementations ignore. Of the ActivityPub half, the `Event` object (§2) is served
+at the §2 id convention, with the document's `id` pointing at it; `Join` / `Leave`
+in the inbox (§4.1), `attendees` and `Create{Event}` delivery are not yet
+implemented, nor is `joinMode: restricted`.
 
 A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
 fetch the post's Aurboda-only structured payload, which carries the §3 document

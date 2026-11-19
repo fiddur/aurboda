@@ -240,6 +240,31 @@ count once). Unlisted challenges are not discoverable, by design; a peer from be
 listing carried windows lists name + link only and is skipped rather than shown as
 "ongoing".
 
+## The challenge as an ActivityPub object
+
+Every hosted challenge also resolves as an ActivityStreams object at
+`<public-base>/users/<username>/challenges/<slug>` (QuantPub Challenges §2), served by
+Fedify to a request that asks for ActivityPub (a wildcard or absent `Accept` counts);
+a browser asking for HTML is redirected (`302`) to the page `/u/<username>/<slug>`.
+The object is an `Event` dual-typed `quant:Challenge` carrying `name`, `startTime`,
+`endTime`, `published`, `updated`, `attributedTo` (the host actor), `url` (the page), a
+short `content` (name, what is measured, the dates, the page link), the FEP-8a8e
+`timezone` and `joinMode` (`free`, or `none` once the challenge has ended), and
+`quant:metric`, `quant:unit`, `quant:scoring`, `quant:bucket` and `quant:structuredUrl`
+(the §3 document), all taken from the same functions as the HTTP document. The
+FEP-8a8e terms are defined inline in `@context`, so nobody has to fetch the FEP's
+context to read them.
+
+Both public and unlisted challenges resolve, exactly like the HTTP document: anyone
+holding the slug can read it. Only a public one is addressed `to` the public
+collection, and the object carries no member names, counts or standings. The HTTP
+document's `id` is this object's id. A public challenge's page links it with
+`<link rel="alternate" type="application/activity+json">`; an unlisted one's does not.
+
+The object is only served for now: joining and leaving are still HTTP (§4.2), and no
+`Create{Event}` is delivered, nor are `Join` / `Leave` accepted in the inbox, nor
+`attendees` or `replies` published.
+
 ## Join from your own app
 
 Any app can join a challenge hosted on an Aurboda instance; it does not need to run
