@@ -59,6 +59,12 @@ const participation = (
   data_token: 'tok',
   end_ts: new Date('2026-12-01T00:00:00Z'),
   host_checked_at: null,
+  challenge_object_uri: null,
+  host_actor_uri: null,
+  thread_attendees: [],
+  thread_audiences: [],
+  thread_synced_at: null,
+  thread_url: null,
   host_identity: `${WEB_HOST}/u/alice`,
   id: 'p1',
   name: 'November steps',
@@ -72,6 +78,7 @@ const participation = (
 
 const member = (overrides: Partial<ChallengeMemberRecord>): ChallengeMemberRecord => ({
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',

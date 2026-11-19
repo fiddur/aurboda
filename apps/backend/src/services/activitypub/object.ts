@@ -148,8 +148,8 @@ export const isPubliclyVisible = (visibility: FeedPostVisibility): boolean =>
 /**
  * Map a post's visibility to AS2 `to`/`cc` addressing. `followers` is the
  * actor's followers collection; public objects are addressed to the AS2 Public
- * magic collection. A `participants` post is addressed to nobody: it never
- * leaves the instance.
+ * magic collection. A `participants` post is addressed to nobody here: only
+ * the push of a challenge comment names recipients for it (`replyAddressing`).
  */
 export const addressingFor = (
   visibility: FeedPostVisibility,

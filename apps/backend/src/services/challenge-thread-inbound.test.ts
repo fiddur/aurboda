@@ -62,6 +62,7 @@ const challenge = (over: Partial<ChallengeRecord> = {}): ChallengeRecord => ({
 
 const member = (over: Partial<ChallengeMemberRecord>): ChallengeMemberRecord => ({
   actor: null,
+  actor_verified_at: null,
   cached_buckets: null,
   cached_total: null,
   challenge_id: 'c1',

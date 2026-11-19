@@ -20,6 +20,7 @@ import { canonicalChallengeUrl, parseChallengeUrl } from '@aurboda/api-spec'
 
 import type {
   ChallengeMemberRecord,
+  ChallengeParticipationRecord,
   ChallengeRecord,
   ChallengeThreadCursor,
   ChallengeThreadEntryInput,
@@ -42,6 +43,7 @@ import {
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
   getFeedPostById,
+  getParticipationByObjectUri,
   getProfileAvatarVersion,
   getUserSettings,
   isMissingDatabase,
@@ -75,11 +77,11 @@ export const OTHER_SERVER_MESSAGE = 'Comments on challenges hosted on another se
 
 export interface ThreadFailure {
   ok: false
-  status: 400 | 403 | 404 | 409 | 503
+  status: 400 | 403 | 404 | 409 | 502 | 503
   error: string
 }
 
-const failure = (status: ThreadFailure['status'], error: string): ThreadFailure => ({
+export const failure = (status: ThreadFailure['status'], error: string): ThreadFailure => ({
   error,
   ok: false,
   status,
@@ -154,14 +156,36 @@ export const resolveHostedChallenge = async (
   return { challenge, host: local.username, ok: true }
 }
 
-/** The challenge's current name and page, for a post in its thread; undefined when it is gone. */
+/** A challenge page URL that names another server. */
+export const isOtherServerChallengeUrl = (webHost: string, challengeUrl: string): boolean => {
+  const canonical = canonicalChallengeUrl(challengeUrl)
+  const parsed = canonical == null ? null : parseChallengeUrl(canonical)
+  return parsed != null && parseChallengePageUrl(webHost, challengeUrl) == null
+}
+
+/**
+ * The challenge's current name and page, for a post in its thread: a challenge hosted here, or one
+ * the post's owner joined on another server. Undefined when it is gone.
+ */
 export const resolveInChallenge = async (
   webHost: string,
   challengeUri: string,
+  owner: string | null = null,
   loadChallenge: LoadChallenge = loadHostedChallenge,
+  loadParticipation: (
+    user: string,
+    objectUri: string,
+  ) => Promise<Pick<
+    ChallengeParticipationRecord,
+    'challenge_url' | 'name'
+  > | null> = getParticipationByObjectUri,
 ): Promise<FeedPost['in_challenge']> => {
   const parsed = parseChallengeObjectUrl(webHost, challengeUri)
-  if (parsed == null) return undefined
+  if (parsed == null) {
+    if (owner == null) return undefined
+    const participation = await loadParticipation(owner, challengeUri).catch(() => null)
+    return participation == null ? undefined : { name: participation.name, url: participation.challenge_url }
+  }
   const challenge = await loadChallenge(parsed.username, parsed.slug).catch(() => null)
   return challenge == null
     ? undefined
@@ -609,6 +633,54 @@ export const getChallengeThread = async (
   }
 }
 
+export type ThreadPushChange = 'create' | 'update' | 'delete'
+
+/**
+ * A challenge comment pushed with ordinary ActivityPub to the members on other servers (or, from a
+ * member's server, to the host and the attendees); fire and forget.
+ */
+export type ThreadPush = (
+  user: string,
+  post: FeedPostRecord,
+  change: ThreadPushChange,
+  recipients: string[],
+) => void
+
+/** The thread of a challenge hosted on another server, as a member reads and writes it from here. */
+export interface RemoteThreadBranch {
+  read: (
+    user: string,
+    challengeUrl: string,
+    cursor?: string,
+  ) => Promise<({ ok: true } & ChallengeThreadView) | ThreadFailure>
+  comment: (
+    user: string,
+    body: ChallengeCommentBody,
+  ) => Promise<{ ok: true; entry: ChallengeThreadEntry } | ThreadFailure>
+  followEdit: (user: string, post: FeedPostRecord) => Promise<unknown>
+  followDelete: (user: string, post: FeedPostRecord) => Promise<unknown>
+  /** Pull the thread right after a join; never fails. */
+  afterJoin: (user: string, participation: ChallengeParticipationRecord) => Promise<void>
+}
+
+/**
+ * `getChallengeThread` by page URL: a challenge hosted here, or (through the remote branch) one
+ * hosted on another server that `viewer` joined.
+ */
+export const readChallengeThread = async (
+  deps: ThreadReadDeps & Pick<ThreadPostDeps, 'loadChallenge' | 'remote'>,
+  viewer: string,
+  challengeUrl: string,
+  cursor?: string,
+): Promise<({ ok: true } & ChallengeThreadView) | ThreadFailure> => {
+  if (deps.remote != null && isOtherServerChallengeUrl(deps.webHost, challengeUrl)) {
+    return deps.remote.read(viewer, challengeUrl, cursor)
+  }
+  const resolved = await resolveHostedChallenge(deps.webHost, challengeUrl, deps.loadChallenge)
+  if (!resolved.ok) return resolved
+  return { ok: true, ...(await getChallengeThread(deps, resolved, viewer, cursor)) }
+}
+
 export interface ThreadPostDeps {
   createReplyPost: (user: string, input: ReplyPostInput) => Promise<FeedPostRecord>
   deletePost: (user: string, postId: string) => Promise<unknown>
@@ -625,6 +697,8 @@ export interface ThreadPostDeps {
     hidden: boolean,
   ) => Promise<ChallengeThreadEntryRecord | null>
   deliver?: Pick<FeedDeliver, 'createdReply'>
+  push?: ThreadPush
+  remote?: RemoteThreadBranch
 }
 
 export type ChallengeThreadDeps = AdmitDeps & ThreadReadDeps & ThreadPostDeps
@@ -647,11 +721,14 @@ export const localAuthorPresentation = async (
   }
 }
 
-export const createChallengeThreadDeps = (opts: {
+export interface ChallengeThreadDepsOptions {
   webHost: string
   deliver?: Pick<FeedDeliver, 'createdReply'>
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
-}): ChallengeThreadDeps => ({
+  push?: ThreadPush
+}
+
+export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): ChallengeThreadDeps => ({
   countEntries: countChallengeThreadEntries,
   countVisible: countVisibleChallengeThreadEntries,
   createReplyPost,
@@ -667,11 +744,35 @@ export const createChallengeThreadDeps = (opts: {
   loadChallenge: loadHostedChallenge,
   notify: opts.notify ?? notifier.raiseBestEffort,
   presentation: (user) => localAuthorPresentation(opts.webHost, user),
+  push: opts.push,
   resolveTags: (user, message) => resolvePostTags(user, { reply: true, texts: [message] }),
   setHidden: setEntryHiddenInDb,
   upsert: upsertChallengeThreadEntry,
   webHost: opts.webHost,
 })
+
+/** The actors of the active members on other servers that proved themselves with a signed request. */
+export const verifiedRemoteActors = (members: readonly ChallengeMemberRecord[]): string[] => {
+  const actors = new Set<string>()
+  for (const member of members) {
+    if (member.kind !== 'remote' || member.status !== 'active' || member.actor_verified_at == null) continue
+    const actor = member.actor ?? identityToActorUri(member.identity_base_url)
+    if (actor != null) actors.add(actor)
+  }
+  return [...actors]
+}
+
+const pushToVerifiedMembers = async (
+  deps: Pick<ChallengeThreadDeps, 'listMembers' | 'push'>,
+  hosted: HostedChallenge,
+  user: string,
+  post: FeedPostRecord,
+  change: ThreadPushChange,
+): Promise<void> => {
+  if (deps.push == null) return
+  const recipients = verifiedRemoteActors(await deps.listMembers(hosted.host, hosted.challenge.id))
+  if (recipients.length > 0) deps.push(user, post, change, recipients)
+}
 
 const entryVisibleTo = async (
   deps: Pick<ThreadPostDeps, 'getEntryById'>,
@@ -764,6 +865,9 @@ export const addChallengeComment = async (
   user: string,
   body: ChallengeCommentBody,
 ): Promise<{ ok: true; entry: ChallengeThreadEntry } | ThreadFailure> => {
+  if (deps.remote != null && isOtherServerChallengeUrl(deps.webHost, body.challenge_url)) {
+    return deps.remote.comment(user, body)
+  }
   const resolved = await resolveHostedChallenge(deps.webHost, body.challenge_url, deps.loadChallenge)
   if (!resolved.ok) return resolved
   const { challenge, host } = resolved
@@ -797,6 +901,9 @@ export const addChallengeComment = async (
     return ADMISSION_FAILURES[admitted.reason]
   }
   if (body.audience === 'public') deps.deliver?.createdReply(user, post)
+  await pushToVerifiedMembers(deps, resolved, user, post, 'create').catch((error: unknown) => {
+    console.warn(`⚠️ challenge comment push failed for post ${post.id}:`, error)
+  })
   return {
     entry: asEntry(
       serializeThreadReply(admitted.entry, parent?.id ?? null, { message: post.message, post_id: post.id }),
@@ -814,6 +921,9 @@ export const setChallengeThreadEntryHidden = async (
   entryId: string,
   hidden: boolean,
 ): Promise<{ ok: true; entry: ChallengeThreadEntry } | ThreadFailure> => {
+  if (isOtherServerChallengeUrl(deps.webHost, challengeUrl)) {
+    return failure(403, "Only on the host's own server")
+  }
   const resolved = await resolveHostedChallenge(deps.webHost, challengeUrl, deps.loadChallenge)
   if (!resolved.ok) return resolved
   if (resolved.host !== user && !isAdmin) {
@@ -939,24 +1049,40 @@ export const followPostInThread = async (work: () => Promise<unknown>, postId: s
   }
 }
 
-/** `syncThreadEntryForPost` after an edit, for a post in a hosted thread; never fails the edit. */
+/**
+ * `syncThreadEntryForPost` after an edit, for a post in a hosted thread, pushing an edited comment
+ * to the verified members on other servers; a post in a thread hosted elsewhere goes to the remote
+ * branch. Never fails the edit.
+ */
 export const followPostEditInThread = async (
   deps: ChallengeThreadDeps | undefined,
   user: string,
   post: FeedPostRecord,
 ): Promise<void> => {
   if (deps == null || post.challenge_uri == null) return
-  await followPostInThread(() => syncThreadEntryForPost(deps, user, post), post.id)
+  await followPostInThread(async () => {
+    const hosted = await hostedChallengeOf(deps, post)
+    if (hosted == null) return deps.remote?.followEdit(user, post)
+    const result = await syncThreadEntryForPost(deps, user, post)
+    if (result?.admitted === true && post.kind === 'reply') {
+      await pushToVerifiedMembers(deps, hosted, user, post, 'update')
+    }
+  }, post.id)
 }
 
-/** `removeThreadEntryForPost` after a delete, for a post in a hosted thread; never fails the delete. */
+/** `removeThreadEntryForPost` after a delete, the same way round as an edit; never fails the delete. */
 export const followPostDeleteInThread = async (
   deps: ChallengeThreadDeps | undefined,
   user: string,
   post: FeedPostRecord,
 ): Promise<void> => {
   if (deps == null || post.challenge_uri == null) return
-  await followPostInThread(() => removeThreadEntryForPost(deps, user, post), post.id)
+  await followPostInThread(async () => {
+    const hosted = await hostedChallengeOf(deps, post)
+    if (hosted == null) return deps.remote?.followDelete(user, post)
+    await removeThreadEntryForPost(deps, user, post)
+    if (post.kind === 'reply') await pushToVerifiedMembers(deps, hosted, user, post, 'delete')
+  }, post.id)
 }
 
 /** A comment's visibility is fixed; only its message can change. */

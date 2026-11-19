@@ -288,3 +288,30 @@ export const setChallengeThreadEntryHidden = async (
   )
   return result.rows[0] ? mapEntry(result.rows[0]) : null
 }
+
+/**
+ * The visible entries of a challenge's thread for the given audiences, replies included as
+ * ordinary rows, newest first: no hidden entry and no reply under a hidden or unreadable root.
+ */
+export const listChallengeThreadDocumentEntries = async (
+  user: string,
+  challengeId: string,
+  audiences: readonly ChallengeThreadAudience[],
+  limit: number,
+): Promise<ChallengeThreadEntryRecord[]> => {
+  if (audiences.length === 0) return []
+  const result = await query<Row>(
+    user,
+    `SELECT ${qualified('e')}
+       FROM challenge_thread_entries e
+       LEFT JOIN challenge_thread_entries root ON root.id = e.root_entry_id
+      WHERE e.challenge_id = $1
+        AND e.audience = ANY($2::text[])
+        AND e.hidden_at IS NULL
+        AND (root.id IS NULL OR (root.hidden_at IS NULL AND root.audience = ANY($2::text[])))
+      ORDER BY e.published_at DESC, e.id DESC
+      LIMIT $3`,
+    [challengeId, audiences, limit],
+  )
+  return result.rows.map(mapEntry)
+}

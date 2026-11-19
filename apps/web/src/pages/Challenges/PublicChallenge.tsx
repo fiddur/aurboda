@@ -7,26 +7,14 @@
 import type { PublicChallenge as PublicChallengeData } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'preact/hooks'
+import { useState } from 'preact/hooks'
 
-import { TrendLineChart } from '../../components/charts/TrendLineChart'
-import { fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
+import { fetchChallengeThread, fetchPublicChallengeStandings, joinChallengeByUrl } from '../../state/api'
 import { auth } from '../../state/auth'
-import { competitionRanks, podiumMedal } from '../../utils/podium'
 import { ChallengeThread, challengeThreadKey } from './ChallengeThread'
+import { ChallengeView } from './ChallengeView'
 import { joinPagePath } from './join-query'
-import { memberColor } from './member-colors'
-import { formatChallengeWindow, formatUpdated, toCumulativeSeries } from './race-series'
-import { describeSpec, formatTotal, totalHeader } from './spec-label'
 import './style.css'
-
-const shortHost = (identityBaseUrl: string): string => {
-  try {
-    return new URL(identityBaseUrl).host
-  } catch {
-    return identityBaseUrl
-  }
-}
 
 export function PublicChallenge({
   username,
@@ -69,122 +57,46 @@ export function PublicChallenge({
     window.location.href = `${base.replace(/\/+$/, '')}${joinPagePath(challenge.share_url, false)}`
   }
 
-  const standings = (standingsQuery.data ?? []).filter((s) => s.status === 'active')
-  // Once the window has closed, medal the podium (equal totals share a rank) like
-  // the host's completion post and the Android widget do. It is provisional until
-  // the host's announcement freezes it (grace period, up to 24 h with a stale
-  // member) — late-syncing last-day data can still reorder it (#1076).
-  const ended = Date.now() >= new Date(challenge.end_ts).getTime()
-  const ranks = competitionRanks(standings.map((s) => s.total))
-  const standingsData = standingsQuery.data
-  const { start_ts, effective_bucket_size, spec } = challenge
-  const series = useMemo(
-    () =>
-      (standingsData ?? [])
-        .filter((s) => s.status === 'active')
-        // Falls back to daily if a cross-version host omits the resolved bucket size.
-        .map((s, i) =>
-          toCumulativeSeries(s, memberColor(i), start_ts, effective_bucket_size ?? '1d', spec.aggregation),
-        )
-        // Keep members with at least one real bucket (the start-line point alone is length 1).
-        .filter((s) => s.data.length > 1),
-    [standingsData, start_ts, effective_bucket_size, spec.aggregation],
-  )
-
   return (
     <div class="dashboard public-dashboard public-challenge">
-      {challenge.banner_url && <img class="challenge-banner" src={challenge.banner_url} alt="" />}
-      <div class="dashboard-header">
-        <h1>{challenge.name}</h1>
-        <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
-          @{username}
-        </a>
-      </div>
-
-      <p class="challenge-view-meta">
-        {describeSpec(spec)} ({spec.unit}) ·{' '}
-        {formatChallengeWindow(challenge.start_ts, challenge.end_ts, challenge.timezone)}
-      </p>
-
-      <div class="challenge-view-actions">
-        {isLoggedIn && !isOwner && !joined && (
-          <button class="btn-primary" disabled={joinMutation.isPending} onClick={() => joinMutation.mutate()}>
-            Join
-          </button>
-        )}
-        {joined && <span class="challenge-joined">✓ Joined</span>}
-        <button class="btn-secondary" onClick={joinFromOtherHost}>
-          Join from another instance
-        </button>
-        {isOwner && (
-          <a class="btn-secondary" href="/challenges">
-            Manage
+      <ChallengeView
+        challenge={challenge}
+        standings={standingsQuery.data}
+        loading={standingsQuery.isLoading}
+        attribution={
+          <a class="public-attribution" href={`/u/${encodeURIComponent(username)}`}>
+            @{username}
           </a>
-        )}
-      </div>
+        }
+        actions={
+          <>
+            {isLoggedIn && !isOwner && !joined && (
+              <button
+                class="btn-primary"
+                disabled={joinMutation.isPending}
+                onClick={() => joinMutation.mutate()}
+              >
+                Join
+              </button>
+            )}
+            {joined && <span class="challenge-joined">✓ Joined</span>}
+            <button class="btn-secondary" onClick={joinFromOtherHost}>
+              Join from another instance
+            </button>
+            {isOwner && (
+              <a class="btn-secondary" href="/challenges">
+                Manage
+              </a>
+            )}
+          </>
+        }
+      />
 
-      <div class="challenge-race-chart">
-        {standingsQuery.isLoading ? (
-          <div class="public-loading">Loading standings…</div>
-        ) : series.length > 0 ? (
-          <TrendLineChart
-            data={[]}
-            color={memberColor(0)}
-            multiSeries={series}
-            height={280}
-            // end_ts is the exclusive window end (midnight after the last day); step back
-            // one ms so the axis ends on the inclusive last competing day (matching the
-            // header) rather than drawing a trailing tick on the day after.
-            xDomain={[new Date(challenge.start_ts), new Date(new Date(challenge.end_ts).getTime() - 1)]}
-          />
-        ) : (
-          <p class="public-muted">No data yet.</p>
-        )}
-      </div>
-
-      {ended && standings.some((s) => s.total > 0) && (
-        <p class="challenge-final">🏁 Finished — standings settle once the host has announced the result</p>
-      )}
-      <table class="challenge-leaderboard">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Member</th>
-            <th>{totalHeader(spec)}</th>
-            <th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map((s, i) => (
-            <tr
-              key={s.identity_base_url}
-              class={ended && ranks[i] === 1 && s.total > 0 ? 'challenge-winner' : ''}
-            >
-              <td>
-                {ended && s.total > 0 && podiumMedal(ranks[i]) ? (
-                  <span title={`#${ranks[i]}`}>{podiumMedal(ranks[i])}</span>
-                ) : (
-                  ranks[i]
-                )}
-              </td>
-              <td>
-                <span
-                  aria-hidden="true"
-                  class="challenge-member-color"
-                  style={{ background: memberColor(i) }}
-                />
-                {s.display_name} <span class="challenge-member-host">· {shortHost(s.identity_base_url)}</span>
-              </td>
-              <td>{formatTotal(spec, s.total)}</td>
-              <td class="challenge-member-updated">
-                {s.stale ? '⚠ stale' : s.last_updated ? formatUpdated(s.last_updated) : '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <ChallengeThread username={username} slug={slug} challenge={challenge} />
+      <ChallengeThread
+        challengeUrl={challenge.share_url}
+        queryKey={[...challengeThreadKey(username, slug), isLoggedIn ? 'viewer' : 'public']}
+        fetchPage={(cursor) => fetchChallengeThread(username, slug, challenge.share_url, cursor)}
+      />
     </div>
   )
 }

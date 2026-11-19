@@ -29,7 +29,13 @@ import type {
 
 import { toWireKey } from './activitypub/quant-wire.ts'
 import { effectiveBucketSize, type MemberSeries, specToApi } from './challenge-spec.ts'
-import { buildActorUrl, buildChallengeObjectUrl, buildProfileUrl, buildShareUrl } from './share-urls.ts'
+import {
+  buildActorUrl,
+  buildChallengeObjectUrl,
+  buildChallengeThreadUrl,
+  buildProfileUrl,
+  buildShareUrl,
+} from './share-urls.ts'
 
 export interface QuantMetric {
   key: string
@@ -224,6 +230,7 @@ export const buildChallengeListItem = (
     scoring: challenge.spec.aggregation,
     standingsUrl: challengeApiUrl(ctx, challenge.slug, '/standings'),
     startTime: challenge.start_ts.toISOString(),
+    threadUrl: buildChallengeThreadUrl(ctx.webHost, ctx.username, challenge.slug),
     timezone: challenge.timezone,
     unit,
     url: buildShareUrl(ctx.webHost, ctx.username, challenge.slug),

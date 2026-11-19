@@ -33,6 +33,7 @@ import {
   joinChallengeBodySchema,
   type UpdateChallengeBody,
   updateChallengeBodySchema,
+  type JoinedChallengeResponse,
 } from '@aurboda/api-spec'
 
 import type { DiscoverChallenges } from '../services/challenge-discovery.ts'
@@ -68,14 +69,18 @@ import {
   toSpecFields,
 } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
+import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
 import {
   addChallengeComment,
-  createChallengeThreadDeps,
-  getChallengeThread,
-  resolveHostedChallenge,
+  readChallengeThread,
   setChallengeThreadEntryHidden,
 } from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
+import {
+  createJoinedChallengeDeps,
+  getJoinedChallenge,
+  type JoinedChallengeDeps,
+} from '../services/joined-challenge.ts'
 import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
 import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
@@ -109,11 +114,17 @@ export const createChallengesRouter = (
   webHost: string,
   apiBaseUrl: string,
   discoverChallenges: DiscoverChallenges,
-  threadOpts: { deliver?: FeedDeliver; isAdmin?: (user: string) => Promise<boolean> } = {},
+  threadOpts: {
+    deliver?: FeedDeliver
+    isAdmin?: (user: string) => Promise<boolean>
+    federation?: ThreadFederation
+    joined?: JoinedChallengeDeps
+  } = {},
 ): TypedRouter => {
   const router = typedRouter()
-  const thread = createChallengeThreadDeps({ deliver: threadOpts.deliver, webHost })
+  const thread = createThreadDeps({ deliver: threadOpts.deliver, webHost, ...threadOpts.federation })
   const isAdmin = threadOpts.isAdmin ?? (async () => false)
+  const joined = threadOpts.joined ?? createJoinedChallengeDeps()
 
   router.get<Record<string, never>, ChallengesResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
@@ -180,9 +191,9 @@ export const createChallengesRouter = (
     authMiddleware,
     validateQuery(challengeThreadQuerySchema),
     async (req, res) => {
-      const resolved = await resolveHostedChallenge(webHost, req.query.challenge_url, thread.loadChallenge)
-      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
-      const view = await getChallengeThread(thread, resolved, req.user!, req.query.cursor)
+      const result = await readChallengeThread(thread, req.user!, req.query.challenge_url, req.query.cursor)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      const { ok: _ok, ...view } = result
       res.setHeader('Cache-Control', 'no-store')
       res.json({ ...view, success: true })
     },
@@ -391,6 +402,7 @@ export const createChallengesRouter = (
           user,
           webHost,
         })
+        await thread.remote?.afterJoin(user, participation)
         res.json({ participation: serializeParticipation(participation), success: true })
       } catch (error) {
         if (error instanceof JoinChallengeError) {
@@ -398,6 +410,16 @@ export const createChallengesRouter = (
         }
         throw error
       }
+    },
+  )
+
+  router.get<{ id: string }, JoinedChallengeResponse>(
+    '/participations/:id',
+    authMiddleware,
+    async (req, res) => {
+      const result = await getJoinedChallenge(joined, req.user!, req.params.id, { webHost })
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json(result.response)
     },
   )
 

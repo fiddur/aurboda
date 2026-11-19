@@ -25,6 +25,15 @@ const db = vi.hoisted(() => ({
   getChallengeBySlug: vi.fn<(user: string, slug: string) => Promise<ChallengeRecord | null>>(),
   getChallengeThreadEntryByObjectUri: vi.fn(async () => null),
   getParticipationByUrl: vi.fn(async () => null),
+  deleteThreadCopyEntry: vi.fn(async () => 0),
+  getParticipationById: vi.fn(async () => null),
+  getParticipationByObjectUri: vi.fn(async () => null),
+  getThreadCopyEntryById: vi.fn(async () => null),
+  getThreadCopyEntryByObjectUri: vi.fn(async () => null),
+  listThreadCopy: vi.fn(async () => []),
+  replaceThreadCopy: vi.fn(async () => {}),
+  updateParticipationThreadState: vi.fn(async () => null),
+  upsertThreadCopyEntry: vi.fn(),
   isMissingDatabase: () => false,
   listChallengeMembers: vi.fn(async () => []),
   listChallengeThreadReplies: vi.fn(async () => []),
@@ -222,6 +231,12 @@ describe('list_joined_challenges', () => {
       data_token: 'tok',
       end_ts: new Date('2026-10-20T00:00:00Z'),
       host_checked_at: null,
+      challenge_object_uri: null,
+      host_actor_uri: null,
+      thread_attendees: [],
+      thread_audiences: [],
+      thread_synced_at: null,
+      thread_url: null,
       host_identity: 'https://aurboda.test/u/bob',
       id: 'p1',
       name: 'Old name',
@@ -237,6 +252,12 @@ describe('list_joined_challenges', () => {
       ...joined,
       ...patch,
       host_checked_at: null,
+      challenge_object_uri: null,
+      host_actor_uri: null,
+      thread_attendees: [],
+      thread_audiences: [],
+      thread_synced_at: null,
+      thread_url: null,
     }))
     const { call } = setup()
     const body = JSON.parse(await call('list_joined_challenges'))
@@ -292,11 +313,11 @@ describe('challenge thread tools', () => {
     })
   })
 
-  test('get_challenge_thread refuses a challenge on another server', async () => {
+  test('get_challenge_thread on another server needs a participation there', async () => {
     const { call } = setup()
     expect(
       await call('get_challenge_thread', { challenge_url: 'https://elsewhere.test/u/bob/abc' }),
-    ).toContain('another server')
+    ).toContain('Join this challenge')
   })
 
   test('hide_challenge_comment is for the host, or an admin', async () => {

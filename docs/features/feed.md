@@ -208,9 +208,10 @@ explicit metric selection that bounds what is shared:
   A post can also be **`participants`**: only a comment in a
   [challenge's comment thread](./challenges.md#comment-thread) takes it, for an entry read by the
   host and the challenge's members alone. No request body can ask for it, and an edit cannot move
-  a challenge comment between `participants` and the other visibilities. A `participants` post is
-  never federated: no `Create`, `Update` or `Delete` goes to followers or relays, it is addressed
-  to nobody, it is left out of the outbox, the public profile listing, the blog view and the Atom
+  a challenge comment between `participants` and the other visibilities. A `participants` post
+  never goes to followers or relays: its `Create`, `Update` and `Delete` are delivered only to the
+  challenge's host and members on other servers, and only when the challenge spans servers (see
+  [Members on other servers](./challenges.md#comment-thread)). It is left out of the outbox, the public profile listing, the blog view and the Atom
   feeds, and its Note id, its structured endpoint and its images answer 404 (a capability token
   does not open it either). The author still sees it in their own feed. A post that belongs to a
   challenge hosted here (a comment, a share, the result post) carries **`in_challenge`**

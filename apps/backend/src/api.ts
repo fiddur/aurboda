@@ -100,6 +100,10 @@ import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
+import {
+  createChallengeThreadFederationRouter,
+  createSignedActorOf,
+} from './routes/challenge-thread-federation-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
@@ -122,6 +126,7 @@ import {
   deliverFeedReplyPost,
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
+  createThreadPush,
   deliverQuoteStampDeletes,
   revokeQuoteStamps,
   toDeliverableArticle,
@@ -159,7 +164,12 @@ import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './servi
 import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
 import { publishFinishedChallengeResults } from './services/challenge-results.ts'
 import { getChallengeStandings } from './services/challenge-standings.ts'
-import { createChallengeThreadDeps, syncThreadEntryForPost } from './services/challenge-thread.ts'
+import {
+  createSignedThreadFetch,
+  createThreadDeps,
+  type ThreadFederation,
+} from './services/challenge-thread-remote.ts'
+import { syncThreadEntryForPost } from './services/challenge-thread.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -794,6 +804,10 @@ const main = async () => {
     }),
     tagActorHost,
   }
+  const threadFederation: ThreadFederation = {
+    fetchThread: createSignedThreadFetch(feedFederation, webHost),
+    push: createThreadPush(feedDeps),
+  }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
   const publicTagModeration = createPublicTagModeration({
     ownHost: new URL(webHost).hostname,
@@ -1009,10 +1023,11 @@ const main = async () => {
     },
   })
   feedUpdated = feedDeliver.updated
-  const challengeThreadDeps = createChallengeThreadDeps({
+  const challengeThreadDeps = createThreadDeps({
     deliver: feedDeliver,
     notify: notifier.raiseBestEffort,
     webHost,
+    ...threadFederation,
   })
   // Auto-share rules (#903): evaluate settled activities against enabled rules
   // after a stabilisation delay, publishing matches through the SAME
@@ -1287,6 +1302,7 @@ const main = async () => {
       discoverChallenges,
       engineDeps,
       feedDeliver,
+      threadFederation,
       followActions,
       followerActions,
       garmin,
@@ -1323,6 +1339,13 @@ const main = async () => {
   // client isn't loopback, so it can't spoof them. `TRUST_PROXY` adds a proxy in
   // front of nginx (docs/docker.md).
   httpd.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY))
+  // The signed thread document of a hosted challenge, ahead of Fedify, which owns `/users/`.
+  httpd.use(
+    createChallengeThreadFederationRouter({
+      signedActorOf: createSignedActorOf(feedFederation),
+      webHost,
+    }),
+  )
   // Any representation will do for a wildcard or absent Accept on an actor URL,
   // and the default is the actor document: hand Fedify the type it serves.
   httpd.use(createActorAcceptNormalizer())
@@ -1491,6 +1514,7 @@ const main = async () => {
     discoverChallenges,
     engineDeps,
     feedDeliver,
+    threadFederation,
     followActions,
     followerActions,
     garmin,

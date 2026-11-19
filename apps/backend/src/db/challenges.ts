@@ -1,6 +1,7 @@
 import type {
   ActivityMeasure,
   ChallengeAggregation,
+  ChallengeThreadAudience,
   ChallengeSourceType,
   ChartDataBucket,
 } from '@aurboda/api-spec'
@@ -82,6 +83,8 @@ export interface ChallengeMemberRecord {
   data_endpoint_url: string | null
   /** The member's ActivityPub actor id, when their join named one. */
   actor: string | null
+  /** When `actor` last proved itself with a signed thread request; null until it has. */
+  actor_verified_at: Date | null
   status: 'active' | 'withdrawn'
   joined_at: Date
   last_fetched_at: Date | null
@@ -116,6 +119,15 @@ export interface ChallengeParticipationRecord {
   protocol: ChallengeParticipationProtocol | null
   /** When a remote host was last asked for the challenge's current name; null until first asked. */
   host_checked_at: Date | null
+  /** The challenge's ActivityPub object id on its host, once known. */
+  challenge_object_uri: string | null
+  host_actor_uri: string | null
+  /** Where the host serves the comment thread to a signed request; null when it offers none. */
+  thread_url: string | null
+  thread_synced_at: Date | null
+  /** Actor ids a comment is delivered to, besides the host, as the host last listed them. */
+  thread_attendees: string[]
+  thread_audiences: ChallengeThreadAudience[]
   created_at: Date
 }
 
@@ -147,10 +159,10 @@ const CHALLENGE_COLUMNS =
 const CHALLENGE_SELECT_COLUMNS = `${CHALLENGE_COLUMNS}, (SELECT b.updated_at FROM challenge_banner b WHERE b.challenge_id = challenges.id) AS banner_updated_at`
 
 const MEMBER_COLUMNS =
-  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
+  'id, challenge_id, identity_base_url, display_name, kind, local_user, data_endpoint_url, actor, actor_verified_at, status, joined_at, last_fetched_at, data_last_updated, cached_total, cached_buckets, last_error'
 
-const PARTICIPATION_COLUMNS =
-  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, protocol, host_checked_at, created_at'
+export const PARTICIPATION_COLUMNS =
+  'id, challenge_url, host_identity, name, source_type, pattern, activity_type_id, aggregation, unit, bucket_size, measure, filter_field, filter_value, start_ts, end_ts, timezone, data_token, status, protocol, host_checked_at, challenge_object_uri, host_actor_uri, thread_url, thread_synced_at, thread_attendees, thread_audiences, created_at'
 
 interface ChallengeRow {
   id: string
@@ -212,7 +224,7 @@ interface MemberRow extends Omit<ChallengeMemberRecord, 'cached_buckets'> {
 
 const mapMember = (row: MemberRow): ChallengeMemberRecord => ({ ...row })
 
-interface ParticipationRow {
+export interface ParticipationRow {
   id: string
   challenge_url: string
   host_identity: string
@@ -233,17 +245,33 @@ interface ParticipationRow {
   status: 'active' | 'withdrawn'
   protocol: string | null
   host_checked_at: Date | null
+  challenge_object_uri: string | null
+  host_actor_uri: string | null
+  thread_url: string | null
+  thread_synced_at: Date | null
+  thread_attendees: unknown
+  thread_audiences: unknown
   created_at: Date
 }
+
+const stringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+
+const threadAudiences = (value: unknown): ChallengeThreadAudience[] =>
+  stringArray(value).filter(
+    (item): item is ChallengeThreadAudience => item === 'public' || item === 'participants',
+  )
 
 const isParticipationProtocol = (value: string | null): value is ChallengeParticipationProtocol =>
   value === 'quantpub' || value === 'aurboda'
 
-const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord => ({
+export const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord => ({
+  challenge_object_uri: row.challenge_object_uri,
   challenge_url: row.challenge_url,
   created_at: row.created_at,
   data_token: row.data_token,
   end_ts: row.end_ts,
+  host_actor_uri: row.host_actor_uri,
   host_checked_at: row.host_checked_at,
   host_identity: row.host_identity,
   id: row.id,
@@ -252,6 +280,10 @@ const mapParticipation = (row: ParticipationRow): ChallengeParticipationRecord =
   spec: toSpec(row),
   start_ts: row.start_ts,
   status: row.status,
+  thread_attendees: stringArray(row.thread_attendees),
+  thread_audiences: threadAudiences(row.thread_audiences),
+  thread_synced_at: row.thread_synced_at,
+  thread_url: row.thread_url,
   timezone: row.timezone,
 })
 
@@ -476,6 +508,10 @@ export const upsertChallengeMember = async (
                    local_user = EXCLUDED.local_user,
                    data_endpoint_url = EXCLUDED.data_endpoint_url,
                    actor = EXCLUDED.actor,
+                   actor_verified_at = CASE
+                     WHEN challenge_members.actor IS NOT DISTINCT FROM EXCLUDED.actor
+                       THEN challenge_members.actor_verified_at
+                   END,
                    status = 'active'
      RETURNING ${MEMBER_COLUMNS}`,
     [
@@ -489,6 +525,26 @@ export const upsertChallengeMember = async (
     ],
   )
   return mapMember(result.rows[0])
+}
+
+/**
+ * An actor proved itself as this member with a signed request: it becomes the member's `actor`,
+ * replacing whatever the unsigned join named, so a comment is only ever pushed to an actor that asked.
+ */
+export const markChallengeMemberActorVerified = async (
+  user: string,
+  memberId: string,
+  actorUri: string,
+): Promise<ChallengeMemberRecord | null> => {
+  const result = await query<MemberRow>(
+    user,
+    `UPDATE challenge_members
+        SET actor_verified_at = NOW(), actor = $2
+      WHERE id = $1
+      RETURNING ${MEMBER_COLUMNS}`,
+    [memberId, actorUri],
+  )
+  return result.rows.length ? mapMember(result.rows[0]) : null
 }
 
 export const removeChallengeMember = async (

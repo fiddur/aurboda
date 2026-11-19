@@ -88,6 +88,11 @@ import {
   type InboundThreadDeps,
   removeInboundThreadEntry,
 } from '../challenge-thread-inbound.ts'
+import {
+  admitPushedThreadNote,
+  createPushedThreadDeps,
+  type PushedThreadDeps,
+} from '../challenge-thread-remote.ts'
 import { resolveFeedActivity } from '../feed.ts'
 import { notifier } from '../notifications.ts'
 import { buildProfileUrl } from '../share-urls.ts'
@@ -613,11 +618,13 @@ export const handleInboundDelete = async (
   del: Delete,
   origin: string,
   threadDeps: InboundThreadDeps = createInboundThreadDeps(origin),
+  pushedDeps: Pick<PushedThreadDeps, 'deleteCopy'> = createPushedThreadDeps(),
 ): Promise<void> => {
   const me = ctx.recipient
   if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
   try {
     await removeInboundThreadEntry(threadDeps, origin, me, del.objectId.href, del.actorId.href)
+    await pushedDeps.deleteCopy(me, del.objectId.href, del.actorId.href)
     await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
     await deleteFeedQuoteAuthorizationsByQuote(me, del.objectId.href, del.actorId.href)
     if (del.objectId.href === del.actorId.href) {
@@ -848,13 +855,14 @@ const ingestStrangerInvolvement = async (
 const admitToChallengeThread = async (
   ctx: InboxContext<void>,
   deps: InboundThreadDeps,
+  pushedDeps: PushedThreadDeps | undefined,
   origin: string,
   me: string,
   actorId: URL,
   note: Note,
   follow: FeedFollowingRecord | null,
 ): Promise<boolean> => {
-  const thread = await admitInboundThreadNote(deps, {
+  const input = {
     actor_uri: actorId.href,
     me,
     note,
@@ -863,7 +871,10 @@ const admitToChallengeThread = async (
       follow != null && follow.accepted
         ? { avatar_url: follow.avatar_url, display_name: follow.display_name, handle: follow.handle }
         : await fetchActorPresentation(ctx, me, actorId),
-  })
+  }
+  const thread =
+    (await admitInboundThreadNote(deps, input)) ??
+    (await admitPushedThreadNote(pushedDeps ?? createPushedThreadDeps(), input))
   return thread?.quiet === true
 }
 
@@ -875,6 +886,7 @@ const ingestFeedActivity = async (
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
   threadDeps: InboundThreadDeps = createInboundThreadDeps(origin),
+  pushedDeps?: PushedThreadDeps,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
   // Unlike Accept/Reject there's no inner Follow to derive it from, so this relies
@@ -891,7 +903,16 @@ const ingestFeedActivity = async (
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
     const structuredUrl = object.id == null ? undefined : inboundStructuredUrl(received, object.id.href)
-    const quiet = await admitToChallengeThread(ctx, threadDeps, origin, me, actorId, object, follow)
+    const quiet = await admitToChallengeThread(
+      ctx,
+      threadDeps,
+      pushedDeps,
+      origin,
+      me,
+      actorId,
+      object,
+      follow,
+    )
     if (follow != null && follow.accepted) {
       await ingestNoteForRecipient(me, object, follow, enrich, origin, {
         ...(quiet ? {} : { notify: { source: follow } }),
@@ -1008,7 +1029,8 @@ export const handleInboundCreate = (
   onNewEntry?: (user: string) => void,
   enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   threadDeps?: InboundThreadDeps,
-): Promise<void> => ingestFeedActivity(ctx, create, origin, onNewEntry, enrich, threadDeps)
+  pushedDeps?: PushedThreadDeps,
+): Promise<void> => ingestFeedActivity(ctx, create, origin, onNewEntry, enrich, threadDeps, pushedDeps)
 
 /**
  * Inbound `Update`. Two meanings share the type: an actor editing **themselves**
@@ -1023,9 +1045,10 @@ export const handleInboundUpdate = async (
   onNewEntry?: (user: string) => void,
   enrich?: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>,
   threadDeps?: InboundThreadDeps,
+  pushedDeps?: PushedThreadDeps,
 ): Promise<void> => {
   if (isSelfActorUpdate(update)) return await refreshRemoteActorPresentation(ctx, update)
-  await ingestFeedActivity(ctx, update, origin, onNewEntry, enrich, threadDeps)
+  await ingestFeedActivity(ctx, update, origin, onNewEntry, enrich, threadDeps, pushedDeps)
 }
 
 /**

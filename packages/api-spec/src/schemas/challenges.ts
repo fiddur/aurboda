@@ -383,6 +383,24 @@ export const challengeParticipationResponseSchema = baseResponseSchema
 
 export type ChallengeParticipationResponse = z.infer<typeof challengeParticipationResponseSchema>
 
+export const joinedChallengeResponseSchema = baseResponseSchema
+  .extend({
+    challenge: publicChallengeSchema.optional().meta({
+      description: "The challenge as its host's page shows it; absent when the host could not be read",
+    }),
+    host_page_url: z.string().optional().meta({ description: "The challenge's page on its host" }),
+    participation: challengeParticipationSchema.optional(),
+    standings: z.array(challengeStandingSchema).optional().meta({
+      description: "The host's current standings; absent when the host could not be read",
+    }),
+  })
+  .meta({
+    description: 'A challenge the user joined, for the page on their own server',
+    id: 'JoinedChallengeResponse',
+  })
+
+export type JoinedChallengeResponse = z.infer<typeof joinedChallengeResponseSchema>
+
 export const challengeMembersResponseSchema = baseResponseSchema
   .extend({
     members: z.array(

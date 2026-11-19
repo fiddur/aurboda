@@ -1434,6 +1434,8 @@ export interface DeliverableReply {
   tags?: readonly string[]
   /** The challenge object whose thread the reply belongs to, federated as `context`. */
   challenge_uri?: string | null
+  /** The actors a challenge comment is pushed to; a participants-only one is addressed to them alone. */
+  thread_recipients?: readonly string[]
 }
 
 export const toDeliverableReply = (post: FeedPostRecord): DeliverableReply | null =>
@@ -1471,6 +1473,18 @@ export const replyMentions = (
   return [{ actorUri, handle: replyMentionName({ ...post, message: null }), ...(inbox && { inbox }) }]
 }
 
+const threadRecipientUrls = (actors: readonly string[]): URL[] => {
+  const urls: URL[] = []
+  for (const actor of new Set(actors)) {
+    try {
+      urls.push(new URL(actor))
+    } catch {
+      continue
+    }
+  }
+  return urls
+}
+
 /**
  * Addressing for a reply: the visibility table, plus the replied-to author in
  * `cc` (Mastodon-style — a mention is addressed as well as tagged, so their
@@ -1481,8 +1495,11 @@ const replyAddressing = (
   user: string,
   post: DeliverableReply,
 ): { to: URL[]; cc: URL[]; mentions: MentionRecipient[] } => {
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const mentions = replyMentions(post)
+  if (post.visibility === 'participants' && post.thread_recipients != null) {
+    return { cc: [], mentions, to: threadRecipientUrls(post.thread_recipients) }
+  }
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   return { cc: [...cc, ...mentions.map((m) => m.actorUri)], mentions, to }
 }
 
@@ -1568,3 +1585,53 @@ export const deliverFeedReplyUpdate = async (
   const update = buildReplyNoteUpdate(ctx, user, post)
   await fanOut(deps, ctx, user, update, { mentions: replyMentions(post), relayActivity: null })
 }
+
+const threadMentions = (actors: readonly string[]): MentionRecipient[] =>
+  threadRecipientUrls(actors).map((actorUri) => ({ actorUri, handle: actorUri.href }))
+
+/**
+ * Push a challenge comment's `Create` or `Update` to the thread's recipients only: each inbox on
+ * its own and best effort, the author's own actor skipped. Never the followers or relays.
+ */
+export const deliverThreadReply = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: DeliverableReply,
+  change: 'create' | 'update',
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  const activity =
+    change === 'create' ? buildReplyNoteCreate(ctx, user, post) : buildReplyNoteUpdate(ctx, user, post)
+  await deliverToMentioned(ctx, user, threadMentions(post.thread_recipients ?? []), activity)
+}
+
+/** Push the `Delete` of a challenge comment to the thread's recipients only. */
+export const deliverThreadReplyDelete = async (
+  deps: FeedDeliveryDeps,
+  user: string,
+  post: Pick<DeliverableReply, 'id' | 'thread_recipients' | 'visibility'>,
+): Promise<void> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  await deliverToMentioned(
+    ctx,
+    user,
+    threadMentions(post.thread_recipients ?? []),
+    buildFeedDelete(ctx, user, post),
+  )
+}
+
+/** The thread push of a challenge comment through the two functions above; fire and forget. */
+export const createThreadPush =
+  (deps: FeedDeliveryDeps) =>
+  (user: string, post: FeedPostRecord, change: 'create' | 'update' | 'delete', actors: string[]): void => {
+    const reply = toDeliverableReply(post)
+    if (reply == null) return
+    const target = { ...reply, thread_recipients: actors }
+    const work =
+      change === 'delete'
+        ? deliverThreadReplyDelete(deps, user, target)
+        : deliverThreadReply(deps, user, target, change)
+    void work.catch((error: unknown) => {
+      console.warn(`⚠️ challenge comment push (${change}) failed for post ${post.id}:`, error)
+    })
+  }
