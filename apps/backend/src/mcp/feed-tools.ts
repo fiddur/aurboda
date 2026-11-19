@@ -36,7 +36,6 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import {
   createArticleDraft,
   createArticlePost,
-  createChallengePost,
   createDashboardPost,
   createExercisePost,
   createFeedPost,
@@ -66,12 +65,20 @@ import {
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
-import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { publishChallengeShare } from '../services/challenge-share.ts'
+import {
+  createChallengeThreadDeps,
+  followPostDeleteInThread,
+  followPostEditInThread,
+  THREAD_VISIBILITY_LOCKED_MESSAGE,
+  threadVisibilityLocked,
+} from '../services/challenge-thread.ts'
 import {
   dashboardShareTags,
   previewDashboardShare,
   resolveDashboardShare,
 } from '../services/feed-dashboard-share.ts'
+import { deliverFeedPostEdit } from '../services/feed-deliver-guard.ts'
 import {
   exerciseShareTags,
   previewExerciseShare,
@@ -90,7 +97,6 @@ import { serializeFollowedTag, serializeFollowing, setFollowedTagNotify } from '
 import {
   activityKindTag,
   articleTexts,
-  CHALLENGE_KIND_TAG,
   loadEditedPostTags,
   resolvePostTags,
   retagPost,
@@ -140,6 +146,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     tagActorHost = async () => DEFAULT_TAG_ACTOR_HOST,
     webHost,
   } = options
+  const thread = webHost ? createChallengeThreadDeps({ deliver, webHost }) : undefined
 
   /** Answer a reaction toggle with the updated entry, or the failure as a tool error. */
   const reactionResult = (result: ReactionResult) =>
@@ -236,6 +243,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     { id: z.string().uuid().describe('Feed post ID'), ...updateFeedPostBodySchema.shape },
     async ({ id, ...body }) => {
       const message = normalizeFeedMessage(body.message)
+      const existing = await getFeedPostById(user, id)
+      if (!existing) return errorResponse('Feed post not found')
+      if (threadVisibilityLocked(existing, body.visibility)) {
+        return errorResponse(THREAD_VISIBILITY_LOCKED_MESSAGE)
+      }
       const retag = await loadEditedPostTags(user, id, { message, tags: body.tags })
       if (!retag.found) return errorResponse('Feed post not found')
       const record = await updateFeedPost(user, id, {
@@ -249,15 +261,8 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
-      // Federate the edit as an Update, same as the REST update route. Articles
-      // and challenge shares have no linked activity, so they must go through
-      // their own paths — the generic `updated` would silently no-op.
-      if (record.kind === 'article') deliver?.updatedArticle(user, record)
-      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
-      else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
-      else if (record.kind === 'dashboard') deliver?.updatedDashboard(user, record)
-      else if (record.kind === 'reply') deliver?.updatedReply(user, record)
-      else deliver?.updated(user, record)
+      deliverFeedPostEdit(deliver, user, record)
+      await followPostEditInThread(thread, user, record)
       return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
   )
@@ -266,19 +271,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     'share_challenge',
     "Publish a challenge INVITATION to your feed: your personal note (markdown) plus the challenge's canonical join-by-URL link. Pass exactly one of `challenge_id` (one of your own challenges) or `participation_id` (a challenge you joined, possibly hosted elsewhere) — the server resolves the linked name/URL itself.",
     { ...shareChallengeBodySchema.shape },
-    async ({ challenge_id, include_chart, message, participation_id, tags, visibility }) => {
-      const resolved = await resolveChallengeShare(user, { challenge_id, participation_id }, webHost)
-      if (!resolved.ok) return errorResponse(resolved.error)
-      const note = normalizeFeedMessage(message) ?? null
-      const record = await createChallengePost(user, {
-        challenge: resolved.challenge,
-        include_chart,
-        message: note,
-        tags: await resolvePostTags(user, { explicit: tags, kindTag: CHALLENGE_KIND_TAG, texts: [note] }),
-        visibility,
-      })
-      deliver?.createdChallenge(user, record)
-      return jsonResponse(await serializeFeedPost(user, record, { webHost }))
+    async (body) => {
+      const published = await publishChallengeShare(user, body, { deliver, thread, webHost })
+      if (!published.ok) return errorResponse(published.error)
+      return jsonResponse(await serializeFeedPost(user, published.record, { webHost }))
     },
   )
 
@@ -519,6 +515,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const stamps = await deleteFeedPostWithQuotes(user, id)
       // Retract from followers with a Delete{Tombstone}, same as the REST route.
       deliver?.deleted(user, existing, stamps ?? [])
+      await followPostDeleteInThread(thread, user, existing)
       return jsonResponse({ deleted: true, id })
     },
   )

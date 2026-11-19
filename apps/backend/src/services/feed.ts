@@ -40,6 +40,7 @@ import { renderExerciseShareHtml } from './activitypub/exercise-object.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
+import { resolveInChallenge } from './challenge-thread.ts'
 import {
   formatExerciseLine,
   resolvePostExercises,
@@ -301,6 +302,14 @@ const replyTargetFields = (
       }
     : {}
 
+const inChallengeOf = async (
+  record: FeedPostRecord,
+  opts: SerializeFeedPostOpts,
+): Promise<FeedPost['in_challenge']> =>
+  record.challenge_uri != null && opts.webHost != null
+    ? resolveInChallenge(opts.webHost, record.challenge_uri)
+    : undefined
+
 /**
  * Serialise a stored feed post for the owner-facing REST/MCP surface, enriching
  * it with the shared activity's title/type, the **merged-span** window, and the
@@ -322,6 +331,7 @@ export const serializeFeedPost = async (
   const { content, metrics, structured } = activity
     ? await resolveActivityPresentation(user, record, activity, opts)
     : { ...(await resolveSharePresentation(user, record, opts)), metrics: undefined }
+  const inChallenge = await inChallengeOf(record, opts)
   return {
     activity_end_time: activity?.end_time?.toISOString(),
     activity_id: record.activity_id,
@@ -344,6 +354,7 @@ export const serializeFeedPost = async (
     include_map: record.include_map,
     included_metrics: record.included_metrics,
     ...replyTargetFields(record),
+    in_challenge: inChallenge,
     kind: record.kind,
     message: record.message ?? undefined,
     metrics,

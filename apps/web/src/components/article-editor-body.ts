@@ -13,6 +13,7 @@ import type {
   ArticleDraftContent,
   CorrelationSelector,
   CreateArticleBody,
+  FeedPostVisibility,
   FeedVisibility,
   HrvActivitiesData,
   PreviewArticleBody,
@@ -215,7 +216,7 @@ export const toIso = (local: string): string | undefined =>
 /** What the editor opens: a published article post, a saved draft, or nothing for a new one. */
 export interface ArticleEditorSource {
   article?: ArticleDraftContent
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
 }
 
 const impactDraftOf = (b: Extract<ArticleDraftBlock, { type: 'impact' }>): ImpactDraft => ({
@@ -264,7 +265,7 @@ export const initialArticleEditorState = (source?: ArticleEditorSource): Article
   defaultEnd: toInputValue(source?.article?.default_end),
   defaultStart: toInputValue(source?.article?.default_start),
   title: source?.article?.title ?? '',
-  visibility: source?.visibility ?? 'public',
+  visibility: source == null || source.visibility === 'participants' ? 'public' : source.visibility,
   ...(source?.article?.tags ? { tags: source.article.tags } : {}),
 })
 

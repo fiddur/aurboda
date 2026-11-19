@@ -56,6 +56,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   activity_id: ACTIVITY_ID,
   article: null,
   autoshare_rule_id: null,
+  challenge_uri: null,
   challenge: null,
   created_at: UPDATED,
   dashboard: null,

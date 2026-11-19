@@ -58,7 +58,6 @@ import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import {
   createArticleDraft,
   createArticlePost,
-  createChallengePost,
   createDashboardPost,
   createExercisePost,
   createFeedPost,
@@ -84,12 +83,20 @@ import {
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import { mergeArticleContent, validateArticleContent } from '../services/article.ts'
 import { autoshareSharedByHand } from '../services/autoshare-pending.ts'
-import { resolveChallengeShare } from '../services/challenge-share.ts'
+import { publishChallengeShare } from '../services/challenge-share.ts'
+import {
+  createChallengeThreadDeps,
+  followPostDeleteInThread,
+  followPostEditInThread,
+  THREAD_VISIBILITY_LOCKED_MESSAGE,
+  threadVisibilityLocked,
+} from '../services/challenge-thread.ts'
 import {
   dashboardShareTags,
   previewDashboardShare,
   resolveDashboardShare,
 } from '../services/feed-dashboard-share.ts'
+import { deliverFeedPostEdit } from '../services/feed-deliver-guard.ts'
 import {
   exerciseShareTags,
   previewExerciseShare,
@@ -106,7 +113,6 @@ import {
 import {
   activityKindTag,
   articleTexts,
-  CHALLENGE_KIND_TAG,
   loadEditedPostTags,
   resolvePostTags,
   retagPost,
@@ -180,6 +186,7 @@ export const createFeedRouter = (
   tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
 ): TypedRouter => {
   const router = typedRouter()
+  const thread = webHost ? createChallengeThreadDeps({ deliver, webHost }) : undefined
 
   router.get<Record<string, never>, FeedPostsResponse, unknown, FeedPostsQuery>(
     '/',
@@ -548,22 +555,11 @@ export const createFeedRouter = (
     validateBody(shareChallengeBodySchema),
     async (req, res) => {
       const user = req.user!
-      const resolved = await resolveChallengeShare(user, req.body, webHost)
-      if (!resolved.ok) return res.status(resolved.status).json({ error: resolved.error, success: false })
-      const message = normalizeFeedMessage(req.body.message) ?? null
-      const record = await createChallengePost(user, {
-        challenge: resolved.challenge,
-        include_chart: req.body.include_chart,
-        message,
-        tags: await resolvePostTags(user, {
-          explicit: req.body.tags,
-          kindTag: CHALLENGE_KIND_TAG,
-          texts: [message],
-        }),
-        visibility: req.body.visibility,
-      })
-      deliver?.createdChallenge(user, record)
-      res.json({ post: await serializeFeedPost(user, record, { webHost }), success: true })
+      const published = await publishChallengeShare(user, req.body, { deliver, thread, webHost })
+      if (!published.ok) {
+        return res.status(published.status).json({ error: published.error, success: false })
+      }
+      res.json({ post: await serializeFeedPost(user, published.record, { webHost }), success: true })
     },
   )
 
@@ -779,6 +775,11 @@ export const createFeedRouter = (
     async (req, res) => {
       const user = req.user!
       const message = normalizeFeedMessage(req.body.message)
+      const existing = await getFeedPostById(user, req.params.postId)
+      if (!existing) return res.status(404).json({ error: 'Feed post not found', success: false })
+      if (threadVisibilityLocked(existing, req.body.visibility)) {
+        return res.status(400).json({ error: THREAD_VISIBILITY_LOCKED_MESSAGE, success: false })
+      }
       const retag = await loadEditedPostTags(user, req.params.postId, { message, tags: req.body.tags })
       if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
@@ -796,14 +797,8 @@ export const createFeedRouter = (
       }
       // Federate the edit as an Update so followers replace the stored object.
       // Fire-and-forget: the impl resolves what it needs, so it can't 500 here.
-      // An article (e.g. a visibility flip via this generic route) has no linked
-      // activity, so it must go through the article path — `updated` would no-op.
-      if (record.kind === 'article') deliver?.updatedArticle(user, record)
-      else if (record.kind === 'challenge') deliver?.updatedChallenge(user, record)
-      else if (record.kind === 'exercise') deliver?.updatedExercise(user, record)
-      else if (record.kind === 'dashboard') deliver?.updatedDashboard(user, record)
-      else if (record.kind === 'reply') deliver?.updatedReply(user, record)
-      else deliver?.updated(user, record)
+      deliverFeedPostEdit(deliver, user, record)
+      await followPostEditInThread(thread, user, record)
       res.json({
         post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),
         success: true,
@@ -821,6 +816,7 @@ export const createFeedRouter = (
       return res.status(404).json({ error: 'Feed post not found', success: false })
     }
     deliver?.deleted(user, existing, stamps)
+    await followPostDeleteInThread(thread, user, existing)
     res.json({ success: true })
   })
 

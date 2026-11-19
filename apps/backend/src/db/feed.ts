@@ -4,6 +4,7 @@ import type {
   DashboardShare,
   ExerciseShare,
   FeedPostKind,
+  FeedPostVisibility,
   FeedVisibility,
 } from '@aurboda/api-spec'
 
@@ -31,7 +32,7 @@ export interface FeedPostRecord {
   activity_id: string | null
   included_metrics: string[]
   series_metrics: string[]
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   include_map: boolean
   include_chart: boolean
   include_exercises: boolean
@@ -53,6 +54,8 @@ export interface FeedPostRecord {
   in_reply_to_handle: string | null
   /** The auto-share rule that created this post (#903), or null for manual posts. */
   autoshare_rule_id: string | null
+  /** The object id of the challenge whose thread this post is in; null for most posts. */
+  challenge_uri: string | null
   tags: string[]
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string
@@ -92,6 +95,8 @@ export interface ChallengePostInput {
   /** Attach the rendered standings race chart (`standings.png`); omitted stores false. */
   include_chart?: boolean
   tags?: string[]
+  /** The hosted challenge's object id, when the post enters its thread. */
+  challenge_uri?: string | null
 }
 
 export interface ExercisePostInput {
@@ -118,7 +123,8 @@ export interface DashboardPostInput {
  * stored reply can never claim a target the reader never received.
  */
 export interface ReplyPostInput {
-  visibility: FeedVisibility
+  /** `participants` only for a comment in a challenge thread (with `challenge_uri`). */
+  visibility: FeedPostVisibility
   /** The reply text (markdown). Non-blank — validated at the request boundary. */
   message: string
   /** The replied-to object's canonical AS2 id. */
@@ -128,6 +134,8 @@ export interface ReplyPostInput {
   /** The replied-to author's `@user@host` at reply time (the `Mention` name), if known. */
   in_reply_to_handle?: string | null
   tags?: string[]
+  /** The challenge thread this reply is a comment in. */
+  challenge_uri?: string | null
 }
 
 export interface FeedPostPatch {
@@ -145,7 +153,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, tags, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, challenge_uri, tags, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -153,7 +161,7 @@ interface FeedPostRow {
   activity_id: string | null
   included_metrics: string[]
   series_metrics: string[]
-  visibility: FeedVisibility
+  visibility: FeedPostVisibility
   include_map: boolean
   include_chart: boolean
   include_exercises: boolean
@@ -167,6 +175,7 @@ interface FeedPostRow {
   in_reply_to_actor_uri: string | null
   in_reply_to_handle: string | null
   autoshare_rule_id: string | null
+  challenge_uri: string | null
   tags: string[]
   image_token: string
   created_at: Date
@@ -254,8 +263,8 @@ export const createChallengePost = async (
 ): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, challenge, message, include_chart, tags)
-     VALUES ('challenge', $1, $2, $3, $4, $5)
+    `INSERT INTO feed_posts (kind, visibility, challenge, message, include_chart, tags, challenge_uri)
+     VALUES ('challenge', $1, $2, $3, $4, $5, $6)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.visibility,
@@ -263,6 +272,7 @@ export const createChallengePost = async (
       input.message ?? null,
       input.include_chart ?? false,
       input.tags ?? [],
+      input.challenge_uri ?? null,
     ],
   )
   return mapFeedPost(result.rows[0])
@@ -315,8 +325,8 @@ export const createDashboardPost = async (
 export const createReplyPost = async (user: string, input: ReplyPostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (kind, visibility, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, tags)
-     VALUES ('reply', $1, $2, $3, $4, $5, $6)
+    `INSERT INTO feed_posts (kind, visibility, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, tags, challenge_uri)
+     VALUES ('reply', $1, $2, $3, $4, $5, $6, $7)
      RETURNING ${FEED_POST_COLUMNS}`,
     [
       input.visibility,
@@ -325,6 +335,7 @@ export const createReplyPost = async (user: string, input: ReplyPostInput): Prom
       input.in_reply_to_actor_uri,
       input.in_reply_to_handle ?? null,
       input.tags ?? [],
+      input.challenge_uri ?? null,
     ],
   )
   return mapFeedPost(result.rows[0])

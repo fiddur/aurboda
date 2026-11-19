@@ -84,6 +84,38 @@ export const socialTables: Record<string, string> = {
     ALTER TABLE challenges ADD COLUMN IF NOT EXISTS result_published_at TIMESTAMPTZ;
   `,
 
+  // The comment thread of a challenge this user hosts: one snapshot per entry, keyed by the
+  // Note id of the post behind it (the post itself lives in its author's database). Only the
+  // same actor_uri may update or delete a row.
+  challenge_thread_entries: `
+    CREATE TABLE IF NOT EXISTS challenge_thread_entries (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      challenge_id    UUID NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
+      object_uri      TEXT NOT NULL UNIQUE,
+      in_reply_to_uri TEXT,
+      root_entry_id   UUID REFERENCES challenge_thread_entries(id) ON DELETE CASCADE,
+      kind            VARCHAR(12) NOT NULL,
+      audience        VARCHAR(12) NOT NULL,
+      actor_uri       TEXT NOT NULL,
+      handle          TEXT,
+      display_name    TEXT,
+      avatar_url      TEXT,
+      content         TEXT NOT NULL,
+      images          JSONB NOT NULL DEFAULT '[]',
+      url             TEXT,
+      published_at    TIMESTAMPTZ NOT NULL,
+      edited_at       TIMESTAMPTZ,
+      hidden_at       TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  challenge_thread_entries_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_challenge_thread_entries_page
+      ON challenge_thread_entries (challenge_id, published_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_challenge_thread_entries_root
+      ON challenge_thread_entries (root_entry_id);
+  `,
+
   // Members of challenges hosted by this user (local or remote).
   challenge_members: `
     CREATE TABLE IF NOT EXISTS challenge_members (
@@ -267,6 +299,10 @@ export const socialTables: Record<string, string> = {
   // Exercise share posts (#1398). Additive for pre-existing tables (idempotent).
   feed_posts_exercise_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS exercise JSONB;
+  `,
+  // The object id of the challenge a comment or share belongs to (its thread's root).
+  feed_posts_challenge_uri_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS challenge_uri TEXT;
   `,
   // Dashboard-period share posts (#1505): the shared period and the config snapshot.
   feed_posts_dashboard_column: `

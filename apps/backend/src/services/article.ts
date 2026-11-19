@@ -11,7 +11,7 @@
  * DB; `validateArticleContent` adds the one check that needs a lookup (a
  * challenge block's challenge, when it is hosted here, must exist).
  */
-import type { ArticleBlock, ArticleContent, FeedVisibility } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, FeedPostVisibility } from '@aurboda/api-spec'
 
 import {
   articleBlockWindow,
@@ -56,7 +56,7 @@ const articleBlockUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -79,7 +79,7 @@ export const articleBlockImageUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,
@@ -98,7 +98,7 @@ export const articleBlockFigureUrl = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   index: number,

@@ -159,6 +159,7 @@ import { createChallengeDiscovery, defaultChallengeDiscoveryDeps } from './servi
 import { createChallengeResultsQueue } from './services/challenge-results-queue.ts'
 import { publishFinishedChallengeResults } from './services/challenge-results.ts'
 import { getChallengeStandings } from './services/challenge-standings.ts'
+import { createChallengeThreadDeps, syncThreadEntryForPost } from './services/challenge-thread.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -173,6 +174,7 @@ import { createMailer } from './services/email.ts'
 import { createDumpExporter, createDumpLinkIssuer } from './services/export-dump.ts'
 import { createExportTokens } from './services/export-token.ts'
 import { reconcileExportedSharedFoodItems } from './services/exported-shared-food.ts'
+import { withoutParticipantsDelivery } from './services/feed-deliver-guard.ts'
 import { createReactionActions } from './services/feed-reactions.ts'
 import {
   createFeedRefreshDeps,
@@ -886,7 +888,7 @@ const main = async () => {
   const revokeUnsharedStamps = (user: string, post: FeedPostRecord): void => {
     void revokeQuoteStamps(feedDeps, user, post).catch(onDeliverError('quote stamp revoke', user, post.id))
   }
-  const feedDeliver: FeedDeliver = {
+  const feedDeliver: FeedDeliver = withoutParticipantsDelivery({
     // Expand the already-resolved activity to its merged span so the delivered
     // Note reports what the user shared, not just the anchor sub-activity (#881).
     created: (user, post, activity) => {
@@ -997,8 +999,13 @@ const main = async () => {
         void deliverFeedReplyUpdate(feedDeps, user, reply).catch(onDeliverError('update', user, post.id))
       }
     },
-  }
+  })
   feedUpdated = feedDeliver.updated
+  const challengeThreadDeps = createChallengeThreadDeps({
+    deliver: feedDeliver,
+    notify: notifier.raiseBestEffort,
+    webHost,
+  })
   // Auto-share rules (#903): evaluate settled activities against enabled rules
   // after a stabilisation delay, publishing matches through the SAME
   // feedDeliver.created fan-out a manual share fires. The deps double as the
@@ -1162,6 +1169,7 @@ const main = async () => {
         sweep: () =>
           publishFinishedChallengeResults({
             claim: markChallengeResultPublished,
+            admitToThread: (user, post) => syncThreadEntryForPost(challengeThreadDeps, user, post),
             createPost: createChallengePost,
             deliver: feedDeliver.createdChallenge,
             listAwaiting: listChallengesAwaitingResult,

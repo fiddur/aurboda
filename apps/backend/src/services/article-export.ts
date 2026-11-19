@@ -12,7 +12,7 @@
  * on-demand image endpoint rather than embedding rendered data itself, so no
  * chart/correlation resolution happens here.
  */
-import type { ArticleBlock, ArticleContent, FeedVisibility, MetricType } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, FeedPostVisibility, MetricType } from '@aurboda/api-spec'
 
 import {
   articleBlockWindow,
@@ -158,7 +158,7 @@ export const buildArticleMarkdown = (
   apiBaseUrl: string,
   user: string,
   postId: string,
-  visibility: FeedVisibility,
+  visibility: FeedPostVisibility,
   imageToken: string,
   updatedAt: Date,
   article: ArticleContent,
