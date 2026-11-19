@@ -435,10 +435,13 @@ The rules:
    public comment and `participants` for a participants one, see
    [Feed posts](./feed.md#feed-posts)), so it is edited and deleted through
    `PATCH`/`DELETE /feed/{postId}` (and `update_feed_post` / `delete_feed_post`) and the
-   thread follows. Its audience cannot change after posting (`400`). A public comment is
-   delivered like any reply; a participants one never leaves the instance.
+   thread follows. Its audience cannot change after posting (`400`), and an edit always
+   reaches the thread, also after its author left the challenge. A public comment is
+   delivered like any reply; a participants one never leaves the instance. Deleting a
+   top-level entry takes its replies out of the thread with it, other people's included;
+   their own feed posts stay.
 4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
-   hidden top-level entry hides its replies. Hiding is undone by unhiding.
+   hidden entry hides the replies under it. Hiding is undone by unhiding.
 5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
 6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
    the host and every local member except its author.

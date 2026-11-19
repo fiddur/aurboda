@@ -292,6 +292,11 @@ export const listSegments = async (
   return result.rows.map(mapSegmentRow)
 }
 
+export const hasSegments = async (user: string): Promise<boolean> => {
+  const result = await query(user, `SELECT EXISTS (SELECT 1 FROM segments) AS present`)
+  return result.rows[0]?.present === true
+}
+
 export const getSegmentById = async (user: string, id: string): Promise<SegmentRecord | null> => {
   const result = await query(user, `${segmentSelect('se.segment_id = $1')} WHERE s.id = $1`, [id])
   return result.rows[0] ? mapSegmentRow(result.rows[0]) : null

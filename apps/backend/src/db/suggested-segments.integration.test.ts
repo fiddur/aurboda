@@ -17,6 +17,7 @@ import {
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
+  releaseStaleSuggestedSegmentClaims,
   settleSuggestedSegmentClaim,
   suggestedSegmentLine,
   upsertSuggestion,
@@ -337,6 +338,49 @@ describe('Suggested segments integration', () => {
       await settleSuggestedSegmentClaim(user, id, segmentId)
       await settleSuggestedSegmentClaim(user, id, null)
       expect(await getSuggestedSegment(user, id)).toMatchObject({ segment_id: segmentId, status: 'promoted' })
+    })
+
+    test('releasing stale claims frees only claims older than ten minutes with no segment', async () => {
+      const user = getTestUser()
+      const source = await addTrackedActivity(EAST)
+      const add = (y: number) =>
+        upsertSuggestion(user, {
+          activity_count: 3,
+          activity_type: 'running',
+          source_activity_id: source,
+          wkt: wkt([
+            [0, y],
+            [1000, y],
+          ]),
+        })
+      await add(0)
+      await add(900)
+      await add(1800)
+      const [fresh, stale, settled] = (await listSuggestedSegments(user)).map((s) => s.id)
+      for (const id of [fresh!, stale!, settled!]) await claimSuggestedSegment(user, id)
+      const segmentId = await insertSegment(user, {
+        activity_type: 'running',
+        name: 'Settled',
+        wkt: wkt([
+          [0, 1800],
+          [1000, 1800],
+        ]),
+      })
+      await settleSuggestedSegmentClaim(user, settled!, segmentId)
+      await query(
+        user,
+        `UPDATE suggested_segments SET decided_at = NOW() - INTERVAL '11 minutes' WHERE id = ANY($1)`,
+        [[stale, settled]],
+      )
+
+      await releaseStaleSuggestedSegmentClaims(user)
+
+      expect((await getSuggestedSegment(user, fresh!))?.status).toBe('promoted')
+      expect((await getSuggestedSegment(user, stale!))?.status).toBe('pending')
+      expect(await getSuggestedSegment(user, settled!)).toMatchObject({
+        segment_id: segmentId,
+        status: 'promoted',
+      })
     })
   })
 

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'preact/hooks'
 
 import { renderTimeAxis, renderYearBreaks, type TimeAxisLayout, timeAxisLayout } from './time-axis'
 import './TrendLineChart.css'
+import { useMeasuredWidth } from './useMeasuredWidth'
 
 export interface LineSeriesData {
   name: string
@@ -398,7 +399,7 @@ export function TrendLineChart({
   multiSeries,
   xDomain,
 }: TrendLineChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const { element: container, ref: containerRef, width: measuredWidth } = useMeasuredWidth<HTMLDivElement>()
   const svgRef = useRef<SVGSVGElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
@@ -410,14 +411,13 @@ export function TrendLineChart({
   const xDomainEndMs = xDomain?.[1].getTime()
 
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current) return
+    if (!svgRef.current || !container) return
 
     const domain: [Date, Date] | undefined =
       xDomainStartMs !== undefined && xDomainEndMs !== undefined
         ? [new Date(xDomainStartMs), new Date(xDomainEndMs)]
         : undefined
-    const container = containerRef.current
-    const chartWidth = width ?? container.clientWidth
+    const chartWidth = width ?? measuredWidth
     const chartHeight = height
 
     const svg = d3.select(svgRef.current)
@@ -468,7 +468,18 @@ export function TrendLineChart({
         axis,
       )
     }
-  }, [data, color, height, width, compact, multiSeries, xDomainStartMs, xDomainEndMs])
+  }, [
+    data,
+    color,
+    height,
+    width,
+    measuredWidth,
+    container,
+    compact,
+    multiSeries,
+    xDomainStartMs,
+    xDomainEndMs,
+  ])
 
   if (effectiveData.length < 2) {
     return <div class="trend-line-chart-placeholder">Insufficient data for chart</div>

@@ -32,7 +32,6 @@ import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
-  deleteRuleActivities,
   emitTimelineNotify,
   expandAncestorTypes,
   getDeductionRulesByIds,
@@ -178,6 +177,7 @@ import {
   createDeductionQueue,
   type DeductionQueue,
 } from './services/deduction-queue.ts'
+import { removeRuleActivities } from './services/deduction-rule-activities.ts'
 import { createDeletedUsers } from './services/deleted-users.ts'
 import { createDetectionTrigger, type DetectionTrigger } from './services/detection-trigger.ts'
 import { runDetectionForUser } from './services/detection-worker.ts'
@@ -219,7 +219,7 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
-import { notificationStore, notifier } from './services/notifications.ts'
+import { notificationStore, notifier, notifyAdminsOfUnfinishedSignup } from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -532,7 +532,7 @@ const main = async () => {
     try {
       deductionQueue = await createDeductionQueue(boss, {
         buildFullWindow: (user) => buildFullWindow(user, engineDeps),
-        deleteRuleActivities,
+        deleteRuleActivities: (user, ruleId) => removeRuleActivities(user, ruleId),
         engineDeps,
         evaluateAllRules,
         expandAncestorTypes,
@@ -731,6 +731,12 @@ const main = async () => {
       discover: createDiscoveryCache(oidcClient),
       invitationAuth,
       loginMethods,
+      notifyAdminsOfSignup: signupDeps.notifyAdmins,
+      notifyAdminsOfUnfinishedSignup: (user) =>
+        void notifyAdminsOfUnfinishedSignup({
+          getAdmins: centralDb.getAdmins,
+          raiseBestEffort: notifier.raiseBestEffort,
+        })(user),
       redirectUri: oidcRedirect,
       startEmailVerification,
       store: centralDb,

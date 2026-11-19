@@ -188,6 +188,9 @@ export const query = async <T extends QueryResultRow = QueryResultRow>(
  * This ALWAYS opens a connection and always closes it again: it is purely a
  * password check. The user's pool connects as the service role and does
  * `SET ROLE`, so a warm pool proves nothing about the password.
+ *
+ * The password as typed is tried first: a role whose verifier Postgres computed itself, from a
+ * password its SASLprep refused (a code point outside Unicode 3.2, an emoji say), was stored raw.
  */
 export const loginToUserDb = async (user: string, password: string) => {
   try {
@@ -199,10 +202,6 @@ export const loginToUserDb = async (user: string, password: string) => {
   }
 }
 
-/**
- * The password as typed is tried first: a role whose verifier Postgres computed itself, from a
- * password its SASLprep refused (a code point outside Unicode 3.2, an emoji say), was stored raw.
- */
 const connectOnce = async (user: string, password: string) => {
   const client = new Client({
     connectionTimeoutMillis: CONNECT_TIMEOUT_MS,

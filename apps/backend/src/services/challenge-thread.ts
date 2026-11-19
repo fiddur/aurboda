@@ -275,7 +275,10 @@ export interface AdmissionFacts {
   /** The entry `in_reply_to_uri` names, when it names one. */
   parent: Pick<ChallengeThreadEntryRecord, 'id' | 'challenge_id' | 'audience' | 'root_entry_id'> | null
   /** The entry already stored under the candidate's `object_uri`. */
-  existing: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'challenge_id'> | null
+  existing: Pick<
+    ChallengeThreadEntryRecord,
+    'actor_uri' | 'audience' | 'challenge_id' | 'kind' | 'root_entry_id'
+  > | null
   entry_count: number
 }
 
@@ -283,16 +286,27 @@ export type AdmissionDecision =
   | { admitted: true; audience: ChallengeThreadAudience; root_entry_id: string | null }
   | { admitted: false; reason: AdmissionRefusal }
 
-/** Rules 1 to 5 and 7: who may write what where. Pure. */
+/** An edit keeps its place: its author may have left, or the entry it answered may be gone. */
+const decideEdit = (
+  candidate: ThreadCandidate,
+  existing: NonNullable<AdmissionFacts['existing']>,
+  challengeId: string,
+  audience: ChallengeThreadAudience,
+): AdmissionDecision | null => {
+  if (existing.actor_uri !== candidate.author.actor_uri || existing.challenge_id !== challengeId) {
+    return { admitted: false, reason: 'not_author' }
+  }
+  return existing.kind === 'comment' && candidate.kind === 'comment' && existing.audience === audience
+    ? { admitted: true, audience, root_entry_id: existing.root_entry_id }
+    : null
+}
+
+/** Who may write what where. Pure. */
 export const decideAdmission = (candidate: ThreadCandidate, facts: AdmissionFacts): AdmissionDecision => {
   const audience: ChallengeThreadAudience = facts.challenge.is_public ? candidate.audience : 'participants'
   if (facts.existing != null) {
-    if (
-      facts.existing.actor_uri !== candidate.author.actor_uri ||
-      facts.existing.challenge_id !== facts.challenge.id
-    ) {
-      return { admitted: false, reason: 'not_author' }
-    }
+    const edit = decideEdit(candidate, facts.existing, facts.challenge.id, audience)
+    if (edit != null) return edit
   } else if (facts.entry_count >= MAX_THREAD_ENTRIES) {
     return { admitted: false, reason: 'thread_full' }
   }
@@ -375,7 +389,7 @@ export type AdmitResult =
   | { admitted: false; reason: AdmissionRefusal }
 
 /**
- * THE way into a thread: applies rules 1 to 5 and 7, resolves the root, upserts on `object_uri`,
+ * THE way into a thread: applies `decideAdmission`, resolves the root, upserts on `object_uri`,
  * and on a newly created, visible comment raises `challenge_comment` for the other side.
  */
 export const admitThreadEntry = async (
@@ -479,14 +493,36 @@ export const ownPostIdOf = (
   return /^[0-9a-f-]{36}$/i.test(postId) ? postId : null
 }
 
-/** Nest each page's replies under their top-level entry; `in_reply_to_id` resolved within the group. Pure. */
+/** A top-level entry's replies as a viewer sees them: without hidden ones and what answers them, unless `includeHidden`. */
+const visibleReplies = (
+  group: readonly ChallengeThreadEntryRecord[],
+  includeHidden: boolean,
+): ChallengeThreadEntryRecord[] => {
+  if (includeHidden) return [...group]
+  const dropped = new Set<string>()
+  return group.filter((reply) => {
+    const gone =
+      reply.hidden_at != null || (reply.in_reply_to_uri != null && dropped.has(reply.in_reply_to_uri))
+    if (gone) dropped.add(reply.object_uri)
+    return !gone
+  })
+}
+
+/**
+ * Nest each page's replies (oldest first) under their top-level entry; `in_reply_to_id` resolved
+ * within the group. Pure.
+ */
 export const assembleThread = (
   tops: readonly ChallengeThreadEntryRecord[],
   replies: readonly ChallengeThreadEntryRecord[],
   ownOf: (record: ChallengeThreadEntryRecord) => OwnEntry | null,
+  includeHidden = true,
 ): ChallengeThreadEntry[] =>
   tops.map((top) => {
-    const group = replies.filter((reply) => reply.root_entry_id === top.id)
+    const group = visibleReplies(
+      replies.filter((reply) => reply.root_entry_id === top.id),
+      includeHidden,
+    )
     const idByUri = new Map([top, ...group].map((record) => [record.object_uri, record.id]))
     return {
       ...serializeThreadReply(top, null, ownOf(top)),
@@ -554,7 +590,7 @@ const loadOwn = async (
   return own
 }
 
-/** One page of a thread as `viewer` (null: signed out) may see it: rules 2, 3 and 6. */
+/** One page of a thread as `viewer` (null: signed out) may see it. */
 export const getChallengeThread = async (
   deps: ThreadReadDeps,
   hosted: HostedChallenge,
@@ -585,12 +621,12 @@ export const getChallengeThread = async (
   const replies = await deps.listReplies(
     host,
     page.map((row) => row.id),
-    visibility,
+    { audiences, include_hidden: true },
     MAX_REPLIES_PER_ENTRY,
   )
   const own = await loadOwn(deps, viewer, [...page, ...replies])
   return {
-    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null),
+    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null, role === 'host'),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     total,
     viewer: viewerInfo,
@@ -958,8 +994,8 @@ const hostedChallengeOf = async (
 
 /**
  * Bring a post's thread entry in step with the post, after it was created or edited: a comment is
- * re-rendered (its audience kept), a share enters only with a note while public or unlisted (rule
- * 10) and leaves otherwise, the result enters as is. A post in no hosted thread is left alone.
+ * re-rendered (its audience kept), a share enters only with a note while public or unlisted and
+ * leaves otherwise, the result enters as is. A post in no hosted thread is left alone.
  */
 export const syncThreadEntryForPost = async (
   deps: ChallengeThreadDeps,
@@ -1049,7 +1085,7 @@ export const followPostDeleteInThread = async (
   }, post.id)
 }
 
-/** Rule 9: a comment's visibility is fixed; only its message can change. */
+/** A comment's visibility is fixed; only its message can change. */
 export const threadVisibilityLocked = (
   post: Pick<FeedPostRecord, 'challenge_uri' | 'kind' | 'visibility'> | null,
   requested: string | undefined,

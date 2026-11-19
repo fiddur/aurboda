@@ -106,10 +106,10 @@ See [Strength plans](features/strength-plans.md).
 
 See [Routes and segments](features/routes-and-segments.md).
 
-| Tool                       | What it does                                                                                                                                         |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_activity_track`       | An activity's full-resolution GPS track: `lat`, `lon`, `alt` and `t` (seconds since the activity start) per point, with `length_m` and `point_count` |
-| `backfill_activity_tracks` | Build missing tracks from stored raw records (Garmin details at full resolution, Strava polylines shape-only) and return the counts                  |
+| Tool                       | What it does                                                                                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_activity_track`       | An activity's full-resolution GPS track: `lat`, `lon`, `alt` and `t` (seconds since the activity start) per point, with `length_m` and `point_count`                   |
+| `backfill_activity_tracks` | Build missing tracks from stored raw records (Garmin details at full resolution, Strava polylines shape-only), time the user's segments on them, and return the counts |
 
 ### Route tools
 

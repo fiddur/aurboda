@@ -142,6 +142,15 @@ const facts = (over: Partial<AdmissionFacts> = {}): AdmissionFacts => ({
   ...over,
 })
 
+const stored = (over: Partial<NonNullable<AdmissionFacts['existing']>> = {}) => ({
+  actor_uri: `${WEB}/users/bob`,
+  audience: 'public' as const,
+  challenge_id: 'c1',
+  kind: 'comment' as const,
+  root_entry_id: null,
+  ...over,
+})
+
 describe('parseChallengePageUrl', () => {
   test('reads the host and slug of a challenge page on this instance', () => {
     expect(parseChallengePageUrl(WEB, `${WEB}/u/alice/abc`)).toEqual({ slug: 'abc', username: 'alice' })
@@ -314,18 +323,34 @@ describe('decideAdmission', () => {
         candidate(),
         facts({
           entry_count: MAX_THREAD_ENTRIES,
-          existing: { actor_uri: `${WEB}/users/bob`, challenge_id: 'c1' },
+          existing: stored(),
         }),
       ),
     ).toMatchObject({ admitted: true })
   })
 
-  test('only the author updates an entry', () => {
+  test('an edit keeps its place when its author left or the entry it answered is gone', () => {
+    const reply = candidate({ audience: 'participants', in_reply_to_uri: `${WEB}/users/alice/feed/x` })
+    const existing = stored({ audience: 'participants', root_entry_id: 'r0' })
+    expect(decideAdmission(reply, facts({ existing, is_participant: false }))).toEqual({
+      admitted: true,
+      audience: 'participants',
+      root_entry_id: 'r0',
+    })
+  })
+
+  test('an edit that changes the audience is judged like a new entry', () => {
     expect(
       decideAdmission(
-        candidate(),
-        facts({ existing: { actor_uri: `${WEB}/users/carol`, challenge_id: 'c1' } }),
+        candidate({ audience: 'participants' }),
+        facts({ existing: stored(), is_participant: false }),
       ),
+    ).toEqual({ admitted: false, reason: 'not_participant' })
+  })
+
+  test('only the author updates an entry', () => {
+    expect(
+      decideAdmission(candidate(), facts({ existing: stored({ actor_uri: `${WEB}/users/carol` }) })),
     ).toEqual({ admitted: false, reason: 'not_author' })
   })
 
@@ -365,6 +390,23 @@ describe('assembleThread', () => {
     expect(thread[0]?.replies[0]).toMatchObject({ message: 'mine', own_post_id: 'p1' })
     expect(thread[0]?.replies[1]).not.toHaveProperty('own_post_id')
     expect(thread[1]?.replies).toEqual([])
+  })
+
+  test('a hidden reply takes what answers it out of a non-host view', () => {
+    const top = entry({ id: 't1', object_uri: `${WEB}/users/bob/feed/t1` })
+    const reply = (id: string, answers: string, hidden = false) =>
+      entry({
+        hidden_at: hidden ? new Date() : null,
+        id,
+        in_reply_to_uri: `${WEB}/users/bob/feed/${answers}`,
+        object_uri: `${WEB}/users/bob/feed/${id}`,
+        root_entry_id: 't1',
+      })
+    const replies = [reply('r1', 't1', true), reply('r2', 'r1'), reply('r3', 'r2'), reply('r4', 't1')]
+    const ids = (includeHidden: boolean) =>
+      assembleThread([top], replies, () => null, includeHidden)[0]?.replies.map((r) => r.id)
+    expect(ids(false)).toEqual(['r4'])
+    expect(ids(true)).toEqual(['r1', 'r2', 'r3', 'r4'])
   })
 
   test('flags hidden entries', () => {

@@ -53,22 +53,37 @@ import { formatInTz } from './tz-utils.ts'
 
 type OuraClient = ReturnType<typeof ouraClient>
 
-export const registerSyncTools = (
-  server: McpServer,
-  user: string,
-  oura?: OuraClient,
-  garmin?: GarminClient,
-  stravaQueue?: StravaQueue,
-  notifier?: ActivityNotifier,
-  gravl?: GravlClient,
-  onDetailSynced?: DetailSyncedCallback,
-  onTrackWritten?: TrackWrittenCallback,
+export interface SyncToolDeps {
+  oura?: OuraClient
+  garmin?: GarminClient
+  stravaQueue?: StravaQueue
+  notifier?: ActivityNotifier
+  gravl?: GravlClient
+  onDetailSynced?: DetailSyncedCallback
+  onTrackWritten?: TrackWrittenCallback
   syncHomeAssistant?: (
     user: string,
     options?: { fullResync?: boolean; startDate?: Date },
-  ) => Promise<HomeAssistantSyncResult>,
-  homeAssistant?: HomeAssistantClient,
-  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>,
+  ) => Promise<HomeAssistantSyncResult>
+  homeAssistant?: HomeAssistantClient
+  reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>
+}
+
+export const registerSyncTools = (
+  server: McpServer,
+  user: string,
+  {
+    oura,
+    garmin,
+    stravaQueue,
+    notifier,
+    gravl,
+    onDetailSynced,
+    onTrackWritten,
+    syncHomeAssistant,
+    homeAssistant,
+    reprocessGarminPushes,
+  }: SyncToolDeps = {},
 ) => {
   server.tool(
     'sync_oura',

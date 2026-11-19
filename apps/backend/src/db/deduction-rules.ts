@@ -179,14 +179,28 @@ export const deleteDeductionRule = async (user: string, id: string): Promise<boo
   return (result.rowCount ?? 0) > 0
 }
 
+export interface DeletedRuleActivities {
+  count: number
+  /** The earliest deleted start of each activity type, for marking training load hours dirty. */
+  earliest_by_type: { activity_type: string; start_time: Date }[]
+}
+
 /** Used when re-evaluating a rule retroactively. */
-export const deleteRuleActivities = async (user: string, ruleId: string): Promise<number> => {
-  const result = await query(
+export const deleteRuleActivities = async (user: string, ruleId: string): Promise<DeletedRuleActivities> => {
+  const result = await query<{ activity_type: string; start_time: Date; count: string }>(
     user,
-    `DELETE FROM activities WHERE source = 'deduction-rule' AND (data->>'rule_id') = $1`,
+    `WITH deleted AS (
+       DELETE FROM activities WHERE source = 'deduction-rule' AND (data->>'rule_id') = $1
+       RETURNING activity_type, start_time
+     )
+     SELECT activity_type, MIN(start_time) AS start_time, COUNT(*) AS count
+     FROM deleted GROUP BY activity_type ORDER BY activity_type`,
     [ruleId],
   )
-  return result.rowCount ?? 0
+  return {
+    count: result.rows.reduce((sum, row) => sum + Number(row.count), 0),
+    earliest_by_type: result.rows.map(({ activity_type, start_time }) => ({ activity_type, start_time })),
+  }
 }
 
 /**

@@ -36,6 +36,7 @@ import {
   challengeCommentBodySchema,
   challengeThreadEntryResponseSchema,
   challengeThreadHideBodySchema,
+  challengeThreadHideQuerySchema,
   challengeThreadQuerySchema,
   challengeThreadResponseSchema,
   publicChallengeThreadQuerySchema,
@@ -504,7 +505,7 @@ const openApiDocument = createDocument({
           "Show a hidden thread entry again. The host of the challenge or an admin only, on the host's own server.",
         requestParams: {
           path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }),
-          query: challengeThreadHideBodySchema,
+          query: challengeThreadHideQuerySchema,
         },
         responses: {
           200: {

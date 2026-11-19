@@ -21,6 +21,7 @@ export const tzJsonResponse = (data: unknown, tz: string) => ({
 
 export const errorResponse = (message: string) => ({
   content: [{ text: message, type: 'text' as const }],
+  isError: true,
 })
 
 /**

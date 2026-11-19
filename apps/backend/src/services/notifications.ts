@@ -243,33 +243,52 @@ export interface NotifyAdminsOfSignupDeps {
   logError?: (message: string, error: unknown) => void
 }
 
+const raiseSignupNoticeForAdmins = async (
+  deps: NotifyAdminsOfSignupDeps,
+  username: string,
+  notice: { body: string; dedupe_key: string; title: string },
+): Promise<void> => {
+  let admins: string[]
+  try {
+    admins = await deps.getAdmins()
+  } catch (error) {
+    const logError = deps.logError ?? ((message, e) => console.error(message, e))
+    logError(`⚠️ Could not list admins to notify of ${username}'s signup:`, error)
+    return
+  }
+  await Promise.all(
+    admins
+      .filter((admin) => admin !== username)
+      .map((admin) =>
+        deps.raiseBestEffort(admin, {
+          ...notice,
+          data: { username },
+          link: `/admin/users/${username}`,
+          type: 'admin_signup',
+        }),
+      ),
+  )
+}
+
 /** Best-effort: never throws, whatever fails. The new account itself is never notified. */
 export const notifyAdminsOfSignup =
   (deps: NotifyAdminsOfSignupDeps) =>
-  async (username: string): Promise<void> => {
-    let admins: string[]
-    try {
-      admins = await deps.getAdmins()
-    } catch (error) {
-      const logError = deps.logError ?? ((message, e) => console.error(message, e))
-      logError(`⚠️ Could not list admins to notify of ${username}'s signup:`, error)
-      return
-    }
-    await Promise.all(
-      admins
-        .filter((admin) => admin !== username)
-        .map((admin) =>
-          deps.raiseBestEffort(admin, {
-            body: `${username} created an account.`,
-            data: { username },
-            dedupe_key: `admin_signup:${username}`,
-            link: `/admin/users/${username}`,
-            title: `New signup: ${username}`,
-            type: 'admin_signup',
-          }),
-        ),
-    )
-  }
+  (username: string): Promise<void> =>
+    raiseSignupNoticeForAdmins(deps, username, {
+      body: `${username} created an account.`,
+      dedupe_key: `admin_signup:${username}`,
+      title: `New signup: ${username}`,
+    })
+
+/** Best-effort like `notifyAdminsOfSignup`, for a sign-up that left an account nobody can sign in to. */
+export const notifyAdminsOfUnfinishedSignup =
+  (deps: NotifyAdminsOfSignupDeps) =>
+  (username: string): Promise<void> =>
+    raiseSignupNoticeForAdmins(deps, username, {
+      body: 'Single sign-on sign-up could not link the identity and rolling back failed; the account was kept and has no way to sign in.',
+      dedupe_key: `admin_signup_unfinished:${username}`,
+      title: `Sign-up of ${username} needs attention`,
+    })
 
 export interface NotificationStore {
   get: (user: string, id: string) => Promise<NotificationRecord | null>
