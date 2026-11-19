@@ -34,6 +34,7 @@ import {
   type NegativeCache,
 } from '../services/article-block-misses.ts'
 import { articleBlockFigureSvg } from '../services/article-figure.ts'
+import { articleFlagNames } from '../services/article.ts'
 import { isCapabilityAuthorized } from '../services/feed-capability.ts'
 import {
   activityHeartRateChart,
@@ -240,7 +241,8 @@ export const renderArticleBlockFigure = async (
   index: number,
   block: ResolvedArticleBlock,
 ): Promise<Buffer | null> => {
-  const figure = renderArticleNote(article, () => '').figures.find((f) => f.block_index === index)
+  const flagNames = await articleFlagNames(user, article.blocks)
+  const figure = renderArticleNote(article, () => '', flagNames).figures.find((f) => f.block_index === index)
   if (figure == null) return null
   const svg = await articleBlockFigureSvg(deps, user, block, figure, async (chart) =>
     (await renderPostChartImage(deps, chart, 'svg')).toString('utf8'),

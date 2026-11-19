@@ -21,6 +21,7 @@ import { query } from '../db/connection.ts'
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
+import { insertSensitivityFlag } from '../db/sensitivities.ts'
 import { createSharedDashboard } from '../db/shared-dashboards.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
@@ -1365,6 +1366,43 @@ describe('Article drafts (/feed/article-drafts)', () => {
     expect(deliver.createdArticle).not.toHaveBeenCalled()
     expect((await app.request.get(`/feed/article-drafts/${created.body.draft.id}`)).status).toBe(200)
     expect((await app.request.get('/feed')).body.posts).toEqual([])
+  })
+
+  test('warns, never refuses, about a meal sensitivity, from draft to published article', async () => {
+    const flag = await insertSensitivityFlag(getTestUser(), { name: 'gluten' })
+    const warnings = [
+      {
+        block: 1,
+        message:
+          'Readers see your meal sensitivity "gluten" by name, and how many meals carried it on each day of the window.',
+      },
+    ]
+    const article = {
+      ...draftArticle(),
+      blocks: [
+        { markdown: 'Gluten and HRV', type: 'prose' },
+        {
+          outcome: { kind: 'metric', metric: 'hrv' },
+          trigger: { flag: flag.id, kind: 'sensitivity' },
+          type: 'correlation',
+        },
+      ],
+    }
+    const created = await app.request.post('/feed/article-drafts').send({ article })
+    expect(created.body.warnings).toEqual(warnings)
+    const id = created.body.draft.id
+    expect((await app.request.get(`/feed/article-drafts/${id}`)).body.warnings).toEqual(warnings)
+    expect(
+      (await app.request.patch(`/feed/article-drafts/${id}`).send({ title: 'G' })).body.warnings,
+    ).toEqual(warnings)
+    const published = await app.request.post(`/feed/article-drafts/${id}/publish`).send({})
+    expect(published.status).toBe(200)
+    expect(published.body.warnings).toEqual(warnings)
+  })
+
+  test('has no warnings without a sensitivity', async () => {
+    const created = await app.request.post('/feed/article-drafts').send({ article: draftArticle() })
+    expect(created.body).not.toHaveProperty('warnings')
   })
 })
 

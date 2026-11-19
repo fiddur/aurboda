@@ -160,6 +160,23 @@ describe('buildArticleMarkdown — impact blocks', () => {
   })
 })
 
+describe('buildArticleMarkdown — meal sensitivity', () => {
+  test('labels the image with the flag name', () => {
+    const md = buildArticleMarkdown(
+      'https://aurboda.example/api',
+      'fiddur',
+      'POST',
+      'public',
+      'secret-token',
+      UPDATED,
+      article([{ ...WINDOW, activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' }]),
+      undefined,
+      { 'gluten-id': 'gluten' },
+    )
+    expect(md).toContain(`![Impact of meals with gluten](${base}/blocks/0/image.png?v=${V})`)
+  })
+})
+
 describe('buildArticleMarkdown — challenge blocks', () => {
   const CHALLENGE = {
     caption: 'Join *us*',

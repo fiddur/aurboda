@@ -45,7 +45,7 @@ import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { declaredProseImages } from './activitypub/note-prose.ts'
 import { getArticleImpact } from './article-block-data.ts'
-import { isZeroDurationBucket } from './article.ts'
+import { articleFlagNames, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
 import { resolvePostExercises, toStructuredExercise } from './feed-exercises.ts'
@@ -132,16 +132,20 @@ const resolveStructuredChartBlock = async (
  * resolves here — the receiver renders the same "not enough data" fallback the
  * web's live `ArticleCorrelationBlock` shows for a sparse result.
  */
-const resolveStructuredCorrelationBlock = async (
+export const resolveStructuredCorrelationBlock = async (
   user: string,
   block: Extract<ArticleBlock, { type: 'correlation' }>,
   content: ArticleContent,
+  {
+    correlate = getContinuousCorrelation,
+    flagNames = articleFlagNames,
+  }: { correlate?: typeof getContinuousCorrelation; flagNames?: typeof articleFlagNames } = {},
 ): Promise<FeedStructuredArticleCorrelationBlock | null> => {
   const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
   if (new Date(start).getTime() >= new Date(end).getTime()) return null
 
-  const c = await getContinuousCorrelation(user, {
+  const c = await correlate(user, {
     lagDays: block.lag_days,
     outcome: block.outcome,
     periodEnd: end.slice(0, 10),
@@ -164,6 +168,8 @@ const resolveStructuredCorrelationBlock = async (
   }
   if (block.caption !== undefined) resolved.caption = block.caption
   if (block.lag_days !== undefined) resolved.lag_days = block.lag_days
+  const names = await flagNames(user, [block])
+  if (Object.keys(names).length > 0) resolved.flag_names = names
   return resolved
 }
 
@@ -207,6 +213,7 @@ export const resolveStructuredImpactBlock = async (
     window_minutes: impact.window_minutes,
   }
   if (block.caption !== undefined) resolved.caption = block.caption
+  if (block.activity_type === 'meal_sensitivity') resolved.activity_label = impact.activity
   return resolved
 }
 
