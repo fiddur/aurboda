@@ -1,5 +1,5 @@
 import type { CorrelationSelector } from './schemas/correlations.ts'
-import type { ArticleBlock, ArticleDraftBlock, ArticleDraftContent } from './schemas/feed.ts'
+import type { ArticleBlock, ArticleDraftBlock, ArticleDraftContent, ArticleWarning } from './schemas/feed.ts'
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
 
@@ -96,3 +96,40 @@ export const isCompleteArticleBlock = (
       return Boolean(block.activity) && hasBoundedWindow(block, content)
   }
 }
+
+const blockFlagIds = (block: ArticleDraftBlock): string[] => {
+  if (block.type === 'impact') {
+    return block.activity_type === 'meal_sensitivity' && block.activity ? [block.activity] : []
+  }
+  if (block.type !== 'correlation') return []
+  const ids = [block.trigger, block.outcome].flatMap((selector) =>
+    selector?.kind === 'sensitivity' && selector.flag.trim() !== '' ? [selector.flag] : [],
+  )
+  return [...new Set(ids)]
+}
+
+/** The sensitivity flag ids an article's blocks name, each once, in block order. */
+export const articleSensitivityFlagIds = (blocks: ArticleDraftBlock[]): string[] => [
+  ...new Set(blocks.flatMap(blockFlagIds)),
+]
+
+const sensitivityPhrase = (name: string | undefined): string =>
+  name ? `your meal sensitivity "${name}"` : 'a meal sensitivity flag'
+
+/**
+ * What an article's blocks show readers that the author may want to think twice about: each
+ * meal sensitivity, by name. A warning, never a refusal; given whatever the visibility.
+ */
+export const articleSharingWarnings = (
+  blocks: ArticleDraftBlock[],
+  flagNames: Record<string, string>,
+): ArticleWarning[] =>
+  blocks.flatMap((block, index) =>
+    blockFlagIds(block).map((id) => ({
+      block: index,
+      message:
+        block.type === 'impact'
+          ? `Readers see ${sensitivityPhrase(flagNames[id])} by name, and how your HRV, heart rate and stress moved around the meals that carried it.`
+          : `Readers see ${sensitivityPhrase(flagNames[id])} by name, and how many meals carried it on each day of the window.`,
+    })),
+  )

@@ -34,9 +34,12 @@ A feed post has a **`kind`**:
   against the locked window — no data snapshot. A **chart block** draws one metric; a
   **correlation block** pairs a `trigger` and an `outcome` selector (the exploratory
   correlation engine's dimensions, with an optional `lag_days`) and renders as a scatter
-  with the Pearson/Spearman coefficients and n. An **impact block** names one `activity`
-  exactly as the Analyze context table groups it (with its `activity_type`: an activity
-  type, a location, a screen-time category, or — set through the API — an app or a tag) and
+  with the Pearson/Spearman coefficients and n. A `sensitivity` selector (a meal sensitivity
+  flag) is shown to readers by the flag's name, for example "Meals with gluten (count)". An
+  **impact block** names one `activity` exactly as the Analyze context table groups it (with its
+  `activity_type`: an activity type, a location, a screen-time category, a meal sensitivity
+  (`meal_sensitivity`, with the flag id as the `activity`, labelled "Impact of meals with
+  gluten"), or, set through the API, an app or a tag) and
   an optional `window_minutes` (10–1440, default 30), and shows the Analyze page's impact
   chart over its window: HRV, heart rate and stress in the buckets before, during and after
   each session, each on its own scale, with the paired before → after change of each
@@ -257,6 +260,23 @@ as before (`PATCH /feed/articles/:postId`); there is no unpublish-to-draft.
 | `PATCH /feed/article-drafts/:id`        | `update_article_draft`  | Save changes; provided `title` / `blocks` / default window / `tags` / `visibility` replace the stored ones; over REST a `null` `default_start` / `default_end` / `tags` clears it |
 | `DELETE /feed/article-drafts/:id`       | `delete_article_draft`  | Delete a draft (nothing to retract)                                                                                                                                               |
 | `POST /feed/article-drafts/:id/publish` | `publish_article_draft` | Validate and publish; `{ visibility? }` overrides the draft's                                                                                                                     |
+
+#### Sharing warnings
+
+A meal sensitivity is personal, so an article that names one says so, and never refuses it:
+Aurboda does not block a user from sharing their own data. A correlation block with a
+`sensitivity` selector, or an impact block of a meal sensitivity, shows readers the flag's name.
+The flag is stored by id and its name is resolved whenever the article renders (the Note's figure
+labels, the figures, the markdown export, the Atom feed, the structured payload's `flag_names`
+and `activity_label`), so renaming a flag renames it everywhere, and a deleted flag reads
+generically ("a sensitivity flag").
+
+The answers of the draft routes (create, get, update), the preview, article create, article
+update and draft publish, REST and MCP alike, carry `warnings` (`ArticleWarning[]`: `block`, the
+0-based index in `blocks`, and a one-sentence `message`) when there is something to warn about,
+and leave it out otherwise. Warnings are given whatever the visibility. The web editor shows the
+same sentences live under each block, as a note that does not stop **Publish**
+(`articleSharingWarnings` in `@aurboda/api-spec`, shared by the backend and the editor).
 
 #### Preview
 
@@ -1027,8 +1047,10 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    peer's 1 MB response limit, so a long article still renders natively rather than dropping
    to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
-   the same `getContinuousCorrelation` call the block image uses; an impact block's `activity`,
-   `activity_type`, `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
+   the same `getContinuousCorrelation` call the block image uses, with `flag_names` (the names
+   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity; an
+   impact block's `activity`, `activity_type`, `activity_label` (set for `meal_sensitivity`, as
+   in "meals with gluten"), `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
    buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`
    call (exact match, no freshness sync) the block image uses, present for any bounded window
    even without sessions; a challenge block's `url` and

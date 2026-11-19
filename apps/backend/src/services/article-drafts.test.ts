@@ -172,7 +172,7 @@ describe('publishableArticle', () => {
     expect(!result.ok && result.error).toContain('Correlation block 1 needs both a trigger and an outcome')
   })
 
-  test('rejects a sensitivity selector in a correlation block', () => {
+  test('publishes a correlation block with a sensitivity selector', () => {
     const result = publishableArticle(
       complete({
         blocks: [
@@ -185,9 +185,15 @@ describe('publishableArticle', () => {
       }),
       'public',
     )
-    expect(!result.ok && result.error).toContain(
-      'blocks.0.trigger: An article correlation block cannot use a sensitivity selector',
+    expect(result.ok).toBe(true)
+  })
+
+  test('publishes an impact block of a meal sensitivity', () => {
+    const result = publishableArticle(
+      complete({ blocks: [{ activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' }] }),
+      'public',
     )
+    expect(result.ok).toBe(true)
   })
 
   test('rejects a challenge block without a URL', () => {

@@ -7,6 +7,7 @@ import { getFeedFollowingByTag, upsertFeedFollowing } from '../db/feed-following
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
+import { insertSensitivityFlag } from '../db/sensitivities.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { registerFeedTools } from './feed-tools.ts'
 
@@ -22,7 +23,7 @@ const setup = (user: string) => {
       tools.set(name, handler)
     },
   } as unknown as McpServer
-  const deliver = { deleted: vi.fn() } as unknown as FeedDeliver
+  const deliver = { createdArticle: vi.fn(), deleted: vi.fn() } as unknown as FeedDeliver
   registerFeedTools(server, user, { deliver })
   const tool = (name: string) => {
     const handler = tools.get(name)
@@ -30,11 +31,13 @@ const setup = (user: string) => {
     return handler
   }
   return {
+    createArticleDraft: tool('create_article_draft'),
     deleteFeedPost: tool('delete_feed_post'),
     deliver,
     getFeedPost: tool('get_feed_post'),
     listFeed: tool('list_feed'),
     listFeedPostReactions: tool('list_feed_post_reactions'),
+    publishArticleDraft: tool('publish_article_draft'),
     setFollowedTagNotify: tool('set_followed_tag_notify'),
   }
 }
@@ -208,5 +211,57 @@ describe('set_followed_tag_notify', () => {
     expect((await setFollowedTagNotify({ notify_on_post: true, tag: 'cycling' })).content[0].text).toBe(
       'Not following that tag',
     )
+  })
+})
+
+describe('article warnings', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('a draft and its published article warn about a meal sensitivity impact', async () => {
+    const user = getTestUser()
+    const flag = await insertSensitivityFlag(user, { name: 'dairy' })
+    const { createArticleDraft, publishArticleDraft } = setup(user)
+    const warnings = [
+      {
+        block: 0,
+        message:
+          'Readers see your meal sensitivity "dairy" by name, and how your HRV, heart rate and stress moved around the meals that carried it.',
+      },
+    ]
+
+    const draft = JSON.parse(
+      (
+        await createArticleDraft({
+          article: {
+            blocks: [{ activity: flag.id, activity_type: 'meal_sensitivity', type: 'impact' }],
+            default_end: '2026-07-07T00:00:00.000Z',
+            default_start: '2026-07-01T00:00:00.000Z',
+            title: 'Dairy',
+          },
+          visibility: 'public',
+        })
+      ).content[0].text,
+    )
+    expect(draft.warnings).toEqual(warnings)
+
+    const published = JSON.parse((await publishArticleDraft({ id: draft.id })).content[0].text)
+    expect(published.kind).toBe('article')
+    expect(published.warnings).toEqual(warnings)
+  })
+
+  test('a draft without a sensitivity has no warnings', async () => {
+    const { createArticleDraft } = setup(getTestUser())
+    const draft = JSON.parse((await createArticleDraft({ visibility: 'public' })).content[0].text)
+    expect(draft).not.toHaveProperty('warnings')
   })
 })

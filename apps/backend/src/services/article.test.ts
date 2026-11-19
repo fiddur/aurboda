@@ -1,12 +1,19 @@
-import type { ArticleContent } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, ArticleDraftBlock } from '@aurboda/api-spec'
 
-import { articleBlockSchema, articleBlockWindow, articleDraftBlockSchema } from '@aurboda/api-spec'
+import {
+  articleBlockSchema,
+  articleBlockWindow,
+  articleDraftBlockSchema,
+  articleSensitivityFlagIds,
+  articleSharingWarnings,
+} from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   articleBlockFigureUrl,
   articleBlockImageUrl,
   articleBlockLabel,
+  articleFlagNames,
   buildArticleContent,
   checkArticleChallenges,
   isZeroDurationBucket,
@@ -203,6 +210,19 @@ describe('impact blocks', () => {
         type: 'impact',
       }),
     ).toBe('Calm')
+  })
+
+  test('labels a meal sensitivity impact by the flag name, generically when the flag is gone', () => {
+    const block = { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' } as const
+    expect(articleBlockLabel(block, { 'gluten-id': 'gluten' })).toBe('Impact of meals with gluten')
+    expect(articleBlockLabel(block)).toBe('Impact of meals with a sensitivity flag')
+  })
+
+  test('the schema takes a meal sensitivity impact', () => {
+    expect(
+      articleBlockSchema.safeParse(impact({ activity: 'gluten-id', activity_type: 'meal_sensitivity' }))
+        .success,
+    ).toBe(true)
   })
 
   test('accepts an impact block that inherits the article default window', () => {
@@ -474,5 +494,97 @@ describe('mergeArticleContent', () => {
     const merged = mergeArticleContent(existing, { title: 'x' })
     expect(merged.default_start).toBe(WEEK_START)
     expect(merged.default_end).toBe(WEEK_END)
+  })
+})
+
+describe('sensitivity flags in article blocks', () => {
+  const sensitivityCorr: Extract<ArticleBlock, { type: 'correlation' }> = {
+    outcome: { kind: 'metric', metric: 'hrv' },
+    trigger: { flag: 'gluten-id', kind: 'sensitivity' },
+    type: 'correlation',
+  }
+
+  test('the schema takes a sensitivity selector in a correlation block', () => {
+    expect(articleBlockSchema.safeParse(sensitivityCorr).success).toBe(true)
+  })
+
+  test('labels a sensitivity selector by the flag name, generically when the flag is gone', () => {
+    expect(articleBlockLabel(sensitivityCorr, { 'gluten-id': 'gluten' })).toBe(
+      'Meals with gluten (count) vs hrv',
+    )
+    expect(articleBlockLabel(sensitivityCorr)).toBe('Meals with a sensitivity flag (count) vs hrv')
+  })
+
+  test('articleFlagNames names the flags the blocks use and skips the lookup without one', async () => {
+    const list = vi.fn(async () => [
+      { id: 'gluten-id', name: 'gluten' },
+      { id: 'dairy-id', name: 'dairy' },
+    ])
+    expect(await articleFlagNames('alice', [sensitivityCorr], list)).toEqual({ 'gluten-id': 'gluten' })
+    expect(list).toHaveBeenCalledWith('alice')
+    list.mockClear()
+    expect(await articleFlagNames('alice', [corrBlock()], list)).toEqual({})
+    expect(list).not.toHaveBeenCalled()
+  })
+
+  test('articleFlagNames leaves out a flag that no longer exists', async () => {
+    expect(await articleFlagNames('alice', [sensitivityCorr], async () => [])).toEqual({})
+  })
+})
+
+describe('articleSensitivityFlagIds and articleSharingWarnings', () => {
+  const blocks: ArticleDraftBlock[] = [
+    { markdown: 'Intro', type: 'prose' },
+    {
+      outcome: { flag: 'gluten-id', kind: 'sensitivity' },
+      trigger: { flag: 'gluten-id', kind: 'sensitivity' },
+      type: 'correlation',
+    },
+    {
+      outcome: { kind: 'metric', metric: 'hrv' },
+      trigger: { flag: '', kind: 'sensitivity' },
+      type: 'correlation',
+    },
+    { activity: 'dairy-id', activity_type: 'meal_sensitivity', type: 'impact' },
+    { activity_type: 'meal_sensitivity', type: 'impact' },
+    { activity: 'yoga', activity_type: 'activity_type', type: 'impact' },
+    {
+      outcome: { flag: 'gluten-id', kind: 'sensitivity' },
+      trigger: { flag: 'soy-id', kind: 'sensitivity' },
+      type: 'correlation',
+    },
+  ]
+
+  test('lists each flag once, in block order, skipping unchosen ones', () => {
+    expect(articleSensitivityFlagIds(blocks)).toEqual(['gluten-id', 'dairy-id', 'soy-id'])
+  })
+
+  test('warns once per flag in a block, by name, generically without one', () => {
+    expect(articleSharingWarnings(blocks, { 'dairy-id': 'dairy', 'gluten-id': 'gluten' })).toEqual([
+      {
+        block: 1,
+        message:
+          'Readers see your meal sensitivity "gluten" by name, and how many meals carried it on each day of the window.',
+      },
+      {
+        block: 3,
+        message:
+          'Readers see your meal sensitivity "dairy" by name, and how your HRV, heart rate and stress moved around the meals that carried it.',
+      },
+      {
+        block: 6,
+        message:
+          'Readers see a meal sensitivity flag by name, and how many meals carried it on each day of the window.',
+      },
+      {
+        block: 6,
+        message:
+          'Readers see your meal sensitivity "gluten" by name, and how many meals carried it on each day of the window.',
+      },
+    ])
+  })
+
+  test('warns about nothing without a sensitivity', () => {
+    expect(articleSharingWarnings([corrBlock()], {})).toEqual([])
   })
 })

@@ -59,6 +59,7 @@ import {
   postEntryTitle,
 } from '../services/article-atom.ts'
 import { renderableArticleBlocks } from '../services/article-export.ts'
+import { articleFlagNames } from '../services/article.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -284,6 +285,7 @@ export const createFeedPublicRouter = ({
                 username,
                 { ...row, article: row.article },
                 await renderableBlocks(username, row.id, row.article),
+                await articleFlagNames(username, row.article.blocks),
               )
             : postEntryHtml(post)
           return {
@@ -464,6 +466,7 @@ export const createFeedPublicRouter = ({
               username,
               record,
               await renderableBlocks(username, record.id, record.article),
+              await articleFlagNames(username, record.article.blocks),
             ),
             id: record.id,
             title: record.article.title,
