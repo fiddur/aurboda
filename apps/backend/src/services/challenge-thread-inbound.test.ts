@@ -404,6 +404,26 @@ describe('admitInboundThreadNote', () => {
     expect(fake.notified).toEqual([])
   })
 
+  test('an author who left still rewrites their participants entry', async () => {
+    const fake = fakeDeps({
+      entries: {
+        [`alice:${CAROL_NOTE}`]: storedEntry(
+          { ...entryInput(CAROL_NOTE, CAROL), audience: 'participants' },
+          'e1',
+        ),
+      },
+    })
+    const result = await admit(
+      fake,
+      note({ content: '<p>edited</p>', context: CHALLENGE_URI, public: false }),
+    )
+    expect(result).not.toBeNull()
+    expect(fake.entries.get(`alice:${CAROL_NOTE}`)).toMatchObject({
+      audience: 'participants',
+      content: '<p>edited</p>',
+    })
+  })
+
   test('no presentation, no entry', async () => {
     const fake = fakeDeps()
     expect(await admit(fake, note(), { presentation: async () => null })).toBeNull()

@@ -6,7 +6,12 @@ import type { ChallengeThreadAudience } from '@aurboda/api-spec'
  */
 import type { Note } from '@fedify/fedify/vocab'
 
-import type { ChallengeRecord, FeedPostRecord, TimelineEntryRecord } from '../db/index.ts'
+import type {
+  ChallengeRecord,
+  ChallengeThreadEntryRecord,
+  FeedPostRecord,
+  TimelineEntryRecord,
+} from '../db/index.ts'
 
 import {
   countChallengeThreadEntriesByActorSince,
@@ -216,6 +221,20 @@ const inboundCandidate = async (
   }
 }
 
+/**
+ * Whether someone who is not a participant is kept out: a participants entry is theirs to write
+ * only as a rewrite of their own entry (they have left since).
+ */
+const closedToOutsider = (
+  challenge: Pick<ChallengeRecord, 'is_public'>,
+  audience: ChallengeThreadAudience,
+  existing: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'audience'> | null,
+  actorUri: string,
+): boolean => {
+  if (challenge.is_public && audience === 'public') return false
+  return !(existing?.actor_uri === actorUri && existing.audience === 'participants')
+}
+
 const admitIntoThread = async (
   deps: InboundThreadDeps,
   input: InboundThreadNote,
@@ -239,7 +258,7 @@ const admitIntoThread = async (
   const audience = inboundAudience(note, buildChallengeObjectUrl(origin, host, challenge.slug))
   if (audience == null) return null
   const participant = isThreadParticipant(origin, host, members, actorUri)
-  if (!participant && (audience === 'participants' || !challenge.is_public)) return null
+  if (!participant && closedToOutsider(challenge, audience, existing, actorUri)) return null
   const now = deps.now()
   if (!participant && existing == null) {
     const recent = await deps.countByActorSince(host, challenge.id, actorUri, new Date(now - DAY_MS))

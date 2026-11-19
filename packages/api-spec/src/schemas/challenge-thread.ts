@@ -162,12 +162,12 @@ export type ChallengeThreadEntryResponse = z.infer<typeof challengeThreadEntryRe
 
 export const challengeThreadHideBodySchema = z
   .object({ challenge_url: challengeUrlSchema })
-  .meta({ id: 'ChallengeThreadHideBody' })
+  .meta({ description: 'The challenge whose thread entry is hidden', id: 'ChallengeThreadHideBody' })
 
 export type ChallengeThreadHideBody = z.infer<typeof challengeThreadHideBodySchema>
 
 export const challengeThreadHideQuerySchema = z
   .object({ challenge_url: challengeUrlSchema })
-  .meta({ id: 'ChallengeThreadHideQuery' })
+  .meta({ description: 'The challenge whose thread entry is shown again', id: 'ChallengeThreadHideQuery' })
 
 export type ChallengeThreadHideQuery = z.infer<typeof challengeThreadHideQuerySchema>
