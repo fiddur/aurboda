@@ -16,6 +16,7 @@ import type {
   SharedExerciseRecord,
 } from '../db/index.ts'
 import type * as FederationModule from '../services/challenge-federation.ts'
+import type * as DashboardDataModule from '../services/shared-dashboard-data.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
 
@@ -113,6 +114,32 @@ describe('GET /public/:username/:slug (dashboard)', () => {
     expect(res.body).toMatchObject({ config, period: '2026-10', period_lock: 'latest', widget_data, window })
     expect('period_from' in res.body).toBe(false)
     expect(dashboardData.resolveDashboardView).toHaveBeenCalledWith('alice', config, expect.any(String))
+  })
+
+  test('a day overview the owner did not show to visitors is in neither config nor widget_data', async () => {
+    const actual = await vi.importActual<typeof DashboardDataModule>('../services/shared-dashboard-data.ts')
+    vi.mocked(dashboardData.resolveDashboardView).mockImplementation(actual.resolveDashboardView)
+    const config: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'Today',
+          type: 'charts',
+          widgets: [
+            { config: { metrics: ['stress_level'], window: 'rolling_24h' }, id: 'day', type: 'day_overview' },
+            { config: { href: '/timeline', label: 'Timeline' }, id: 'link', type: 'quick_link' },
+          ],
+        },
+      ],
+      version: 1,
+    }
+    vi.mocked(db.getPublicSharedDashboardBySlug).mockResolvedValue(record(config))
+
+    const res = await app().get('/public/alice/board')
+
+    expect(res.status).toBe(200)
+    expect(res.body.config.sections[0].widgets.map((w: { id: string }) => w.id)).toEqual(['link'])
+    expect(res.body.widget_data).toEqual(widget_data)
   })
 
   describe('period locks', () => {

@@ -33,6 +33,12 @@
   color: #b45309;
 }
 
+.day-overview-note {
+  margin: 0 0 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
 .day-overview-plot {
   width: 100%;
   min-height: 140px;

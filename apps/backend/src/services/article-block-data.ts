@@ -6,7 +6,7 @@
  */
 import type { ActivityImpactType, CorrelationSelector } from '@aurboda/api-spec'
 
-import { impactActivityLabel } from '@aurboda/api-spec'
+import { resolvedImpactActivityLabel } from '@aurboda/api-spec'
 
 import type { MetricType } from '../schema.ts'
 import type { ImpactSvgData } from './charts/impact-svg.ts'
@@ -123,9 +123,5 @@ export const getArticleImpact = async (
     start,
     'exact',
   )
-  const flagGone = activityType === 'meal_sensitivity' && impact.activity === activity
-  return {
-    ...impact,
-    activity: impactActivityLabel(activityType, flagGone ? 'a sensitivity flag' : impact.activity),
-  }
+  return { ...impact, activity: resolvedImpactActivityLabel(activityType, activity, impact.activity) }
 }
