@@ -1,13 +1,13 @@
-import type { DayOverviewConfig } from '@aurboda/api-spec'
+import type { DayOverviewConfig, DayOverviewData, DayOverviewWindow } from '@aurboda/api-spec'
 
+import { ACTIVITY_LANE_CATEGORIES, isSleepType } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import * as d3 from 'd3'
-import { format } from 'date-fns'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { Activity, ActivityTypeDefinition } from '../../state/api'
 
-import { ACTIVITY_LANE_CATEGORIES, DURATION_ACTIVITY_COLORS } from '../../pages/Timeline/activityMerge'
+import { DURATION_ACTIVITY_COLORS } from '../../pages/Timeline/activityMerge'
 import { buildViewHash, getDefaultOrientation } from '../../pages/Timeline/viewHash'
 import { fetchActivities, fetchActivityTypeDefinitions, fetchBucketedMetrics } from '../../state/api'
 import { parseBucketedResponse } from '../../utils/chart'
@@ -25,9 +25,9 @@ import {
   dayOverviewRange,
   dayStatus,
   type DayStatus,
+  formatAt,
   formatRangeLabel,
   hourTicks,
-  isSleepType,
   latestValue,
   metricSeries,
   resolveDayOverviewConfig,
@@ -102,6 +102,14 @@ function IconGlyph({ item, x }: { item: DayIcon; x: number }) {
   )
 }
 
+type DayIconInput = Omit<DayIcon, 'x'>
+
+interface SleepSpan {
+  start_time: Date
+  end_time: Date
+  label: string
+}
+
 interface PlotProps {
   width: number
   range: TimeRange
@@ -109,11 +117,12 @@ interface PlotProps {
   bars: BucketValue[]
   lineMetric: string | undefined
   line: BucketValue[]
-  sleep: { start_time: Date; end_time: Date; label: string }[]
-  icons: Omit<DayIcon, 'x'>[]
+  sleep: SleepSpan[]
+  icons: DayIconInput[]
+  tz: string | undefined
 }
 
-function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, sleep, icons }: PlotProps) {
+function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, sleep, icons, tz }: PlotProps) {
   const x = d3.scaleTime().domain([range.start, range.end]).range([0, width]).clamp(true)
   const yBars = d3
     .scaleLinear()
@@ -148,7 +157,7 @@ function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, slee
     icons.map((icon) => ({ ...icon, x: x(icon.time) })),
     ICON_R * 2 + 2,
   )
-  const ticks = hourTicks(range, width)
+  const ticks = hourTicks(range, width, tz)
 
   return (
     <svg width={width} height={HEIGHT} class="day-overview-svg" aria-hidden="true">
@@ -161,7 +170,7 @@ function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, slee
           width={Math.max(1, x(s.end_time) - x(s.start_time))}
           height={PLOT_BOTTOM - PLOT_TOP}
         >
-          <title>{s.label}</title>
+          <title>{`${s.label} ${formatAt(s.start_time, 'HH:mm', tz)}–${formatAt(s.end_time, 'HH:mm', tz)}`}</title>
         </rect>
       ))}
       {ticks.map((t) => (
@@ -200,7 +209,7 @@ function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, slee
         const [first] = g.items
         if (!first) return null
         const cx = Math.min(Math.max(g.x, ICON_R + 1), width - ICON_R - 1)
-        const title = g.items.map((item) => `${format(item.time, 'HH:mm')} ${item.label}`).join('\n')
+        const title = g.items.map((item) => `${formatAt(item.time, 'HH:mm', tz)} ${item.label}`).join('\n')
         return (
           <g key={`icon-${g.x}`} class="day-overview-icon">
             <title>{title}</title>
@@ -234,7 +243,7 @@ function DayOverviewPlot({ width, range, barMetric, bars, lineMetric, line, slee
           y={AXIS_Y}
           text-anchor="middle"
         >
-          {format(t, 'HH')}
+          {formatAt(t, 'HH', tz)}
         </text>
       ))}
     </svg>
@@ -256,13 +265,13 @@ const useNow = () => {
   return now
 }
 
-const iconOf = (
-  activity: Activity,
-  defs: ReadonlyMap<string, ActivityTypeDefinition>,
-): Omit<DayIcon, 'x'> => {
+const iconColor = (color: string | undefined, activityType: string) =>
+  color ?? DURATION_ACTIVITY_COLORS[activityType] ?? DEFAULT_ICON_COLOR
+
+const iconOf = (activity: Activity, defs: ReadonlyMap<string, ActivityTypeDefinition>): DayIconInput => {
   const def = defs.get(activity.activity_type)
   return {
-    color: def?.color ?? DURATION_ACTIVITY_COLORS[activity.activity_type] ?? DEFAULT_ICON_COLOR,
+    color: iconColor(def?.color, activity.activity_type),
     icon: def?.icon,
     label: activity.title ?? def?.display_name ?? toDisplayName(activity.activity_type),
     time: activity.start_time,
@@ -276,8 +285,8 @@ interface DayData {
   hint: string | undefined
   bars: BucketValue[]
   line: BucketValue[]
-  icons: Omit<DayIcon, 'x'>[]
-  sleep: PlotProps['sleep']
+  icons: DayIconInput[]
+  sleep: SleepSpan[]
 }
 
 const useDayOverviewData = (
@@ -318,8 +327,9 @@ const useDayOverviewData = (
         .filter((a) => !isSleep(a) && a.start_time >= range.start && a.start_time <= range.end)
         .map((a) => iconOf(a, defs)),
       sleep: clipSpans(shown.filter(isSleep), range).map((s) => ({
-        ...s,
-        label: `${iconOf(s, defs).label} ${format(s.start_time, 'HH:mm')}–${format(s.end_time, 'HH:mm')}`,
+        end_time: s.end_time,
+        label: iconOf(s, defs).label,
+        start_time: s.start_time,
       })),
     }
   }, [activitiesQuery.data, defs, range])
@@ -358,14 +368,36 @@ function DayFigures({
   )
 }
 
-export function DayOverviewWidget({ config }: { config: DayOverviewConfig }) {
-  const { barMetric, lineMetric, title, window } = resolveDayOverviewConfig(config)
-  const now = useNow()
-  const range = useMemo(() => dayOverviewRange(window, now), [window, now])
-  const dataEnd = range.end < now ? range.end : now
+interface DayOverviewViewProps extends DayData {
+  window: DayOverviewWindow
+  title: string
+  barMetric: string
+  lineMetric: string | undefined
+  range: TimeRange
+  /** The owner's card links to the Timeline; a visitor's has no link. */
+  href?: string
+  /** A visitor's card is drawn in the owner's timezone. */
+  tz?: string
+  note?: string
+}
+
+export function DayOverviewView({
+  window,
+  title,
+  barMetric,
+  lineMetric,
+  range,
+  bars,
+  line,
+  sleep,
+  icons,
+  status,
+  hint,
+  href,
+  tz,
+  note,
+}: DayOverviewViewProps) {
   const { ref, width } = useWidth()
-  const { bars, hint, icons, line, sleep, status } = useDayOverviewData(range, dataEnd, barMetric, lineMetric)
-  const href = `/timeline${buildViewHash(range.start, range.end, new Set(), getDefaultOrientation())}`
 
   const body = {
     empty: <div class="no-data day-overview-empty">{dayOverviewEmptyMessage(window)}</div>,
@@ -381,16 +413,18 @@ export function DayOverviewWidget({ config }: { config: DayOverviewConfig }) {
         line={line}
         sleep={sleep}
         icons={icons}
+        tz={tz}
       />
     ),
   }
 
-  return (
-    <a href={href} class="chart-widget chart-widget-link day-overview" title="Open in the timeline">
+  const content = (
+    <>
       <div class="chart-widget-header">
         <h4>{title}</h4>
-        <p class="chart-widget-value">{formatRangeLabel(window, range)}</p>
+        <p class="chart-widget-value">{formatRangeLabel(window, range, tz)}</p>
       </div>
+      {note && <p class="day-overview-note">{note}</p>}
       {status === 'ready' && (
         <DayFigures barMetric={barMetric} bars={bars} line={line} lineMetric={lineMetric} />
       )}
@@ -398,6 +432,79 @@ export function DayOverviewWidget({ config }: { config: DayOverviewConfig }) {
         {body[status]}
       </div>
       {hint && <p class="day-overview-hint">{hint}</p>}
+    </>
+  )
+
+  return href ? (
+    <a href={href} class="chart-widget chart-widget-link day-overview" title="Open in the timeline">
+      {content}
     </a>
+  ) : (
+    <div class="chart-widget day-overview">{content}</div>
+  )
+}
+
+export function DayOverviewWidget({ config, note }: { config: DayOverviewConfig; note?: string }) {
+  const { barMetric, lineMetric, title, window } = resolveDayOverviewConfig(config)
+  const now = useNow()
+  const range = useMemo(() => dayOverviewRange(window, now), [window, now])
+  const dataEnd = range.end < now ? range.end : now
+  const day = useDayOverviewData(range, dataEnd, barMetric, lineMetric)
+  const href = `/timeline${buildViewHash(range.start, range.end, new Set(), getDefaultOrientation())}`
+
+  return (
+    <DayOverviewView
+      {...day}
+      window={window}
+      title={title}
+      barMetric={barMetric}
+      lineMetric={lineMetric}
+      range={range}
+      href={href}
+      note={note}
+    />
+  )
+}
+
+const toBuckets = (buckets: DayOverviewData['bars']): BucketValue[] =>
+  buckets.map((b) => ({ end: new Date(b.end), start: new Date(b.start), value: b.value }))
+
+/** A visitor's card, drawn from the server-resolved day in the owner's timezone. */
+export function ResolvedDayOverview({ config, data }: { config: DayOverviewConfig; data: DayOverviewData }) {
+  const { barMetric, lineMetric, title, window } = resolveDayOverviewConfig(config)
+  const day = useMemo(() => {
+    const bars = toBuckets(data.bars)
+    const line = toBuckets(data.line)
+    const sleep = data.sleep.map((s) => ({
+      end_time: new Date(s.end),
+      label: s.label,
+      start_time: new Date(s.start),
+    }))
+    const icons = data.activities.map((a) => ({
+      color: iconColor(a.color, a.activity_type),
+      icon: a.icon,
+      label: a.label,
+      time: new Date(a.time),
+    }))
+    return {
+      bars,
+      icons,
+      line,
+      sleep,
+      ...dayStatus(false, { activities: false, metrics: false }, { bars, icons, line, sleep }),
+    }
+  }, [data])
+
+  return (
+    <DayOverviewView
+      {...day}
+      hint={day.hint}
+      window={window}
+      title={title}
+      barMetric={barMetric}
+      lineMetric={lineMetric}
+      range={{ end: new Date(data.end), start: new Date(data.start) }}
+      tz={data.tz}
+    />
   )
 }

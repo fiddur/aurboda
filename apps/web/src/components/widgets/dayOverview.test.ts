@@ -1,3 +1,4 @@
+import { isSleepType } from '@aurboda/api-spec'
 import { describe, expect, it } from 'vitest'
 
 import { CHART_PRIMARY } from '../../theme'
@@ -11,8 +12,9 @@ import {
   dayOverviewEmptyMessage,
   dayOverviewRange,
   dayStatus,
+  formatAt,
+  formatRangeLabel,
   hourTicks,
-  isSleepType,
   latestValue,
   metricSeries,
   resolveDayOverviewConfig,
@@ -162,6 +164,31 @@ describe('hourTicks', () => {
     const range = { end: local(15, 9, 30), start: local(14, 9, 30) }
     expect(hourTicks(range, 800).map((d) => d.getHours())).toEqual([12, 15, 18, 21, 0, 3, 6, 9])
     expect(hourTicks(range, 360).map((d) => d.getHours())).toEqual([12, 18, 0, 6])
+  })
+})
+
+describe('in the owner timezone', () => {
+  const at = new Date('2026-03-14T23:30:00.000Z')
+
+  it('formats hours, times and days in the given zone', () => {
+    expect(formatAt(at, 'HH', 'Asia/Tokyo')).toBe('08')
+    expect(formatAt(at, 'HH:mm', 'Asia/Tokyo')).toBe('08:30')
+    expect(formatAt(at, 'HH:mm', 'America/New_York')).toBe('19:30')
+    expect(formatAt(at, 'EEE d MMM HH:mm', 'Asia/Tokyo')).toBe('Sun 15 Mar 08:30')
+    expect(formatAt(at, 'EEEE d MMMM', 'America/New_York')).toBe('Saturday 14 March')
+  })
+
+  it('labels the range in the given zone', () => {
+    const range = { end: at, start: new Date(at.getTime() - 24 * 3_600_000) }
+    expect(formatRangeLabel('rolling_24h', range, 'Asia/Tokyo')).toBe('Sat 14 Mar 08:30 – Sun 15 Mar 08:30')
+    expect(formatRangeLabel('today', range, 'America/New_York')).toBe('Friday 13 March')
+  })
+
+  it('ticks on whole hours of the given zone, also with a half-hour offset', () => {
+    const range = { end: new Date('2026-03-15T12:00:00.000Z'), start: new Date('2026-03-15T00:00:00.000Z') }
+    const hoursIn = (tz: string) => hourTicks(range, 800, tz).map((d) => formatAt(d, 'HH:mm', tz))
+    expect(hoursIn('Asia/Tokyo')).toEqual(['09:00', '12:00', '15:00', '18:00', '21:00'])
+    expect(hoursIn('Asia/Kolkata')).toEqual(['06:00', '09:00', '12:00', '15:00'])
   })
 })
 

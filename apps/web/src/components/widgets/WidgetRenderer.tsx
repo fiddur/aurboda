@@ -67,7 +67,16 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
       case 'places_card':
         return <PlacesCardWidget config={widget.config} />
       case 'day_overview':
-        return <DayOverviewWidget config={widget.config} />
+        return (
+          <DayOverviewWidget
+            config={widget.config}
+            note={
+              boardId && boardId !== 'home' && widget.config.visible_to_visitors !== true
+                ? 'Only you see this card'
+                : undefined
+            }
+          />
+        )
       default:
         return <div class="widget-unknown">Unknown widget type</div>
     }
