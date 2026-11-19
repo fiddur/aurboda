@@ -65,6 +65,33 @@ describe('previewableArticle', () => {
 })
 
 describe('previewArticle', () => {
+  test('names a meal sensitivity in the figure label and warns about it', async () => {
+    const flagNames = vi.fn(async () => ({ 'gluten-id': 'gluten' }))
+    const preview = await previewArticle(
+      'alice',
+      body({
+        ...WINDOW,
+        blocks: [chart, { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' }],
+        title: 'Gluten',
+      }),
+      deps({ flagNames }),
+    )
+    expect(preview.publish_error).toBeNull()
+    expect(preview.content).toContain('Figure 2: Impact of meals with gluten')
+    expect(preview.warnings).toEqual([
+      {
+        block: 1,
+        message:
+          'Readers see your meal sensitivity "gluten" by name, and how your HRV, heart rate and stress moved around the meals that carried it.',
+      },
+    ])
+  })
+
+  test('has no warnings without a sensitivity', async () => {
+    const preview = await previewArticle('alice', body({ ...WINDOW, blocks: [chart], title: 'HR' }), deps())
+    expect(preview.warnings).toBeUndefined()
+  })
+
   test('previews an incomplete draft: complete blocks only, with what keeps it from publishing', async () => {
     const preview = await previewArticle(
       'alice',

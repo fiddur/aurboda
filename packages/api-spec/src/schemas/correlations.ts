@@ -517,15 +517,6 @@ export const activityImpactTypeSchema = z
 
 export type ActivityImpactType = z.infer<typeof activityImpactTypeSchema>
 
-export const articleImpactTypeSchema = activityImpactTypeSchema.exclude(['meal_sensitivity']).meta({
-  description:
-    'Type of activity an article impact block shows; meal_sensitivity is not offered, as its flag id means nothing to a reader',
-  example: 'activity_type',
-  id: 'ArticleImpactType',
-})
-
-export type ArticleImpactType = z.infer<typeof articleImpactTypeSchema>
-
 export const activityImpactMatchSchema = z.enum(['contains', 'exact']).meta({
   description:
     'How the activity name is matched: contains (case-insensitive substring, default) or exact (the same grouping key the context table uses)',
@@ -1423,14 +1414,6 @@ export const selectorSchema = z
   .meta({ id: 'CorrelationSelector' })
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
-
-export const articleSelectorSchema = selectorSchema.refine(
-  (selector): boolean => selector.kind !== 'sensitivity',
-  {
-    message:
-      'An article correlation block cannot use a sensitivity selector, as its flag id means nothing to a reader',
-  },
-)
 
 /**
  * Short axis label for a selector, including its unit where known. Shared single

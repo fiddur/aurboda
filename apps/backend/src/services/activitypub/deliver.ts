@@ -47,7 +47,7 @@ import {
 import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/index.ts'
 
 import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
-import { articleBlockFigureUrl } from '../article.ts'
+import { type ArticleFlagNames, articleBlockFigureUrl, articleFlagNames } from '../article.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
@@ -559,20 +559,24 @@ export const buildArticleNote = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
   const hashtags = noteHashtags(ctx, user, post.tags)
-  const { content, figures } = renderArticleNote(post.article, (index) =>
-    articleBlockFigureUrl(
-      apiBaseUrl,
-      user,
-      post.id,
-      post.visibility,
-      post.image_token,
-      post.updated_at,
-      index,
-    ),
+  const { content, figures } = renderArticleNote(
+    post.article,
+    (index) =>
+      articleBlockFigureUrl(
+        apiBaseUrl,
+        user,
+        post.id,
+        post.visibility,
+        post.image_token,
+        post.updated_at,
+        index,
+      ),
+    flagNames,
   )
   return new Note({
     attachments: figures.map(articleFigureImage),
@@ -596,6 +600,7 @@ export const buildArticleNoteCreate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -603,7 +608,7 @@ export const buildArticleNoteCreate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
@@ -615,6 +620,7 @@ export const buildArticleNoteUpdate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
+  flagNames: ArticleFlagNames = {},
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -622,7 +628,7 @@ export const buildArticleNoteUpdate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
     tos: to,
   })
 }
@@ -633,7 +639,8 @@ export const deliverFeedArticlePost = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl)
+  const flagNames = await articleFlagNames(user, post.article.blocks)
+  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl, flagNames)
   await fanOut(deps, ctx, user, create, { relayActivity: relayCreate(post, create) })
 }
 
@@ -643,7 +650,8 @@ export const deliverFeedArticleUpdate = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl)
+  const flagNames = await articleFlagNames(user, post.article.blocks)
+  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl, flagNames)
   await fanOut(deps, ctx, user, update, { relayActivity: relayEdit(ctx, user, post, update) })
 }
 
