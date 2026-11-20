@@ -441,7 +441,10 @@ export const notesQueryRangeSchema = z
   .object({
     from: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
     needs_text: needsTextSchema,
-    to: iso8601DateTimeSchema.meta({ description: 'End of the window (inclusive)' }),
+    to: iso8601DateTimeSchema.meta({
+      description:
+        'End of the window: inclusive for comments anchored at a time, exclusive for the dates of `day` entries (a window ending at a local midnight does not include the day it opens)',
+    }),
     tz: ianaTimezoneSchema.optional().meta({
       description:
         "IANA timezone the window's local dates are read in, to pick the `day` entries it covers (default: the user's timezone)",
