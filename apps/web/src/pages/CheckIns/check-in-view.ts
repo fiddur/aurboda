@@ -42,6 +42,10 @@ export const slotLabel = (slot: Pick<DueSlot, 'state' | 'time'>): string => {
 export const fillHref = (formId: string, scheduledFor?: string): string =>
   `/check-ins/${encodeURIComponent(formId)}${scheduledFor ? `?slot=${encodeURIComponent(scheduledFor)}` : ''}`
 
+/** The link that fills in a form tied to an activity. */
+export const activityFillHref = (formId: string, activityId: string): string =>
+  `/check-ins/${encodeURIComponent(formId)}?activity=${encodeURIComponent(activityId)}`
+
 /** "today 08:12", "yesterday 21:03", "3 Nov 08:12", "3 Nov 2025 08:12". */
 export const whenLine = (at: Date, now: Date): string => {
   const time = format(at, 'HH:mm')

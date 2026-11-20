@@ -2,16 +2,18 @@ import type { CheckIn, CheckInForm, CheckInTemplate, DueSlot } from '@aurboda/ap
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import {
   addCheckInForm,
+  deleteCheckIn,
   fetchCheckInForms,
   fetchCheckIns,
   fetchCheckInTemplates,
   fetchDue,
   restoreCheckIn,
   restoreCheckInForm,
+  submitCheckIn,
   updateCheckInForm,
 } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -24,37 +26,127 @@ import {
   whenLine,
 } from './check-in-view'
 import { checkInKeys, useRefreshCheckIns } from './queries'
+import { asNeededRoutines, presetLine } from './routines'
 import { UndoBar } from './UndoBar'
 import './style.css'
 
 const RECENT_LIMIT = 200
+const LOGGED_UNDO_MS = 10_000
 
-function DueToday({ slots }: { slots: DueSlot[] }) {
+type QuickAction =
+  | { kind: 'confirm'; form: CheckInForm; slot?: string }
+  | { kind: 'skip'; form_id: string; slot: string }
+
+interface Quick {
+  run: (action: QuickAction) => void
+  pending: QuickAction | undefined
+}
+
+const sameAction = (a: QuickAction | undefined, b: QuickAction): boolean =>
+  a !== undefined &&
+  a.kind === b.kind &&
+  (a.kind === 'confirm' ? a.form.id : a.form_id) === (b.kind === 'confirm' ? b.form.id : b.form_id) &&
+  a.slot === b.slot
+
+function AsNeeded({ forms, quick }: { forms: CheckInForm[]; quick: Quick }) {
+  if (forms.length === 0) return null
+  return (
+    <section class="checkins-section">
+      <h2>As needed</h2>
+      <div class="checkin-quick-grid">
+        {forms.map((form) => {
+          const line = presetLine(form.questions)
+          const action: QuickAction = { form, kind: 'confirm' }
+          const pending = sameAction(quick.pending, action)
+          return (
+            <button
+              key={form.id}
+              type="button"
+              class="checkin-quick"
+              disabled={quick.pending !== undefined}
+              onClick={() => quick.run(action)}
+            >
+              <strong>{pending ? 'Logging…' : line || form.name}</strong>
+              {line && line !== form.name && <span>{form.name}</span>}
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function DueToday({
+  slots,
+  routines,
+  quick,
+}: {
+  slots: DueSlot[]
+  routines: Map<string, CheckInForm>
+  quick: Quick
+}) {
   if (slots.length === 0) return null
   return (
     <section class="checkins-section">
       <h2>Due today</h2>
       <ul class="checkins-card checkins-list">
-        {slots.map((slot) => (
-          <li key={`${slot.form_id}-${slot.scheduled_for}`} class={`checkin-slot state-${slot.state}`}>
-            <span class="checkin-slot-time">{slot.time}</span>
-            <span class="checkin-slot-main">
-              <strong>{slot.form_name}</strong>
-              <span class={`checkin-slot-state state-${slot.state}`}>{slotLabel(slot)}</span>
-            </span>
-            {slot.state === 'due' && (
-              <a class="btn-primary checkin-fill" href={fillHref(slot.form_id, slot.scheduled_for)}>
-                Fill in
-              </a>
-            )}
-          </li>
-        ))}
+        {slots.map((slot) => {
+          const routine = routines.get(slot.form_id)
+          const skip: QuickAction = { form_id: slot.form_id, kind: 'skip', slot: slot.scheduled_for }
+          return (
+            <li key={`${slot.form_id}-${slot.scheduled_for}`} class={`checkin-slot state-${slot.state}`}>
+              <span class="checkin-slot-time">{slot.time}</span>
+              <span class="checkin-slot-main">
+                <strong>{slot.form_name}</strong>
+                <span class={`checkin-slot-state state-${slot.state}`}>{slotLabel(slot)}</span>
+              </span>
+              {slot.state === 'due' && (
+                <span class="checkin-slot-actions">
+                  {routine && (
+                    <button
+                      type="button"
+                      class="btn-primary"
+                      disabled={quick.pending !== undefined}
+                      onClick={() => quick.run({ form: routine, kind: 'confirm', slot: slot.scheduled_for })}
+                    >
+                      Confirm
+                    </button>
+                  )}
+                  <a
+                    class={`${routine ? 'btn-secondary' : 'btn-primary'} checkin-fill`}
+                    href={fillHref(slot.form_id, slot.scheduled_for)}
+                  >
+                    Fill in
+                  </a>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    disabled={quick.pending !== undefined}
+                    onClick={() => quick.run(skip)}
+                  >
+                    {sameAction(quick.pending, skip) ? 'Skipping…' : 'Skip'}
+                  </button>
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
 }
 
-function FormRow({ form, latest, now }: { form: CheckInForm; latest: CheckIn | undefined; now: Date }) {
+function FormRow({
+  form,
+  latest,
+  now,
+  quick,
+}: {
+  form: CheckInForm
+  latest: CheckIn | undefined
+  now: Date
+  quick: Quick
+}) {
   const refresh = useRefreshCheckIns()
   const archive = useMutation({
     mutationFn: (archived: boolean) => updateCheckInForm(form.id, { archived }),
@@ -76,8 +168,18 @@ function FormRow({ form, latest, now }: { form: CheckInForm; latest: CheckIn | u
         )}
       </div>
       <div class="checkin-form-actions">
+        {!form.archived && form.is_routine && (
+          <button
+            type="button"
+            class="btn-primary"
+            disabled={quick.pending !== undefined}
+            onClick={() => quick.run({ form, kind: 'confirm' })}
+          >
+            Confirm
+          </button>
+        )}
         {!form.archived && (
-          <a class="btn-primary" href={fillHref(form.id)}>
+          <a class={form.is_routine ? 'btn-secondary' : 'btn-primary'} href={fillHref(form.id)}>
             Fill in
           </a>
         )}
@@ -103,9 +205,10 @@ interface FormsSectionProps {
   failed: boolean
   latest: Map<string, CheckIn>
   now: Date
+  quick: Quick
 }
 
-function FormsSection({ forms, isLoading, failed, latest, now }: FormsSectionProps) {
+function FormsSection({ forms, isLoading, failed, latest, now, quick }: FormsSectionProps) {
   const [showArchived, setShowArchived] = useState(false)
   if (isLoading) return <p class="checkins-muted">Loading…</p>
   if (failed) return <p class="checkins-muted">Couldn’t load your check-ins. Please try again.</p>
@@ -141,14 +244,14 @@ function FormsSection({ forms, isLoading, failed, latest, now }: FormsSectionPro
       {live.length > 0 && (
         <ul class="checkins-card checkins-list">
           {live.map((form) => (
-            <FormRow key={form.id} form={form} latest={latest.get(form.id)} now={now} />
+            <FormRow key={form.id} form={form} latest={latest.get(form.id)} now={now} quick={quick} />
           ))}
         </ul>
       )}
       {showArchived && archived.length > 0 && (
         <ul class="checkins-card checkins-list checkins-archived">
           {archived.map((form) => (
-            <FormRow key={form.id} form={form} latest={latest.get(form.id)} now={now} />
+            <FormRow key={form.id} form={form} latest={latest.get(form.id)} now={now} quick={quick} />
           ))}
         </ul>
       )}
@@ -252,6 +355,7 @@ export function CheckIns() {
   const { query, route } = useLocation()
   const refresh = useRefreshCheckIns()
   const [actionError, setActionError] = useState<string | null>(null)
+  const [logged, setLogged] = useState<CheckIn | null>(null)
   const forms = useQuery({
     enabled: isLoggedIn,
     queryFn: () => fetchCheckInForms(),
@@ -264,6 +368,38 @@ export function CheckIns() {
     queryKey: checkInKeys.recent,
   })
 
+  const quickAction = useMutation({
+    mutationFn: (action: QuickAction) =>
+      action.kind === 'confirm'
+        ? submitCheckIn({
+            answers: {},
+            form_id: action.form.id,
+            use_defaults: true,
+            ...(action.slot ? { scheduled_for: action.slot } : {}),
+          })
+        : submitCheckIn({
+            answers: {},
+            form_id: action.form_id,
+            scheduled_for: action.slot,
+            status: 'skipped',
+          }),
+    onError: (error) => setActionError(error.message),
+    onSuccess: async (checkIn) => {
+      setActionError(null)
+      setLogged(checkIn)
+      await refresh()
+    },
+  })
+  const quick: Quick = {
+    pending: quickAction.isPending ? quickAction.variables : undefined,
+    run: (action) => quickAction.mutate(action),
+  }
+  useEffect(() => {
+    if (!logged) return
+    const timer = setTimeout(() => setLogged(null), LOGGED_UNDO_MS)
+    return () => clearTimeout(timer)
+  }, [logged])
+
   if (!isLoggedIn) {
     return (
       <div class="checkins-page">
@@ -275,6 +411,8 @@ export function CheckIns() {
 
   const now = new Date()
   const latest = latestByForm(recent.data?.check_ins ?? [])
+  const liveForms = forms.data ?? []
+  const routines = new Map(liveForms.filter((form) => form.is_routine).map((form) => [form.id, form]))
   const deletedId = query.deleted
   const closeUndo = () => route('/check-ins', true)
 
@@ -296,13 +434,25 @@ export function CheckIns() {
           onClose={closeUndo}
         />
       )}
+      {logged && (
+        <UndoBar
+          key={logged.id}
+          message={`${logged.status === 'skipped' ? 'Skipped' : 'Logged'} ${logged.form_name}.`}
+          onUndo={async () => {
+            await deleteCheckIn(logged.id)
+            await refresh()
+          }}
+          onClose={() => setLogged(null)}
+        />
+      )}
       {actionError && (
         <p class="checkin-error" role="alert">
           {actionError}
         </p>
       )}
 
-      <DueToday slots={due.data?.slots ?? []} />
+      <AsNeeded forms={asNeededRoutines(liveForms)} quick={quick} />
+      <DueToday slots={due.data?.slots ?? []} routines={routines} quick={quick} />
 
       <FormsSection
         forms={forms.data}
@@ -310,6 +460,7 @@ export function CheckIns() {
         failed={Boolean(forms.error)}
         latest={latest}
         now={now}
+        quick={quick}
       />
 
       <Templates onError={setActionError} />

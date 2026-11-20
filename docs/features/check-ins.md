@@ -233,26 +233,46 @@ logged and soft-deletes its activities; restoring it brings both back. `deleted=
 **Check-ins** is in the main menu (and can be hidden there, see [the menu](menu.md)); in the
 [Android app](../android-app.md) it is More → Log → Check-ins, the same page embedded.
 
-- **`/check-ins`**: **Due today** on top, today's slots from `GET /due` with their state (due now,
-  later today at a time, done, missed) and **Fill in** on a due one; **Your forms**, each with its
-  schedule in words ("Every day at 08:00 and 21:00"), when it was last answered (with the score when
-  the form has one), **Fill in**, **Edit** and **Archive** (archived forms behind a switch); **New
-  form** and **Start from a template**, which copies a built-in template and opens it in the editor;
-  and **Recently deleted** at the bottom, the deleted forms and check-ins with **Restore**.
+- **`/check-ins`**: **As needed** on top, one large button per routine without a schedule, named by
+  its preset items ("Ibuprofen 400 mg"): a tap saves it as preset and shows "Logged" with **Undo**
+  for 10 seconds (Undo deletes the check-in). Then **Due today**, today's slots from `GET /due` with
+  their state (due now, later today at a time, done, skipped, missed); a due slot has **Fill in** and
+  **Skip**, and a routine's also **Confirm**, which saves it as preset for that slot. **Your forms**,
+  each with its schedule in words ("Every day at 08:00 and 21:00"), when it was last answered (with
+  the score when the form has one), **Fill in** (and **Confirm** for a routine), **Edit** and
+  **Archive** (archived forms behind a switch); **New form** and **Start from a template**, which
+  copies a built-in template and opens it in the editor; and **Recently deleted** at the bottom, the
+  deleted forms and check-ins with **Restore**.
 - **`/check-ins/<form id>`**: filling in, one screen made for a phone: a scale is a row of large
   numbered buttons with its end labels under the ends, yes/no two large buttons, a choice large
   option buttons (several can be picked for a multi-choice), a number an input with its unit and −/+
   steppers that keep to its min, max and step, and text a text box. Required questions are marked
   with `*`; saving with one unanswered names it. A note and **Answered at** (now unless changed, for
   filling in late) close the form. Opened from a due slot or the due notification
-  (`?slot=<scheduled_for>`), the check-in is saved for that slot. Below it is the form's
+  (`?slot=<scheduled_for>`), the check-in is saved for that slot, and **Skip this time** records the
+  slot as skipped. Opened with `?activity=<activity id>` (from an activity's page), it is tied to that
+  activity. A routine is filled in as a list of its items, each ticked with its preset dose: untick
+  an item not taken, or change a dose, then save (an item that is required and has no "not taken"
+  answer stays ticked). Below the form are the **last 30 days** (from the adherence route): for a
+  scheduled form a strip of its slots per day (done filled, skipped hatched, missed hollow) with the
+  counts, and, per item or question, how many of the check-ins took or answered it. Then the form's
   **history**, newest first, each check-in read against the questions it answered, with **Edit** and
-  **Delete** (with **Undo**), and a chart of the score, or else of the first question saved as a
-  metric, linking to that metric's page.
+  **Delete** (with **Undo**); a skipped slot shows as **Skipped**, and an answer whose activity was
+  deleted on its own is marked "no longer logged". A chart of the score, or else of the first
+  question saved as a metric, links to that metric's page.
+- **An activity's page** lists the check-ins tied to it and has **Add check-in**: pick a form, and it
+  opens tied to the activity.
 - **`/check-ins/new`** and **`/check-ins/<form id>/edit`**: the editor. Questions are added,
-  removed and moved up and down, each with its prompt, answer type and settings, **Required**, and
-  **Save the answer as a metric** (offered for the types that can log). A question's key is made from
-  its prompt when the form is first saved and is never shown. **Add up answers into a score** picks
+  removed and moved up and down, each with its prompt, answer type and settings, **Required**, a
+  **Preset answer** (any type but several choices), and **Save the answer as**: nothing, a metric
+  (its name), or an activity (offered for number, scale and yes/no: the type, the fixed fields of
+  that type, and the number field that takes the answer). Once every required question has a preset,
+  a line says the form is a routine. **Add medication or supplement** asks for the name, the dose and
+  its unit, and whether to log it as an activity (a `medication` or `supplement` activity on the
+  Timeline, with `substance` and `dose_unit` fixed and the dose in `dose`) or as a metric (the dose
+  per day can be charted; the name is made from the substance and unit, e.g. `ibuprofen_mg`), and
+  adds a number question preset to the dose. A question's key is made from its prompt when the form
+  is first saved and is never shown. **Add up answers into a score** picks
   the questions, the factor and the score's metric. **Ask for it on a schedule** sets the times
   (five-minute steps), the days, optional start and end dates, when the day starts and whether to be
   notified. A change that starts a new version says so before saving. **Delete form** deletes it,

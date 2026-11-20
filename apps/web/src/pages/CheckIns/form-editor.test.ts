@@ -7,9 +7,15 @@ import {
   canLog,
   changeType,
   draftFromForm,
+  draftIsRoutine,
   emptyFormDraft,
+  emptyIntakeDraft,
   type FormDraft,
+  intakeProblems,
+  intakeQuestion,
+  isBlankQuestion,
   keyFromText,
+  metricNameForDose,
   moveQuestion,
   newQuestion,
   type QuestionDraft,
@@ -242,5 +248,168 @@ describe('startsNewVersion', () => {
         score: { metric: 's', questions: ['rested'] },
       }),
     ).toBe(true)
+  })
+})
+
+describe('draftIsRoutine', () => {
+  test('every required question has a preset, and at least one does', () => {
+    expect(draftIsRoutine([question({ preset: '5' }), question({})])).toBe(true)
+    expect(draftIsRoutine([question({ preset: '5' }), question({ required: true })])).toBe(false)
+    expect(draftIsRoutine([question({})])).toBe(false)
+    expect(draftIsRoutine([question({ preset: ' ', required: true })])).toBe(false)
+  })
+})
+
+describe('preset answers', () => {
+  const routineForm: CheckInForm = {
+    ...savedForm,
+    is_routine: true,
+    questions: [
+      {
+        default: 50,
+        key: 'vitamin_d',
+        logs_to: {
+          activity_type: 'supplement',
+          answer_field: 'dose',
+          fields: { dose_unit: 'µg', substance: 'vitamin D' },
+        },
+        min: 0,
+        prompt: 'Vitamin D',
+        required: false,
+        type: 'number',
+        unit: 'µg',
+      },
+      { default: true, key: 'stretch', prompt: 'Stretched', required: false, type: 'yes_no' },
+      {
+        default: 'b',
+        key: 'pick',
+        options: [
+          { key: 'a', label: 'A' },
+          { key: 'b', label: 'B' },
+        ],
+        prompt: 'Pick',
+        required: false,
+        type: 'choice',
+      },
+    ],
+    schedule: null,
+  }
+
+  test('a saved routine round-trips through the draft unchanged', () => {
+    const loaded = draftFromForm(routineForm)
+    expect(loaded.questions.map((q) => q.preset)).toEqual(['50', 'yes', '1'])
+    expect(loaded.questions[0]).toMatchObject({
+      activity_type: 'supplement',
+      answer_field: 'dose',
+      log_as: 'activity',
+      logs: true,
+    })
+    const built = buildForm(loaded)
+    expect(built.ok && toUpdateBody(routineForm, built.value)).toEqual({})
+  })
+
+  test('a preset outside the range is refused in words', () => {
+    const built = buildForm(draft({ questions: [question({ preset: '9', prompt: 'Rested' })] }))
+    expect(built.ok).toBe(false)
+    expect(!built.ok && built.errors).toEqual([
+      'Question 1: the preset answer must be a whole number from 1 to 5.',
+    ])
+  })
+
+  test('an activity log needs a type; empty fields and the answer field are left out of fields', () => {
+    const missing = buildForm(
+      draft({ questions: [question({ log_as: 'activity', logs: true, prompt: 'Rested' })] }),
+    )
+    expect(!missing.ok && missing.errors).toEqual([
+      'Question 1: pick the activity type to save the answer as.',
+    ])
+    const built = buildForm(
+      draft({
+        questions: [
+          question({
+            activity_fields: [
+              { kind: 'string', name: 'substance', value: 'zinc' },
+              { kind: 'number', name: 'dose', value: '3' },
+              { kind: 'string', name: 'note', value: ' ' },
+            ],
+            activity_type: 'supplement',
+            answer_field: 'dose',
+            log_as: 'activity',
+            logs: true,
+            prompt: 'Zinc',
+            type: 'number',
+          }),
+        ],
+      }),
+    )
+    expect(built.ok && built.value.questions[0].logs_to).toEqual({
+      activity_type: 'supplement',
+      answer_field: 'dose',
+      fields: { substance: 'zinc' },
+    })
+  })
+})
+
+describe('the medication or supplement shortcut', () => {
+  test('metricNameForDose makes a metric name from substance and unit', () => {
+    expect(metricNameForDose('Ibuprofen', 'mg')).toBe('ibuprofen_mg')
+    expect(metricNameForDose('Vitamin D', 'µg')).toBe('vitamin_d_ug')
+    expect(metricNameForDose('Omega-3 (EPA)', 'mg')).toBe('omega_3_epa_mg')
+    expect(metricNameForDose('5-HTP', 'mg')).toBe('dose_5_htp_mg')
+    expect(metricNameForDose('x'.repeat(60), 'mg')).toHaveLength(50)
+  })
+
+  test('says what is missing', () => {
+    expect(intakeProblems(emptyIntakeDraft())).toEqual([
+      'Name the medication or supplement.',
+      'Give the dose as a number above 0.',
+    ])
+  })
+
+  test('as a metric: a number question preset to the dose, logged to the dose metric', () => {
+    const made = intakeQuestion({
+      dose: '400',
+      kind: 'medication',
+      log_as: 'metric',
+      substance: 'ibuprofen',
+      unit: 'mg',
+    })
+    const built = buildForm(draft({ questions: [made] }))
+    expect(built.ok && built.value.questions[0]).toEqual({
+      default: 400,
+      key: 'ibuprofen',
+      logs_to: { metric: 'ibuprofen_mg' },
+      min: 0,
+      prompt: 'Ibuprofen',
+      required: false,
+      type: 'number',
+      unit: 'mg',
+    })
+  })
+
+  test('as an activity: the medication or supplement type with substance and unit fixed', () => {
+    const made = intakeQuestion({
+      dose: '50',
+      kind: 'supplement',
+      log_as: 'activity',
+      substance: 'Vitamin D',
+      unit: 'µg',
+    })
+    const built = buildForm(draft({ questions: [made] }))
+    expect(built.ok && built.value.questions[0]).toMatchObject({
+      default: 50,
+      logs_to: {
+        activity_type: 'supplement',
+        answer_field: 'dose',
+        fields: { dose_unit: 'µg', substance: 'Vitamin D' },
+      },
+      unit: 'µg',
+    })
+    expect(draftIsRoutine([made])).toBe(true)
+  })
+
+  test('replaces the untouched question a new form starts with', () => {
+    expect(isBlankQuestion(newQuestion('scale'))).toBe(true)
+    expect(isBlankQuestion({ ...newQuestion('scale'), prompt: 'Mood' })).toBe(false)
   })
 })

@@ -1,4 +1,4 @@
-import type { CheckInForm, CheckInQuestionType } from '@aurboda/api-spec'
+import type { CheckInForm, CheckInQuestionType, DataSchemaDefinition } from '@aurboda/api-spec'
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'preact-iso'
@@ -7,6 +7,8 @@ import { useState } from 'preact/hooks'
 import {
   addCheckInForm,
   deleteCheckInForm,
+  fetchActivityTypeCatalog,
+  fetchActivityTypeDefinitions,
   fetchCheckInForm,
   fetchDue,
   updateCheckInForm,
@@ -14,13 +16,23 @@ import {
 import { auth } from '../../state/auth'
 import { roundTime, toggleDay, WEEKDAYS } from '../Reminders/reminder-form'
 import {
+  type ActivityFieldDraft,
   buildForm,
   canLog,
+  canLogActivity,
+  canPreset,
   canScore,
   changeType,
   draftFromForm,
+  draftIsRoutine,
   emptyFormDraft,
+  emptyIntakeDraft,
   type FormDraft,
+  type IntakeDraft,
+  intakeProblems,
+  intakeQuestion,
+  isBlankQuestion,
+  type LogAs,
   METRIC_NAME_RULE,
   moveQuestion,
   newQuestion,
@@ -34,13 +46,411 @@ import {
 import { checkInKeys, useRefreshCheckIns } from './queries'
 import './style.css'
 
+type ActivitySchemas = Map<string, DataSchemaDefinition | undefined>
+
 interface QuestionEditorProps {
   question: QuestionDraft
   index: number
   count: number
+  activityTypes: ActivitySchemas
   onChange: (question: QuestionDraft) => void
   onMove: (by: -1 | 1) => void
   onRemove: () => void
+}
+
+function PresetInput({
+  question,
+  set,
+}: {
+  question: QuestionDraft
+  set: (patch: Partial<QuestionDraft>) => void
+}) {
+  const label = (
+    <span>
+      Preset answer <small>(optional)</small>
+    </span>
+  )
+  const hint = <small>Filled in already; a form with presets is confirmed in one tap.</small>
+  switch (question.type) {
+    case 'yes_no':
+      return (
+        <label class="checkin-field">
+          {label}
+          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
+            <option value="">None</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+          {hint}
+        </label>
+      )
+    case 'choice':
+      return (
+        <label class="checkin-field">
+          {label}
+          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
+            <option value="">None</option>
+            {question.options.map((option, index) => (
+              <option key={index} value={String(index)}>
+                {option.label || `Option ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          {hint}
+        </label>
+      )
+    default:
+      return (
+        <label class="checkin-field">
+          {label}
+          <input
+            type="text"
+            inputMode={question.type === 'text' ? 'text' : 'decimal'}
+            class={question.type === 'text' ? '' : 'checkin-preset-number'}
+            value={question.preset}
+            maxLength={question.type === 'text' ? 2000 : 30}
+            onInput={(e) => set({ preset: e.currentTarget.value })}
+          />
+          {hint}
+        </label>
+      )
+  }
+}
+
+const scalarFields = (schema: DataSchemaDefinition | undefined) =>
+  (schema?.fields ?? []).filter((field) => field.type !== 'list')
+
+function ActivityLogEditor({
+  question,
+  activityTypes,
+  set,
+}: {
+  question: QuestionDraft
+  activityTypes: ActivitySchemas
+  set: (patch: Partial<QuestionDraft>) => void
+}) {
+  const schema = activityTypes.get(question.activity_type.trim())
+  const fields = scalarFields(schema)
+  const numberFields = fields.filter((field) => field.type === 'number')
+  const fieldValue = (name: string) =>
+    question.activity_fields.find((field) => field.name === name)?.value ?? ''
+  const setField = (field: ActivityFieldDraft) =>
+    set({
+      activity_fields: [...question.activity_fields.filter((f) => f.name !== field.name), field].filter(
+        (f) => f.value.trim() !== '',
+      ),
+    })
+  const listId = `activity-types-${question.id}`
+  const takesAnswer = question.type !== 'yes_no'
+  return (
+    <div class="checkin-activity-log">
+      <label class="checkin-field">
+        <span>Activity type</span>
+        <input
+          type="text"
+          list={listId}
+          value={question.activity_type}
+          placeholder="supplement"
+          onInput={(e) => {
+            const type = e.currentTarget.value
+            const numbers = scalarFields(activityTypes.get(type.trim())).filter((f) => f.type === 'number')
+            set({
+              activity_type: type,
+              answer_field:
+                question.answer_field || (numbers.find((f) => f.name === 'dose') ?? numbers[0])?.name || '',
+            })
+          }}
+        />
+        <datalist id={listId}>
+          {[...activityTypes.keys()].map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <small>
+          {question.type === 'yes_no'
+            ? 'A yes logs one activity of this type.'
+            : 'Each answer above 0 logs one activity of this type.'}
+        </small>
+      </label>
+      {takesAnswer && (
+        <label class="checkin-field">
+          <span>The answer goes in the field</span>
+          {numberFields.length > 0 ? (
+            <select
+              value={question.answer_field}
+              onChange={(e) => set({ answer_field: e.currentTarget.value })}
+            >
+              <option value="">None</option>
+              {numberFields.map((field) => (
+                <option key={field.name} value={field.name}>
+                  {field.label ?? field.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={question.answer_field}
+              placeholder="dose"
+              onInput={(e) => set({ answer_field: e.currentTarget.value })}
+            />
+          )}
+        </label>
+      )}
+      {fields.length > 0 ? (
+        <fieldset class="checkin-field">
+          <legend>Fixed fields</legend>
+          <div class="checkin-field-row">
+            {fields
+              .filter((field) => field.name !== question.answer_field)
+              .map((field) => (
+                <label key={field.name} class="checkin-field">
+                  <span>{field.label ?? field.name}</span>
+                  {field.type === 'boolean' ? (
+                    <select
+                      value={fieldValue(field.name)}
+                      onChange={(e) =>
+                        setField({ kind: 'boolean', name: field.name, value: e.currentTarget.value })
+                      }
+                    >
+                      <option value="">—</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      inputMode={field.type === 'number' ? 'decimal' : 'text'}
+                      value={fieldValue(field.name)}
+                      onInput={(e) =>
+                        setField({
+                          kind: field.type === 'number' ? 'number' : 'string',
+                          name: field.name,
+                          value: e.currentTarget.value,
+                        })
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+          </div>
+        </fieldset>
+      ) : (
+        <fieldset class="checkin-field">
+          <legend>Fixed fields</legend>
+          {question.activity_fields.map((field, index) => (
+            <div key={index} class="checkin-option-row">
+              <input
+                type="text"
+                value={field.name}
+                placeholder="Field"
+                aria-label={`Field ${index + 1}`}
+                onInput={(e) =>
+                  set({
+                    activity_fields: question.activity_fields.map((f, i) =>
+                      i === index ? { ...f, name: e.currentTarget.value } : f,
+                    ),
+                  })
+                }
+              />
+              <input
+                type="text"
+                value={field.value}
+                placeholder="Value"
+                aria-label={`Value of field ${index + 1}`}
+                onInput={(e) =>
+                  set({
+                    activity_fields: question.activity_fields.map((f, i) =>
+                      i === index ? { ...f, value: e.currentTarget.value } : f,
+                    ),
+                  })
+                }
+              />
+              <button
+                type="button"
+                class="checkin-icon-btn"
+                aria-label={`Remove field ${index + 1}`}
+                onClick={() =>
+                  set({ activity_fields: question.activity_fields.filter((_, i) => i !== index) })
+                }
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            class="checkin-link-btn"
+            onClick={() =>
+              set({ activity_fields: [...question.activity_fields, { kind: 'string', name: '', value: '' }] })
+            }
+          >
+            + Add field
+          </button>
+        </fieldset>
+      )}
+    </div>
+  )
+}
+
+type SaveAs = 'none' | LogAs
+
+function SaveAnswerAs({
+  question,
+  activityTypes,
+  set,
+}: {
+  question: QuestionDraft
+  activityTypes: ActivitySchemas
+  set: (patch: Partial<QuestionDraft>) => void
+}) {
+  const metricOk = canLog(question)
+  const activityOk = canLogActivity(question)
+  if (!metricOk && !activityOk) return null
+  const saveAs: SaveAs = question.logs ? question.log_as : 'none'
+  return (
+    <>
+      <label class="checkin-field">
+        <span>Save the answer as</span>
+        <select
+          value={saveAs}
+          onChange={(e) => {
+            const next = e.currentTarget.value as SaveAs
+            set(next === 'none' ? { logs: false } : { log_as: next, logs: true })
+          }}
+        >
+          <option value="none">Nothing</option>
+          {metricOk && <option value="metric">A metric (charted with your data)</option>}
+          {activityOk && <option value="activity">An activity (shown on the Timeline)</option>}
+        </select>
+      </label>
+      {saveAs === 'metric' && (
+        <label class="checkin-field">
+          <span>Metric name</span>
+          <input
+            type="text"
+            value={question.metric}
+            maxLength={50}
+            placeholder="rested"
+            onInput={(e) => set({ metric: e.currentTarget.value })}
+          />
+          <small>
+            {METRIC_NAME_RULE} An existing metric of yours is added to; a new name becomes a custom metric.
+          </small>
+        </label>
+      )}
+      {saveAs === 'activity' && (
+        <ActivityLogEditor question={question} activityTypes={activityTypes} set={set} />
+      )}
+    </>
+  )
+}
+
+function IntakeShortcut({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (question: QuestionDraft) => void
+  onCancel: () => void
+}) {
+  const [intake, setIntake] = useState<IntakeDraft>(() => emptyIntakeDraft())
+  const [tried, setTried] = useState(false)
+  const set = (patch: Partial<IntakeDraft>) => setIntake((current) => ({ ...current, ...patch }))
+  const problems = intakeProblems(intake)
+  return (
+    <section class="checkins-card checkin-editor-section checkin-intake">
+      <strong>Add medication or supplement</strong>
+      <div class="checkin-options checkin-intake-kind" role="radiogroup" aria-label="Kind">
+        {(['supplement', 'medication'] as const).map((kind) => (
+          <button
+            key={kind}
+            type="button"
+            role="radio"
+            aria-checked={intake.kind === kind}
+            class={`checkin-choice${intake.kind === kind ? ' active' : ''}`}
+            onClick={() => set({ kind })}
+          >
+            {kind === 'supplement' ? 'Supplement' : 'Medication'}
+          </button>
+        ))}
+      </div>
+      <div class="checkin-field-row">
+        <label class="checkin-field checkin-field-wide">
+          <span>Name</span>
+          <input
+            type="text"
+            maxLength={100}
+            value={intake.substance}
+            placeholder={intake.kind === 'supplement' ? 'Vitamin D' : 'Ibuprofen'}
+            onInput={(e) => set({ substance: e.currentTarget.value })}
+          />
+        </label>
+        <label class="checkin-field">
+          <span>Dose</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={intake.dose}
+            placeholder={intake.kind === 'supplement' ? '50' : '400'}
+            onInput={(e) => set({ dose: e.currentTarget.value })}
+          />
+        </label>
+        <label class="checkin-field">
+          <span>Unit</span>
+          <input
+            type="text"
+            maxLength={20}
+            value={intake.unit}
+            placeholder="mg"
+            onInput={(e) => set({ unit: e.currentTarget.value })}
+          />
+        </label>
+      </div>
+      <fieldset class="checkin-field">
+        <legend>Log it as</legend>
+        <label class="checkin-check">
+          <input
+            type="radio"
+            name="intake-log-as"
+            checked={intake.log_as === 'activity'}
+            onChange={() => set({ log_as: 'activity' })}
+          />
+          An activity: it shows on the Timeline
+        </label>
+        <label class="checkin-check">
+          <input
+            type="radio"
+            name="intake-log-as"
+            checked={intake.log_as === 'metric'}
+            onChange={() => set({ log_as: 'metric' })}
+          />
+          A metric: the dose per day can be charted
+        </label>
+      </fieldset>
+      {tried && problems.length > 0 && (
+        <ul class="checkin-error" role="alert">
+          {problems.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+      )}
+      <div class="checkin-actions">
+        <button
+          type="button"
+          class="btn-primary"
+          onClick={() => {
+            setTried(true)
+            if (problems.length === 0) onAdd(intakeQuestion(intake))
+          }}
+        >
+          Add it
+        </button>
+        <button type="button" class="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </section>
+  )
 }
 
 function OptionsEditor({
@@ -103,9 +513,16 @@ function OptionsEditor({
   )
 }
 
-function QuestionEditor({ question, index, count, onChange, onMove, onRemove }: QuestionEditorProps) {
+function QuestionEditor({
+  question,
+  index,
+  count,
+  activityTypes,
+  onChange,
+  onMove,
+  onRemove,
+}: QuestionEditorProps) {
   const set = (patch: Partial<QuestionDraft>) => onChange({ ...question, ...patch })
-  const loggable = canLog(question)
   return (
     <li class="checkins-card checkin-question-editor">
       <div class="checkin-question-editor-head">
@@ -251,7 +668,13 @@ function QuestionEditor({ question, index, count, onChange, onMove, onRemove }: 
         <OptionsEditor
           options={question.options}
           withValues={question.type === 'choice'}
-          onChange={(options) => set({ options, logs: question.logs && canLog({ ...question, options }) })}
+          onChange={(options) =>
+            set({
+              logs: question.logs && (question.log_as === 'activity' || canLog({ ...question, options })),
+              options,
+              preset: Number(question.preset) < options.length ? question.preset : '',
+            })
+          }
         />
       )}
       <label class="checkin-check">
@@ -262,34 +685,8 @@ function QuestionEditor({ question, index, count, onChange, onMove, onRemove }: 
         />
         Required
       </label>
-      {loggable && (
-        <>
-          <label class="checkin-check">
-            <input
-              type="checkbox"
-              checked={question.logs}
-              onChange={(e) => set({ logs: e.currentTarget.checked })}
-            />
-            Save the answer as a metric
-          </label>
-          {question.logs && (
-            <label class="checkin-field">
-              <span>Metric name</span>
-              <input
-                type="text"
-                value={question.metric}
-                maxLength={50}
-                placeholder="rested"
-                onInput={(e) => set({ metric: e.currentTarget.value })}
-              />
-              <small>
-                {METRIC_NAME_RULE} An existing metric of yours is added to; a new name becomes a custom
-                metric.
-              </small>
-            </label>
-          )}
-        </>
-      )}
+      {canPreset(question) && <PresetInput question={question} set={set} />}
+      <SaveAnswerAs question={question} activityTypes={activityTypes} set={set} />
     </li>
   )
 }
@@ -485,9 +882,74 @@ function ScoreEditor({ draft, set }: { draft: FormDraft; set: (patch: Partial<Fo
   )
 }
 
+function AddQuestions({
+  questions,
+  wasRoutine,
+  onQuestions,
+}: {
+  questions: QuestionDraft[]
+  wasRoutine: boolean
+  onQuestions: (questions: QuestionDraft[]) => void
+}) {
+  const [addingIntake, setAddingIntake] = useState(false)
+  const kept = questions.length === 1 && isBlankQuestion(questions[0]) ? [] : questions
+  return (
+    <>
+      {addingIntake ? (
+        <IntakeShortcut
+          onAdd={(question) => {
+            onQuestions([...kept, question])
+            setAddingIntake(false)
+          }}
+          onCancel={() => setAddingIntake(false)}
+        />
+      ) : (
+        <div class="checkin-actions checkin-add-questions">
+          <button
+            type="button"
+            class="btn-secondary checkin-add-question"
+            onClick={() => onQuestions([...questions, newQuestion('scale')])}
+          >
+            + Add question
+          </button>
+          <button
+            type="button"
+            class="btn-secondary checkin-add-question"
+            onClick={() => setAddingIntake(true)}
+          >
+            + Add medication or supplement
+          </button>
+        </div>
+      )}
+      {draftIsRoutine(questions) && (
+        <p class="checkin-routine-note" role="note">
+          {wasRoutine
+            ? 'This form is a routine: every required question has a preset answer, so it is confirmed in one tap.'
+            : 'Every required question now has a preset answer, so this form becomes a routine: it can be confirmed in one tap.'}
+        </p>
+      )}
+    </>
+  )
+}
+
+function useActivitySchemas(): ActivitySchemas {
+  const definitions = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+  })
+  const catalog = useQuery({ queryFn: fetchActivityTypeCatalog, queryKey: ['activityTypeCatalog'] })
+  const schemas: ActivitySchemas = new Map()
+  for (const entry of catalog.data?.entries ?? []) schemas.set(entry.name, entry.data_schema)
+  for (const definition of definitions.data ?? []) {
+    schemas.set(definition.name, definition.data_schema ?? schemas.get(definition.name))
+  }
+  return new Map([...schemas].sort(([a], [b]) => a.localeCompare(b)))
+}
+
 function FormEditor({ existing, timezone }: { existing: CheckInForm | null; timezone: string | undefined }) {
   const { route } = useLocation()
   const refresh = useRefreshCheckIns()
+  const activityTypes = useActivitySchemas()
   const [draft, setDraft] = useState<FormDraft>(() => (existing ? draftFromForm(existing) : emptyFormDraft()))
   const [errors, setErrors] = useState<string[]>([])
   const set = (patch: Partial<FormDraft>) => setDraft((current) => ({ ...current, ...patch }))
@@ -564,19 +1026,18 @@ function FormEditor({ existing, timezone }: { existing: CheckInForm | null; time
             question={question}
             index={index}
             count={draft.questions.length}
+            activityTypes={activityTypes}
             onChange={(next) => setQuestions(draft.questions.map((q) => (q.id === question.id ? next : q)))}
             onMove={(by) => setQuestions(moveQuestion(draft.questions, index, by))}
             onRemove={() => setQuestions(draft.questions.filter((q) => q.id !== question.id))}
           />
         ))}
       </ol>
-      <button
-        type="button"
-        class="btn-secondary checkin-add-question"
-        onClick={() => setQuestions([...draft.questions, newQuestion('scale')])}
-      >
-        + Add question
-      </button>
+      <AddQuestions
+        questions={draft.questions}
+        wasRoutine={existing?.is_routine ?? false}
+        onQuestions={setQuestions}
+      />
 
       <h2>Score and schedule</h2>
       <ScoreEditor draft={draft} set={set} />

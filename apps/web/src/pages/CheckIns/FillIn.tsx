@@ -1,4 +1,4 @@
-import type { CheckIn, CheckInForm, CheckInQuestion } from '@aurboda/api-spec'
+import type { CheckIn, CheckInForm, CheckInQuestion, SubmitCheckInBody } from '@aurboda/api-spec'
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -16,7 +16,9 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
+import { Adherence } from './Adherence'
 import {
+  type AnswerDraft,
   type AnswerDrafts,
   answerProblems,
   answersToDrafts,
@@ -28,6 +30,7 @@ import {
 import { checkInSeries, formatAnswer, formatNumber, whenLine } from './check-in-view'
 import { checkInKeys, useRefreshCheckIns } from './queries'
 import { QuestionInput } from './QuestionInput'
+import { canLeaveOut, routineDraft, routineDrafts, routineItems, unloggedKeys } from './routines'
 import { UndoBar } from './UndoBar'
 import './style.css'
 
@@ -59,18 +62,25 @@ function AnswerFields({ questions, drafts, setDrafts, showMissing, idPrefix }: A
   )
 }
 
+const activityHref = (id: string) => `/detail/activity/${encodeURIComponent(id)}`
+
 function Saved({ checkIn, onAgain }: { checkIn: CheckIn; onAgain: () => void }) {
   return (
     <div class="checkins-card checkin-saved" role="status">
-      <p class="checkin-saved-title">Saved.</p>
+      <p class="checkin-saved-title">{checkIn.status === 'skipped' ? 'Skipped this time.' : 'Saved.'}</p>
       {checkIn.score !== null && <p>Your score: {formatNumber(checkIn.score)}</p>}
       {checkIn.log_errors?.length ? (
         <p class="checkin-error">
-          Not saved as a metric: {checkIn.log_errors.map((e) => `${e.question_key} (${e.error})`).join('; ')}
+          Not logged: {checkIn.log_errors.map((e) => `${e.question_key} (${e.error})`).join('; ')}
         </p>
       ) : null}
       <div class="checkin-actions">
-        <a class="btn-primary" href="/check-ins">
+        {checkIn.entity_type === 'activity' && checkIn.entity_id && (
+          <a class="btn-primary" href={activityHref(checkIn.entity_id)}>
+            Back to the activity
+          </a>
+        )}
+        <a class={checkIn.entity_id ? 'btn-secondary' : 'btn-primary'} href="/check-ins">
           Back to check-ins
         </a>
         <button type="button" class="btn-secondary" onClick={onAgain}>
@@ -81,56 +91,162 @@ function Saved({ checkIn, onAgain }: { checkIn: CheckIn; onAgain: () => void }) 
   )
 }
 
+function RoutineItemInput({
+  question,
+  value,
+  on,
+  onToggle,
+  onChange,
+}: {
+  question: CheckInQuestion
+  value: AnswerDraft
+  on: boolean
+  onToggle: (on: boolean) => void
+  onChange: (value: AnswerDraft) => void
+}) {
+  const editable = question.type === 'number' || question.type === 'scale'
+  return (
+    <li class={`checkin-routine-item${on ? '' : ' left-out'}`}>
+      <label class="checkin-routine-check">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={!canLeaveOut(question)}
+          onChange={(e) => onToggle(e.currentTarget.checked)}
+        />
+        <span>{question.prompt}</span>
+      </label>
+      {editable ? (
+        <span class="checkin-routine-dose">
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label={`${question.prompt}, dose`}
+            disabled={!on}
+            value={typeof value === 'string' ? value : value === undefined ? '' : String(value)}
+            onInput={(e) => onChange(e.currentTarget.value)}
+          />
+          {question.type === 'number' && question.unit && <span class="checkin-unit">{question.unit}</span>}
+        </span>
+      ) : (
+        question.type !== 'yes_no' && (
+          <span class="checkin-routine-preset">{formatAnswer(question, question.default)}</span>
+        )
+      )}
+    </li>
+  )
+}
+
+const asDraftValue = (question: CheckInQuestion, value: AnswerDraft): AnswerDraft =>
+  question.type === 'scale' && typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+
 function FillInForm({
   form,
   slot,
+  activityId,
   onSaved,
 }: {
   form: CheckInForm
   slot: string | undefined
+  activityId: string | undefined
   onSaved: (c: CheckIn) => void
 }) {
   const refresh = useRefreshCheckIns()
-  const [drafts, setDrafts] = useState<AnswerDrafts>({})
+  const items = form.is_routine ? routineItems(form.questions) : []
+  const itemKeys = new Set(items.map((question) => question.key))
+  const others = form.questions.filter((question) => !itemKeys.has(question.key))
+  const [drafts, setDrafts] = useState<AnswerDrafts>(() =>
+    form.is_routine ? routineDraft(form.questions).drafts : {},
+  )
+  const [leftOut, setLeftOut] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [answeredAt, setAnsweredAt] = useState(() => toLocalInput(new Date()))
   const [timeChanged, setTimeChanged] = useState(false)
   const [tried, setTried] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const problems = answerProblems(form.questions, drafts)
+  const [saving, setSaving] = useState<'save' | 'skip' | null>(null)
+  const effective = form.is_routine ? routineDrafts(form.questions, { drafts, left_out: leftOut }) : drafts
+  const problems = answerProblems(form.questions, effective)
   const ready = problems.length === 0
 
-  const save = async (e: Event) => {
-    e.preventDefault()
-    setTried(true)
-    if (!ready) return
-    const at = timeChanged ? fromLocalInput(answeredAt) : null
-    if (timeChanged && at === null) return setError('Pick the time you answered.')
-    setSaving(true)
+  const send = async (kind: 'save' | 'skip', body: () => SubmitCheckInBody | null) => {
+    const payload = body()
+    if (!payload) return
+    setSaving(kind)
     setError(null)
     try {
-      const checkIn = await submitCheckIn({
-        answers: draftsToAnswers(form.questions, drafts),
-        form_id: form.id,
-        ...(at ? { answered_at: at } : {}),
-        ...(note.trim() ? { note: note.trim() } : {}),
-        ...(slot ? { scheduled_for: slot } : {}),
-      })
+      const checkIn = await submitCheckIn(payload)
       await refresh()
       onSaved(checkIn)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Couldn’t save the check-in. Please try again.')
     } finally {
-      setSaving(false)
+      setSaving(null)
     }
   }
+
+  const entity = activityId ? { entity_id: activityId, entity_type: 'activity' as const } : {}
+
+  const save = (e: Event) => {
+    e.preventDefault()
+    setTried(true)
+    if (!ready) return
+    void send('save', () => {
+      const at = timeChanged ? fromLocalInput(answeredAt) : null
+      if (timeChanged && at === null) {
+        setError('Pick the time you answered.')
+        return null
+      }
+      return {
+        answers: draftsToAnswers(form.questions, effective),
+        form_id: form.id,
+        ...(at ? { answered_at: at } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+        ...(slot ? { scheduled_for: slot } : {}),
+        ...entity,
+      }
+    })
+  }
+
+  const skip = () =>
+    slot &&
+    void send('skip', () => ({
+      answers: {},
+      form_id: form.id,
+      scheduled_for: slot,
+      status: 'skipped',
+      ...(note.trim() ? { note: note.trim() } : {}),
+    }))
 
   return (
     <form class="checkins-card checkin-fill-form" onSubmit={save} noValidate>
       {slot && <p class="checkins-muted">For the {format(new Date(slot), 'HH:mm')} check-in.</p>}
+      {activityId && (
+        <p class="checkins-muted">
+          Tied to <a href={activityHref(activityId)}>this activity</a>.
+        </p>
+      )}
+      {items.length > 0 && (
+        <fieldset class="checkin-routine">
+          <legend>Untick what you did not take, or change a dose.</legend>
+          <ul class="checkin-routine-items">
+            {items.map((question) => (
+              <RoutineItemInput
+                key={question.key}
+                question={question}
+                value={drafts[question.key]}
+                on={!leftOut.includes(question.key)}
+                onToggle={(on) =>
+                  setLeftOut(on ? leftOut.filter((key) => key !== question.key) : [...leftOut, question.key])
+                }
+                onChange={(value) => setDrafts({ ...drafts, [question.key]: asDraftValue(question, value) })}
+              />
+            ))}
+          </ul>
+        </fieldset>
+      )}
       <AnswerFields
-        questions={form.questions}
+        questions={others}
         drafts={drafts}
         setDrafts={setDrafts}
         showMissing={tried}
@@ -171,10 +287,15 @@ function FillInForm({
           type="submit"
           class={`btn-primary checkin-save${ready ? '' : ' is-disabled'}`}
           aria-disabled={!ready}
-          disabled={saving}
+          disabled={saving !== null}
         >
-          {saving ? 'Saving…' : 'Save'}
+          {saving === 'save' ? 'Saving…' : 'Save'}
         </button>
+        {slot && (
+          <button type="button" class="btn-secondary" disabled={saving !== null} onClick={skip}>
+            {saving === 'skip' ? 'Skipping…' : 'Skip this time'}
+          </button>
+        )}
       </div>
     </form>
   )
@@ -275,16 +396,31 @@ function HistoryRow({
       onDeleted(checkIn)
     },
   })
+  const skipped = checkIn.status === 'skipped'
+  const unlogged = unloggedKeys(checkIn)
   return (
-    <li class="checkin-history-row">
+    <li class={`checkin-history-row${skipped ? ' skipped' : ''}`}>
       <div class="checkin-history-head">
-        <strong>{whenLine(new Date(checkIn.answered_at), now)}</strong>
+        <strong>
+          {whenLine(
+            new Date(checkIn.scheduled_for && skipped ? checkIn.scheduled_for : checkIn.answered_at),
+            now,
+          )}
+        </strong>
+        {skipped && <span class="checkin-skipped-badge">Skipped</span>}
         {checkIn.score !== null && <span class="checkin-score">Score {formatNumber(checkIn.score)}</span>}
+        {checkIn.entity_type === 'activity' && checkIn.entity_id && (
+          <a class="checkin-entity-link" href={activityHref(checkIn.entity_id)}>
+            Activity
+          </a>
+        )}
         {!editing && (
           <span class="checkin-history-actions">
-            <button type="button" class="checkin-link-btn" onClick={() => setEditing(true)}>
-              Edit
-            </button>
+            {!skipped && (
+              <button type="button" class="checkin-link-btn" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            )}
             <button
               type="button"
               class="checkin-link-btn danger"
@@ -300,12 +436,16 @@ function HistoryRow({
         <EditCheckIn checkIn={checkIn} onDone={() => setEditing(false)} />
       ) : (
         <dl class="checkin-answers">
-          {checkIn.questions.map((question) => (
-            <div key={question.key}>
-              <dt>{question.prompt}</dt>
-              <dd>{formatAnswer(question, checkIn.answers[question.key])}</dd>
-            </div>
-          ))}
+          {!skipped &&
+            checkIn.questions.map((question) => (
+              <div key={question.key}>
+                <dt>{question.prompt}</dt>
+                <dd>
+                  {formatAnswer(question, checkIn.answers[question.key])}
+                  {unlogged.has(question.key) && <span class="checkin-unlogged"> · no longer logged</span>}
+                </dd>
+              </div>
+            ))}
           {checkIn.note && (
             <div>
               <dt>Note</dt>
@@ -409,6 +549,7 @@ export function CheckInFill() {
   }
 
   const slot = saved || round > 0 ? undefined : query.slot
+  const activityId = query.activity || undefined
 
   return (
     <div class="checkins-page checkin-fill-page">
@@ -435,8 +576,9 @@ export function CheckInFill() {
           }}
         />
       ) : (
-        <FillInForm key={round} form={form} slot={slot} onSaved={setSaved} />
+        <FillInForm key={round} form={form} slot={slot} activityId={activityId} onSaved={setSaved} />
       )}
+      <Adherence form={form} />
       <History form={form} />
     </div>
   )

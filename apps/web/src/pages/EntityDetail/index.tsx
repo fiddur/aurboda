@@ -43,6 +43,7 @@ import { toDisplayName } from '../../utils/displayName'
 import { resolveItemIcon } from '../../utils/emojiLookup'
 import { hrZoneColors } from '../../utils/hrZones'
 import { renderMarkdown } from '../../utils/markdown'
+import { ActivityCheckIns } from '../CheckIns/ActivityCheckIns'
 import { ActivityChart } from './ActivityChart'
 import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import {
@@ -922,6 +923,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
           start={activity.merged_start_time ?? activity.start_time}
         />
       )}
+      {!activity.deleted_at && !isEditing && <ActivityCheckIns activityId={rawEntityId} />}
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
     </>
   )
