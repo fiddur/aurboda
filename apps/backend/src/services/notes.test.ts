@@ -7,6 +7,7 @@ import {
   decodeNotesCursor,
   deleteNoteById,
   encodeNotesCursor,
+  getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
@@ -651,6 +652,19 @@ describe('getNotesInRange', () => {
     )
   })
 
+  test('a window ending exactly at the next local midnight does not reach into the next day', async () => {
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
+    const from = new Date('2024-01-14T23:00:00Z')
+    const to = new Date('2024-01-15T23:00:00Z')
+
+    await getNotesInRange('user', from, to, 'Europe/Stockholm')
+
+    expect(vi.mocked(db.getNotesForTimeRange).mock.calls[0]![3]).toEqual({
+      from: '2024-01-15',
+      to: '2024-01-15',
+    })
+  })
+
   test('skips the reply lookup when the window has no comments', async () => {
     vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
 
@@ -839,6 +853,34 @@ describe('updateNote', () => {
 
     expect(result.success).toBe(true)
     expect(vi.mocked(db.updateNoteGuarded).mock.calls[0]![2]).toEqual({ start_time: newStart })
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[0]![3]).toMatchObject({ expected_entity_type: 'time' })
+  })
+
+  test('a move that finds the entry switched to a day entry meanwhile answers a conflict', async () => {
+    const noteId = randomUUID()
+    vi.mocked(db.getNoteById).mockResolvedValue(
+      makeNote({ entity_id: null, entity_type: 'time', id: noteId }),
+    )
+    vi.mocked(db.updateNoteGuarded).mockResolvedValue({
+      note: makeNote({ date: '2024-01-15', entity_id: null, entity_type: 'day', id: noteId }),
+      status: 'conflict',
+    })
+
+    const result = await updateNote('user', noteId, { start_time: '2024-01-15T11:00:00Z' })
+
+    expect(result).toMatchObject({ data: { entity_type: 'day' }, errorCode: 'conflict', success: false })
+  })
+
+  test('a text-only edit does not pin the kind', async () => {
+    const noteId = randomUUID()
+    vi.mocked(db.getNoteById).mockResolvedValue(
+      makeNote({ entity_id: null, entity_type: 'time', id: noteId }),
+    )
+    vi.mocked(db.updateNoteGuarded).mockResolvedValue(updated(makeNote({ id: noteId })))
+
+    await updateNote('user', noteId, { content: 'x' })
+
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[0]![3]).not.toHaveProperty('expected_entity_type')
   })
 
   test('a date makes a time note a day note, dropping its times', async () => {
@@ -1083,6 +1125,44 @@ describe('listDeletedNotes', () => {
       purge_at: '2024-03-31T10:00:00.000Z',
       replies: [{ deleted_at: '2024-03-01T10:00:00.000Z', id: reply.id }],
     })
+  })
+})
+
+describe('getNoteForUser', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers a thread root with its replies and an entry with its attachments', async () => {
+    const root = makeNote({ entity_id: null, entity_type: 'day', date: '2024-01-15' })
+    const reply = makeNote({ content: 'Reply', entity_id: root.id, entity_type: 'note' })
+    vi.mocked(db.getNoteById).mockResolvedValue(root)
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map([[root.id, [reply]]]))
+
+    const result = await getNoteForUser('user', root.id)
+
+    expect(result.success).toBe(true)
+    expect(result.data).toMatchObject({ attachments: [], date: '2024-01-15', id: root.id })
+    expect(result.data?.replies).toHaveLength(1)
+  })
+
+  test('answers a reply on its own', async () => {
+    const reply = makeNote({ entity_type: 'note' })
+    vi.mocked(db.getNoteById).mockResolvedValue(reply)
+
+    const result = await getNoteForUser('user', reply.id)
+
+    expect(result.data).toMatchObject({ entity_type: 'note', id: reply.id })
+    expect(db.getRepliesForRootIds).not.toHaveBeenCalled()
+  })
+
+  test('a missing, deleted or malformed id is not found', async () => {
+    vi.mocked(db.getNoteById).mockResolvedValue(null)
+    expect(await getNoteForUser('user', randomUUID())).toMatchObject({
+      errorCode: 'not_found',
+      success: false,
+    })
+    expect(await getNoteForUser('user', 'nope')).toMatchObject({ errorCode: 'not_found', success: false })
   })
 })
 

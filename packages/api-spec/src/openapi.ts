@@ -2521,6 +2521,26 @@ const openApiDocument = createDocument({
       },
     },
     '/notes/{id}': {
+      get: {
+        description:
+          'One live comment: a thread root with its replies (oldest first) and, for a journal entry, its attachments; a reply on its own.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The comment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a comment',
+        tags: ['Notes'],
+      },
       delete: {
         description:
           'Delete a comment and, on a thread root, its replies. It can be restored for 30 days; `purge=true` removes it for good at once.',

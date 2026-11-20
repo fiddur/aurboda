@@ -82,6 +82,7 @@ const FoodItems = lazyPage(() => import('./pages/FoodItems/index.jsx'), 'FoodIte
 const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
 const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
+const Journal = lazyPage(() => import('./pages/Journal/index.jsx'), 'Journal')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
 const LoginOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LoginOidc')
 const SignupOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'SignupOidc')
@@ -237,6 +238,8 @@ function AppShell() {
             <Route path="/check-ins/:id/edit" component={CheckInEditor} />
             <Route path="/check-ins/:id" component={CheckInFill} />
             <Route path="/check-ins" component={CheckIns} />
+            <Route path="/journal" component={Journal} />
+            <Route path="/journal/:id" component={Journal} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

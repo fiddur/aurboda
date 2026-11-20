@@ -38,7 +38,7 @@ successful load; after logging a type or metric not in use yet, the tab reloads 
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
-corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Meals,
+corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Journal, Meals,
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see
@@ -168,7 +168,7 @@ native dialogs (back or an outside tap counts as Cancel) and backs file inputs,
 including `multiple`, with the system picker. Embedded pages can therefore keep
 using the browser's own dialogs and file inputs.
 
-### Camera (barcode scanning)
+### Camera and microphone (barcode scanning, voice notes)
 
 The food pages can read a product barcode with the camera (see
 [openfoodfacts.md → Scanning](openfoodfacts.md#scanning)), which in the WebView
@@ -179,9 +179,18 @@ on devices without a camera. The permission is not asked for at install or start
 the first time a page opens the scanner, the system dialog asks for it, and a
 refusal shows the page's "camera is blocked" message.
 
+The journal editor (**More → Journal**, see [Journal](features/journal.md)) records
+voice notes with the microphone the same way: the manifest declares
+`android.permission.RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS`, and `RECORD_AUDIO` is
+asked for the first time a page starts a recording; a refusal shows the editor's
+refusal message ("The microphone is not allowed for Aurboda…"). Pictures need nothing extra: the file input
+already offers the system picker and the camera.
+
 `EmbeddedWebChrome.kt` (`rememberWebCameraPermission`) grants only
-`RESOURCE_VIDEO_CAPTURE` (never the microphone or anything else a page asks for),
-and only to a request whose origin has the scheme, host and port of the signed-in
+`RESOURCE_VIDEO_CAPTURE` (with `CAMERA`) and `RESOURCE_AUDIO_CAPTURE` (with
+`RECORD_AUDIO`) — never anything else a page asks for — and only those whose app
+permission is held, asking for the missing ones together (`captureResources`). It
+answers only a request whose origin has the scheme, host and port of the signed-in
 server (`isSameOrigin`). A page that is not on that origin (a challenge on another
 instance) gets a chrome client that denies every such request. A request still
 pending when the screen leaves is denied.

@@ -484,6 +484,7 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
       title: checked.title,
     },
     {
+      ...(Object.keys(anchor).length > 0 ? { expected_entity_type: existing.entity_type } : {}),
       expected_updated_at:
         fields.expected_updated_at === undefined ? undefined : new Date(fields.expected_updated_at),
       revisions: { limit: NOTE_REVISION_LIMIT, min_interval_minutes: NOTE_REVISION_MIN_INTERVAL_MINUTES },
@@ -525,6 +526,16 @@ export async function restoreNoteById(user: string, id: string): Promise<NoteRes
   }
   if (result.note.entity_type === 'note') return { data: toNoteData(result.note), success: true }
   const [data] = await withReplies(user, [result.note])
+  return { data, success: true }
+}
+
+/** One live comment by id: a thread root with its replies (and an entry's attachments), or a reply on its own. */
+export async function getNoteForUser(user: string, id: string): Promise<NoteResult> {
+  if (!UUID_RE.test(id)) return notFound()
+  const note = await dbGetNoteById(user, id)
+  if (!note) return notFound()
+  if (note.entity_type === 'note') return { data: toNoteData(note), success: true }
+  const [data] = await withReplies(user, [note])
   return { data, success: true }
 }
 
@@ -669,6 +680,13 @@ const localDate = (instant: Date, tz: string): string =>
   Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
 
 /**
+ * The window's end is exclusive for its dates: a window ending exactly at a local midnight covers
+ * the day before it, not the day it opens.
+ */
+const lastInstantBefore = (from: Date, to: Date): Date =>
+  to.getTime() > from.getTime() ? new Date(to.getTime() - 1) : to
+
+/**
  * Every comment anchored in [from, to] — thread roots only, each with its
  * replies nested — and the `day` entries on the window's local dates in `tz`
  * (default the user's zone). This is what the Timeline's comment track reads.
@@ -685,7 +703,7 @@ export async function getNotesInRange(
     user,
     from,
     to,
-    { from: localDate(from, zone), to: localDate(to, zone) },
+    { from: localDate(from, zone), to: localDate(lastInstantBefore(from, to), zone) },
     options.needs_text ? { needs_text: true } : {},
   )
   return withReplies(user, roots)

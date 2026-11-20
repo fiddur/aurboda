@@ -57,6 +57,7 @@ vi.mock('./services/mutations', () => ({
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
   deleteNoteById: vi.fn(),
+  getNoteForUser: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
   getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn().mockResolvedValue([]),
@@ -2296,6 +2297,32 @@ describe('MCP Server', () => {
       )
     })
 
+    test('query_notes and get_note refuse a tz that is not an IANA zone with a tool error', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      for (const [name, args] of [
+        ['query_notes', { from: '2024-01-15T00:00:00Z', to: '2024-01-15T23:59:59Z', tz: 'Mars/Olympus' }],
+        ['get_note', { id: '00000000-0000-4000-8000-000000000000', tz: 'Mars/Olympus' }],
+      ] as const) {
+        const response = await mcpPost(app)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+        const parsed = parseSSEResponse(response.text) as {
+          result: { content: { text: string }[]; isError?: boolean }
+        }
+        expect(parsed.result.isError).toBe(true)
+        expect(parsed.result.content[0].text).toContain('Not an IANA timezone')
+      }
+      expect(mutations.getNotesInRange).not.toHaveBeenCalledWith(
+        'testuser',
+        expect.anything(),
+        expect.anything(),
+        'Mars/Olympus',
+        expect.anything(),
+      )
+    })
+
     test('registers the journal tools', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
@@ -2308,6 +2335,7 @@ describe('MCP Server', () => {
       const names = parsed.result.tools.map((t) => t.name)
 
       for (const name of [
+        'get_note',
         'search_notes',
         'list_note_revisions',
         'restore_note',
@@ -2435,6 +2463,10 @@ describe('MCP Server', () => {
       expect((await callNoteTool(app, token, 'restore_note', { id })).toolResult.success).toBe(true)
       expect((await callNoteTool(app, token, 'list_note_revisions', { id })).toolResult.data).toEqual([])
       expect((await callNoteTool(app, token, 'list_deleted_notes', {})).toolResult.data).toEqual([])
+
+      vi.mocked(mutations.getNoteForUser).mockResolvedValue({ success: true })
+      expect((await callNoteTool(app, token, 'get_note', { id, tz: 'UTC' })).toolResult.success).toBe(true)
+      expect(mutations.getNoteForUser).toHaveBeenLastCalledWith('testuser', id)
     })
   })
 

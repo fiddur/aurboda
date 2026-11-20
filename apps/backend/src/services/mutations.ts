@@ -1006,6 +1006,7 @@ export type { RestoreResult } from './restore.ts'
 export {
   addNote,
   deleteNoteById,
+  getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,

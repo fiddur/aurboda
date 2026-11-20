@@ -13,6 +13,7 @@ import { MarkdownEditor } from '../../components/MarkdownEditor'
 import { stillUploading } from '../../components/MarkdownEditor/image-upload'
 import { SaveCancelRow } from '../../components/SaveCancelRow'
 import { addReply, addTimeComment, deleteComment, updateComment, uploadFeedImage } from '../../state/api'
+import { journalEntryHref } from './allDayMarkers'
 import { entityHref } from './commentItems'
 import './CommentPanel.css'
 
@@ -38,6 +39,13 @@ const ENTITY_LABELS: Partial<Record<EntityType, string>> = {
 }
 
 const AnchorLine = ({ root }: { root: Note }) => {
+  if ((root.entity_type === 'time' || root.entity_type === 'day') && root.id) {
+    return (
+      <p class="comment-panel-anchor">
+        <a href={journalEntryHref(root.id)}>Open in the journal</a>
+      </p>
+    )
+  }
   const href = root.entity_id ? entityHref(root.entity_type, root.entity_id) : undefined
   if (!href) return null
   const label = ENTITY_LABELS[root.entity_type] ?? root.entity_type

@@ -3,6 +3,7 @@ import { useSignalEffect } from '@preact/signals'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
+import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { LegendCategory } from './legendCategories'
@@ -10,7 +11,9 @@ import type { ChartItem, Orientation } from './types'
 
 import { updateUserSettings } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
+import { type AllDayMarkerGroup, journalDayMarkers, layoutAllDayMarkers } from './allDayMarkers'
 import { CommentPanel, type CommentPanelState } from './CommentPanel'
+import { ALL_DAY_GLYPH_SIZE, drawAllDayMarkers } from './drawAllDayMarkers'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
 import { drawDailyMetricTracks, layoutDailyTracks } from './drawDailyMetricTracks'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
@@ -223,7 +226,23 @@ export const Timeline = () => {
   const [commentPanel, setCommentPanel] = useState<CommentPanelState | null>(null)
 
   const commentItems = useMemo(() => chartItems.filter((i) => i.column === 'Comments'), [chartItems])
-  const showCommentsTrack = commentItems.length > 0
+  const dayMarkers = useMemo(
+    () => (hiddenCategories.has('comments') ? [] : journalDayMarkers(commentNotes)),
+    [commentNotes, hiddenCategories],
+  )
+  const showCommentsTrack = commentItems.length > 0 || dayMarkers.length > 0
+
+  const { route } = useLocation()
+  const handleDayMarkerClick = useCallback(
+    (group: AllDayMarkerGroup) => {
+      const [first] = group.markers
+      if (group.markers.length > 1) {
+        route(`/journal?date=${encodeURIComponent(group.date)}`)
+      } else if (first?.onClick) first.onClick()
+      else if (first?.href) route(first.href)
+    },
+    [route],
+  )
 
   const handleCommentClick = useCallback((item: ChartItem) => {
     const rootIds = item.comment_ids ?? (item.comment_id ? [item.comment_id] : [])
@@ -728,6 +747,22 @@ export const Timeline = () => {
           handleCommentClick,
         )
 
+        const commentsSlot = slotOf('Comments')
+        drawAllDayMarkers({
+          cross: commentsSlot
+            ? commentsSlot.x + commentsSlot.width / 2
+            : chartWidth - ALL_DAY_GLYPH_SIZE / 2 - 2,
+          groups: layoutAllDayMarkers(
+            dayMarkers,
+            currentYScale,
+            { from: domainStart, to: domainEnd },
+            ALL_DAY_GLYPH_SIZE + 4,
+          ),
+          onClick: handleDayMarkerClick,
+          orientation: 'vertical',
+          parent: chartGroup,
+        })
+
         if (musicSlot) {
           const domainStartMs = domainStart.getTime()
           const domainEndMs = domainEnd.getTime()
@@ -887,6 +922,18 @@ export const Timeline = () => {
             showTooltip,
             trackY: trackComments,
             xScale: currentXScale,
+          })
+          drawAllDayMarkers({
+            cross: trackComments,
+            groups: layoutAllDayMarkers(
+              dayMarkers,
+              currentXScale,
+              { from: domainStart, to: domainEnd },
+              ALL_DAY_GLYPH_SIZE + 4,
+            ),
+            onClick: handleDayMarkerClick,
+            orientation: 'horizontal',
+            parent: chartGroup,
           })
         }
 
@@ -1088,8 +1135,10 @@ export const Timeline = () => {
     columnData,
     columns,
     commentItems,
+    dayMarkers,
     showCommentsTrack,
     handleCommentClick,
+    handleDayMarkerClick,
     effectiveViewEnd,
     effectiveViewStart,
     hiddenCategories,

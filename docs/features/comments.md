@@ -155,8 +155,11 @@ back:
   has changed since (compared to the millisecond), nothing is written and the
   answer is a `409`:
   `{ "success": false, "error": "This comment was changed elsewhere", "data": <the comment as it now is> }`.
-  The check and the write are one transaction. MCP `update_note` answers the same
-  as an error whose text carries the current comment.
+  The check and the write are one transaction. A move or a switch of kind is also
+  refused with a `409` when the comment's kind changed under it (another edit
+  switched it between `time` and `day` meanwhile), with or without
+  `expected_updated_at`. MCP `update_note` answers the same as an error whose text
+  carries the current comment.
 - **Revisions.** Whenever an edit changes the content or the title, the text it
   replaces is kept in `note_revisions`, in the same transaction -- unless the
   newest revision is less than 10 minutes old: an editor that saves every few
@@ -203,6 +206,7 @@ template. Both, with their limits and their recoverable deletion, are described 
 | Method   | Path                   | What it does                                                                                                                                        |
 | -------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`    | `/notes`               | `?entity_type=&entity_id=` for one entity's comments, or `?from=&to=` (optional `tz`) for every comment in a window and the `day` ones on its dates |
+| `GET`    | `/notes/:id`           | One comment: a thread root with its `replies` and `attachments`, or a single reply                                                                  |
 | `GET`    | `/notes/search`        | List and search thread roots (see [Finding comments](#finding-comments))                                                                            |
 | `GET`    | `/notes/deleted`       | The deleted comments that can still be restored                                                                                                     |
 | `POST`   | `/notes`               | Create a comment in any of the four shapes, with an optional `title` and `tags`                                                                     |
@@ -211,15 +215,19 @@ template. Both, with their limits and their recoverable deletion, are described 
 | `POST`   | `/notes/:id/restore`   | Restore a deleted comment                                                                                                                           |
 | `GET`    | `/notes/:id/revisions` | A comment's earlier texts, newest first                                                                                                             |
 
-Both `GET /notes` shapes return thread roots with `replies` nested. Setting times on a
+Both `GET /notes` shapes return thread roots with `replies` nested. In the window
+read, `to` is exclusive for `day` comments too: a window ending exactly at a local
+midnight does not take in the next date's. `tz` must be an IANA name (`400`
+otherwise; a tool error over MCP). Setting times on a
 comment that is anchored to an entity is a `400`, and so is an `entity_id` that is
 not a UUID for an entity type keyed by one (everything but `metric`, whose key is
 composite). `PATCH` on a comment that does not exist (or is deleted) is a `404`,
-and on one changed since `expected_updated_at` a `409`.
+and on one changed since `expected_updated_at` a `409`. `GET /notes/:id` on one that
+does not exist (or is deleted) is a `404`.
 
 ## MCP tools
 
-`add_note`, `get_notes`, `query_notes`, `search_notes`, `update_note`,
+`add_note`, `get_note`, `get_notes`, `query_notes`, `search_notes`, `update_note`,
 `delete_note`, `restore_note`, `list_deleted_notes`, `list_note_revisions` -- same
 capabilities as the REST endpoints. `query_notes` takes `from`/`to` and is the
 tool to reach for when asking "what did I comment on yesterday?"; `search_notes`

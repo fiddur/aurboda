@@ -5,9 +5,67 @@ A journal for dated entries that never loses a word. It is built on
 free-standing comment, so an entry is also a comment on that moment on the
 Timeline, and a comment written on the Timeline is also in the journal.
 
-This page describes the data model and the API as they stand. The `/journal` page
-and the Android screen are still to come
-([#1801](https://github.com/fiddur/aurboda/issues/1801)).
+Open it from the menu (**Journal**, after Timeline) on the web, or **More → Journal**
+in the Android app, which embeds the same page.
+
+## The journal page
+
+`/journal` lists your entries newest first, grouped by day, loading more as you
+scroll (or with **Load more**). Each entry shows its time (or "All day"), title,
+tags, the start of its text (**Show more** for the rest) and small previews of its
+pictures and recordings. At the top:
+
+- **New entry**, and **New entry from template** when you have templates;
+- **search** (title and text), a **tag** filter (clicking a `#tag` on an entry adds
+  it), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
+  comments on activities, meals and reports**, and **Photos without text**;
+- **On this day**: entries from the same date in earlier years, when there are any;
+- **Recently deleted**: deleted entries and templates with the days left before they
+  go for good, each with **Restore**;
+- **Manage templates**: add, rename, edit and delete them.
+
+## Writing an entry
+
+`/journal/new` (or `/journal/new?template=<id>`, which starts from that template's
+text) opens the editor; `/journal/<id>` opens an existing entry. The editor has a
+title, the text (markdown, with `#hashtags`), tags, and when: a start and an
+optional end time, or **No time of day** with a date. It opens on "now".
+
+- **Autosave**: nothing to press. A change is saved three seconds after you stop
+  typing, and at once when you leave the page or a field. The first save creates
+  the entry and the address becomes `/journal/<id>`. The status line says _Not
+  saved yet_, _Saving…_, _Saved_ or _Not saved yet: will retry_; a failed save is
+  retried every ten seconds.
+- **Drafts**: every change is also kept in the browser (`localStorage`) until the
+  server has confirmed it. If a save never landed -- the tab closed offline, say --
+  opening the entry again offers the draft: **Use it** or **Discard**. Drafts are kept
+  per account and outlive a sign-out (an expired session must not lose the text), so
+  another account in the same browser is never offered them.
+- **Conflicts**: if the entry changed elsewhere since you opened it (another tab or
+  device), the save answers `409` and nothing is overwritten. The editor shows both
+  texts and offers **Keep mine**, **Keep theirs** or **Keep both** (theirs, a `---`
+  rule, then yours).
+- **History** lists the earlier versions of the text (see revisions below), each
+  with **Restore this version**, which makes it the current text through an
+  ordinary save.
+- **Pictures**: **Add pictures** (several at once, or the camera on a phone), or
+  drop or paste them in; they are attached in the order chosen. **Record** captures
+  a voice note with the microphone, which the browser asks for the first time.
+  Pictures open full size; recordings play inline. Removing one shows **Undo** for
+  a few seconds, and it can be restored for 30 days.
+- **Delete** removes the entry with an **Undo** notice; it stays in Recently
+  deleted for 30 days. An entry left completely empty is removed when you leave it.
+- **Replies**: comments on an entry (the same thread the Timeline shows) are listed
+  under it.
+
+## On the Timeline
+
+A `time` entry is a comment on the Timeline like any other. A `day` entry has no
+time of day, so the Timeline draws it as a 📓 marker at the start of its date, on
+the comments track; several on one date are one marker. Clicking it opens the
+entry (or, for several, the journal at that date). The comment panel on the
+Timeline has **Open in the journal** for any free-standing comment. See
+[Timeline](./timeline.md).
 
 ## What an entry is
 
@@ -73,7 +131,9 @@ order is page order. Entries answer them as `attachments`, live ones in page ord
 each with `id`, `kind` (`image` or `audio`), `mime`, `size`, `width`/`height`
 (pictures), `position` and `created_at`.
 
-- **Limits**: at most 20 MB per file (`413` beyond), 30 attachments per entry, and
+- **Limits**: at most 20 MB per file (`413` beyond; the bundled nginx lets uploads
+  to this address through up to 25 MB, and a proxy in front of it must too), 30
+  attachments per entry, and
   2 GB for all of an account's attachments, deleted ones counting until they are
   removed for good (`409` for either). The constants are in
   `@aurboda/api-spec` (`note-attachments.ts`).
@@ -127,6 +187,7 @@ removes it at once. Aurboda ships no templates of its own.
 | `PATCH`  | `/notes/:id`                                    | `update_note`                   |
 | `DELETE` | `/notes/:id`                                    | `delete_note`                   |
 | `POST`   | `/notes/:id/restore`                            | `restore_note`                  |
+| `GET`    | `/notes/:id`                                    | `get_note`                      |
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |

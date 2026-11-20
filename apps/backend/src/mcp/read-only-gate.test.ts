@@ -16,6 +16,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'mark_notification_read',
     'mark_all_notifications_read',
     'list_reminders',
+    'get_note',
     'search_notes',
     'list_deleted_notes',
     'list_note_revisions',

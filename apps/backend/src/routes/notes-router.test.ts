@@ -7,6 +7,7 @@ import { createNotesRouter } from './notes-router.ts'
 vi.mock('../services/mutations.ts', () => ({
   addNote: vi.fn(),
   deleteNoteById: vi.fn(),
+  getNoteForUser: vi.fn(),
   getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn(),
   getNotesInRange: vi.fn(),
@@ -204,6 +205,39 @@ describe('POST /notes/:id/restore', () => {
 
     expect((await supertest(buildApp()).post(`/${NOTE_ID}/restore`)).status).toBe(409)
     expect((await supertest(buildApp()).post(`/${NOTE_ID}/restore`)).status).toBe(404)
+  })
+})
+
+describe('GET /notes/:id', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers the comment', async () => {
+    vi.mocked(mutations.getNoteForUser).mockResolvedValue({ data: noteData, success: true })
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual(noteData)
+    expect(mutations.getNoteForUser).toHaveBeenCalledWith('tester', NOTE_ID)
+  })
+
+  test('404s on an unknown comment', async () => {
+    vi.mocked(mutations.getNoteForUser).mockResolvedValue({
+      error: 'Note not found',
+      errorCode: 'not_found',
+      success: false,
+    })
+
+    expect((await supertest(buildApp()).get(`/${NOTE_ID}`)).status).toBe(404)
+  })
+
+  test('/search and /deleted are not taken for ids', async () => {
+    vi.mocked(mutations.listDeletedNotes).mockResolvedValue([])
+
+    expect((await supertest(buildApp()).get('/deleted')).status).toBe(200)
+    expect(mutations.getNoteForUser).not.toHaveBeenCalled()
   })
 })
 

@@ -143,6 +143,14 @@ const saveRevisionIn = async (tx: Queryable, previous: Note, policy: NoteRevisio
   )
 }
 
+const isStale = (
+  existing: Note,
+  expected: { expected_updated_at?: Date; expected_entity_type?: EntityType },
+): boolean =>
+  (expected.expected_updated_at !== undefined &&
+    expected.expected_updated_at.getTime() !== existing.updated_at.getTime()) ||
+  (expected.expected_entity_type !== undefined && expected.expected_entity_type !== existing.entity_type)
+
 /**
  * Update a live note in one transaction: the row is locked, `expected_updated_at` (when given)
  * is compared with the stored `updated_at` to the millisecond, the previous text is kept as a
@@ -153,7 +161,16 @@ export const updateNoteGuarded = async (
   user: string,
   id: string,
   fields: NoteFieldUpdates,
-  options: { expected_updated_at?: Date; revisions: NoteRevisionPolicy },
+  options: {
+    expected_updated_at?: Date
+    /**
+     * The kind the anchor change was worked out for: when the locked row has become another kind
+     * since (a concurrent switch between `time` and `day`), the change is a conflict, not a shape
+     * violation.
+     */
+    expected_entity_type?: EntityType
+    revisions: NoteRevisionPolicy
+  },
 ): Promise<GuardedNoteUpdate> =>
   withUserTransaction(user, async (tx) => {
     const locked = await query(
@@ -164,12 +181,7 @@ export const updateNoteGuarded = async (
     if (locked.rows.length === 0) return { status: 'not_found' }
     const existing = mapNoteRow(locked.rows[0])
 
-    if (
-      options.expected_updated_at !== undefined &&
-      options.expected_updated_at.getTime() !== existing.updated_at.getTime()
-    ) {
-      return { note: existing, status: 'conflict' }
-    }
+    if (isStale(existing, options)) return { note: existing, status: 'conflict' }
 
     const contentChanged = fields.content !== undefined && fields.content !== existing.content
     const titleChanged = fields.title !== undefined && (fields.title ?? undefined) !== existing.title

@@ -25,6 +25,9 @@
 
     <!-- Camera for reading food barcodes in embedded web pages; asked for on first use -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Microphone for journal voice notes in embedded web pages; asked for on first use -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!--
