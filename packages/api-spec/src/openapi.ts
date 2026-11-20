@@ -235,8 +235,6 @@ import {
   personDateResponseSchema,
   personDatesResponseSchema,
   personDetailResponseSchema,
-  personPostsQuerySchema,
-  personPostsResponseSchema,
   personResponseSchema,
   updatePersonBodySchema,
   updatePersonDateBodySchema,
@@ -3427,29 +3425,8 @@ const openApiDocument = createDocument({
         tags: ['People'],
       },
     },
-    '/people/{id}/posts': {
-      get: {
-        description:
-          "The person's recent posts from the user's own timeline (only what was already received from their account), newest first.",
-        requestParams: {
-          path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }),
-          query: personPostsQuerySchema,
-        },
-        responses: {
-          200: {
-            content: { 'application/json': { schema: personPostsResponseSchema } },
-            description: 'The posts',
-          },
-          404: {
-            content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Person not found, or without a handle',
-          },
-        },
-        security: [{ bearerAuth: [] }],
-        summary: "List a person's posts",
-        tags: ['People'],
-      },
-    },
+    // No '/people/{id}/posts' here: its entries are timeline entries, whose structured payload the
+    // Kotlin generator cannot express (as the feed's own routes, which are not listed either).
     '/people/{id}/dates': {
       get: {
         description: "The person's yearly dates, by month and day.",
