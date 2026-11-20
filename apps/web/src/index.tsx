@@ -10,6 +10,7 @@ import { Header } from './components/Header.jsx'
 import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { useBrowserTimezoneDefault } from './components/useBrowserTimezoneDefault.js'
+import { useLiveNotifications } from './components/useLiveNotifications.js'
 import { useNotificationReadParam } from './components/useNotificationReadParam.js'
 import { usePushReconcile } from './components/usePushReconcile.js'
 import { isEmbedded } from './embed.js'
@@ -139,6 +140,7 @@ function AppShell() {
   useBrowserTimezoneDefault()
   useNotificationReadParam()
   usePushReconcile()
+  useLiveNotifications()
 
   return (
     <>

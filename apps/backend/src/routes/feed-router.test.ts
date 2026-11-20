@@ -7,7 +7,7 @@ import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
 import type { ReactionActions } from '../services/feed-reactions.ts'
-import type { TimelineHub } from '../services/timeline-hub.ts'
+import type { LiveEventKind, LiveHub } from '../services/live-hub.ts'
 
 import { createFeedRouter } from './feed-router.ts'
 
@@ -19,9 +19,9 @@ const auth: RequestHandler = (req, _res, next) => {
 
 /** A fake hub that captures the SSE listener so the test can fire pings, and records teardown. */
 const fakeHub = () => {
-  let fire: (() => void) | null = null
+  let fire: ((kind: LiveEventKind) => void) | null = null
   let unsubscribed = false
-  const hub: TimelineHub = {
+  const hub: LiveHub = {
     notify: async () => {},
     subscribe: async (_user, onEvent) => {
       fire = onEvent
@@ -30,10 +30,10 @@ const fakeHub = () => {
       }
     },
   }
-  return { fire: () => fire?.(), hub, wasUnsubscribed: () => unsubscribed }
+  return { fire: (kind: LiveEventKind) => fire?.(kind), hub, wasUnsubscribed: () => unsubscribed }
 }
 
-const startApp = (hub?: TimelineHub) => {
+const startApp = (hub?: LiveHub) => {
   const app = express()
   app.use('/feed', createFeedRouter(auth, undefined, hub))
   const server = app.listen(0)
@@ -65,7 +65,7 @@ describe('GET /feed/timeline/stream', () => {
     expect(res.body).toEqual({ error: 'Live updates unavailable', success: false })
   })
 
-  test('opens an SSE stream and forwards a hub ping as `event: new`', async () => {
+  test('forwards only timeline pings, as `event: new`', async () => {
     const { hub, fire } = fakeHub()
     const { url, close } = startApp(hub)
     const ctrl = new AbortController()
@@ -81,9 +81,11 @@ describe('GET /feed/timeline/stream', () => {
       const connected = await reader.read()
       expect(decoder.decode(connected.value)).toContain(': connected')
 
-      fire()
+      fire('notification')
+      fire('timeline')
       const event = await reader.read()
-      expect(decoder.decode(event.value)).toContain('event: new')
+      const text = decoder.decode(event.value)
+      expect(text).toBe('event: new\ndata: {}\n\n')
 
       ctrl.abort()
       await reader.cancel().catch(() => {})

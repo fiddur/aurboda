@@ -251,14 +251,10 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
-  registerNotificationTools(
-    server,
-    user,
-    deps.centralDb?.isAdmin ?? (async () => false),
-    deps.runNotificationAction,
-    undefined,
-    deps.webPush,
-  )
+  registerNotificationTools(server, user, deps.centralDb?.isAdmin ?? (async () => false), {
+    runAction: deps.runNotificationAction,
+    webPush: deps.webPush,
+  })
   registerReminderTools(server, user)
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)

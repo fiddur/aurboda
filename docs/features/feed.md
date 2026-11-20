@@ -1158,18 +1158,26 @@ itself is never delayed; entries that gain a payload render natively on the next
 ### Live updates
 
 New posts appear **without a refresh**. When a genuinely new `timeline_entry` is inserted, the
-ingest path emits a Postgres `NOTIFY` ping on the user's DB (each user has one long-lived
-connection, so the ping is received in-process). The web client holds an **SSE** stream open at
-`GET /feed/timeline/stream`; each ping is forwarded as an empty `event: new` (no post content on
-the wire — just "your timeline changed"). The client then refetches the newest page and shows a
-**"N new posts"** pill; clicking it prepends the new posts.
+ingest path emits a Postgres `NOTIFY` ping on the user's DB. Each user's live updates share one
+dedicated `LISTEN` connection, on two channels: `timeline_updates` and `notification_updates` (the
+[bell](notifications.md#the-bell)). The web client holds one **SSE** stream per tab open at
+`GET /events/stream`; a timeline ping is forwarded as an empty `event: timeline` and a bell ping as
+`event: notification` (no content on the wire — just "this changed"). On a timeline event the
+client refetches the newest page and shows a **"N new posts"** pill; clicking it prepends the new
+posts.
 
 The stream uses `fetch` (not `EventSource`) so the bearer token rides in the `Authorization`
 header rather than the URL, and sends `X-Accel-Buffering: no` so nginx flushes each event
-immediately. If the stream can't be opened or drops, the client **falls back to polling** the
-same newest page every 30s — so the pill still works without a live connection. In-process
-fan-out is handled by a single `TimelineHub` that keeps one `LISTEN` channel open per user
-regardless of how many tabs are streaming.
+immediately (see [Live updates](../admin.md#live-updates) for other proxies). Only a visible tab
+holds it: over HTTP/1.1 a browser allows six connections per origin, so a hidden tab closes its
+stream and, when shown again, reopens it and refetches once. If the stream can't be opened or
+drops, the client retries after 5 s, 15 s, 60 s and then every minute, and meanwhile **falls back
+to polling** the newest page every 30 s — so the pill still works without a live connection.
+In-process fan-out is handled by a single `LiveHub` that keeps one `LISTEN` connection open per
+user regardless of how many tabs are streaming.
+
+`GET /feed/timeline/stream`, the earlier endpoint, still answers for one release for web bundles
+loaded before the change: it forwards only timeline pings, as `event: new`.
 
 ### Images
 
@@ -1633,7 +1641,7 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
 | `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
 | `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page, `?tag=` to filter by a hashtag                                                                                                    |
-| `GET /feed/timeline/stream`                       | Server-Sent Events stream of live "new posts" pings (falls back to polling)                                                                                                                                  |
+| `GET /feed/timeline/stream`                       | Deprecated alias of `GET /events/stream` carrying only timeline pings, as `event: new`; goes after the next release                                                                                          |
 | `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |

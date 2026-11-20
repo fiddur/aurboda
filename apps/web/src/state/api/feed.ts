@@ -45,7 +45,6 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
-import { parseTimelineEvents } from './timeline-sse'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -478,41 +477,4 @@ export const fetchFeedPostReactions = async (postId: string): Promise<FeedPostRe
     { headers: authHeaders() },
   )
   return response.data.reactions
-}
-
-/**
- * Open the live home-timeline SSE stream, invoking `onPing` for each "new posts"
- * event. Uses `fetch` (not `EventSource`) so the bearer token rides in the
- * `Authorization` header rather than the URL. Calls `onClose` when the stream ends
- * or errors (so the caller can fall back to polling). Returns a teardown.
- */
-export const openTimelineStream = (onPing: () => void, onClose: () => void): (() => void) => {
-  const controller = new AbortController()
-  void (async () => {
-    try {
-      const response = await fetch(`${API_URL}/feed/timeline/stream`, {
-        headers: authHeaders(),
-        signal: controller.signal,
-      })
-      if (!response.ok || !response.body) {
-        onClose()
-        return
-      }
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const { pings, rest } = parseTimelineEvents(buffer)
-        buffer = rest
-        for (let i = 0; i < pings; i++) onPing()
-      }
-      onClose()
-    } catch {
-      if (!controller.signal.aborted) onClose()
-    }
-  })()
-  return () => controller.abort()
 }

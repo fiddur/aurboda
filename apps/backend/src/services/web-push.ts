@@ -113,13 +113,17 @@ export const pushPayload = (
   type: record.type,
 })
 
+/** How a browser names its own endpoint in a URL, so the endpoint itself stays out of access logs. */
+export const pushEndpointHash = (endpoint: string): string =>
+  createHash('sha256').update(endpoint).digest('hex')
+
 export const serializePushSubscription = (
   record: PushSubscriptionRecord,
-  currentEndpoint?: string,
+  currentEndpointHash?: string,
 ): PushSubscription => ({
   browser: browserLabel(record.user_agent),
   created_at: record.created_at.toISOString(),
-  current: currentEndpoint !== undefined && record.endpoint === currentEndpoint,
+  current: currentEndpointHash !== undefined && pushEndpointHash(record.endpoint) === currentEndpointHash,
   id: record.id,
   last_success_at: record.last_success_at?.toISOString() ?? null,
 })
@@ -221,7 +225,7 @@ export interface WebPush {
   enabled: boolean
   config: () => Promise<{ enabled: boolean; public_key?: string }>
   subscribe: (user: string, body: AddPushSubscriptionBody, userAgent?: string) => Promise<SubscribeOutcome>
-  list: (user: string, currentEndpoint?: string) => Promise<PushSubscription[]>
+  list: (user: string, currentEndpointHash?: string) => Promise<PushSubscription[]>
   remove: (user: string, id: string) => Promise<boolean>
   /** Null when this server does not offer push. */
   sendTest: (user: string) => Promise<{ reached: number; total: number } | null>
@@ -306,8 +310,8 @@ export const createWebPush = (deps: WebPushDeps): WebPush => {
 
     enabled,
 
-    list: async (user, currentEndpoint) =>
-      (await store.list(user)).map((record) => serializePushSubscription(record, currentEndpoint)),
+    list: async (user, currentEndpointHash) =>
+      (await store.list(user)).map((record) => serializePushSubscription(record, currentEndpointHash)),
 
     remove: (user, id) => store.delete(user, id),
 
@@ -340,7 +344,10 @@ export const createWebPush = (deps: WebPushDeps): WebPush => {
         user_agent: userAgent ? userAgent.slice(0, USER_AGENT_MAX_LENGTH) : null,
       })
       await store.trim(user, record.id, MAX_PUSH_SUBSCRIPTIONS)
-      return { status: 'ok', subscription: serializePushSubscription(record, body.endpoint) }
+      return {
+        status: 'ok',
+        subscription: serializePushSubscription(record, pushEndpointHash(body.endpoint)),
+      }
     },
   }
 }

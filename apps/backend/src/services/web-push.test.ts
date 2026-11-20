@@ -14,6 +14,7 @@ import {
   pushEndpointProblem,
   type PushSubscriptionStore,
   pushTopic,
+  pushEndpointHash,
   serializePushSubscription,
   TEST_PUSH_TITLE,
   USER_AGENT_MAX_LENGTH,
@@ -192,12 +193,12 @@ describe('pushEndpointProblem', () => {
 })
 
 describe('serializePushSubscription', () => {
-  test('never includes the keys, and marks the named endpoint current', () => {
+  test('never includes the keys, and marks the endpoint whose hash is named current', () => {
     const record = subscription('s1', {
       last_success_at: new Date('2026-11-02T10:00:00Z'),
       user_agent: 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
     })
-    expect(serializePushSubscription(record, record.endpoint)).toEqual({
+    expect(serializePushSubscription(record, pushEndpointHash(record.endpoint))).toEqual({
       browser: 'Firefox on Android',
       created_at: '2026-11-01T10:00:00.000Z',
       current: true,
@@ -205,6 +206,9 @@ describe('serializePushSubscription', () => {
       last_success_at: '2026-11-02T10:00:00.000Z',
     })
     expect(serializePushSubscription(record).current).toBe(false)
+    expect(serializePushSubscription(record, pushEndpointHash('https://push.example/other')).current).toBe(
+      false,
+    )
   })
 })
 

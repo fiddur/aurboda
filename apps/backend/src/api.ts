@@ -32,7 +32,7 @@ import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
-  emitTimelineNotify,
+  emitLiveNotify,
   expandAncestorTypes,
   getDeductionRulesByIds,
   getDetectedLocationById,
@@ -59,7 +59,7 @@ import {
   markChallengeResultPublished,
   markEnrichTransientFailure,
   migrateAllUsers,
-  openTimelineChannel,
+  openLiveChannel,
   pruneDeductionRuleRuns,
   pruneDeletedNotes,
   pruneSyncedOutboundSync,
@@ -219,6 +219,7 @@ import {
 } from './services/garmin-push-queue.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
+import { createLiveHub } from './services/live-hub.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
@@ -274,7 +275,6 @@ import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
 import { readTagActorHost } from './services/tag-actor-host.ts'
-import { createTimelineHub } from './services/timeline-hub.ts'
 import {
   backfillReplyLinks,
   type RetroEnrichTrigger,
@@ -758,12 +758,11 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
 
-  // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
-  // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
-  // the federation ingest (which pings it when a new post is received).
-  const timelineHub = createTimelineHub({ emit: emitTimelineNotify, openChannel: openTimelineChannel })
+  const liveHub = createLiveHub({ emit: emitLiveNotify, openChannel: openLiveChannel })
   const onNewTimelineEntry = (user: string) => {
-    void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
+    void liveHub
+      .notify(user, 'timeline')
+      .catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
   }
 
   const federationQueueAbort = new AbortController()
@@ -1567,7 +1566,7 @@ const main = async () => {
     retroEnrichTimeline,
     syncProvider,
     tagActorHost,
-    timelineHub,
+    liveHub,
     userDb,
     webAuthn,
     oidc,
