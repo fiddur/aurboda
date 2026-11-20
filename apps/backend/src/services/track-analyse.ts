@@ -2,6 +2,7 @@ import type { Activity } from '../db/types.ts'
 
 import { getActivityById, getOverrideForActivity } from '../db/activities/index.ts'
 import { deleteAllActivityFeatures, listTrackedActivitiesWithoutFeatures } from '../db/activity-features.ts'
+import { deletePendingSuggestionsOfOtherType } from '../db/suggested-segments.ts'
 import { getActivityTrack } from '../db/tracks.ts'
 import { computeAndStoreActivityFeatures, defaultActivityFeatureDeps } from './activity-features.ts'
 import { auditError, auditInfo } from './audit-log.ts'
@@ -189,11 +190,13 @@ export const defaultFeatureBackfillDeps = {
 export interface ReanalyseDeps {
   rematchRoutes: (user: string, activityIds: string[]) => Promise<unknown>
   rematchSegments: (user: string, activityIds: string[]) => Promise<unknown>
+  dropStaleSuggestions: (user: string, activityIds: string[]) => Promise<unknown>
   recomputeFeatures: (user: string, activityId: string) => Promise<unknown>
   getActivity: (user: string, id: string) => Promise<Activity | null>
 }
 
 export const defaultReanalyseDeps: ReanalyseDeps = {
+  dropStaleSuggestions: deletePendingSuggestionsOfOtherType,
   getActivity: (user, id) => getActivityById(user, id, true),
   recomputeFeatures: async (user, activityId) => {
     if (await getActivityTrack(user, activityId)) {
@@ -207,7 +210,8 @@ export const defaultReanalyseDeps: ReanalyseDeps = {
 /**
  * After the type the merged view shows changed (a retype, or an override deleted or restored):
  * routes and segments are matched again so a walk does not stay on a run's route or keep a
- * run's segment efforts, and features are recomputed
+ * run's segment efforts, pending segment suggestions found on the activities under their old
+ * type are dropped, and features are recomputed
  * for the rows that own a track. Failures are audited, never thrown: the edit itself succeeded.
  */
 export const reanalyseActivities = async (
@@ -220,6 +224,9 @@ export const reanalyseActivities = async (
   )
   await attempt(user, 'Failed to re-match segments after activity retype', undefined, () =>
     deps.rematchSegments(user, activityIds),
+  )
+  await attempt(user, 'Failed to drop segment suggestions after activity retype', undefined, () =>
+    deps.dropStaleSuggestions(user, activityIds),
   )
   for (const id of activityIds) {
     await attempt(user, 'Failed to recompute activity features after retype', id, () =>

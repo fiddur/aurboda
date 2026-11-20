@@ -1335,6 +1335,34 @@ describe('Feed federation actor + WebFinger', () => {
         expect(await listTimelineEntries(user, 10)).toHaveLength(1)
         expect(await notificationsOf(user)).toEqual([])
       })
+
+      test('two followed tags carding one Note before the fold raise one new-post', async () => {
+        const user = getTestUser()
+        const note = await topLevelPost(9).getObject()
+        const author = {
+          actor_uri: ALICE,
+          avatar_url: null,
+          display_name: 'Alice',
+          handle: '@alice@mastodon.example',
+        }
+        await Promise.all(
+          ['running', 'trail'].map((tag) =>
+            ingestNoteForRecipient(user, note as Note, author, async () => null, ORIGIN, {
+              boost: {
+                actor_uri: `https://tags.example/user/${tag}`,
+                announce_uri: `https://tags.example/user/${tag}/announces/1`,
+                display_name: `#${tag}`,
+                handle: `@${tag}@tags.example`,
+                published_at: new Date('2026-07-02T10:00:00Z'),
+                tag,
+              },
+              notify: { source: { notify_on_post: true, tag } },
+            }),
+          ),
+        )
+        expect(await listTimelineEntries(user, 10)).toHaveLength(2)
+        expect((await notificationsOf(user)).map((n) => n.type)).toEqual(['feed_post'])
+      })
     })
 
     /** Every cached copy of Alice: as followee, follower, post author and booster. */

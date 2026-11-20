@@ -295,7 +295,8 @@ hand from a track or a route, or added from a suggestion.
 - **From an activity**: `activity_id`, `start_offset_s`, `end_offset_s`, seconds since the
   activity's start (the `t` of `GET /activities/:id/track`). The line is the part of the
   activity's preferred track (the one the track read returns) between those M values
-  (`ST_LocateBetween`), simplified at about 3 m.
+  (`ST_LocateBetween`), simplified at about 3 m. Where the M values leave the range and come
+  back (a device clock that jumped back), the cut has several parts and the longest is kept.
 - **From a route**: `route_id`, `start_km`, `end_km`. The line is `ST_LineSubstring` of the
   route between those distances, with the fractions taken in Web Mercator so they are
   distances in metres, not degrees. An end up to 50 m past the route's length (a rounded
@@ -435,6 +436,8 @@ other's 25 m buffer, same direction) is not stored again: a similar segment, or 
 promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also after the segment
 made from it is deleted); a similar pending one takes the larger activity count. Merging an
 activity type moves its suggestions with it; deleting one deletes them, pending and decided.
+Retyping an activity (an edit, an override, or a deduction rule) drops the pending suggestions
+found on it under the type it no longer has; decided ones stay.
 Promoting claims the suggestion first (it is marked promoted before the segment is made, and
 made pending again when no segment comes of it or linking it to its segment fails, in which case
 the segment just made is deleted first), so two

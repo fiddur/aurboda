@@ -13,6 +13,7 @@
  */
 import sharp from 'sharp'
 
+import { mapWithConcurrency } from '../../utils.ts'
 import { buildChartSvg } from '../charts/chart-svg.ts'
 import { buildImpactSvg, type ImpactSvgData } from '../charts/impact-svg.ts'
 import { buildRaceChartSvg, type RaceChartSvgData } from '../charts/race-chart-svg.ts'
@@ -29,27 +30,6 @@ const ROUTE_BG = '#0b0f19'
 const MAX_TILES = 25
 /** Max concurrent tile fetches — OSM's tile policy asks for ≤ ~2 connections. */
 const TILE_FETCH_CONCURRENCY = 2
-
-/**
- * Map over `items` running at most `limit` async calls at once, preserving order.
- * A tiny fixed-pool scheduler — no big `Promise.all` burst.
- */
-const mapWithConcurrency = async <T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> => {
-  const results = Array.from<R>({ length: items.length })
-  let next = 0
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++
-      results[i] = await fn(items[i])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
-  return results
-}
 
 export const svgToPng = (svg: string): Promise<Buffer> => sharp(Buffer.from(svg)).png().toBuffer()
 
