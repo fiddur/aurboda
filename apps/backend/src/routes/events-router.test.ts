@@ -110,12 +110,35 @@ describe('GET /events/stream', () => {
     }
   })
 
-  test('ends the stream when the live channel cannot be opened', async () => {
+  test('a ping that arrives while the channel opens is written once the stream starts', async () => {
+    const hub: LiveHub = {
+      notify: async () => {},
+      subscribe: async (_user, onEvent) => {
+        onEvent('notification')
+        return async () => {}
+      },
+    }
+    const { url, close } = startApp(hub)
+    const ctrl = new AbortController()
+    try {
+      const { read, reader } = await openStream(url, ctrl.signal)
+      let text = ''
+      while (!text.includes('event: notification')) text += (await read()) ?? ''
+      expect(text).toBe(': connected\n\nevent: notification\ndata: {}\n\n')
+      ctrl.abort()
+      await reader.cancel().catch(() => {})
+    } finally {
+      await close()
+    }
+  })
+
+  test('503 when the live channel cannot be opened, so the client backs off', async () => {
     const { hub } = fakeHub(true)
     const { url, close } = startApp(hub)
     try {
       const res = await fetch(`${url}/events/stream`)
-      expect(await res.text()).toBe(': connected\n\n')
+      expect(res.status).toBe(503)
+      expect(await res.json()).toEqual({ error: 'Live updates unavailable', success: false })
     } finally {
       await close()
     }

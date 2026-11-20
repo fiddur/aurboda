@@ -9,10 +9,13 @@ const HEARTBEAT_MS = 25_000
 
 export type LiveEventChunk = (kind: LiveEventKind) => string | null
 
+export const LIVE_UNAVAILABLE: BaseResponse = { error: 'Live updates unavailable', success: false }
+
 /**
  * Serve a user's live pings as Server-Sent Events until the client goes away.
- * Each event is a bare "refetch" signal with an empty payload. When the live
- * channel cannot be opened the stream ends, and the client falls back to polling.
+ * Each event is a bare "refetch" signal with an empty payload. The channel is opened before
+ * the response starts, so a failure to open it answers 503 and the client backs off and polls,
+ * where a 200 that ends at once would read as a healthy stream to reconnect to right away.
  */
 export const serveLiveStream = async (
   req: Request,
@@ -21,14 +24,12 @@ export const serveLiveStream = async (
   hub: LiveHub,
   toChunk: LiveEventChunk,
 ): Promise<void> => {
-  // `X-Accel-Buffering: no` keeps nginx from holding events back for a full response body.
-  res.writeHead(200, {
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'Content-Type': 'text/event-stream',
-    'X-Accel-Buffering': 'no',
-  })
+  let closed = false
+  let started = false
+  let unsubscribe: (() => Promise<void>) | null = null
+  const beforeStart: string[] = []
   const write = (chunk: string) => {
+    if (!started) return void beforeStart.push(chunk)
     if (res.writableEnded) return
     try {
       res.write(chunk)
@@ -36,12 +37,10 @@ export const serveLiveStream = async (
       /* client vanished mid-write */
     }
   }
-  write(': connected\n\n')
-
   // Comment heartbeats keep the connection from being reaped as idle.
-  const heartbeat = setInterval(() => write(': ping\n\n'), HEARTBEAT_MS)
-  let unsubscribe: (() => Promise<void>) | null = null
-  let closed = false
+  const heartbeat = setInterval(() => {
+    if (started) write(': ping\n\n')
+  }, HEARTBEAT_MS)
   const cleanup = async () => {
     if (closed) return
     closed = true
@@ -55,15 +54,26 @@ export const serveLiveStream = async (
       const chunk = toChunk(kind)
       if (chunk != null) write(chunk)
     })
-    // The client may have disconnected while the channel was opening.
-    if (closed) await unsubscribe().catch(() => {})
   } catch {
-    await cleanup()
-    if (!res.writableEnded) res.end()
+    closed = true
+    clearInterval(heartbeat)
+    if (!res.headersSent) res.status(503).json(LIVE_UNAVAILABLE)
+    return
   }
-}
+  // The client may have disconnected while the channel was opening.
+  if (closed) return void (await unsubscribe().catch(() => {}))
 
-export const LIVE_UNAVAILABLE: BaseResponse = { error: 'Live updates unavailable', success: false }
+  // `X-Accel-Buffering: no` keeps nginx from holding events back for a full response body.
+  res.writeHead(200, {
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Content-Type': 'text/event-stream',
+    'X-Accel-Buffering': 'no',
+  })
+  started = true
+  write(': connected\n\n')
+  for (const chunk of beforeStart) write(chunk)
+}
 
 export const createEventsRouter = (authMiddleware: AnyMiddleware, hub?: LiveHub): TypedRouter => {
   const router = typedRouter()
