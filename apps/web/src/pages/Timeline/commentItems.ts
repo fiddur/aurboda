@@ -112,6 +112,7 @@ const ENTITY_HREFS: Record<EntityType, ((id: string) => string) | undefined> = {
   meal: (id) => `/meals/${id}`,
   metric: (id) => `/detail/metric/${id}`,
   note: undefined,
+  person: (id) => `/people/${id}`,
   productivity: (id) => `/detail/productivity/${id}`,
   report: (id) => `/reports/${id}`,
   time: undefined,

@@ -15,6 +15,7 @@ import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
 import { notificationsTables } from './schema/notifications.ts'
+import { peopleTables } from './schema/people.ts'
 import { productivityTables } from './schema/productivity.ts'
 import { remindersTables } from './schema/reminders.ts'
 import { reportsTables } from './schema/reports.ts'
@@ -61,6 +62,7 @@ export const createTableStatements: Record<string, string> = {
   ...mealsTables,
   ...metricsTables,
   ...notificationsTables,
+  ...peopleTables,
   ...productivityTables,
   ...remindersTables,
   ...reportsTables,
@@ -280,6 +282,12 @@ export const tableCreationOrder = [
   'check_in_form_versions',
   'check_ins',
   'check_ins_indexes',
+  'people',
+  'people_indexes',
+  'person_dates',
+  'person_dates_indexes',
+  'activity_people',
+  'activity_people_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

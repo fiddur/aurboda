@@ -159,6 +159,7 @@ describe('entityHref', () => {
     meal: '/meals/x%2Fy',
     metric: '/detail/metric/x%2Fy',
     note: undefined,
+    person: '/people/x%2Fy',
     productivity: '/detail/productivity/x%2Fy',
     report: '/reports/x%2Fy',
     time: undefined,

@@ -1,4 +1,4 @@
-import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
+import { DELETED_NOTE_RETENTION_DAYS, DELETED_PERSON_RETENTION_DAYS } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -16,6 +16,7 @@ const deps = (overrides: Partial<AuditLogPruneDeps>): AuditLogPruneDeps => ({
   pruneDeductionRuleRuns: async () => 0,
   pruneDeletedNotes: async () => 0,
   pruneDeletedCheckIns: async () => 0,
+  pruneDeletedPeople: async () => 0,
   pruneSyncedOutboundSync: async () => 0,
   pruneUsageBefore: async () => 0,
   ...overrides,
@@ -74,6 +75,16 @@ describe('pruneAllAuditLogs', () => {
     ])
   })
 
+  test('removes for good every user’s people deleted more than 30 days ago', async () => {
+    const pruneDeletedPeople = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedPeople }))
+    expect(DELETED_PERSON_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedPeople.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
   test("one user's failure does not stop the rest", async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const prune = vi.fn(async (user: string) => {
@@ -92,6 +103,7 @@ describe('pruneAllAuditLogs', () => {
     const pruneDeductionRuleRuns = vi.fn(async () => 0)
     const pruneSyncedOutboundSync = vi.fn(async () => 0)
     const pruneDeletedNotes = vi.fn(async () => 0)
+    const pruneDeletedPeople = vi.fn(async () => 0)
     const pruned = await pruneAllAuditLogs(
       deps({
         listUsers: async () => ['alice'],
@@ -100,6 +112,7 @@ describe('pruneAllAuditLogs', () => {
         },
         pruneDeductionRuleRuns,
         pruneDeletedNotes,
+        pruneDeletedPeople,
         pruneSyncedOutboundSync,
       }),
     )
@@ -107,6 +120,7 @@ describe('pruneAllAuditLogs', () => {
     expect(pruneDeductionRuleRuns).toHaveBeenCalledOnce()
     expect(pruneSyncedOutboundSync).toHaveBeenCalledOnce()
     expect(pruneDeletedNotes).toHaveBeenCalledOnce()
+    expect(pruneDeletedPeople).toHaveBeenCalledOnce()
     consoleError.mockRestore()
   })
 

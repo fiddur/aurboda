@@ -11,6 +11,7 @@ import {
   getTimeSeries,
   getTimeSeriesMultiMetric,
 } from '../../db/index.ts'
+import { activityRowIds, peopleOfActivities } from '../activity-people.ts'
 import { getEffectiveHrZones, type HrZoneSecs } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import {
@@ -136,6 +137,7 @@ export async function queryActivities(
   deductionRuleId?: string,
   routeId?: string,
   category?: string,
+  options: { people?: boolean } = {},
 ): Promise<ActivityResult[]> {
   // Fire-and-forget: trigger background sync so activity data is fresh for the next request
   if (sync) {
@@ -212,5 +214,8 @@ export async function queryActivities(
   const ctx: EnrichmentContext = { commentsMap, hrvSeries, summarySeries }
   const zoneSecsByActivity = new Map(zoneActivities.map((a, i) => [a, zoneSecs[i]]))
 
-  return activities.map((a) => enrichActivity(a, ctx, zoneSecsByActivity.get(a)))
+  const results = activities.map((a) => enrichActivity(a, ctx, zoneSecsByActivity.get(a)))
+  if (!options.people) return results
+  const people = await peopleOfActivities(user, activities, activityRowIds)
+  return results.map((result, i) => (people[i] ? { ...result, people: people[i] } : result))
 }

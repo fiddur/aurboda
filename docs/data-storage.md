@@ -416,7 +416,7 @@ shapes, and `(entity_type, entity_id)` is what distinguishes them. See
 ```sql
 CREATE TABLE notes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'note' | 'time' | 'day'
+    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'person' | 'note' | 'time' | 'day'
     entity_id       TEXT,                  -- NULL only for entity_type = 'time' or 'day'
     content         TEXT NOT NULL,         -- may be '' only on 'time' and 'day' (enforced by the API)
     source          VARCHAR(50),           -- NULL for user-typed; set for synced comments ('health_connect', 'oura', …)
@@ -534,6 +534,21 @@ Deleting is recoverable for 30 days, pruned in the same pass as the notes.
 `activities`, `productivity`, `meals` or `reports`), by a primary-key lookup per
 comment; search does the same. It returns the `day` notes on the window's local
 dates as well. Deleting a meal deletes its comments in the same transaction.
+
+#### `people`, `person_dates` and `activity_people` - Private Profiles
+
+A [person](features/people.md) is a private profile of someone in the owner's life. It is
+never federated or shared.
+
+- `people`: `name`, `relationship`, `birth_year`/`birth_month`/`birth_day` (the year may be
+  null), `birthday_notify_days_before`, `pronouns`, `archived`, `deleted_at` (soft delete,
+  purged after 30 days by the prune pass), and the fediverse account as `actor_uri` with a
+  small presentation cache (`actor_handle`, `actor_name`, `actor_icon`, `actor_cached_at`).
+  A partial unique index allows one live profile per `actor_uri`.
+- `person_dates`: a person's other dates (`label`, `kind`, `month`, `day`, optional
+  `year`, optional `notify_days_before`), deleted with the person.
+- `activity_people`: `(activity_id, person_id)` links saying who an activity was with,
+  deleted with either side. Names are resolved when read, never copied.
 
 #### `oauth_tokens` - API Credentials
 

@@ -486,6 +486,7 @@ describe('listNotificationTypeSettings', () => {
       'garmin_key_expiring',
       'reminder',
       'check_in_due',
+      'important_date',
       'admin_signup',
     ])
   })
@@ -509,6 +510,11 @@ describe('listNotificationTypeSettings', () => {
       admin_only: false,
       group: 'reminders',
       group_label: 'Reminders',
+    })
+    expect(settings.find((setting) => setting.type === 'important_date')).toMatchObject({
+      admin_only: false,
+      group: 'reminders',
+      label: 'Important dates',
     })
   })
 })

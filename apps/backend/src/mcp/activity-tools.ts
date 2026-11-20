@@ -25,12 +25,12 @@ export const registerActivityTools = (
 ) => {
   server.tool(
     'add_activity',
-    'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`. activity_type may also be a built-in catalogue type not used yet (list_activity_type_catalog), which is added on first use.',
+    'Add an activity session (exercise type like yoga/running/weightlifting, meditation, nap, rest, …). Pass the specific activity_type directly; structured fields go in `data`, who it was with in `people` (IDs from list_people). activity_type may also be a built-in catalogue type not used yet (list_activity_type_catalog), which is added on first use.',
     {
       ...addActivityBodySchema.shape,
       tz: tzSchema,
     },
-    async ({ activity_type, data, end_time, notes, start_time, title, tz }) => {
+    async ({ activity_type, data, end_time, notes, people, start_time, title, tz }) => {
       const startDate = new Date(start_time)
       const endDate = end_time ? new Date(end_time) : undefined
 
@@ -41,6 +41,7 @@ export const registerActivityTools = (
           data,
           end_time: endDate,
           notes,
+          people,
           start_time: startDate,
           title,
         },
@@ -77,13 +78,13 @@ export const registerActivityTools = (
 
   server.tool(
     'update_activity',
-    'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, and data. Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
+    'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, data, and people (replaces who it was with; [] clears). Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
     {
       id: z.string().uuid().describe('The ID of the activity to update'),
       ...updateActivityBodySchema.shape,
       tz: tzSchema,
     },
-    async ({ id, activity_type, data, start_time, end_time, title, notes, tz }) => {
+    async ({ id, activity_type, data, start_time, end_time, title, notes, people, tz }) => {
       const result = await updateActivity(
         user,
         id,
@@ -92,6 +93,7 @@ export const registerActivityTools = (
           data,
           end_time: end_time ? new Date(end_time) : undefined,
           notes,
+          people,
           start_time: start_time ? new Date(start_time) : undefined,
           title,
         },

@@ -4,10 +4,10 @@
  * their audit logs grow without bound. The same pass prunes deduction rule
  * runs, which nothing reads back and every rule evaluation appends to, and
  * outbound sync rows the phone has already written to Health Connect, and
- * comments, check-in forms and check-ins deleted longer ago than they can be
+ * comments, check-in forms, check-ins and people deleted longer ago than they can be
  * restored. It also prunes the server-wide per-user usage counters.
  */
-import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
+import { DELETED_NOTE_RETENTION_DAYS, DELETED_PERSON_RETENTION_DAYS } from '@aurboda/api-spec'
 
 import type { PgBoss } from './pg-boss.ts'
 
@@ -31,6 +31,7 @@ export interface AuditLogPruneDeps {
   pruneDeletedCheckIns: (user: string, retentionDays: number) => Promise<unknown>
   pruneSyncedOutboundSync: (user: string, retentionDays: number) => Promise<unknown>
   pruneDeletedNotes: (user: string, retentionDays: number) => Promise<unknown>
+  pruneDeletedPeople: (user: string, retentionDays: number) => Promise<unknown>
   pruneUsageBefore: (day: Date) => Promise<unknown>
   now?: () => Date
 }
@@ -54,6 +55,7 @@ export const pruneAllAuditLogs = async (deps: AuditLogPruneDeps): Promise<number
     ['Outbound sync', (user) => deps.pruneSyncedOutboundSync(user, SYNCED_OUTBOUND_SYNC_RETENTION_DAYS)],
     ['Deleted note', (user) => deps.pruneDeletedNotes(user, DELETED_NOTE_RETENTION_DAYS)],
     ['Deleted check-in', (user) => deps.pruneDeletedCheckIns(user, DELETED_CHECK_IN_RETENTION_DAYS)],
+    ['Deleted person', (user) => deps.pruneDeletedPeople(user, DELETED_PERSON_RETENTION_DAYS)],
   ]
   let pruned = 0
   for (const user of users) {

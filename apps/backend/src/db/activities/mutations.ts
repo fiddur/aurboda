@@ -8,6 +8,7 @@ import { UUID_RE } from '../../utils.ts'
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
 import { reanchorNotes } from '../notes.ts'
+import { copyActivityPeopleIn } from '../people.ts'
 import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
 import { isSupersedable } from './merge.ts'
 import { activityColumns, getActivityById } from './queries.ts'
@@ -16,7 +17,7 @@ import { materializeSuperseded } from './supersession.ts'
 /**
  * Replace `sourceIds` with the merged activity in one transaction: the originals
  * are soft-deleted first, then the merged row is written and the originals'
- * notes re-anchored onto it. `idx_activities_type_time` ignores `deleted_at`, so
+ * notes re-anchored onto it; it is with everyone they were with. `idx_activities_type_time` ignores `deleted_at`, so
  * a row of the merged row's source that already holds its (type, start_time)
  * slot — the earliest original, when it was created by hand — becomes the merged
  * activity instead of colliding with a duplicate INSERT (#1251).
@@ -67,12 +68,9 @@ export const insertMergedActivity = async (
       )
       id = inserted.rows[0].id
     }
-    await reanchorNotes(
-      tx,
-      'activity',
-      sourceIds.filter((sourceId) => sourceId !== id),
-      id,
-    )
+    const others = sourceIds.filter((sourceId) => sourceId !== id)
+    await reanchorNotes(tx, 'activity', others, id)
+    await copyActivityPeopleIn(tx, others, id)
     return id
   })
 
