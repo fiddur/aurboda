@@ -253,11 +253,17 @@ export const registerChallengeTools = (
 
   server.tool(
     'get_challenge_thread',
-    'Read the comment thread of a challenge, by its page URL: one hosted on this instance, or one on another server that you joined (read from a copy pulled from the host at most five minutes ago). top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
+    'Read the comment thread of a challenge, by its page URL: one hosted on this instance, or one on another server that you joined (read from a copy pulled from the host at most five minutes ago). top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host and admins. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
     { ...challengeThreadQuerySchema.shape },
     async ({ challenge_url, cursor }) => {
       if (!thread) return errorResponse('Federation is not configured on this server')
-      const result = await readChallengeThread(thread, user, challenge_url, cursor)
+      const result = await readChallengeThread(
+        thread,
+        user,
+        challenge_url,
+        cursor,
+        (await deps.isAdmin?.(user)) ?? false,
+      )
       if (!result.ok) return errorResponse(result.error)
       const { ok: _ok, ...view } = result
       return jsonResponse(view)

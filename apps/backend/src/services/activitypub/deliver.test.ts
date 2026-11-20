@@ -1,6 +1,7 @@
 import type { ArticleContent } from '@aurboda/api-spec'
 
 import {
+  Add,
   Create,
   Delete,
   Hashtag,
@@ -9,6 +10,7 @@ import {
   Note,
   Person,
   PUBLIC_COLLECTION,
+  Remove,
   Tombstone,
   Update,
 } from '@fedify/fedify/vocab'
@@ -28,6 +30,7 @@ import {
   buildFeedDelete,
   buildReplyNote,
   buildReplyNoteCreate,
+  buildThreadSignal,
   challengeImageAttachments,
   challengeMentions,
   type DeliverableArticle,
@@ -52,6 +55,7 @@ import {
   deliverThreadReply,
   deliverThreadReplyDelete,
   type FeedDeliveryDeps,
+  createThreadSignal,
   imageAttachments,
   imageAvailability,
   quoteInteractionPolicy,
@@ -949,6 +953,35 @@ describe('challenge comments pushed to the thread', () => {
     await deliverThreadReplyDelete(deps, 'fiddur', comment())
     expect(sentTo(sendActivity)).toEqual([HOST, MEMBER])
     for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Delete)
+  })
+
+  const ENTRY = 'https://far.example/notes/7'
+  const CHALLENGE = `${ORIGIN}/users/fiddur/challenges/nov`
+
+  test('a host signal is an Add or Remove of the entry with the challenge as target, under the host actor', async () => {
+    const { ctx } = await fakeDeps()
+    const remove = buildThreadSignal(ctx, 'fiddur', 'remove', ENTRY, CHALLENGE, [MEMBER])
+    expect(remove).toBeInstanceOf(Remove)
+    expect(remove.id?.href).toMatch(new RegExp(`^${SELF}#removes/[0-9a-f-]{36}$`))
+    expect(await remove.toJsonLd()).toMatchObject({
+      actor: SELF,
+      object: ENTRY,
+      target: CHALLENGE,
+      to: MEMBER,
+      type: 'Remove',
+    })
+    const add = buildThreadSignal(ctx, 'fiddur', 'add', ENTRY, CHALLENGE, [MEMBER, HOST])
+    expect(add).toBeInstanceOf(Add)
+    expect(add.id?.href).toMatch(new RegExp(`^${SELF}#adds/`))
+    expect(hrefs([...add.toIds])).toEqual([MEMBER, HOST])
+  })
+
+  test('the signal goes to each recipient on its own, never to the host itself', async () => {
+    const { deps, sendActivity } = await fakeDeps()
+    createThreadSignal(deps)('fiddur', 'add', ENTRY, CHALLENGE, [MEMBER, SELF, HOST])
+    await vi.waitFor(() => expect(sendActivity).toHaveBeenCalledTimes(2))
+    expect(sentTo(sendActivity)).toEqual([MEMBER, HOST])
+    for (const [, , activity] of sendActivity.mock.calls) expect(activity).toBeInstanceOf(Add)
   })
 })
 

@@ -10,6 +10,7 @@ import {
 } from '@fedify/fedify'
 import {
   Accept,
+  Add,
   Announce,
   Create,
   Delete,
@@ -22,6 +23,7 @@ import {
   QuoteAuthorization,
   QuoteRequest,
   Reject,
+  Remove,
   Tombstone,
   Undo,
   Update,
@@ -90,6 +92,7 @@ import {
 } from '../challenge-thread-inbound.ts'
 import {
   admitPushedThreadNote,
+  applyHostThreadSignal,
   createPushedThreadDeps,
   type PushedThreadDeps,
 } from '../challenge-thread-remote.ts'
@@ -119,6 +122,7 @@ import {
   buildFeedNote,
   buildReplyNote,
   buildReplyNoteCreate,
+  contextThreadSignal,
   deliverToRelays,
   type FeedDeliveryDeps,
   toDeliverableArticle,
@@ -612,6 +616,7 @@ export const handleInboundLike = (
  * other actor can't evict a post it didn't author — mirroring how `Undo{Follow}` is scoped to its own
  * actor. A post we received leaves the timeline and any challenge thread it entered; a deleted
  * quoting Note loses its stamp (FEP-044f), and a deleted actor every stamp and thread entry it held.
+ * Every step runs even when an earlier one failed; the first failure is rethrown at the end.
  */
 export const handleInboundDelete = async (
   ctx: InboxContext<void>,
@@ -622,19 +627,72 @@ export const handleInboundDelete = async (
 ): Promise<void> => {
   const me = ctx.recipient
   if (me == null || !isValidUsername(me) || del.objectId == null || del.actorId == null) return
-  try {
-    await removeInboundThreadEntry(threadDeps, origin, me, del.objectId.href, del.actorId.href)
-    await pushedDeps.deleteCopy(me, del.objectId.href, del.actorId.href)
-    await deleteTimelineEntryByUri(me, del.objectId.href, del.actorId.href)
-    await deleteFeedQuoteAuthorizationsByQuote(me, del.objectId.href, del.actorId.href)
-    if (del.objectId.href === del.actorId.href) {
-      await deleteFeedQuoteAuthorizationsByActor(me, del.actorId.href)
+  const objectUri = del.objectId.href
+  const actorUri = del.actorId.href
+  const failures: unknown[] = []
+  const step = async (work: () => Promise<unknown>): Promise<void> => {
+    try {
+      await work()
+    } catch (error) {
+      if (!isMissingDatabase(error)) failures.push(error)
     }
+  }
+  await step(() => removeInboundThreadEntry(threadDeps, origin, me, objectUri, actorUri))
+  await step(() => pushedDeps.deleteCopy(me, objectUri, actorUri))
+  await step(() => deleteTimelineEntryByUri(me, objectUri, actorUri))
+  await step(() => deleteFeedQuoteAuthorizationsByQuote(me, objectUri, actorUri))
+  if (objectUri === actorUri) await step(() => deleteFeedQuoteAuthorizationsByActor(me, actorUri))
+  if (failures.length > 0) throw failures[0]
+}
+
+const handleHostThreadSignal = async (
+  ctx: InboxContext<void>,
+  kind: 'add' | 'remove',
+  activity: Add | Remove,
+  deps: Pick<PushedThreadDeps, 'getParticipationByObjectUri' | 'removeCopy' | 'updateThreadState'>,
+): Promise<void> => {
+  const me = ctx.recipient
+  const { actorId, objectId, targetId } = activity
+  if (me == null || !isValidUsername(me) || actorId == null || objectId == null || targetId == null) return
+  try {
+    await applyHostThreadSignal(deps, {
+      actor_uri: actorId.href,
+      kind,
+      me,
+      object_uri: objectId.href,
+      target_uri: targetId.href,
+    })
   } catch (error) {
     if (isMissingDatabase(error)) return
     throw error
   }
 }
+
+/**
+ * Inbound `Add`: a challenge's host saying an entry of its thread was unhidden or taken in without
+ * a push, so the copy of a challenge joined there is stale. Anything else is ignored.
+ */
+export const handleInboundAdd = (
+  ctx: InboxContext<void>,
+  add: Add,
+  deps: Pick<
+    PushedThreadDeps,
+    'getParticipationByObjectUri' | 'removeCopy' | 'updateThreadState'
+  > = createPushedThreadDeps(),
+): Promise<void> => handleHostThreadSignal(ctx, 'add', add, deps)
+
+/**
+ * Inbound `Remove`: a challenge's host hid an entry of its thread, which leaves the copy of a
+ * challenge joined there at once. Anything else is ignored.
+ */
+export const handleInboundRemove = (
+  ctx: InboxContext<void>,
+  remove: Remove,
+  deps: Pick<
+    PushedThreadDeps,
+    'getParticipationByObjectUri' | 'removeCopy' | 'updateThreadState'
+  > = createPushedThreadDeps(),
+): Promise<void> => handleHostThreadSignal(ctx, 'remove', remove, deps)
 
 /**
  * FEP-044f: the `Accept`'s `result` is a stamp URL that the quoting server keeps and other
@@ -885,7 +943,7 @@ const ingestFeedActivity = async (
   onNewEntry?: (user: string) => void,
   /** Best-effort fetch of the post's native Aurboda structured data (null if not an Aurboda post). */
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null> = async () => null,
-  threadDeps: InboundThreadDeps = createInboundThreadDeps(origin),
+  threadDeps: InboundThreadDeps = createInboundThreadDeps(origin, contextThreadSignal(ctx)),
   pushedDeps?: PushedThreadDeps,
 ): Promise<void> => {
   // The recipient (whose timeline this is) comes from the personal inbox owner.
@@ -1332,6 +1390,8 @@ export const createFeedFederation = (
       }
       await handleInboundDelete(ctx, del, origin)
     })
+    .on(Add, (ctx, add) => handleInboundAdd(ctx, add))
+    .on(Remove, (ctx, remove) => handleInboundRemove(ctx, remove))
 
   // Individual post object. Serves the same `Note` that was delivered, at its
   // canonical id, so a remote server can dereference it. Only `public`/`unlisted`

@@ -30,6 +30,7 @@ import type { Context, Federation } from '@fedify/fedify'
 
 import {
   type Activity,
+  Add,
   Create,
   Delete,
   Image,
@@ -40,11 +41,13 @@ import {
   Note,
   PUBLIC_COLLECTION,
   QuoteAuthorization,
+  Remove,
   Tombstone,
   Update,
 } from '@fedify/fedify/vocab'
 
 import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/index.ts'
+import type { ThreadSignal, ThreadSignalKind } from '../challenge-thread.ts'
 
 import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
 import { type ArticleFlagNames, articleBlockFigureUrl, articleFlagNames } from '../article.ts'
@@ -1634,4 +1637,58 @@ export const createThreadPush =
     void work.catch((error: unknown) => {
       console.warn(`⚠️ challenge comment push (${change}) failed for post ${post.id}:`, error)
     })
+  }
+
+/**
+ * The host's `Add` or `Remove` of a thread entry, `target` the challenge object, addressed to the
+ * members on other servers it goes to.
+ */
+export const buildThreadSignal = (
+  ctx: Context<void>,
+  host: string,
+  kind: ThreadSignalKind,
+  entryObjectUri: string,
+  challengeObjectUri: string,
+  actors: readonly string[],
+): Add | Remove => {
+  const actor = ctx.getActorUri(host)
+  const values = {
+    actor,
+    id: new URL(`${actor.href}#${kind === 'add' ? 'adds' : 'removes'}/${crypto.randomUUID()}`),
+    object: new URL(entryObjectUri),
+    target: new URL(challengeObjectUri),
+    tos: threadRecipientUrls(actors),
+  }
+  return kind === 'add' ? new Add(values) : new Remove(values)
+}
+
+const sendThreadSignal = async (
+  ctx: Context<void>,
+  ...[host, kind, entryObjectUri, challengeObjectUri, actors]: Parameters<ThreadSignal>
+): Promise<void> =>
+  deliverToMentioned(
+    ctx,
+    host,
+    threadMentions(actors),
+    buildThreadSignal(ctx, host, kind, entryObjectUri, challengeObjectUri, actors),
+  )
+
+const warnSignalFailed = (kind: ThreadSignalKind, entryObjectUri: string) => (error: unknown) => {
+  console.warn(`⚠️ challenge thread ${kind} signal failed for ${entryObjectUri}:`, error)
+}
+
+/** Send thread signals through a context already at hand (an inbox listener's); fire and forget. */
+export const contextThreadSignal =
+  (ctx: Context<void>): ThreadSignal =>
+  (...args) => {
+    void sendThreadSignal(ctx, ...args).catch(warnSignalFailed(args[1], args[2]))
+  }
+
+/** Send thread signals from a fresh context of the federation; fire and forget. */
+export const createThreadSignal =
+  (deps: Pick<FeedDeliveryDeps, 'federation' | 'origin'>): ThreadSignal =>
+  (...args) => {
+    const work = async () =>
+      sendThreadSignal(await deps.federation.createContext(new URL(deps.origin)), ...args)
+    void work().catch(warnSignalFailed(args[1], args[2]))
   }

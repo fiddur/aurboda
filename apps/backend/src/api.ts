@@ -128,6 +128,7 @@ import {
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
   createThreadPush,
+  createThreadSignal,
   deliverQuoteStampDeletes,
   revokeQuoteStamps,
   toDeliverableArticle,
@@ -808,6 +809,7 @@ const main = async () => {
   const threadFederation: ThreadFederation = {
     fetchThread: createSignedThreadFetch(feedFederation, webHost),
     push: createThreadPush(feedDeps),
+    signal: createThreadSignal(feedDeps),
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
   const publicTagModeration = createPublicTagModeration({

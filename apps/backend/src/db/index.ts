@@ -377,6 +377,7 @@ export {
 export {
   deleteThreadCopyEntry,
   getParticipationByObjectUri,
+  deleteParticipationThreadCopyEntry,
   getThreadCopyEntryById,
   getThreadCopyEntryByObjectUri,
   listThreadCopy,
