@@ -391,7 +391,7 @@ describe('raiseDueCheckIns', () => {
       {
         data: { form_id: form.id, scheduled_for: '2026-11-20T07:00:00.000Z' },
         dedupe_key: checkInDueDedupeKey(form.id, { date: '2026-11-20', time: '08:00' }),
-        link: `/check-ins/${form.id}`,
+        link: `/check-ins/${form.id}?slot=2026-11-20T07%3A00%3A00.000Z`,
         title: 'Morning',
         type: 'check_in_due',
       },

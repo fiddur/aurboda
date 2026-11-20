@@ -35,6 +35,9 @@ const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Chall
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
 const JoinedChallenge = lazyPage(() => import('./pages/Challenges/JoinedChallenge.jsx'), 'JoinedChallenge')
 const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
+const CheckIns = lazyPage(() => import('./pages/CheckIns/index.jsx'), 'CheckIns')
+const CheckInEditor = lazyPage(() => import('./pages/CheckIns/Editor.jsx'), 'CheckInEditor')
+const CheckInFill = lazyPage(() => import('./pages/CheckIns/FillIn.jsx'), 'CheckInFill')
 const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
 const Dashboards = lazyPage(() => import('./pages/Dashboards/index.jsx'), 'Dashboards')
 const Data = lazyPage(() => import('./pages/Data/index.jsx'), 'Data')
@@ -230,6 +233,10 @@ function AppShell() {
             <Route path="/settings" component={Settings} />
             <Route path="/notifications" component={Notifications} />
             <Route path="/reminders" component={Reminders} />
+            <Route path="/check-ins/new" component={CheckInEditor} />
+            <Route path="/check-ins/:id/edit" component={CheckInEditor} />
+            <Route path="/check-ins/:id" component={CheckInFill} />
+            <Route path="/check-ins" component={CheckIns} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

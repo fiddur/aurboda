@@ -666,7 +666,7 @@ export const raiseDueCheckIns = async (deps: CheckInDeps, user: string): Promise
         await deps.raise(user, {
           data: { form_id: form.id, scheduled_for: slot.at.toISOString() },
           dedupe_key: checkInDueDedupeKey(form.id, slot),
-          link: `/check-ins/${form.id}`,
+          link: `/check-ins/${form.id}?slot=${encodeURIComponent(slot.at.toISOString())}`,
           title: form.name,
           type: 'check_in_due',
         })

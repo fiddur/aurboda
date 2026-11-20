@@ -42,7 +42,8 @@ corresponding web page in an embedded WebView (Timeline, Data, Chart, Training l
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see
-[Reminders](features/reminders.md)). The two native-only screens — **Live**
+[Reminders](features/reminders.md)); its **Log** group holds Meals, Reports and **Check-ins** (the
+web `/check-ins` page, see [Check-ins](features/check-ins.md)). The two native-only screens — **Live**
 sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does

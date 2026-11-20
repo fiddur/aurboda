@@ -112,7 +112,8 @@ or without `date` on each form's current day. An archived or deleted form has no
 
 The [reminder](reminders.md) scheduler's five-minute job also raises, for each slot of a form with
 `notify` on, a [notification](notifications.md) of type `check_in_due` (group **Reminders**,
-labelled **Check-ins**) titled with the form's name and linking to `/check-ins/<form id>`. Its
+labelled **Check-ins**) titled with the form's name and linking to
+`/check-ins/<form id>?slot=<scheduled_for>`, which fills the form in for that slot. Its
 `data` carries `form_id` and `scheduled_for`, and its dedupe key is
 `check_in:<form id>:<slot day>:<HH:MM>`, so each slot is raised once. The reminder rules apply:
 
@@ -130,6 +131,40 @@ removes them for good. A deleted form asks for nothing, and its check-ins stay r
 history with its name until the form is purged, which takes its check-ins with it (the metric
 points of those still live stay). Deleting a check-in removes the metric points it logged;
 restoring it writes them back. `deleted=true` on the lists shows what can be restored.
+
+## Pages
+
+**Check-ins** is in the main menu (and can be hidden there, see [the menu](menu.md)); in the
+[Android app](../android-app.md) it is More → Log → Check-ins, the same page embedded.
+
+- **`/check-ins`**: **Due today** on top, today's slots from `GET /due` with their state (due now,
+  later today at a time, done, missed) and **Fill in** on a due one; **Your forms**, each with its
+  schedule in words ("Every day at 08:00 and 21:00"), when it was last answered (with the score when
+  the form has one), **Fill in**, **Edit** and **Archive** (archived forms behind a switch); **New
+  form** and **Start from a template**, which copies a built-in template and opens it in the editor;
+  and **Recently deleted** at the bottom, the deleted forms and check-ins with **Restore**.
+- **`/check-ins/<form id>`**: filling in, one screen made for a phone: a scale is a row of large
+  numbered buttons with its end labels under the ends, yes/no two large buttons, a choice large
+  option buttons (several can be picked for a multi-choice), a number an input with its unit and −/+
+  steppers that keep to its min, max and step, and text a text box. Required questions are marked
+  with `*`; saving with one unanswered names it. A note and **Answered at** (now unless changed, for
+  filling in late) close the form. Opened from a due slot or the due notification
+  (`?slot=<scheduled_for>`), the check-in is saved for that slot. Below it is the form's
+  **history**, newest first, each check-in read against the questions it answered, with **Edit** and
+  **Delete** (with **Undo**), and a chart of the score, or else of the first question saved as a
+  metric, linking to that metric's page.
+- **`/check-ins/new`** and **`/check-ins/<form id>/edit`**: the editor. Questions are added,
+  removed and moved up and down, each with its prompt, answer type and settings, **Required**, and
+  **Save the answer as a metric** (offered for the types that can log). A question's key is made from
+  its prompt when the form is first saved and is never shown. **Add up answers into a score** picks
+  the questions, the factor and the score's metric. **Ask for it on a schedule** sets the times
+  (five-minute steps), the days, optional start and end dates, when the day starts and whether to be
+  notified. A change that starts a new version says so before saving. **Delete form** deletes it,
+  with **Undo** on the Check-ins page.
+- **Home** shows a **Due today** card while a live form has a schedule and Check-ins is not hidden
+  from the menu: the slots still due or coming up today, each with **Fill in**.
+
+The due notification's switches are in Settings → Notifications, under Reminders as **Check-ins**.
 
 ## Model
 
