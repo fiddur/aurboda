@@ -5,6 +5,7 @@ import type {
   ExerciseShare,
   FeedPostKind,
   FeedPostVisibility,
+  PostMention,
 } from '@aurboda/api-spec'
 /**
  * The Mastodon-compatible representation is a Fedify `Create{Note}` — an HTML
@@ -141,6 +142,23 @@ export interface DeliverablePost {
   /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
   image_token: string
   tags?: readonly string[]
+  /** The accounts an activity share mentions: tagged, addressed in `cc` and sent the post. */
+  mentions?: readonly PostMention[]
+}
+
+/** A post's stored mentions as delivery recipients. */
+export const postMentionRecipients = (post: Pick<DeliverablePost, 'mentions'>): MentionRecipient[] =>
+  (post.mentions ?? []).map((m) => ({ actorUri: new URL(m.actor_uri), handle: m.handle }))
+
+/** The visibility table plus every mentioned account in `cc`, as a challenge post addresses its winners. */
+const activityAddressing = (
+  ctx: Context<void>,
+  user: string,
+  post: Pick<DeliverablePost, 'mentions' | 'visibility'>,
+): { to: URL[]; cc: URL[]; mentions: MentionRecipient[] } => {
+  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const mentions = postMentionRecipients(post)
+  return { cc: [...cc, ...mentions.map((m) => m.actorUri)], mentions, to }
 }
 
 /**
@@ -259,6 +277,7 @@ const buildFeedNoteParts = async (
   const settings = await getSettings(user).catch(() => null)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars, {
     exerciseLines: exercises.map(formatExerciseLine),
+    mentions: post.mentions,
     message: post.message ?? undefined,
     windowLabel: formatActivityWindow(
       activity.start_time,
@@ -268,7 +287,7 @@ const buildFeedNoteParts = async (
   })
   const actorUri = ctx.getActorUri(user)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, mentions, to } = activityAddressing(ctx, user, post)
   const available = await imageAvailability(user, post, activity, dbImageLookups)
   const hashtags = noteHashtags(ctx, user, post.tags)
   const note = new Note({
@@ -283,7 +302,10 @@ const buildFeedNoteParts = async (
     name,
     published: dateToTemporalInstant(post.created_at),
     startTime: dateToTemporalInstant(activity.start_time),
-    tags: hashtagObjects(hashtags),
+    tags: [
+      ...mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+      ...hashtagObjects(hashtags),
+    ],
     tos: to,
     // Mastodon applies an Update's content and attachments only when the object
     // says it was edited after the stored copy; without `updated` it re-reads polls only.
@@ -336,7 +358,7 @@ export const buildFeedCreate = async (
   // instead would be mangled by the activity-level JSON-LD compaction.
   const { note, quant } = await buildFeedNoteParts(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = activityAddressing(ctx, user, post)
   const create = new Create({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -365,7 +387,7 @@ export const buildFeedUpdate = async (
 ): Promise<Update> => {
   const { note, quant } = await buildFeedNoteParts(ctx, user, post, activity, apiBaseUrl)
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = activityAddressing(ctx, user, post)
   const update = new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -406,7 +428,10 @@ export const deliverFeedPost = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const create = await buildFeedCreate(ctx, user, post, activity, deps.apiBaseUrl)
-  await fanOut(deps, ctx, user, create, { relayActivity: relayCreate(post, create) })
+  await fanOut(deps, ctx, user, create, {
+    mentions: postMentionRecipients(post),
+    relayActivity: relayCreate(post, create),
+  })
 }
 
 export const deliverFeedUpdate = async (
@@ -417,7 +442,10 @@ export const deliverFeedUpdate = async (
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = await buildFeedUpdate(ctx, user, post, activity, deps.apiBaseUrl)
-  await fanOut(deps, ctx, user, update, { relayActivity: relayEdit(ctx, user, post, update) })
+  await fanOut(deps, ctx, user, update, {
+    mentions: postMentionRecipients(post),
+    relayActivity: relayEdit(ctx, user, post, update),
+  })
 }
 
 export const deliverFeedDelete = async (
@@ -439,6 +467,7 @@ export const deliverFeedDelete = async (
   await fanOut(deps, ctx, user, del, {
     mentions: [
       ...(post.challenge == null ? [] : challengeMentions(post.challenge)),
+      ...postMentionRecipients(post),
       ...replyMentions({
         in_reply_to_actor_uri: post.in_reply_to_actor_uri ?? null,
         in_reply_to_handle: post.in_reply_to_handle ?? null,

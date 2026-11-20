@@ -478,6 +478,51 @@ export const listRecentActivitiesForPerson = async (
   return result.rows.map(mapActivityRow)
 }
 
+export interface TimeInterval {
+  start_time: Date
+  end_time: Date
+}
+
+/**
+ * The live activities with an end that overlap [start, end) and have a live person linked (`personId`
+ * when given, else anyone).
+ */
+export const listActivityIntervalsWithPeople = async (
+  user: string,
+  start: Date,
+  end: Date,
+  personId?: string,
+): Promise<TimeInterval[]> => {
+  const result = await query<TimeInterval>(
+    user,
+    `SELECT a.start_time, a.end_time FROM activities a
+      WHERE a.deleted_at IS NULL AND a.end_time IS NOT NULL
+        AND a.end_time > $1 AND a.start_time < $2
+        AND EXISTS (
+          SELECT 1 FROM activity_people ap JOIN people p ON p.id = ap.person_id
+           WHERE ap.activity_id = a.id AND p.deleted_at IS NULL AND ($3::uuid IS NULL OR p.id = $3::uuid)
+        )
+      ORDER BY a.start_time`,
+    [start, end, personId ?? null],
+  )
+  return result.rows
+}
+
+/** Live, non-archived people with at least one live activity linked, by name. */
+export const listPeopleWithActivities = async (user: string): Promise<ActivityPersonRef[]> => {
+  const result = await query<ActivityPersonRef>(
+    user,
+    `SELECT p.id, p.name FROM people p
+      WHERE p.deleted_at IS NULL AND NOT p.archived
+        AND EXISTS (
+          SELECT 1 FROM activity_people ap JOIN activities a ON a.id = ap.activity_id
+           WHERE ap.person_id = p.id AND a.deleted_at IS NULL
+        )
+      ORDER BY lower(p.name), p.id`,
+  )
+  return result.rows
+}
+
 export interface ActorPresentationRow {
   actor_uri: string
   handle: string | null

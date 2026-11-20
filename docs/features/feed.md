@@ -27,7 +27,8 @@ The feed is built on [Fedify](https://fedify.dev). It has three layers:
 A feed post has a **`kind`**:
 
 - **`activity`** (the default) — references one of the user's activities and shares a
-  bounded metric selection (below). This is the original kind.
+  bounded metric selection (below). This is the original kind. It can also mention people the
+  activity was with (see [Mentioning people](sharing.md#mentioning-people-in-an-activity-share)).
 - **`article`** — a long-form post: a `title`, markdown prose, and inline **chart**,
   **correlation** and **impact** blocks, each over a locked `[start, end]` window (blocks inherit an
   article-level default window unless they override it). Data re-resolves **live**
@@ -290,6 +291,11 @@ update and draft publish, REST and MCP alike, carry `warnings` (`ArticleWarning[
 and leave it out otherwise. Warnings are given whatever the visibility. The web editor shows the
 same sentences live under each block, as a note that does not stop **Publish**
 (`articleSharingWarnings` in `@aurboda/api-spec`, shared by the backend and the editor).
+
+A correlation block with a `people` selector (time with [people](people.md)) is the exception:
+it is refused (a `400`, in drafts as in published articles), because a published one would name
+the people the author spends time with, and the name could not be kept out of the figures,
+exports and structured payload a reader gets.
 
 #### Preview
 
@@ -1749,7 +1755,9 @@ re-checks `deleted_at` at query time, so a removed activity simply stops resolvi
 than cascading a delete. A GIN index over `series_metrics` backs the public series
 endpoint's authorization check, and another over `tags` (`TEXT[]`, the post's
 [hashtags](#hashtags)) the profile's `?tag=` filter. Each post also holds an unguessable `image_token`
-(defaulted at insert) that gates its `followers`-only image URLs. Deleting a
+(defaulted at insert) that gates its `followers`-only image URLs, and `mentions` (JSONB, default
+`[]`): the accounts an activity share [mentions](sharing.md#mentioning-people-in-an-activity-share),
+each `{ actor_uri, handle }`, never a person's id or name. Deleting a
 `public`/`unlisted` post hard-deletes its row
 and, in the same statement, records its id in `feed_tombstone` so the object id can still
 answer `410 Gone`. Followers live in `feed_follower` (keyed by the follower's `actor_uri`,

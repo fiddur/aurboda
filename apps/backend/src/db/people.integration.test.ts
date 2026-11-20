@@ -13,11 +13,13 @@ import {
   getPersonDate,
   insertPerson,
   insertPersonDate,
+  listActivityIntervalsWithPeople,
   listActorPresentations,
   listDeletedPeople,
   listImportantDateSources,
   listLivePersonIds,
   listPeople,
+  listPeopleWithActivities,
   listPersonDates,
   listRecentActivitiesForPerson,
   pruneDeletedPeople,
@@ -340,5 +342,57 @@ describe('People Integration Tests', () => {
     const posts = await listTimelineEntriesByActor(user, ACTOR, 1)
     expect(posts.map((p) => p.object_uri)).toEqual([`${ACTOR}/statuses/2`])
     expect(await listTimelineEntriesByActor(user, 'https://elsewhere/u', 10)).toEqual([])
+  })
+
+  test('listActivityIntervalsWithPeople reads the live activities with live people in the range', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const withAnna = await insertActivity(user, '2026-03-02T10:00:00Z')
+    const withBo = await insertActivity(user, '2026-03-03T10:00:00Z')
+    await insertActivity(user, '2026-03-04T10:00:00Z')
+    const deleted = await insertActivity(user, '2026-03-05T10:00:00Z', true)
+    const outside = await insertActivity(user, '2026-04-01T10:00:00Z')
+    await addActivityPeople(user, withAnna, [anna.id])
+    await addActivityPeople(user, withBo, [bo.id])
+    await addActivityPeople(user, deleted, [anna.id])
+    await addActivityPeople(user, outside, [anna.id])
+    const from = new Date('2026-03-01T00:00:00Z')
+    const to = new Date('2026-03-10T00:00:00Z')
+
+    const starts = (rows: { start_time: Date }[]) => rows.map((r) => r.start_time.toISOString())
+    expect(starts(await listActivityIntervalsWithPeople(user, from, to))).toEqual([
+      '2026-03-02T10:00:00.000Z',
+      '2026-03-03T10:00:00.000Z',
+    ])
+    expect(starts(await listActivityIntervalsWithPeople(user, from, to, anna.id))).toEqual([
+      '2026-03-02T10:00:00.000Z',
+    ])
+
+    await softDeletePerson(user, bo.id)
+    expect(starts(await listActivityIntervalsWithPeople(user, from, to))).toEqual([
+      '2026-03-02T10:00:00.000Z',
+    ])
+    expect(await listActivityIntervalsWithPeople(user, from, to, bo.id)).toEqual([])
+  })
+
+  test('listPeopleWithActivities lists live, non-archived people with a live activity', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const archived = await insertPerson(user, { archived: true, name: 'Cy' })
+    const gone = await insertPerson(user, { name: 'Di' })
+    const onlyDeleted = await insertPerson(user, { name: 'Ed' })
+    await insertPerson(user, { name: 'Fi' })
+    const live = await insertActivity(user, '2026-03-02T10:00:00Z')
+    const deletedActivity = await insertActivity(user, '2026-03-03T10:00:00Z', true)
+    await addActivityPeople(user, live, [anna.id, bo.id, archived.id, gone.id])
+    await addActivityPeople(user, deletedActivity, [onlyDeleted.id])
+    await softDeletePerson(user, gone.id)
+
+    expect(await listPeopleWithActivities(user)).toEqual([
+      { id: anna.id, name: 'anna' },
+      { id: bo.id, name: 'Bo' },
+    ])
   })
 })

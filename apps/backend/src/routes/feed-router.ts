@@ -115,6 +115,7 @@ import {
   previewActivityShare,
   serializeFeedPost,
 } from '../services/feed.ts'
+import { resolveEditedPostMentions, resolvePostMentions } from '../services/post-mentions.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -476,6 +477,8 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const mentioned = await resolvePostMentions(user, activity, req.body.mention_people ?? [])
+      if (!mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
@@ -483,6 +486,7 @@ export const createFeedRouter = (
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        mentions: mentioned.mentions,
         message,
         series_metrics: req.body.series_metrics,
         tags: await resolvePostTags(user, {
@@ -514,12 +518,15 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const mentioned = await resolvePostMentions(user, activity, req.body.mention_people ?? [])
+      if (!mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const preview = await previewActivityShare(
         user,
         activity,
         {
           include_exercises: req.body.include_exercises,
           included_metrics: req.body.included_metrics,
+          mentions: mentioned.mentions,
           ...(req.body.message === undefined ? {} : { message: req.body.message }),
           ...(req.body.tags === undefined ? {} : { tags: req.body.tags }),
         },
@@ -773,6 +780,11 @@ export const createFeedRouter = (
       if (threadVisibilityLocked(existing, req.body.visibility)) {
         return res.status(400).json({ error: THREAD_VISIBILITY_LOCKED_MESSAGE, success: false })
       }
+      const mentioned =
+        req.body.mention_people === undefined
+          ? undefined
+          : await resolveEditedPostMentions(user, existing.activity_id, req.body.mention_people)
+      if (mentioned && !mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const retag = await loadEditedPostTags(user, req.params.postId, { message, tags: req.body.tags })
       if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
@@ -780,6 +792,7 @@ export const createFeedRouter = (
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        mentions: mentioned?.mentions,
         message,
         series_metrics: req.body.series_metrics,
         tags: retag.tags,

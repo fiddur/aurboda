@@ -14,6 +14,18 @@ activity was with are dropped from every share of that activity (the feed post, 
 payload and AS2 object, a shared dashboard's day overview, article exports). The account export
 (`pg_dump`) carries the tables like every other.
 
+The one exception is a mention you switch on when sharing an activity: a person with a fediverse
+handle who was with you can be mentioned, which publishes their account and handle ("with
+@anna@example.social") and nothing else about them or anyone else. It is off every time, and an
+auto-share rule never mentions anyone. See
+[Mentioning people](sharing.md#mentioning-people-in-an-activity-share).
+
+## In Analyze
+
+Time with people is a correlation selector (with anyone, or with one person), and **With** is a
+breakdown and filter of an activity's sessions, both private to you: see
+[Time with people](correlations.md#time-with-people). An article refuses the selector.
+
 ## A person
 
 | Field                         | What it is                                                                                                             |

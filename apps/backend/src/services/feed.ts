@@ -17,7 +17,7 @@
  * post) means a later edit to the underlying activities stays reflected, per the
  * repo's "reference by id, resolve at query time" principle.
  */
-import { activityHeadline, type FeedPost } from '@aurboda/api-spec'
+import { activityHeadline, type FeedPost, type PostMention } from '@aurboda/api-spec'
 
 import type {
   Activity,
@@ -185,6 +185,7 @@ const resolveActivityPresentation = async (
   const content = linkifyHashtags(
     feedPostContent(activity.title, activity.activity_type, scalars, {
       exerciseLines: exercises.map(formatExerciseLine),
+      mentions: record.mentions,
       message: record.message ?? undefined,
       windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
     }).content,
@@ -302,6 +303,9 @@ const replyTargetFields = (
       }
     : {}
 
+const mentionFields = (record: FeedPostRecord): Pick<FeedPost, 'mentions'> =>
+  record.mentions?.length ? { mentions: record.mentions } : {}
+
 const inChallengeOf = async (
   user: string,
   record: FeedPostRecord,
@@ -357,6 +361,7 @@ export const serializeFeedPost = async (
     ...replyTargetFields(record),
     in_challenge: inChallenge,
     kind: record.kind,
+    ...mentionFields(record),
     message: record.message ?? undefined,
     metrics,
     series_metrics: record.series_metrics,
@@ -498,7 +503,13 @@ export const getOwnFeedPost = async (
 export const previewActivityShare = async (
   user: string,
   activity: Activity,
-  selection: { included_metrics: string[]; message?: string; include_exercises?: boolean; tags?: string[] },
+  selection: {
+    included_metrics: string[]
+    message?: string
+    include_exercises?: boolean
+    tags?: string[]
+    mentions?: PostMention[]
+  },
   webHost?: string,
 ): Promise<{ content: string; metrics: FeedPost['metrics']; has_exercises: boolean; tags: string[] }> => {
   const window = await expandFeedActivityWindow(user, activity)
@@ -513,6 +524,7 @@ export const previewActivityShare = async (
   })
   const content = feedPostContent(window.title, window.activity_type, scalars, {
     exerciseLines: selection.include_exercises ? exercises.map(formatExerciseLine) : [],
+    mentions: selection.mentions,
     message,
     windowLabel: formatActivityWindow(window.start_time, window.end_time, settings?.device_timezone),
   }).content

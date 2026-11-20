@@ -219,6 +219,7 @@ export const tableCreationOrder = [
   'feed_posts_tags_column',
   'feed_posts_dashboard_column',
   'feed_posts_challenge_uri_column',
+  'feed_posts_mentions_column',
   'article_drafts',
   'autoshare_rules',
   'autoshare_rules_data_filters',

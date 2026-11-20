@@ -21,6 +21,7 @@ import { query } from '../db/connection.ts'
 import { listFeedQuoteAuthorizations, upsertFeedQuoteAuthorization } from '../db/feed-quotes.ts'
 import { upsertFeedPostReaction } from '../db/feed-reactions.ts'
 import { createFeedPost } from '../db/feed.ts'
+import { addActivityPeople, insertPerson, softDeletePerson } from '../db/people.ts'
 import { insertSensitivityFlag } from '../db/sensitivities.ts'
 import { createSharedDashboard } from '../db/shared-dashboards.ts'
 import { createSharedExercise } from '../db/shared-exercises.ts'
@@ -1687,5 +1688,116 @@ describe('Article preview (POST /feed/articles/preview)', () => {
       .post('/feed/articles/preview')
       .send({ article: { blocks: [], title: 'x' } })
     expect(res.status).toBe(401)
+  })
+})
+
+describe('Mentioning people in an activity share', () => {
+  const ANNA_ACTOR = 'https://friends.example/users/anna'
+  let app: ReturnType<typeof startApp>
+
+  beforeAll(async () => {
+    await startTestDb()
+    app = startApp()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await app.close()
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const setup = async () => {
+    const user = getTestUser()
+    const activityId = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: new Date('2026-08-01T08:30:00Z'),
+      source: 'manual',
+      start_time: new Date('2026-08-01T08:00:00Z'),
+      title: 'Morning run',
+    })
+    const anna = await insertPerson(user, {
+      actor_cache: { actor_handle: '@anna@friends.example', actor_icon: null, actor_name: null },
+      actor_uri: ANNA_ACTOR,
+      name: 'Anna Private',
+    })
+    const bo = await insertPerson(user, { name: 'Bo Secret' })
+    const stranger = await insertPerson(user, {
+      actor_cache: { actor_handle: '@cy@friends.example', actor_icon: null, actor_name: null },
+      actor_uri: 'https://friends.example/users/cy',
+      name: 'Cy',
+    })
+    await addActivityPeople(user, activityId, [anna.id, bo.id])
+    return { activityId, anna, bo, stranger, user }
+  }
+
+  test('off unless asked: a share mentions nobody and names no one', async () => {
+    const { activityId } = await setup()
+    const shared = await app.request
+      .post(`/feed/activities/${activityId}/share`)
+      .send({ included_metrics: ['duration'], visibility: 'public' })
+    expect(shared.status).toBe(200)
+    expect(shared.body.post.mentions).toBeUndefined()
+    const body = JSON.stringify(shared.body)
+    expect(body).not.toContain('Anna Private')
+    expect(body).not.toContain('Bo Secret')
+  })
+
+  test('a mention is stored as the account, rendered as "with @handle", the same in the preview', async () => {
+    const { activityId, anna, bo } = await setup()
+    const selection = { included_metrics: ['duration'], mention_people: [anna.id], visibility: 'public' }
+    const preview = await app.request.post(`/feed/activities/${activityId}/preview`).send(selection)
+    expect(preview.status).toBe(200)
+    const line = `<p>with <span class="h-card"><a href="${ANNA_ACTOR}" class="u-url mention">@anna@friends.example</a></span></p>`
+    expect(preview.body.content).toContain(line)
+
+    const shared = await app.request.post(`/feed/activities/${activityId}/share`).send(selection)
+    expect(shared.status).toBe(200)
+    expect(shared.body.post.mentions).toEqual([{ actor_uri: ANNA_ACTOR, handle: '@anna@friends.example' }])
+    expect(shared.body.post.content).toBe(preview.body.content)
+    const body = JSON.stringify(shared.body)
+    for (const secret of ['Anna Private', 'Bo Secret', anna.id, bo.id]) expect(body).not.toContain(secret)
+  })
+
+  test('refuses a person the activity was not with, one without a handle, and a deleted one', async () => {
+    const { activityId, anna, bo, stranger, user } = await setup()
+    const share = (ids: string[]) =>
+      app.request
+        .post(`/feed/activities/${activityId}/share`)
+        .send({ mention_people: ids, visibility: 'public' })
+
+    const notWith = await share([stranger.id])
+    expect(notWith.status).toBe(400)
+    expect(notWith.body.error).toBe('Only people this activity was with can be mentioned, not Cy')
+
+    const noHandle = await share([bo.id])
+    expect(noHandle.status).toBe(400)
+    expect(noHandle.body.error).toBe('Only people with a fediverse handle can be mentioned, not Bo Secret')
+
+    await softDeletePerson(user, anna.id)
+    const deleted = await share([anna.id])
+    expect(deleted.status).toBe(400)
+    expect(deleted.body.error).toBe(`Unknown people: ${anna.id}`)
+  })
+
+  test('an edit replaces the mentions; [] clears them, absent keeps them', async () => {
+    const { activityId, anna } = await setup()
+    const shared = await app.request
+      .post(`/feed/activities/${activityId}/share`)
+      .send({ visibility: 'public' })
+    const id = shared.body.post.id
+
+    const added = await app.request.patch(`/feed/${id}`).send({ mention_people: [anna.id] })
+    expect(added.status).toBe(200)
+    expect(added.body.post.mentions).toEqual([{ actor_uri: ANNA_ACTOR, handle: '@anna@friends.example' }])
+
+    const kept = await app.request.patch(`/feed/${id}`).send({ visibility: 'unlisted' })
+    expect(kept.body.post.mentions).toHaveLength(1)
+
+    const cleared = await app.request.patch(`/feed/${id}`).send({ mention_people: [] })
+    expect(cleared.body.post.mentions).toBeUndefined()
+    expect(cleared.body.post.content).not.toContain('u-url mention')
   })
 })

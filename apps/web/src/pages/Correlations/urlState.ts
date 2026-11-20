@@ -121,6 +121,8 @@ const selectorValue = (selector: CorrelationSelector): string => {
       return selector.nutrient
     case 'sensitivity':
       return selector.flag
+    case 'people':
+      return selector.person_id ?? ''
     default:
       return selector.pattern
   }
