@@ -1,7 +1,3 @@
-/**
- * `check_ins.status`, `activity_ids`, `entity_type` and `entity_id` are written by nothing yet: they
- * are here so presets, skipping and activity logging need no second migration.
- */
 export const checkInsTables: Record<string, string> = {
   check_in_form_versions: `
     CREATE TABLE IF NOT EXISTS check_in_form_versions (
@@ -51,6 +47,7 @@ export const checkInsTables: Record<string, string> = {
   `,
   check_ins_indexes: `
     CREATE INDEX IF NOT EXISTS idx_check_ins_answered ON check_ins (answered_at DESC, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_check_ins_form_answered ON check_ins (form_id, answered_at DESC)
+    CREATE INDEX IF NOT EXISTS idx_check_ins_form_answered ON check_ins (form_id, answered_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_check_ins_entity ON check_ins (entity_type, entity_id) WHERE entity_id IS NOT NULL
   `,
 }

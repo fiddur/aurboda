@@ -1,6 +1,9 @@
 import {
   type AddCheckInFormBody,
   addCheckInFormBodySchema,
+  type CheckInAdherenceQuery,
+  checkInAdherenceQuerySchema,
+  type CheckInAdherenceResponse,
   type CheckInFormResponse,
   type CheckInFormsQuery,
   checkInFormsQuerySchema,
@@ -27,6 +30,7 @@ import {
   checkInDeps,
   deleteCheckInById,
   deleteCheckInFormById,
+  getCheckInAdherence,
   getCheckInFormById,
   listCheckInFormsView,
   listCheckInTemplates,
@@ -106,6 +110,17 @@ export const createCheckInsRouter = (
         return res.status(404).json({ error: 'No deleted check-in form with that ID', success: false })
       }
       res.json({ form, success: true })
+    },
+  )
+
+  router.get<{ id: string }, CheckInAdherenceResponse, unknown, CheckInAdherenceQuery>(
+    '/check-in-forms/:id/adherence',
+    authMiddleware,
+    validateQuery(checkInAdherenceQuerySchema),
+    async (req, res) => {
+      const outcome = await getCheckInAdherence(deps, req.user!, req.params.id, req.query)
+      if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error, success: false })
+      res.json({ adherence: outcome.value, success: true })
     },
   )
 

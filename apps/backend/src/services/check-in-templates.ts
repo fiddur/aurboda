@@ -58,6 +58,44 @@ export const checkInTemplates: readonly CheckInTemplate[] = [
     ],
     score: null,
   },
+  {
+    ...OWN_TEMPLATE,
+    description:
+      'An example routine: two supplements with their usual doses, each logged as a supplement activity. Change the items and doses to your own.',
+    id: 'morning_supplements',
+    name: 'Morning supplements (example)',
+    questions: [
+      {
+        default: 50,
+        key: 'vitamin_d',
+        logs_to: {
+          activity_type: 'supplement',
+          answer_field: 'dose',
+          fields: { dose_unit: 'µg', substance: 'vitamin D' },
+        },
+        min: 0,
+        prompt: 'Vitamin D',
+        required: false,
+        type: 'number',
+        unit: 'µg',
+      },
+      {
+        default: 200,
+        key: 'magnesium',
+        logs_to: {
+          activity_type: 'supplement',
+          answer_field: 'dose',
+          fields: { dose_unit: 'mg', substance: 'magnesium' },
+        },
+        min: 0,
+        prompt: 'Magnesium',
+        required: false,
+        type: 'number',
+        unit: 'mg',
+      },
+    ],
+    score: null,
+  },
 ]
 
 export const findCheckInTemplate = (id: string): CheckInTemplate | undefined =>

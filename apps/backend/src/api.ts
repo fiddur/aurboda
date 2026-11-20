@@ -174,6 +174,7 @@ import {
   type ThreadFederation,
 } from './services/challenge-thread-remote.ts'
 import { syncThreadEntryForPost } from './services/challenge-thread.ts'
+import { checkInDueActionHandlers } from './services/check-in-actions.ts'
 import { checkInDeps, raiseDueCheckIns } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
@@ -1049,7 +1050,10 @@ const main = async () => {
   const skipAutoshareActivity = skipAutoshare(autoshareSkipDeps)
   const notificationActionRunner = runNotificationAction({
     get: notificationStore.get,
-    handlers: { autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) } },
+    handlers: {
+      autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) },
+      check_in_due: checkInDueActionHandlers(checkInDeps),
+    },
     revise: notificationStore.revise,
   })
   const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)

@@ -31,6 +31,7 @@ const form: CheckInForm = {
   deleted_at: null,
   description: null,
   id: '00000000-0000-4000-8000-000000000001',
+  is_routine: false,
   name: 'Morning',
   notify: true,
   questions: [{ key: 'note', prompt: 'Note', required: false, type: 'text' }, rested],
@@ -41,10 +42,13 @@ const form: CheckInForm = {
 }
 
 const checkIn = (patch: Partial<CheckIn>): CheckIn => ({
+  activities: {},
   answered_at: '2026-11-20T07:12:00.000Z',
   answers: {},
   created_at: '2026-11-20T07:12:00.000Z',
   deleted_at: null,
+  entity_id: null,
+  entity_type: null,
   form_id: form.id,
   form_name: form.name,
   form_version: 1,

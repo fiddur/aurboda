@@ -41,6 +41,11 @@ is the type's **name**; nothing else is stored.
 | `travel`           | 🧳 Travel           | life_context | mode (plane, car, train, bus, boat)                                                                                                |
 | `social_gathering` | 🎉 Social gathering | life_context | —                                                                                                                                  |
 
+Medication and supplements taken on a routine are logged from a
+[check-in](check-ins.md#answers-logged-as-activities): a question with `logs_to: { activity_type:
+"supplement", fields: { substance, dose_unit }, answer_field: "dose" }` adds one such activity per
+item taken, and adopts the type on first use.
+
 Aliases: `medicine` for `medication`, `supplements` for `supplement`, `sick` and `sickness` for
 `illness`, `sex` for `sexual_activity`, `breathwork` for `guided_breathing`, `sun` for
 `sun_exposure`. An alias is only

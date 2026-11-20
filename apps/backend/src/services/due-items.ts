@@ -1,4 +1,4 @@
-import type { DueSlotState, Schedule } from '@aurboda/api-spec'
+import type { CheckInStatus, DueSlotState, Schedule } from '@aurboda/api-spec'
 
 import { DEFAULT_DAY_STARTS_AT } from '@aurboda/api-spec'
 
@@ -15,6 +15,7 @@ export interface ScheduleSlot {
 
 export interface SlotCheckIn {
   id: string
+  status: CheckInStatus
   answered_at: Date
   scheduled_for: Date | null
 }
@@ -76,20 +77,24 @@ const stateAt = (slot: ScheduleSlot, now: Date): DueSlotState => {
   return now.getTime() >= slot.day_end.getTime() ? 'missed' : 'due'
 }
 
+const answeredFirst = (a: SlotCheckIn, b: SlotCheckIn): number =>
+  (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0)
+
 /**
- * Each slot's state at `now`. A slot is done by a check-in whose `scheduled_for` is the slot; a
- * check-in without one counts, in the order answered, for the earliest slot of its day still open.
+ * Each slot's state at `now`. A slot is done by an answered check-in whose `scheduled_for` is the
+ * slot, and skipped by a skip of it (an answer to the same slot wins); a check-in without
+ * `scheduled_for` counts, in the order answered, for the earliest slot of its day still open.
  */
 export const slotStates = (
   slots: readonly ScheduleSlot[],
   checkIns: readonly SlotCheckIn[],
   now: Date,
 ): SlotWithState[] => {
-  const takenBy = new Map<ScheduleSlot, string>()
-  for (const checkIn of checkIns) {
+  const takenBy = new Map<ScheduleSlot, SlotCheckIn>()
+  for (const checkIn of [...checkIns].sort(answeredFirst)) {
     if (!checkIn.scheduled_for) continue
     const slot = slots.find((s) => s.at.getTime() === checkIn.scheduled_for!.getTime() && !takenBy.has(s))
-    if (slot) takenBy.set(slot, checkIn.id)
+    if (slot) takenBy.set(slot, checkIn)
   }
   const unscheduled = checkIns
     .filter((checkIn) => !checkIn.scheduled_for)
@@ -97,10 +102,25 @@ export const slotStates = (
   for (const checkIn of unscheduled) {
     const at = checkIn.answered_at.getTime()
     const slot = slots.find((s) => !takenBy.has(s) && at >= s.day_start.getTime() && at < s.day_end.getTime())
-    if (slot) takenBy.set(slot, checkIn.id)
+    if (slot) takenBy.set(slot, checkIn)
   }
   return slots.map((slot) => {
-    const checkInId = takenBy.get(slot) ?? null
-    return { check_in_id: checkInId, slot, state: checkInId ? 'done' : stateAt(slot, now) }
+    const checkIn = takenBy.get(slot)
+    if (!checkIn) return { check_in_id: null, slot, state: stateAt(slot, now) }
+    return { check_in_id: checkIn.id, slot, state: checkIn.status === 'skipped' ? 'skipped' : 'done' }
   })
+}
+
+/** The slots of each day from `from` to `to` (YYYY-MM-DD, both included), in time order. */
+export const slotsBetween = (
+  schedule: DaySchedule,
+  from: string,
+  to: string,
+  timezone: string,
+): { date: string; slots: ScheduleSlot[] }[] => {
+  const days: { date: string; slots: ScheduleSlot[] }[] = []
+  for (let date = from; date <= to; date = nextDate(date)) {
+    days.push({ date, slots: slotsForDay(schedule, date, timezone) })
+  }
+  return days
 }

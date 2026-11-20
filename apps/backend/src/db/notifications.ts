@@ -244,7 +244,10 @@ export const markReminderNotificationsRead = async (
   return result.rowCount ?? 0
 }
 
-/** Marks read the unread `check_in_due` notifications of this form for these slots (ISO instants). */
+/**
+ * Marks read the `check_in_due` notifications of this form for these slots (ISO instants) and clears
+ * their actions: the slot is done or skipped, so Done and Skip have nothing left to do.
+ */
 export const markCheckInDueNotificationsRead = async (
   user: string,
   formId: string,
@@ -253,8 +256,8 @@ export const markCheckInDueNotificationsRead = async (
   if (scheduledFor.length === 0) return 0
   const result = await query(
     user,
-    `UPDATE notifications SET read_at = NOW()
-     WHERE type = 'check_in_due' AND read_at IS NULL AND data->>'form_id' = $1
+    `UPDATE notifications SET read_at = COALESCE(read_at, NOW()), actions = '[]'::jsonb
+     WHERE type = 'check_in_due' AND (read_at IS NULL OR actions <> '[]'::jsonb) AND data->>'form_id' = $1
        AND data->>'scheduled_for' = ANY($2::text[])`,
     [formId, scheduledFor],
   )

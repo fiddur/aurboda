@@ -22,7 +22,7 @@ export const checkInScheduleLine = (schedule: Schedule): string => {
   return base
 }
 
-/** "Due now", "Later today at 21:00", "Done", "Missed". */
+/** "Due now", "Later today at 21:00", "Done", "Skipped", "Missed". */
 export const slotLabel = (slot: Pick<DueSlot, 'state' | 'time'>): string => {
   switch (slot.state) {
     case 'due':
@@ -31,6 +31,8 @@ export const slotLabel = (slot: Pick<DueSlot, 'state' | 'time'>): string => {
       return `Later today at ${slot.time}`
     case 'done':
       return 'Done'
+    case 'skipped':
+      return 'Skipped'
     case 'missed':
       return 'Missed'
   }
@@ -143,11 +145,12 @@ export const checkInSeries = (form: CheckInForm, checkIns: readonly CheckIn[]): 
       ),
     }
   }
-  const question = form.questions.find((q) => q.logs_to)
-  if (!question?.logs_to) return null
+  const question = form.questions.find((q) => q.logs_to?.metric !== undefined)
+  const metric = question?.logs_to?.metric
+  if (!question || metric === undefined) return null
   return {
     label: question.prompt,
-    metric: question.logs_to.metric,
+    metric,
     points: oldestFirst.flatMap((checkIn) => {
       const answered = checkIn.questions.find((q) => q.key === question.key)
       const value = answered ? numericAnswer(answered, checkIn.answers[question.key]) : undefined

@@ -86,6 +86,8 @@ export interface AddActivityInput {
   data?: Record<string, unknown>
   external_id?: string
   merge_span?: number
+  /** Default `aurboda`. */
+  source?: DataSource
 }
 
 export interface AddActivityResult {
@@ -349,6 +351,18 @@ const resolveWriteTarget = async (user: string, activityType: string): Promise<W
   return entry && { adopt: true, schema: entry.data_schema }
 }
 
+/**
+ * The data schema an activity of `activityType` is written against, without adopting a catalogue
+ * type; undefined when there is no such type for the user nor in the catalogue.
+ */
+export const activityWriteSchema = async (
+  user: string,
+  activityType: string,
+): Promise<{ schema: DataSchemaDefinition | undefined } | undefined> => {
+  const target = await resolveWriteTarget(user, activityType)
+  return target && { schema: target.schema }
+}
+
 const adoptWriteTarget = async (user: string, activityType: string, target: WriteTarget): Promise<boolean> =>
   !target.adopt || ensureActivityType(user, activityType)
 
@@ -429,8 +443,9 @@ export async function addActivity(
     activity_type: input.activity_type,
     data,
     end_time: input.end_time,
+    ...(input.external_id ? { external_id: input.external_id } : {}),
     id: randomUUID(),
-    source: 'aurboda',
+    source: input.source ?? 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
@@ -455,7 +470,11 @@ export async function addActivity(
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableActivity(input.activity_type) && !isInProgress(data)) {
+    if (
+      (input.source ?? 'aurboda') === 'aurboda' &&
+      isHealthConnectSyncableActivity(input.activity_type) &&
+      !isInProgress(data)
+    ) {
       const hcRecordType =
         activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {

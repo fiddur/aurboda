@@ -28,6 +28,7 @@ const savedForm: CheckInForm = {
   deleted_at: null,
   description: null,
   id: '00000000-0000-4000-8000-000000000001',
+  is_routine: false,
   name: 'Morning',
   notify: true,
   questions: [

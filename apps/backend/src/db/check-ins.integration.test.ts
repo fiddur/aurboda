@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   deleteCheckInPoints,
+  deleteSkippedCheckIns,
   getCheckIn,
   getCheckInForm,
   insertCheckIn,
@@ -27,6 +28,7 @@ import { insertTimeSeries } from './time-series.ts'
 const CONTAINER_TIMEOUT = 120_000
 const MISSING = '99999999-9999-4999-8999-999999999999'
 const NOT_BEFORE = new Date('2026-11-18T10:00:00Z')
+const ANSWERED = { activity_ids: {}, entity_id: null, entity_type: null, status: 'answered' } as const
 
 const rested: CheckInQuestion = {
   key: 'rested',
@@ -132,6 +134,7 @@ describe('Check-ins Integration Tests', () => {
       answers: { notes: 'ok', rested: 4 },
       form_id: form.id,
       form_version: 1,
+      ...ANSWERED,
       logged: { rested: { metric: 'rested', time: '2026-11-20T07:00:00.000Z' } },
       note: null,
       scheduled_for: at('2026-11-20T07:00:00Z'),
@@ -157,6 +160,7 @@ describe('Check-ins Integration Tests', () => {
       answers: { rested: 4 },
       form_id: form.id,
       form_version: 1,
+      ...ANSWERED,
       logged: { rested: { metric: 'rested', time: '2026-11-20T07:00:00.000Z' } },
       note: 'n',
       scheduled_for: null,
@@ -194,6 +198,7 @@ describe('Check-ins Integration Tests', () => {
         answers: { rested: 3 },
         form_id: formId,
         form_version: 1,
+        ...ANSWERED,
         logged: {},
         note: null,
         scheduled_for: null,
@@ -230,7 +235,7 @@ describe('Check-ins Integration Tests', () => {
   test('listFormCheckInsBetween takes live check-ins answered or scheduled in the window', async () => {
     const user = getTestUser()
     const form = await insertCheckInForm(user, formInput)
-    const base = { answers: {}, form_id: form.id, form_version: 1, logged: {}, note: null }
+    const base = { answers: {}, form_id: form.id, form_version: 1, ...ANSWERED, logged: {}, note: null }
     const inside = await insertCheckIn(user, {
       ...base,
       answered_at: at('2026-11-20T08:00:00Z'),
@@ -299,11 +304,103 @@ describe('Check-ins Integration Tests', () => {
     expect((await getNotificationById(user, otherForm!.id))?.read_at).toBeNull()
   })
 
+  test('markCheckInDueNotificationsRead also clears the actions of one already read', async () => {
+    const user = getTestUser()
+    const slot = '2026-11-20T07:00:00.000Z'
+    const raised = await insertNotification(user, {
+      actions: [
+        { key: 'done', label: 'Done' },
+        { key: 'skip', label: 'Skip' },
+      ],
+      data: { form_id: 'form-a', scheduled_for: slot },
+      dedupe_key: 'a1',
+      in_app: true,
+      push: true,
+      title: 'Morning',
+      type: 'check_in_due',
+    })
+    await query(user, `UPDATE notifications SET read_at = '2026-11-20T07:01:00Z' WHERE id = $1`, [raised!.id])
+    expect(await markCheckInDueNotificationsRead(user, 'form-a', [slot])).toBe(1)
+    const read = await getNotificationById(user, raised!.id)
+    expect(read).toMatchObject({ actions: [], read_at: at('2026-11-20T07:01:00Z') })
+    expect(await markCheckInDueNotificationsRead(user, 'form-a', [slot])).toBe(0)
+  })
+
+  test('skips, activities and entities are stored and read back', async () => {
+    const user = getTestUser()
+    const form = await insertCheckInForm(user, formInput)
+    const slot = at('2026-11-20T07:00:00Z')
+    const activity = await query<{ id: string }>(
+      user,
+      `INSERT INTO activities (source, activity_type, start_time, external_id)
+       VALUES ('check_in', 'meditation', $1, 'check_in:test') RETURNING id`,
+      [slot],
+    )
+    const gone = await query<{ id: string }>(
+      user,
+      `INSERT INTO activities (source, activity_type, start_time, external_id, deleted_at)
+       VALUES ('check_in', 'meditation', $1, 'check_in:gone', NOW()) RETURNING id`,
+      [slot],
+    )
+    const liveId = activity.rows[0]!.id
+    const goneId = gone.rows[0]!.id
+    const answered = await insertCheckIn(user, {
+      activity_ids: { gone: goneId, rested: liveId },
+      answered_at: slot,
+      answers: { rested: 4 },
+      entity_id: liveId,
+      entity_type: 'activity',
+      form_id: form.id,
+      form_version: 1,
+      logged: {},
+      note: null,
+      scheduled_for: null,
+      status: 'answered',
+    })
+    expect(answered).toMatchObject({
+      activity_ids: { gone: goneId, rested: liveId },
+      entity_id: liveId,
+      entity_type: 'activity',
+      live_activity_ids: [liveId],
+    })
+    expect((await updateCheckIn(user, answered.id, { activity_ids: {} }))?.activity_ids).toEqual({})
+
+    const skip = await insertCheckIn(user, {
+      ...ANSWERED,
+      answered_at: slot,
+      answers: {},
+      form_id: form.id,
+      form_version: 1,
+      logged: {},
+      note: null,
+      scheduled_for: slot,
+      status: 'skipped',
+    })
+    expect(skip.status).toBe('skipped')
+    const rows = await listFormCheckInsBetween(
+      user,
+      form.id,
+      at('2026-11-20T03:00:00Z'),
+      at('2026-11-21T03:00:00Z'),
+    )
+    expect(rows.map((r) => [r.status, r.answers])).toEqual([
+      ['answered', { rested: 4 }],
+      ['skipped', {}],
+    ])
+    expect(
+      (await listCheckIns(user, { entity: { id: liveId, type: 'activity' }, limit: 10 })).map((c) => c.id),
+    ).toEqual([answered.id])
+    expect(await deleteSkippedCheckIns(user, form.id, at('2026-11-20T08:00:00Z'))).toBe(0)
+    expect(await deleteSkippedCheckIns(user, form.id, slot)).toBe(1)
+    expect(await getCheckIn(user, skip.id)).toBeNull()
+    expect(await getCheckIn(user, answered.id)).not.toBeNull()
+  })
+
   test('purgeDeletedCheckIns removes what was deleted before the cutoff, with a form its check-ins', async () => {
     const user = getTestUser()
     const kept = await insertCheckInForm(user, formInput)
     const gone = await insertCheckInForm(user, { ...formInput, name: 'Gone' })
-    const base = { answers: {}, form_version: 1, logged: {}, note: null, scheduled_for: null }
+    const base = { answers: {}, form_version: 1, ...ANSWERED, logged: {}, note: null, scheduled_for: null }
     const oldCheckIn = await insertCheckIn(user, {
       ...base,
       answered_at: at('2026-10-01T07:00:00Z'),
