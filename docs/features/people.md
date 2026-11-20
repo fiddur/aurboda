@@ -20,11 +20,45 @@ handle who was with you can be mentioned, which publishes their account and hand
 auto-share rule never mentions anyone. See
 [Mentioning people](sharing.md#mentioning-people-in-an-activity-share).
 
+## On the web
+
+**People** (`/people`, in the main menu and the app's More → Log) lists everyone by name with
+their relationship, their next date and, with a handle, their avatar. **Upcoming dates** on top
+are the next 60 days ("Anna's birthday", "Tuesday 3 December · in 12 days · turns 40"), each
+opening the person. A filter box shows once there are more than ten people, **Show archived**
+adds the archived ones, **Add person** opens the form, and **Recently deleted** at the bottom
+restores a deleted person within its 30 days.
+
+A person's page (`/people/<id>`) shows their details with **Edit** (name, relationship with the
+suggestions, birthday as day and month with an optional year and "remind me N days before",
+pronouns, fediverse handle, archived), their **Dates** (add, edit, delete), **Notes** (the
+[comment](comments.md) thread on the person), the **Activities together** with a link to the
+time with them in Analyze, and with a handle the account's name and a **Follow** button when
+you do not follow it, and their **Recent posts** from your feed. The handle can be typed (a
+handle that does not resolve shows the server's message) or picked from the accounts you
+follow that no person has yet. **Delete** goes back to the list with "Deleted … Undo" for ten
+seconds.
+
+The activity forms (Add Data, and Edit on an activity's page; the Timeline's "Add activity"
+opens Add Data) have a **With** picker: type a name, pick from your people, and remove a chip
+to unlink. Below your people it offers the followed accounts that have no profile yet
+("@anna@example.social: add as a person"), which adds the person with that handle and picks
+them, and a name nobody has yet can be added as a person from there too. An activity's page lists **With** Anna, Bo, each linking to the person.
+
+Sharing an activity can mention the people with a handle, off every time: see
+[Mentioning people](sharing.md#mentioning-people-in-an-activity-share). Their dates are
+markers on the [Timeline](timeline.md).
+
+The app's native Add tab has no With picker yet; add or edit the activity on the web to link
+people.
+
 ## In Analyze
 
 Time with people is a correlation selector (with anyone, or with one person), and **With** is a
 breakdown and filter of an activity's sessions, both private to you: see
-[Time with people](correlations.md#time-with-people). An article refuses the selector.
+[Time with people](correlations.md#time-with-people). In Explore it is the **time with
+people** kind (with anyone, or a person by name), offered in Continuous mode; an article refuses
+the selector, so the article editor does not offer it.
 
 ## A person
 

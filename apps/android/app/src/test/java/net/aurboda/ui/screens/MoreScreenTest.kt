@@ -53,10 +53,11 @@ class MoreScreenTest {
 
     @Test
     fun `a hidden web page leaves the hub`() {
-        val paths = visiblePaths(listOf("/meals", "/reminders", "/check-ins"))
+        val paths = visiblePaths(listOf("/meals", "/reminders", "/check-ins", "/people"))
         assertFalse(paths.contains("/meals"))
         assertFalse(paths.contains("/reminders"))
         assertFalse(paths.contains("/check-ins"))
+        assertFalse(paths.contains("/people"))
         assertTrue(paths.contains("/reports"))
     }
 

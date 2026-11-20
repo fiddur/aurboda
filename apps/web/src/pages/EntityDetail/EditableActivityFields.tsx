@@ -1,6 +1,7 @@
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { IconPreview } from '../../components/IconPreview'
 import { MarkdownEditor } from '../../components/MarkdownEditor/index.jsx'
+import { WithPicker } from '../../components/WithPicker'
 import { uploadFeedImage } from '../../state/api'
 import { formatDuration } from './format-utils'
 
@@ -11,6 +12,8 @@ export interface ActivityDraft {
   end_time: string
   notes: string
   data?: Record<string, unknown>
+  /** Ids of the people the activity was with. */
+  people?: string[]
 }
 
 interface EditableActivityFieldsProps {
@@ -129,6 +132,18 @@ export const EditableActivityFields = ({
           <div class="field-row">
             <span class="field-label">{durationLabel}</span>
             <span class="field-value">{draftDuration}</span>
+          </div>
+          <div class="field-row">
+            <label class="field-label" for="edit-activity-with">
+              With
+            </label>
+            <span class="field-value">
+              <WithPicker
+                id="edit-activity-with"
+                value={draft.people ?? []}
+                onChange={(people) => onDraftChange({ ...draft, people })}
+              />
+            </span>
           </div>
         </div>
       </>

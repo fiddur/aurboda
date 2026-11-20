@@ -15,16 +15,18 @@ import { describeSelectorAxis } from '@aurboda/api-spec'
 
 export { describeSelectorAxis, linearRegression, type RegressionLine } from '@aurboda/api-spec'
 
-/** The axis label, with a sensitivity selector's flag id resolved to the flag's name from the discovered selectors. */
+/** The axis label, with a sensitivity selector's flag id or a people selector's person id resolved to its name from the discovered selectors. */
 export const selectorAxisLabel = (
   selector: CorrelationSelector,
-  selectors: Pick<CorrelationSelectorsData, 'sensitivities'> | undefined,
+  selectors: Partial<Pick<CorrelationSelectorsData, 'people' | 'sensitivities'>> | undefined,
 ): string =>
   describeSelectorAxis(
     selector,
     selector.kind === 'sensitivity'
-      ? selectors?.sensitivities.find((s) => s.value === selector.flag)?.label
-      : undefined,
+      ? selectors?.sensitivities?.find((s) => s.value === selector.flag)?.label
+      : selector.kind === 'people' && selector.person_id
+        ? selectors?.people?.find((s) => s.value === selector.person_id)?.label
+        : undefined,
   )
 
 /** The aligned pairs complete on every side that tracks completeness, named for what complete means there. */

@@ -98,6 +98,7 @@ const Notifications = lazyPage(() => import('./pages/Notifications/index.jsx'), 
 const Reminders = lazyPage(() => import('./pages/Reminders/index.jsx'), 'Reminders')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
 const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
+const People = lazyPage(() => import('./pages/People/index.jsx'), 'People')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
@@ -240,6 +241,8 @@ function AppShell() {
             <Route path="/check-ins" component={CheckIns} />
             <Route path="/journal" component={Journal} />
             <Route path="/journal/:id" component={Journal} />
+            <Route path="/people" component={People} />
+            <Route path="/people/:id" component={People} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

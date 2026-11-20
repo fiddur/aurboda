@@ -152,7 +152,7 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
 
 export type SharePreviewSelection = Pick<
   ShareActivityBody,
-  'include_exercises' | 'included_metrics' | 'message' | 'tags'
+  'include_exercises' | 'included_metrics' | 'mention_people' | 'message' | 'tags'
 >
 
 /**
@@ -168,6 +168,7 @@ export const previewSelection = (
 ): SharePreviewSelection => ({
   include_exercises: includeExercises,
   included_metrics: body.included_metrics,
+  ...(body.mention_people?.length ? { mention_people: body.mention_people } : {}),
   message: body.message,
   ...(body.tags === undefined ? {} : { tags: body.tags }),
 })

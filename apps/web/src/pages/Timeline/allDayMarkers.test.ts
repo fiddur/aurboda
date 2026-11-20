@@ -3,7 +3,9 @@ import type { Note } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
+  importantDateMarkers,
   journalDayMarkers,
+  markerGroupHref,
   layoutAllDayMarkers,
   markerGroupIcon,
   markerGroupTitle,
@@ -85,5 +87,44 @@ describe('group glyph and title', () => {
     expect(markerGroupTitle(one)).toBe('A')
     expect(markerGroupIcon(one)).toBe('📓')
     expect(markerGroupTitle({ ...one, markers: [...one.markers, ...one.markers] })).toBe('2 entries')
+  })
+})
+
+describe('importantDateMarkers', () => {
+  test('one marker per date, its own kind, opening the person', () => {
+    const markers = importantDateMarkers([
+      {
+        date: '2026-12-03',
+        date_id: null,
+        kind: 'birthday',
+        label: "Anna's birthday",
+        person: { id: 'p1', name: 'Anna' },
+        years: 40,
+      },
+      {
+        date: '2026-12-10',
+        date_id: 'd1',
+        kind: 'anniversary',
+        label: 'Wedding',
+        person: { id: 'p1', name: 'Anna' },
+      },
+    ])
+    expect(markers).toEqual([
+      { date: '2026-12-03', href: '/people/p1', kind: 'important_date', label: "Anna's birthday (turns 40)" },
+      { date: '2026-12-10', href: '/people/p1', kind: 'important_date', label: 'Anna: Wedding' },
+    ])
+    expect(markerGroupIcon({ date: '2026-12-03', markers: [markers[0]!], pos: 0 })).toBe('🎉')
+  })
+})
+
+describe('markerGroupHref', () => {
+  const date = { date: '2026-12-03', href: '/people/p1', kind: 'important_date' as const, label: 'x' }
+  const entry = { date: '2026-12-03', href: '/journal/a', kind: 'journal' as const, label: 'y' }
+  test('one marker opens its page; several dates open People; a mix opens the journal day', () => {
+    expect(markerGroupHref({ date: '2026-12-03', markers: [date], pos: 0 })).toBe('/people/p1')
+    expect(markerGroupHref({ date: '2026-12-03', markers: [date, date], pos: 0 })).toBe('/people')
+    expect(markerGroupHref({ date: '2026-12-03', markers: [date, entry], pos: 0 })).toBe(
+      '/journal?date=2026-12-03',
+    )
   })
 })

@@ -68,6 +68,24 @@ interface TimelineLegendProps {
   dailyPicker: DailyPickerProps
 }
 
+const ImportantDatesToggle = ({
+  hidden,
+  toggle,
+}: {
+  hidden: boolean
+  toggle: (category: LegendCategory) => void
+}) => (
+  <button
+    key="important_dates"
+    class={`legend-item${hidden ? ' legend-item-hidden' : ''}`}
+    onClick={() => toggle('important_dates')}
+    type="button"
+    title="Birthdays and other dates of the people in your life"
+  >
+    🎉 Important dates
+  </button>
+)
+
 export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
   orientation,
   hiddenCategories,
@@ -216,6 +234,8 @@ export const TimelineLegend: FunctionComponent<TimelineLegendProps> = ({
           >
             <span class="legend-dot" style={{ background: COMMENT_COLOR }} />💬 Comments
           </button>
+
+          <ImportantDatesToggle hidden={hiddenCategories.has('important_dates')} toggle={toggleCategory} />
         </div>
       )}
     </div>

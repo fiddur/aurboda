@@ -24,6 +24,7 @@ import {
   fieldLabel,
   itemPath,
 } from '../../components/sessions/sessionView'
+import { WithLine } from '../../components/WithPicker'
 import {
   fetchActivityById,
   fetchActivitySessions,
@@ -227,16 +228,26 @@ const ActivityStatsTable = ({
   timeRows,
   metricRows,
   location,
+  people,
   onFill,
 }: {
   fieldRows: ActivityStatRow[]
   timeRows: ActivityStatRow[]
   metricRows: ActivityStatRow[]
   location?: { start: Date; end: Date }
+  people?: { id: string; name: string }[]
   onFill?: (field: string) => void
 }) => (
   <table class="activity-stats-table">
     <tbody>
+      {people && people.length > 0 && (
+        <tr>
+          <th scope="row">With</th>
+          <td>
+            <WithLine people={people} />
+          </td>
+        </tr>
+      )}
       {(onFill ? fieldRows : fieldRows.filter((row) => !row.missingField)).map((row, i) => (
         <StatRow key={`field-${i}`} row={row} onFill={onFill} />
       ))}
@@ -483,6 +494,7 @@ const ActivityDetailContent = ({
                 },
               })}
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
+              people={activity.people}
               onFill={activity.deleted_at ? undefined : onFillField}
             />
             {buildListTables(typeDef?.data_schema, activityData).map((table) => {
@@ -544,6 +556,9 @@ const ActivityDetailContent = ({
   )
 }
 
+const peopleChanged = (next: readonly string[] = [], orig: readonly string[] = []): boolean =>
+  next.length !== orig.length || next.some((id) => !orig.includes(id))
+
 const makeDraft = (activity: Activity): ActivityDraft => {
   const displayStart = activity.merged_start_time ?? activity.start_time
   const displayEnd = activity.merged_end_time ?? activity.end_time
@@ -552,6 +567,7 @@ const makeDraft = (activity: Activity): ActivityDraft => {
     data: (activity.data as Record<string, unknown>) ?? {},
     end_time: displayEnd ? formatDateTimeLocal(displayEnd) : '',
     notes: getUserNotesContent(activity),
+    people: (activity.people ?? []).map((person) => person.id),
     start_time: formatDateTimeLocal(displayStart),
     title: activity.title ?? '',
   }
@@ -730,6 +746,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         notes?: string
         data?: Record<string, unknown>
         override_target_ids?: string[]
+        people?: string[]
       } = {}
       const orig = makeDraft(activity)
       if (next.activity_type !== orig.activity_type) body.activity_type = next.activity_type
@@ -741,6 +758,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
         body.end_time = next.end_time ? new Date(next.end_time).toISOString() : null
       }
       if (next.notes !== orig.notes) body.notes = next.notes
+      if (peopleChanged(next.people, orig.people)) body.people = next.people ?? []
       if (next.data && JSON.stringify(next.data) !== JSON.stringify(orig.data)) {
         body.data = dropBlankListRows(
           typeDefinitions?.find((d) => d.name === next.activity_type)?.data_schema,

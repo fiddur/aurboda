@@ -10,10 +10,13 @@ import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
+import { initialMentions, mentionCandidates } from '../pages/People/people-view'
 import {
   fetchActivityById,
   fetchBucketedMetrics,
+  fetchPeople,
   fetchRawLocations,
+  PEOPLE_KEY,
   previewShare,
   shareActivity,
   updateFeedPost,
@@ -178,6 +181,26 @@ export function ShareActivityDialog({
   // actually offered as a control here.
   const offersHeartRate = seriesOptions.some((m) => m.key === 'heart_rate')
 
+  // Only people linked to the activity who have a fediverse handle can be mentioned. A new share
+  // starts with every switch off; an edit shows whom the post mentions.
+  const activityPeople = useQuery({
+    queryFn: () => fetchActivityById(activityId),
+    queryKey: ['entity-detail', 'activity', activityId],
+    select: (result) => result.activity.people,
+    staleTime: 60_000,
+  }).data
+  const peopleQuery = useQuery({
+    enabled: (activityPeople?.length ?? 0) > 0,
+    queryFn: () => fetchPeople({ archived: true }),
+    queryKey: [...PEOPLE_KEY, { archived: true }],
+    staleTime: 60_000,
+  })
+  const candidates = mentionCandidates(activityPeople, peopleQuery.data?.people ?? [])
+  const [mentionChoice, setMentionChoice] = useState<string[] | undefined>(undefined)
+  const mentioned = mentionChoice ?? initialMentions(candidates, post?.mentions, post != null)
+  const toggleMention = (personId: string, on: boolean) =>
+    setMentionChoice(on ? [...mentioned, personId] : mentioned.filter((id) => id !== personId))
+
   // Whether the session has exercises comes from the preview (resolved over the
   // merged session, where a Garmin row's sets live on its Gravl twin); the last
   // answer is kept so the toggle doesn't blink while the next preview loads.
@@ -199,6 +222,12 @@ export function ShareActivityDialog({
       visibility,
     }),
     ...(explicitTags === undefined ? {} : { tags: explicitTags }),
+    // An edit keeps the post's mentions unless a switch was touched; a share sends whom it mentions.
+    ...(post
+      ? mentionChoice === undefined
+        ? {}
+        : { mention_people: mentionChoice }
+      : { mention_people: mentioned }),
   })
 
   // Live preview: the server resolves the EXACT federated content for
@@ -209,7 +238,11 @@ export function ShareActivityDialog({
   // An edit previews with the post's own tags until they are changed.
   const previewKey = JSON.stringify(
     previewSelection(
-      { ...currentBody(), ...(post && explicitTags === undefined ? { tags: post.tags } : {}) },
+      {
+        ...currentBody(),
+        ...(post && explicitTags === undefined ? { tags: post.tags } : {}),
+        mention_people: mentioned,
+      },
       includeExercises,
     ),
   )
@@ -352,6 +385,26 @@ export function ShareActivityDialog({
                 Route map
               </label>
             </div>
+          </fieldset>
+        )}
+
+        {candidates.length > 0 && (
+          <fieldset class="share-dialog-group">
+            <legend>Mention</legend>
+            <div class="share-dialog-options">
+              {candidates.map((candidate) => (
+                <label key={candidate.id} class="share-dialog-checkbox">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={mentioned.includes(candidate.id)}
+                    onChange={(e) => toggleMention(candidate.id, (e.target as HTMLInputElement).checked)}
+                  />
+                  Mention {candidate.handle}
+                </label>
+              ))}
+            </div>
+            <p class="share-dialog-note">A mention is public: it names them in the post and notifies them.</p>
           </fieldset>
         )}
 

@@ -24,6 +24,12 @@ export const NAV_LINKS_PRIMARY = [
     description: 'Dated entries in your own words, with pictures and voice notes.',
   },
   {
+    href: '/people',
+    label: 'People',
+    icon: '👥',
+    description: 'The people in your life, their birthdays and the dates that matter. Private.',
+  },
+  {
     href: '/data',
     label: 'Data',
     icon: '📊',

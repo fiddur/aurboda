@@ -201,6 +201,13 @@ describe('previewSelection', () => {
       JSON.stringify(previewSelection(body, false)),
     )
   })
+
+  it('carries the mentions, since the preview shows them', () => {
+    expect(previewSelection({ ...body, mention_people: ['p1'] }, false)).toMatchObject({
+      mention_people: ['p1'],
+    })
+    expect(previewSelection({ ...body, mention_people: [] }, false)).not.toHaveProperty('mention_people')
+  })
 })
 
 describe('shareableSummaryOptions', () => {

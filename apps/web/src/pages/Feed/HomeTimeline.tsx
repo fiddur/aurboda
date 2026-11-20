@@ -45,7 +45,7 @@ const dedupByUri = (list: TimelineEntry[]): TimelineEntry[] => {
   return out
 }
 
-function TimelineCard({ entry }: { entry: TimelineEntry }) {
+export function TimelineCard({ entry }: { entry: TimelineEntry }) {
   const queryClient = useQueryClient()
   const { path, query } = useLocation()
   const booster = entry.boosted_by

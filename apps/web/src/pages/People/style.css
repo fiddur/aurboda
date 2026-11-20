@@ -1,0 +1,410 @@
+.people-page {
+  box-sizing: border-box;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.people-header,
+.people-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.people-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.people-section {
+  margin-top: 1.5rem;
+}
+
+.people-section h2,
+.people-upcoming h2,
+.people-editor h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.people-muted,
+.people-help,
+.people-back a,
+.people-private {
+  color: var(--color-text-muted);
+}
+
+.people-muted {
+  font-size: 0.9rem;
+}
+
+.people-private {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+}
+
+.people-error {
+  color: #dc2626;
+  margin: 0;
+}
+
+.people-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.people-editor {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.people-editor h2 {
+  margin-bottom: 0.75rem;
+}
+
+.people-empty {
+  color: var(--color-text-muted);
+  max-width: 34rem;
+}
+
+.people-upcoming {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.people-upcoming ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.people-upcoming li a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.people-upcoming li a:hover strong {
+  text-decoration: underline;
+}
+
+.people-upcoming-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.people-date-glyph {
+  flex: none;
+  width: 1.6rem;
+  text-align: center;
+  font-size: 1.15rem;
+}
+
+.people-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.people-filter {
+  box-sizing: border-box;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.people-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.people-row:first-child {
+  border-top: none;
+}
+
+.people-row.archived {
+  opacity: 0.65;
+}
+
+.people-row--editing {
+  display: block;
+}
+
+.people-row-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.people-row-link:hover strong {
+  text-decoration: underline;
+}
+
+.people-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.people-row-next {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  text-align: right;
+}
+
+.people-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.people-row-actions .btn-secondary,
+.people-row-actions .btn-danger,
+.people-person-actions .btn-secondary,
+.people-person-actions .btn-danger,
+.people-deleted .btn-secondary {
+  padding: 0.35rem 0.8rem;
+}
+
+.people-avatar {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.people-avatar--blank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.people-deleted {
+  margin-top: 2rem;
+}
+
+.people-deleted summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.people-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.people-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.people-field > span,
+.people-field > legend,
+.people-field > label {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 0.1rem;
+}
+
+.people-field small,
+.people-notify small,
+.people-check small {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.people-field input,
+.people-field select,
+.people-account-pick {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.people-date-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.people-date-inputs input {
+  width: 5.5rem;
+}
+
+.people-date-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.people-date-form-row .people-field:first-child {
+  flex: 1 1 14rem;
+}
+
+.people-notify input {
+  width: 4.5rem;
+}
+
+.people-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.people-account-pick {
+  margin-top: 0.3rem;
+}
+
+.people-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.people-person-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+}
+
+.people-person-ident {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.people-person-ident h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+}
+
+.people-person-ident p {
+  margin: 0.2rem 0 0;
+}
+
+.people-person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.people-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.people-account-ident {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.people-account a,
+.people-analyze {
+  color: var(--color-accent);
+}
+
+.people-back {
+  margin: 0 0 0.75rem;
+}
+
+.people-posts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.people-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  border-radius: 8px;
+}
+
+.people-undo > span {
+  flex: 1 1 auto;
+}
+
+.people-undo .btn-secondary {
+  padding: 0.35rem 0.85rem;
+}
+
+.people-undo-close {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0.25rem;
+}
+
+.people-page input[type='text'],
+.people-page input[type='number'],
+.people-page input[type='search'],
+.people-page select {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.people-field > input[type='text'] {
+  width: 100%;
+}
+
+.people-notify {
+  font-weight: 400;
+}

@@ -37,6 +37,13 @@ account and nothing else:
 
 The preview shows the mention as it will read.
 
+On the web, the share dialog (and the edit of a shared post) has a **Mention** group under the
+other choices: one switch "Mention @anna@example.social" per person linked to the activity who has
+a handle, and the line "A mention is public: it names them in the post and notifies them." People
+without a handle are not listed. Every switch is off whenever the dialog opens for a new share,
+whatever an earlier post of the activity did; editing a post shows whom that post mentions, and
+leaves its mentions alone unless a switch is touched.
+
 The rest of this page covers shared dashboards and exercises. A shared dashboard is published
 read-only under your own public namespace, so other people — anonymous visitors, or users on a
 different Aurboda instance — can view a curated set of charts without signing in. Its identity
