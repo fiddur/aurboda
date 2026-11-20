@@ -529,7 +529,7 @@ export {
   updateTimelineActorPresentation,
   upsertTimelineEntry,
 } from './timeline.ts'
-export { emitTimelineNotify, openTimelineChannel } from './timeline-notify.ts'
+export { emitLiveNotify, type LiveEventKind, openLiveChannel } from './live-notify.ts'
 
 export {
   type ArticleDraftInput,

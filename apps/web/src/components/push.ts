@@ -90,6 +90,12 @@ export const takeNotificationRead = (href: string): { id: string; cleaned: strin
   return UUID_RE.test(id) ? { cleaned, id } : { cleaned, id: '' }
 }
 
+/** SHA-256 of a text, as lowercase hex. */
+export const sha256Hex = async (text: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 /** The VAPID public key (URL-safe base64) as the bytes `pushManager.subscribe` takes. */
 export const urlBase64ToUint8Array = (base64: string): Uint8Array<ArrayBuffer> => {
   const padded = `${base64}${'='.repeat((4 - (base64.length % 4)) % 4)}`

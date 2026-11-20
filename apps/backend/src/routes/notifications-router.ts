@@ -94,7 +94,7 @@ export const createNotificationsRouter = (
     authMiddleware,
     validateQuery(pushSubscriptionsQuerySchema),
     async (req, res) => {
-      res.json({ subscriptions: await webPush.list(req.user!, req.query.endpoint), success: true })
+      res.json({ subscriptions: await webPush.list(req.user!, req.query.endpoint_hash), success: true })
     },
   )
 

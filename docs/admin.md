@@ -371,6 +371,15 @@ The server sends pushes to the browser vendors' push services (`fcm.googleapis.c
 `updates.push.services.mozilla.com`, `web.push.apple.com` and the like), so it needs outbound
 HTTPS to them.
 
+## Live updates
+
+The bell and the home timeline update live over one Server-Sent Events stream per tab,
+`GET /api/events/stream`, which stays open. A reverse proxy in front of the container must not
+buffer it: the response sets `X-Accel-Buffering: no`, which nginx honours, and other proxies need
+response buffering (and compression of `text/event-stream`) off for that path. A buffered stream
+is not broken, only late: the web app polls while it cannot hold the stream, so the bell then
+updates within a minute and the timeline within 30 seconds.
+
 ## Federation
 
 **Tag actor host** (`tag_actor_host`, Admin Settings → **Federation**, `PATCH /admin/settings`):

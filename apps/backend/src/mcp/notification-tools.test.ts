@@ -40,14 +40,10 @@ const setup = (webPush?: Partial<WebPush>) => {
     subscribe: async () => ({ status: 'disabled' }),
     ...webPush,
   }
-  registerNotificationTools(
-    server,
-    'alice',
-    async () => false,
-    undefined,
-    {} as NotificationStore,
-    webPush === undefined ? undefined : fullWebPush,
-  )
+  registerNotificationTools(server, 'alice', async () => false, {
+    store: {} as NotificationStore,
+    webPush: webPush === undefined ? undefined : fullWebPush,
+  })
   const call = async (name: string, params: Record<string, unknown> = {}) => {
     const handler = tools.get(name)
     if (handler == null) throw new Error(`no tool ${name}`)

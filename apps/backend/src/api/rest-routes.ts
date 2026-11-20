@@ -32,6 +32,7 @@ import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { LiveHub } from '../services/live-hub.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { LoginMethodCounter } from '../services/login-methods.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
@@ -44,7 +45,6 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import type { TokenBucketLimiter } from '../services/rate-limit.ts'
 import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
-import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 import type { WebPush } from '../services/web-push.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
@@ -78,6 +78,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createEventsRouter } from '../routes/events-router.ts'
 import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
 import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-router.ts'
@@ -210,7 +211,8 @@ interface RestRoutesDeps {
   postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
-  timelineHub: TimelineHub
+  /** Fans a user's live timeline and notification pings out to their open event streams. */
+  liveHub: LiveHub
   retroEnrichTimeline: RetroEnrichTrigger
   /** Fire-and-forget: federate an `Update{Person}` after an avatar or display-name change. */
   onProfileChanged: ProfileChanged
@@ -294,7 +296,7 @@ export const mountRestRouters = ({
   onHrSettingsChanged,
   onNamedLocationsChanged,
   retroEnrichTimeline,
-  timelineHub,
+  liveHub,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -306,6 +308,7 @@ export const mountRestRouters = ({
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
+  httpd.use('/events', createEventsRouter(authMiddleware, liveHub))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use(
     '/notifications',
@@ -385,7 +388,7 @@ export const mountRestRouters = ({
     createFeedRouter(
       authMiddleware,
       feedDeliver,
-      timelineHub,
+      liveHub,
       apiBaseUrl,
       retroEnrichTimeline,
       webHost,

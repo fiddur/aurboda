@@ -18,9 +18,11 @@ export const registerNotificationTools = (
   server: McpServer,
   user: string,
   isAdmin: (user: string) => Promise<boolean>,
-  runAction?: RunNotificationAction,
-  store: NotificationStore = notificationStore,
-  webPush?: WebPush,
+  {
+    runAction,
+    store = notificationStore,
+    webPush,
+  }: { runAction?: RunNotificationAction; store?: NotificationStore; webPush?: WebPush } = {},
 ) => {
   server.tool(
     'list_notifications',

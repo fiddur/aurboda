@@ -90,7 +90,7 @@ export interface ClosableServer {
 /**
  * `server.close` waits for every connection to end. Idle keep-alive sockets are
  * dropped straight away, and in-flight requests get `drainMs` before the rest
- * are forced: `/timeline/stream` is an indefinite text/event-stream that never
+ * are forced: `/events/stream` is an indefinite text/event-stream that never
  * ends on its own, while forcing everything at once would ECONNRESET a sync POST
  * mid-response.
  */

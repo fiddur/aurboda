@@ -2247,7 +2247,7 @@ const openApiDocument = createDocument({
     '/notifications/push/subscriptions': {
       get: {
         description:
-          "The browsers subscribed to this user's push notifications, oldest first. The keys are never returned. Name this browser's own `endpoint` to have its subscription marked `current`.",
+          "The browsers subscribed to this user's push notifications, oldest first. The keys are never returned. Give the SHA-256 of this browser's own endpoint as `endpoint_hash` to have its subscription marked `current`.",
         requestParams: { query: pushSubscriptionsQuerySchema },
         responses: {
           200: {

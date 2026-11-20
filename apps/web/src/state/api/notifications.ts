@@ -18,6 +18,7 @@ import type {
 
 import axios from 'axios'
 
+import { sha256Hex } from '../../components/push'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 import { apiErrorMessage } from './feed'
@@ -98,14 +99,17 @@ export const fetchPushConfig = async (): Promise<PushConfigResponse> => {
   return response.data
 }
 
-/** `token` lets sign-out still reach the server after the session is cleared. */
+/**
+ * The browser's own endpoint is named by its hash, so it never appears in a URL.
+ * `token` lets sign-out still reach the server after the session is cleared.
+ */
 export const fetchPushSubscriptions = async (
   endpoint?: string,
   token?: string,
 ): Promise<PushSubscription[]> => {
   const response = await axios.get<PushSubscriptionsResponse>(`${API_URL}/notifications/push/subscriptions`, {
     headers: authHeaders(token),
-    params: endpoint === undefined ? undefined : { endpoint },
+    params: endpoint === undefined ? undefined : { endpoint_hash: await sha256Hex(endpoint) },
   })
   return response.data.subscriptions
 }

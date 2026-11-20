@@ -313,13 +313,21 @@ describe('browser push routes', () => {
     expect(res.body).toEqual({ enabled: true, public_key: 'pub', success: true })
   })
 
-  test('GET /push/subscriptions lists, naming the current endpoint', async () => {
+  test('GET /push/subscriptions lists, naming the current endpoint by its hash', async () => {
     const { webPush, calls } = fakeWebPush()
+    const hash = 'a'.repeat(64)
     const res = await supertest(pushApp(webPush))
       .get('/notifications/push/subscriptions')
-      .query({ endpoint: ENDPOINT })
+      .query({ endpoint_hash: hash })
     expect(res.body).toEqual({ subscriptions: [SUBSCRIPTION], success: true })
-    expect(calls).toEqual([['list', 'tester', ENDPOINT]])
+    expect(calls).toEqual([['list', 'tester', hash]])
+  })
+
+  test('GET /push/subscriptions refuses an endpoint itself in the address', async () => {
+    const res = await supertest(pushApp(fakeWebPush().webPush))
+      .get('/notifications/push/subscriptions')
+      .query({ endpoint_hash: ENDPOINT })
+    expect(res.status).toBe(400)
   })
 
   test('POST /push/subscriptions stores the browser subscription with its user agent', async () => {

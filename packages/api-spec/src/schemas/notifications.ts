@@ -355,9 +355,14 @@ export type PushSubscription = z.infer<typeof pushSubscriptionSchema>
 
 export const pushSubscriptionsQuerySchema = z
   .object({
-    endpoint: z.string().max(PUSH_ENDPOINT_MAX_LENGTH).optional().meta({
-      description: 'This browser’s own endpoint, so its subscription is marked `current`',
-    }),
+    endpoint_hash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional()
+      .meta({
+        description:
+          'SHA-256 (lowercase hex) of this browser’s own endpoint, so its subscription is marked `current` without the endpoint appearing in a URL',
+      }),
   })
   .meta({ id: 'PushSubscriptionsQuery' })
 
@@ -388,13 +393,17 @@ export const sendTestPushResponseSchema = baseResponseSchema
 
 export type SendTestPushResponse = z.infer<typeof sendTestPushResponseSchema>
 
-/** What a push carries to the service worker, encrypted to the browser. */
-export const webPushPayloadSchema = z.object({
-  body: z.string().nullable(),
-  id: z.string(),
-  link: z.string().nullable(),
-  title: z.string(),
-  type: z.string(),
-})
+export const webPushPayloadSchema = z
+  .object({
+    body: z.string().nullable().meta({ description: 'The notification’s body, if it has one' }),
+    id: z.string().meta({ description: 'The notification’s ID (`test` for a test push)' }),
+    link: z.string().nullable().meta({ description: 'The in-app path a click opens, if any' }),
+    title: z.string().meta({ description: 'The notification’s title' }),
+    type: z.string().meta({ description: 'The notification type' }),
+  })
+  .meta({
+    description: 'What a push carries to the service worker, encrypted to the browser',
+    id: 'WebPushPayload',
+  })
 
 export type WebPushPayload = z.infer<typeof webPushPayloadSchema>
