@@ -19,6 +19,14 @@ export const tzJsonResponse = (data: unknown, tz: string) => ({
   ],
 })
 
+/** A picture the client shows to the model, with a text part beside it. */
+export const imageResponse = (image: Buffer, mimeType: string, text: string) => ({
+  content: [
+    { data: image.toString('base64'), mimeType, type: 'image' as const },
+    { text, type: 'text' as const },
+  ],
+})
+
 export const errorResponse = (message: string) => ({
   content: [{ text: message, type: 'text' as const }],
   isError: true,

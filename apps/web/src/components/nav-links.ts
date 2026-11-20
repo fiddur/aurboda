@@ -18,6 +18,12 @@ export const NAV_LINKS_PRIMARY = [
     description: 'Your day, week or month on one scrolling line.',
   },
   {
+    href: '/journal',
+    label: 'Journal',
+    icon: '📓',
+    description: 'Dated entries in your own words, with pictures and voice notes.',
+  },
+  {
     href: '/data',
     label: 'Data',
     icon: '📊',

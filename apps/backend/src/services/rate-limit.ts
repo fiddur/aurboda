@@ -199,7 +199,7 @@ export const RATE_LIMITS = {
   public_reads: { capacity: 300, refill_per_second: 3 },
   /** Per client IP: new accounts, by password or passkey. */
   signups: { capacity: 5, refill_per_second: 1 / 600 },
-  /** Per account: avatar, challenge banner and feed picture uploads, REST and MCP together. */
+  /** Per account: avatar, challenge banner, feed picture and journal attachment uploads, REST and MCP together. */
   uploads: { capacity: 30, refill_per_second: 1 / 6 },
 } as const satisfies Record<string, TokenBucketPolicy | FailureBackoffPolicy>
 

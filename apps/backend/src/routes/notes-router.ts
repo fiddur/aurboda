@@ -22,6 +22,7 @@ import {
 import {
   addNote,
   deleteNoteById,
+  getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
@@ -51,7 +52,9 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
       const user = req.user!
       const notes =
         'from' in req.query
-          ? await getNotesInRange(user, new Date(req.query.from), new Date(req.query.to), req.query.tz)
+          ? await getNotesInRange(user, new Date(req.query.from), new Date(req.query.to), req.query.tz, {
+              needs_text: req.query.needs_text,
+            })
           : await getNotesForEntity(user, req.query.entity_type, req.query.entity_id)
       res.json({ data: notes, success: true })
     },
@@ -145,6 +148,12 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     if (!result.success) {
       return res.status(errorStatus(result.errorCode)).json({ error: result.error, success: false })
     }
+    res.json({ data: result.data, success: true })
+  })
+
+  router.get<{ id: string }, NoteResponse>('/:id', authMiddleware, async (req, res) => {
+    const result = await getNoteForUser(req.user!, req.params.id)
+    if (!result.success) return res.status(404).json({ error: result.error, success: false })
     res.json({ data: result.data, success: true })
   })
 

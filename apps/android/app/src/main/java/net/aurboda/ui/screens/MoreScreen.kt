@@ -78,6 +78,7 @@ val moreGroups: List<MoreGroup> = listOf(
     MoreGroup(
         "Log",
         listOf(
+            MoreItem("Journal", MoreDestination.Web("/journal")),
             MoreItem("Meals", MoreDestination.Web("/meals")),
             MoreItem("Reports", MoreDestination.Web("/reports")),
             MoreItem("Check-ins", MoreDestination.Web("/check-ins")),

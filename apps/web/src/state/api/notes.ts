@@ -1,9 +1,34 @@
-import type { EntityType, Note, NoteResponse, NotesResponse } from '@aurboda/api-spec'
+import type {
+  AddNoteBody,
+  AddNoteTemplateBody,
+  EntityType,
+  Note,
+  NoteAttachment,
+  NoteAttachmentResponse,
+  NoteResponse,
+  NoteRevision,
+  NoteRevisionsResponse,
+  NotesResponse,
+  NotesSearchResponse,
+  NoteTemplate,
+  NoteTemplateResponse,
+  NoteTemplatesResponse,
+  UpdateNoteBody,
+  UpdateNoteTemplateBody,
+} from '@aurboda/api-spec'
 
 import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import {
+  conflictFromError,
+  type EntrySaveResult,
+  type JournalQuery,
+  journalSearchParams,
+} from './journal-params'
+
+export * from './journal-params'
 
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
@@ -98,4 +123,161 @@ export const updateComment = async (
 /** Deleting a thread root deletes its replies too. */
 export const deleteComment = async (id: string): Promise<void> => {
   await axios.delete(`${API_URL}/notes/${id}`, { headers: authHeaders() })
+}
+
+export const searchJournal = async (query: JournalQuery): Promise<NotesSearchResponse> => {
+  const response = await axios.get<NotesSearchResponse>(`${API_URL}/notes/search`, {
+    headers: authHeaders(),
+    params: journalSearchParams(query),
+  })
+  return response.data
+}
+
+export const fetchNote = async (id: string): Promise<Note> => {
+  const response = await axios.get<NoteResponse>(`${API_URL}/notes/${encodeURIComponent(id)}`, {
+    headers: authHeaders(),
+  })
+  return requireNote(response.data.data)
+}
+
+export const createJournalEntry = async (body: AddNoteBody): Promise<Note> => {
+  const response = await axios.post<NoteResponse>(`${API_URL}/notes`, body, { headers: authHeaders() })
+  return requireNote(response.data.data)
+}
+
+export const updateJournalEntry = async (id: string, body: UpdateNoteBody): Promise<EntrySaveResult> => {
+  try {
+    const response = await axios.patch<NoteResponse>(`${API_URL}/notes/${encodeURIComponent(id)}`, body, {
+      headers: authHeaders(),
+    })
+    return { kind: 'saved', note: requireNote(response.data.data) }
+  } catch (error) {
+    const theirs = conflictFromError(error)
+    if (theirs) return { kind: 'conflict', note: theirs }
+    throw error
+  }
+}
+
+/** Recoverable for DELETED_NOTE_RETENTION_DAYS unless `purge`, which removes it for good at once. */
+export const deleteJournalEntry = async (id: string, options: { purge?: boolean } = {}): Promise<void> => {
+  await axios.delete(`${API_URL}/notes/${encodeURIComponent(id)}`, {
+    headers: authHeaders(),
+    params: options.purge ? { purge: 'true' } : {},
+  })
+}
+
+export const restoreJournalEntry = async (id: string): Promise<Note> => {
+  const response = await axios.post<NoteResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/restore`,
+    {},
+    { headers: authHeaders() },
+  )
+  return requireNote(response.data.data)
+}
+
+export const fetchDeletedEntries = async (): Promise<Note[]> => {
+  const response = await axios.get<NotesResponse>(`${API_URL}/notes/deleted`, { headers: authHeaders() })
+  return response.data.data ?? []
+}
+
+export const fetchNoteRevisions = async (id: string): Promise<NoteRevision[]> => {
+  const response = await axios.get<NoteRevisionsResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/revisions`,
+    { headers: authHeaders() },
+  )
+  return response.data.data ?? []
+}
+
+const attachmentsUrl = (noteId: string) => `${API_URL}/notes/${encodeURIComponent(noteId)}/attachments`
+
+export const attachmentContentUrl = (noteId: string, attachmentId: string, maxEdge?: '400' | '2000') =>
+  `${attachmentsUrl(noteId)}/${encodeURIComponent(attachmentId)}${maxEdge ? `?max_edge=${maxEdge}` : ''}`
+
+/** One file per request: the server numbers attachments in arrival order, which is page order. */
+export const uploadNoteAttachment = async (
+  noteId: string,
+  file: Blob,
+  name?: string,
+): Promise<NoteAttachment> => {
+  const formData = new FormData()
+  formData.append('file', file, name ?? (file instanceof File ? file.name : 'recording'))
+  const response = await axios.post<NoteAttachmentResponse>(attachmentsUrl(noteId), formData, {
+    headers: authHeaders(),
+  })
+  if (!response.data.data) throw new Error(response.data.error ?? 'Could not add the file')
+  return response.data.data
+}
+
+/** An `<img src>` cannot send the token, so the bytes are fetched here and shown through an object URL. */
+export const fetchNoteAttachmentBlob = async (
+  noteId: string,
+  attachmentId: string,
+  maxEdge?: '400' | '2000',
+): Promise<Blob> => {
+  const response = await axios.get<Blob>(attachmentContentUrl(noteId, attachmentId, maxEdge), {
+    headers: authHeaders(),
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export const deleteNoteAttachment = async (noteId: string, attachmentId: string): Promise<void> => {
+  await axios.delete(`${attachmentsUrl(noteId)}/${encodeURIComponent(attachmentId)}`, {
+    headers: authHeaders(),
+  })
+}
+
+export const restoreNoteAttachment = async (
+  noteId: string,
+  attachmentId: string,
+): Promise<NoteAttachment> => {
+  const response = await axios.post<NoteAttachmentResponse>(
+    `${attachmentsUrl(noteId)}/${encodeURIComponent(attachmentId)}/restore`,
+    {},
+    { headers: authHeaders() },
+  )
+  if (!response.data.data) throw new Error(response.data.error ?? 'Could not bring the file back')
+  return response.data.data
+}
+
+export const fetchNoteTemplates = async (options: { deleted?: boolean } = {}): Promise<NoteTemplate[]> => {
+  const response = await axios.get<NoteTemplatesResponse>(`${API_URL}/note-templates`, {
+    headers: authHeaders(),
+    params: options.deleted ? { deleted: 'true' } : {},
+  })
+  return response.data.data ?? []
+}
+
+const requireTemplate = (template: NoteTemplate | undefined): NoteTemplate => {
+  if (!template) throw new Error('Template request returned no data')
+  return template
+}
+
+export const addNoteTemplate = async (body: AddNoteTemplateBody): Promise<NoteTemplate> => {
+  const response = await axios.post<NoteTemplateResponse>(`${API_URL}/note-templates`, body, {
+    headers: authHeaders(),
+  })
+  return requireTemplate(response.data.data)
+}
+
+export const updateNoteTemplate = async (id: string, body: UpdateNoteTemplateBody): Promise<NoteTemplate> => {
+  const response = await axios.patch<NoteTemplateResponse>(
+    `${API_URL}/note-templates/${encodeURIComponent(id)}`,
+    body,
+    { headers: authHeaders() },
+  )
+  return requireTemplate(response.data.data)
+}
+
+export const deleteNoteTemplate = async (id: string): Promise<void> => {
+  await axios.delete(`${API_URL}/note-templates/${encodeURIComponent(id)}`, { headers: authHeaders() })
+}
+
+export const restoreNoteTemplate = async (id: string): Promise<NoteTemplate> => {
+  const response = await axios.post<NoteTemplateResponse>(
+    `${API_URL}/note-templates/${encodeURIComponent(id)}/restore`,
+    {},
+    { headers: authHeaders() },
+  )
+  return requireTemplate(response.data.data)
 }

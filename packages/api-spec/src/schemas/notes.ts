@@ -10,6 +10,7 @@ import {
   queryBooleanSchema,
   UUID_RE,
 } from './common.ts'
+import { noteAttachmentSchema } from './note-attachments.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 /**
@@ -141,6 +142,10 @@ export type NoteReply = z.infer<typeof noteReplySchema>
 
 export const noteSchema = z
   .object({
+    attachments: z.array(noteAttachmentSchema).optional().meta({
+      description:
+        'The pictures and recordings on a journal entry (a "time" or "day" thread root), in page order',
+    }),
     content: z.string().meta({ description: 'Note content (markdown)' }),
     created_at: iso8601DateTimeSchema.optional(),
     date: noteDateSchema.optional(),
@@ -419,9 +424,15 @@ export type NotesQuery = z.infer<typeof notesQuerySchema>
  * Notes query schema (by time range). Returns thread roots anchored in the
  * window, each with its replies nested, and the `day` entries for the window's local dates.
  */
+const needsTextSchema = queryBooleanSchema.optional().meta({
+  description:
+    'true keeps only the entries still to be written up: at least one picture and no text (blank or whitespace)',
+})
+
 export const notesQueryRangeSchema = z
   .object({
     from: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
+    needs_text: needsTextSchema,
     to: iso8601DateTimeSchema.meta({ description: 'End of the window (inclusive)' }),
     tz: ianaTimezoneSchema.optional().meta({
       description:
@@ -501,6 +512,7 @@ export const notesSearchQuerySchema = z
       .meta({
         description: `Max entries to return (1–${NOTES_SEARCH_MAX_LIMIT}, default ${NOTES_SEARCH_DEFAULT_LIMIT})`,
       }),
+    needs_text: needsTextSchema,
     on_this_day: dateOnlySchema.optional().meta({
       description:
         'A date (YYYY-MM-DD): only entries whose local date has the same month and day in an earlier year. On 28 February of a non-leap year, 29 February entries count too.',

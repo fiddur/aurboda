@@ -985,6 +985,52 @@ describe('Notes Integration Tests', () => {
       expect((await getNoteById(user, created.id))!.content).toBe('Second')
     })
 
+    test('a move worked out for a time entry that became a day entry meanwhile is a conflict', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Moving', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteGuarded(
+        user,
+        created.id,
+        { date: '2024-01-15', end_time: null, entity_type: 'day', start_time: null },
+        { revisions: REVISIONS },
+      )
+
+      const result = await updateNoteGuarded(
+        user,
+        created.id,
+        { start_time: new Date('2024-01-15T10:00:00Z') },
+        { expected_entity_type: 'time', revisions: REVISIONS },
+      )
+
+      expect(result.status).toBe('conflict')
+      expect(result.status === 'conflict' && result.note.entity_type).toBe('day')
+      const stored = (await getNoteById(user, created.id))!
+      expect(stored.entity_type).toBe('day')
+      expect(stored.date).toBe('2024-01-15')
+    })
+
+    test('concurrent kind switch and move: one applies, the other conflicts, never a shape error', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Race', new Date('2024-01-15T09:00:00Z'))
+
+      const results = await Promise.all([
+        updateNoteGuarded(
+          user,
+          created.id,
+          { date: '2024-01-15', end_time: null, entity_type: 'day', start_time: null },
+          { expected_entity_type: 'time', revisions: REVISIONS },
+        ),
+        updateNoteGuarded(
+          user,
+          created.id,
+          { start_time: new Date('2024-01-15T11:00:00Z') },
+          { expected_entity_type: 'time', revisions: REVISIONS },
+        ),
+      ])
+
+      expect(results.map((r) => r.status)).toContain('updated')
+    })
+
     test('a soft-deleted note is not found', async () => {
       const user = getTestUser()
       const created = await insertNote(user, 'time', null, 'Gone', new Date('2024-01-15T09:00:00Z'))

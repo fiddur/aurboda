@@ -35,11 +35,13 @@ import {
   notesSearchRootTypes,
   parseNotesSearchEntityTypes,
   parseNotesSearchTags,
+  type NoteAttachment,
 } from '@aurboda/api-spec'
 
 import {
   deleteNote as dbDeleteNote,
   getDeletedNotes as dbGetDeletedNotes,
+  getNoteAttachmentsForNoteIds as dbGetNoteAttachmentsForNoteIds,
   getNoteById as dbGetNoteById,
   getNoteRevisions as dbGetNoteRevisions,
   getNoteRoot as dbGetNoteRoot,
@@ -62,6 +64,7 @@ import {
   type NotesSearchCursor,
 } from '../db/index.ts'
 import { UUID_RE } from '../utils.ts'
+import { toNoteAttachmentData } from './note-attachments.ts'
 import { getUserTimezone } from './settings.ts'
 
 export interface AddNoteInput {
@@ -124,6 +127,8 @@ export interface NoteData {
   created_at: string
   updated_at: string
   replies?: NoteReplyData[]
+  /** On a journal entry (a `time` or `day` root): its live pictures and recordings, in page order. */
+  attachments?: NoteAttachment[]
 }
 
 export type NoteResultErrorCode = 'not_found' | 'invalid' | 'conflict'
@@ -152,6 +157,7 @@ export interface NotesSearchInput {
   tz?: string
   limit?: number
   cursor?: string
+  needs_text?: boolean
 }
 
 export type NotesSearchResult =
@@ -191,7 +197,12 @@ const notFound = (): NoteResult => ({ error: 'Note not found', errorCode: 'not_f
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-export const toNoteData = (note: DbNote, replies?: DbNote[]): NoteData => ({
+export const toNoteData = (
+  note: DbNote,
+  replies?: DbNote[],
+  attachments?: readonly NoteAttachment[],
+): NoteData => ({
+  attachments: attachments === undefined ? undefined : [...attachments],
   content: note.content,
   created_at: note.created_at.toISOString(),
   date: note.date,
@@ -211,15 +222,37 @@ export const toNoteData = (note: DbNote, replies?: DbNote[]): NoteData => ({
   updated_at: note.updated_at.toISOString(),
 })
 
-/** Attach each root's replies, oldest first, in one batched lookup. */
+/** The live attachments of the journal entries among `roots`, in one batched lookup. */
+const attachmentsFor = async (user: string, roots: DbNote[]): Promise<Map<string, NoteAttachment[]>> => {
+  const entryIds = roots.filter((n) => isFreeStandingNoteType(n.entity_type)).map((n) => n.id)
+  if (entryIds.length === 0) return new Map()
+  const records = await dbGetNoteAttachmentsForNoteIds(user, entryIds)
+  return new Map([...records].map(([id, list]) => [id, list.map(toNoteAttachmentData)]))
+}
+
+/** A journal entry's attachments ([] when it has none); undefined for any other comment. */
+const entryAttachments = (
+  note: DbNote,
+  byNote: Map<string, NoteAttachment[]>,
+): NoteAttachment[] | undefined =>
+  isFreeStandingNoteType(note.entity_type) ? (byNote.get(note.id) ?? []) : undefined
+
+/** Attach each root's replies, oldest first, and a journal entry's attachments, in batched lookups. */
 const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
   if (roots.length === 0) return []
-  const repliesByRoot = await dbGetRepliesForRootIds(
-    user,
-    roots.map((n) => n.id),
-  )
-  return roots.map((n) => toNoteData(n, repliesByRoot.get(n.id) ?? []))
+  const [repliesByRoot, attachments] = await Promise.all([
+    dbGetRepliesForRootIds(
+      user,
+      roots.map((n) => n.id),
+    ),
+    attachmentsFor(user, roots),
+  ])
+  return roots.map((n) => toNoteData(n, repliesByRoot.get(n.id) ?? [], entryAttachments(n, attachments)))
 }
+
+/** One root as answered by a write: with its attachments when it is a journal entry. */
+const withAttachments = async (user: string, note: DbNote): Promise<NoteData> =>
+  toNoteData(note, undefined, entryAttachments(note, await attachmentsFor(user, [note])))
 
 /** A real calendar date in YYYY-MM-DD, not just the shape of one. */
 export const isCalendarDate = (value: string): boolean => {
@@ -451,6 +484,7 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
       title: checked.title,
     },
     {
+      ...(Object.keys(anchor).length > 0 ? { expected_entity_type: existing.entity_type } : {}),
       expected_updated_at:
         fields.expected_updated_at === undefined ? undefined : new Date(fields.expected_updated_at),
       revisions: { limit: NOTE_REVISION_LIMIT, min_interval_minutes: NOTE_REVISION_MIN_INTERVAL_MINUTES },
@@ -459,13 +493,13 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
   if (result.status === 'not_found') return notFound()
   if (result.status === 'conflict') {
     return {
-      data: toNoteData(result.note),
+      data: await withAttachments(user, result.note),
       error: NOTE_CONFLICT_ERROR,
       errorCode: 'conflict',
       success: false,
     }
   }
-  return { data: toNoteData(result.note), success: true }
+  return { data: await withAttachments(user, result.note), success: true }
 }
 
 /**
@@ -495,11 +529,25 @@ export async function restoreNoteById(user: string, id: string): Promise<NoteRes
   return { data, success: true }
 }
 
+/** One live comment by id: a thread root with its replies (and an entry's attachments), or a reply on its own. */
+export async function getNoteForUser(user: string, id: string): Promise<NoteResult> {
+  if (!UUID_RE.test(id)) return notFound()
+  const note = await dbGetNoteById(user, id)
+  if (!note) return notFound()
+  if (note.entity_type === 'note') return { data: toNoteData(note), success: true }
+  const [data] = await withReplies(user, [note])
+  return { data, success: true }
+}
+
 /** What can still be restored, newest deletion first, each with `deleted_at` and `purge_at`. */
 export async function listDeletedNotes(user: string): Promise<NoteData[]> {
   const deleted = await dbGetDeletedNotes(user)
+  const attachments = await attachmentsFor(
+    user,
+    deleted.map(({ note }) => note),
+  )
   return deleted.map(({ note, replies }) =>
-    toNoteData(note, note.entity_type === 'note' ? undefined : replies),
+    toNoteData(note, note.entity_type === 'note' ? undefined : replies, entryAttachments(note, attachments)),
   )
 }
 
@@ -607,6 +655,7 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
     on_this_day: input.on_this_day === undefined ? undefined : onThisDayFilter(input.on_this_day),
     tags,
     text: input.q === undefined ? undefined : splitSearchText(input.q),
+    needs_text: input.needs_text,
     to: input.to,
     tz: input.tz ?? (await getUserTimezone(user)),
   })
@@ -631,16 +680,32 @@ const localDate = (instant: Date, tz: string): string =>
   Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
 
 /**
+ * The window's end is exclusive for its dates: a window ending exactly at a local midnight covers
+ * the day before it, not the day it opens.
+ */
+const lastInstantBefore = (from: Date, to: Date): Date =>
+  to.getTime() > from.getTime() ? new Date(to.getTime() - 1) : to
+
+/**
  * Every comment anchored in [from, to] — thread roots only, each with its
  * replies nested — and the `day` entries on the window's local dates in `tz`
  * (default the user's zone). This is what the Timeline's comment track reads.
  */
-export async function getNotesInRange(user: string, from: Date, to: Date, tz?: string): Promise<NoteData[]> {
+export async function getNotesInRange(
+  user: string,
+  from: Date,
+  to: Date,
+  tz?: string,
+  options: { needs_text?: boolean } = {},
+): Promise<NoteData[]> {
   const zone = tz ?? (await getUserTimezone(user))
-  const roots = await dbGetNotesForTimeRange(user, from, to, {
-    from: localDate(from, zone),
-    to: localDate(to, zone),
-  })
+  const roots = await dbGetNotesForTimeRange(
+    user,
+    from,
+    to,
+    { from: localDate(from, zone), to: localDate(lastInstantBefore(from, to), zone) },
+    options.needs_text ? { needs_text: true } : {},
+  )
   return withReplies(user, roots)
 }
 

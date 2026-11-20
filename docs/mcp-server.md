@@ -192,13 +192,33 @@ comments. See [Comments](features/comments.md) for the data model and
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `add_note`            | Add a comment in one of four shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), about a moment (`entity_type: "time"`, `start_time` required, `end_time` optional) or a day (`entity_type: "day"`, `date` required); optional `title` and `tags` |
 | `get_notes`           | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                                                                                |
-| `query_notes`         | Every comment anchored in a `from`/`to` time range, and the `day` comments on its dates -- threads nested, replies never listed separately                                                                                                                                                                         |
+| `get_note`            | One comment by id: a thread root with its replies and attachments, or a single reply                                                                                                                                                                                                                               |
+| `query_notes`         | Every comment anchored in a `from`/`to` time range, and the `day` comments on its dates (the window's end exclusive, `tz` an IANA name) -- threads nested, replies never listed separately                                                                                                                         |
 | `search_notes`        | Search and list thread roots newest first: full-text `q`, `tags`, `from`/`to` dates, `on_this_day`, `entity_types`, paged with `cursor`                                                                                                                                                                            |
 | `update_note`         | Change a comment's content, title and tags; times on a `time` comment, `date` on a `day` one (switching kinds); `expected_updated_at` refuses a stale edit; moving one moves its whole thread                                                                                                                      |
 | `delete_note`         | Delete a comment, restorable for 30 days; deleting a thread root deletes its replies too; `purge: true` removes it for good                                                                                                                                                                                        |
 | `restore_note`        | Restore a deleted comment with the replies deleted with it                                                                                                                                                                                                                                                         |
 | `list_deleted_notes`  | The deleted comments that can still be restored, with `deleted_at` and `purge_at`                                                                                                                                                                                                                                  |
 | `list_note_revisions` | A comment's earlier texts, newest first                                                                                                                                                                                                                                                                            |
+
+Pictures and recordings on journal entries, and entry templates:
+
+| Tool                            | What it does                                                                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit |
+| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                          |
+| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                     |
+| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                     |
+| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                    |
+| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                 |
+| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                       |
+| `update_note_template`          | Change a template's name or text                                                                                                                    |
+| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                        |
+| `restore_note_template`         | Restore a deleted template                                                                                                                          |
+
+To transcribe photographed diary pages: `search_notes` with `needs_text: true`, then
+`get_note_attachment` for each page in `position` order, then `update_note` with the
+text and `expected_updated_at`. The photos stay attached.
 
 ### Notification tools
 

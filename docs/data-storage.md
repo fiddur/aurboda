@@ -488,6 +488,47 @@ ones into `note_revisions`, in the same transaction as the write and the
 `expected_updated_at` check (`SELECT … FOR UPDATE`), unless the newest revision is
 less than 10 minutes old; only the latest 50 per note are kept.
 
+#### `note_attachments` - Pictures and Recordings on Journal Entries
+
+```sql
+CREATE TABLE note_attachments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,         -- 'image' | 'audio'
+    mime            TEXT NOT NULL,         -- image/webp, or the recording's container
+    bytes           BYTEA NOT NULL,
+    size            INTEGER NOT NULL,      -- stored bytes
+    width           INTEGER,               -- pictures only
+    height          INTEGER,
+    position        INTEGER NOT NULL,      -- page order: one more than the note's highest
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+);  -- index (note_id, position)
+```
+
+Only on `time` and `day` thread roots. The bytes live in the user's own database so
+the account export (`pg_dump`) and its restore carry them; every query except the one
+serving a file names its columns and leaves `bytes` out. An attachment is only read
+through its live note, so a soft-deleted note hides them and a purged one takes them
+along (`ON DELETE CASCADE`). A deleted attachment counts towards the account's 2 GB
+until the daily prune removes it, 30 days after its deletion, in the same pass as the
+notes (`pruneDeletedNotes`).
+
+#### `note_templates` - Journal Entry Templates
+
+```sql
+CREATE TABLE note_templates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT NOT NULL,
+    content         TEXT NOT NULL,         -- markdown
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+);
+```
+
+Deleting is recoverable for 30 days, pruned in the same pass as the notes.
+
 `getNotesForTimeRange` also leaves out a comment whose parent is soft-deleted
 (`activities`/`productivity` with `deleted_at` set) or missing (no row in
 `activities`, `productivity`, `meals` or `reports`), by a primary-key lookup per

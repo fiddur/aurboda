@@ -151,6 +151,27 @@ import {
   muscleRecoveryResponseSchema,
 } from './schemas/muscle-recovery.ts'
 import {
+  deleteNoteAttachmentQuerySchema,
+  deleteNoteAttachmentResponseSchema,
+  MAX_ATTACHMENTS_PER_NOTE,
+  NOTE_ATTACHMENT_MAX_BYTES,
+  NOTE_ATTACHMENTS_ACCOUNT_BYTES,
+  NOTE_IMAGE_MAX_EDGE,
+  noteAttachmentContentQuerySchema,
+  noteAttachmentResponseSchema,
+  noteAttachmentsQuerySchema,
+  noteAttachmentsResponseSchema,
+} from './schemas/note-attachments.ts'
+import {
+  addNoteTemplateBodySchema,
+  deleteNoteTemplateQuerySchema,
+  deleteNoteTemplateResponseSchema,
+  noteTemplateResponseSchema,
+  noteTemplatesQuerySchema,
+  noteTemplatesResponseSchema,
+  updateNoteTemplateBodySchema,
+} from './schemas/note-templates.ts'
+import {
   addNoteBodySchema,
   deleteNoteQuerySchema,
   deleteNoteResponseSchema,
@@ -2500,6 +2521,26 @@ const openApiDocument = createDocument({
       },
     },
     '/notes/{id}': {
+      get: {
+        description:
+          'One live comment: a thread root with its replies (oldest first) and, for a journal entry, its attachments; a reply on its own.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The comment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a comment',
+        tags: ['Notes'],
+      },
       delete: {
         description:
           'Delete a comment and, on a thread root, its replies. It can be restored for 30 days; `purge=true` removes it for good at once.',
@@ -2595,6 +2636,259 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List comment revisions',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments': {
+      get: {
+        description:
+          "A journal entry's live pictures and recordings in page order, or with `deleted=true` its deleted ones that can still be restored, with `deleted_at` and `purge_at`.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: noteAttachmentsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteAttachmentsResponseSchema } },
+            description: 'The attachments',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Entry not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List entry attachments',
+        tags: ['Notes'],
+      },
+      post: {
+        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account.`,
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              schema: z.object({
+                file: z.string().meta({ description: 'The picture or recording', format: 'binary' }),
+              }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: noteAttachmentResponseSchema } },
+            description: 'The stored attachment',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, not a picture or recording Aurboda keeps, or not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Entry not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments/{attachment_id}': {
+      delete: {
+        description:
+          'Delete an attachment. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+          query: deleteNoteAttachmentQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteAttachmentResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete an entry attachment',
+        tags: ['Notes'],
+      },
+      get: {
+        description:
+          "The attachment's bytes, with its stored type, to its owner only. `max_edge` downscales a picture (WebP). A deleted attachment, or one on a deleted entry, is a 404. Cached privately for a year: an attachment's bytes never change.",
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+          query: noteAttachmentContentQuerySchema,
+        },
+        responses: {
+          200: {
+            content: {
+              'audio/*': { schema: z.string().meta({ format: 'binary' }) },
+              'image/webp': { schema: z.string().meta({ format: 'binary' }) },
+            },
+            description: 'The picture or recording',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid max_edge',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments/{attachment_id}/restore': {
+      post: {
+        description: `Restore a deleted attachment. A 409 when the entry already holds ${MAX_ATTACHMENTS_PER_NOTE}.`,
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteAttachmentResponseSchema } },
+            description: 'The restored attachment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry holds as many attachments as it may',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates': {
+      get: {
+        description:
+          'The journal entry templates by name, or with `deleted=true` the deleted ones that can still be restored, with `deleted_at` and `purge_at`.',
+        requestParams: { query: noteTemplatesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplatesResponseSchema } },
+            description: 'The templates',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List entry templates',
+        tags: ['Notes'],
+      },
+      post: {
+        description: 'Add a journal entry template: a name and the markdown text a new entry starts from.',
+        requestBody: { content: { 'application/json': { schema: addNoteTemplateBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The new template',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add an entry template',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates/{id}': {
+      delete: {
+        description:
+          'Delete a template. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+          query: deleteNoteTemplateQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteTemplateResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete an entry template',
+        tags: ['Notes'],
+      },
+      patch: {
+        description: "Change a template's name or text.",
+        requestBody: { content: { 'application/json': { schema: updateNoteTemplateBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The template after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update an entry template',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates/{id}/restore': {
+      post: {
+        description: 'Restore a deleted template. A template that is not deleted is answered as it is.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The restored template',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore an entry template',
         tags: ['Notes'],
       },
     },

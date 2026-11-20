@@ -1,6 +1,7 @@
 import {
   addNoteBodySchema,
   DELETED_NOTE_RETENTION_DAYS,
+  isKnownTimezone,
   notesQueryRangeSchema,
   notesQuerySchema,
   notesSearchQuerySchema,
@@ -12,6 +13,7 @@ import { z } from 'zod'
 import {
   addNote,
   deleteNoteById,
+  getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
@@ -58,11 +60,24 @@ export const registerNoteTools = (server: McpServer, user: string) => {
   )
 
   server.tool(
+    'get_note',
+    'Get one comment or journal entry by its ID: a thread root comes with its replies (oldest first) and, for a journal entry, its pictures and recordings; a reply comes on its own.',
+    { id: noteIdSchema('get'), tz: tzSchema },
+    async ({ id, tz }) => {
+      if (!isKnownTimezone(tz)) return errorResponse(`Not an IANA timezone: ${tz}`)
+      const result = await getNoteForUser(user, id)
+      if (!result.success) return errorResponse(result.error ?? 'Note not found')
+      return tzJsonResponse(result, tz)
+    },
+  )
+
+  server.tool(
     'query_notes',
     'List every comment anchored in a time range (threads nested, replies not listed separately). Covers comments on entities, which inherit the entity\'s times, free-standing "time" comments about a moment, and "day" journal entries whose date is one of the range\'s local dates in tz. To search or page through the journal, use search_notes.',
     { ...notesQueryRangeSchema.shape, tz: tzSchema },
-    async ({ from, to, tz }) => {
-      const notes = await getNotesInRange(user, new Date(from), new Date(to), tz)
+    async ({ from, to, tz, needs_text }) => {
+      if (!isKnownTimezone(tz)) return errorResponse(`Not an IANA timezone: ${tz}`)
+      const notes = await getNotesInRange(user, new Date(from), new Date(to), tz, { needs_text })
       return tzJsonResponse({ data: notes, success: true }, tz)
     },
   )

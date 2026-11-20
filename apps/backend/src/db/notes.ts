@@ -143,6 +143,14 @@ const saveRevisionIn = async (tx: Queryable, previous: Note, policy: NoteRevisio
   )
 }
 
+const isStale = (
+  existing: Note,
+  expected: { expected_updated_at?: Date; expected_entity_type?: EntityType },
+): boolean =>
+  (expected.expected_updated_at !== undefined &&
+    expected.expected_updated_at.getTime() !== existing.updated_at.getTime()) ||
+  (expected.expected_entity_type !== undefined && expected.expected_entity_type !== existing.entity_type)
+
 /**
  * Update a live note in one transaction: the row is locked, `expected_updated_at` (when given)
  * is compared with the stored `updated_at` to the millisecond, the previous text is kept as a
@@ -153,7 +161,16 @@ export const updateNoteGuarded = async (
   user: string,
   id: string,
   fields: NoteFieldUpdates,
-  options: { expected_updated_at?: Date; revisions: NoteRevisionPolicy },
+  options: {
+    expected_updated_at?: Date
+    /**
+     * The kind the anchor change was worked out for: when the locked row has become another kind
+     * since (a concurrent switch between `time` and `day`), the change is a conflict, not a shape
+     * violation.
+     */
+    expected_entity_type?: EntityType
+    revisions: NoteRevisionPolicy
+  },
 ): Promise<GuardedNoteUpdate> =>
   withUserTransaction(user, async (tx) => {
     const locked = await query(
@@ -164,12 +181,7 @@ export const updateNoteGuarded = async (
     if (locked.rows.length === 0) return { status: 'not_found' }
     const existing = mapNoteRow(locked.rows[0])
 
-    if (
-      options.expected_updated_at !== undefined &&
-      options.expected_updated_at.getTime() !== existing.updated_at.getTime()
-    ) {
-      return { note: existing, status: 'conflict' }
-    }
+    if (isStale(existing, options)) return { note: existing, status: 'conflict' }
 
     const contentChanged = fields.content !== undefined && fields.content !== existing.content
     const titleChanged = fields.title !== undefined && (fields.title ?? undefined) !== existing.title
@@ -293,6 +305,11 @@ const PARENT_IS_LIVE = `CASE n.entity_type
        ELSE TRUE
      END`
 
+/** An entry still to be written up: a live picture on it and no text yet. For the alias `n`. */
+const NEEDS_TEXT = `(n.content ~ '^\\s*$' AND EXISTS (
+       SELECT 1 FROM note_attachments a
+        WHERE a.note_id = n.id AND a.kind = 'image' AND a.deleted_at IS NULL))`
+
 /** The CASE guards the uuid cast, since Postgres does not short-circuit a WHERE. */
 const parentIdColumn = (uuidParam: string): string =>
   `CASE WHEN n.entity_id ~* ${uuidParam} THEN n.entity_id::uuid END AS parent_id`
@@ -314,6 +331,7 @@ export const getNotesForTimeRange = async (
   start: Date,
   end: Date,
   days?: LocalDateRange,
+  options: { needs_text?: boolean } = {},
 ): Promise<Note[]> => {
   const result = await query(
     user,
@@ -322,6 +340,7 @@ export const getNotesForTimeRange = async (
        FROM notes n
        WHERE n.entity_type <> 'note'
          AND n.deleted_at IS NULL
+         ${options.needs_text ? `AND ${NEEDS_TEXT}` : ''}
          AND ((n.start_time IS NOT NULL
                AND ((n.end_time IS NOT NULL AND n.start_time <= $2 AND n.end_time >= $1)
                     OR (n.end_time IS NULL AND n.start_time >= $1 AND n.start_time <= $2)))
@@ -357,6 +376,8 @@ export interface NotesSearchParams {
   /** An earlier year than this, on one of these MM-DD days. */
   on_this_day?: { before_year: number; month_days: string[] }
   cursor?: NotesSearchCursor
+  /** Only entries with a live picture and no text. */
+  needs_text?: boolean
 }
 
 export interface NotesSearchPage {
@@ -398,6 +419,7 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
   if (params.tags && params.tags.length > 0) {
     conditions.push(`(n.tags || n.hashtags) @> ${param(params.tags)}::text[]`)
   }
+  if (params.needs_text) conditions.push(NEEDS_TEXT)
   if (params.from) conditions.push(`${localDay} >= ${param(params.from)}::date`)
   if (params.to) conditions.push(`${localDay} <= ${param(params.to)}::date`)
   if (params.on_this_day) {
@@ -556,8 +578,8 @@ export const getDeletedNotes = async (user: string): Promise<DeletedNote[]> => {
 }
 
 /**
- * Remove for good the notes deleted more than `retentionDays` ago, and the replies of the roots
- * it removes. Returns how many notes were removed.
+ * Remove for good the notes deleted more than `retentionDays` ago, the replies of the roots it
+ * removes, and the attachments and templates deleted as long ago. Returns how many rows were removed.
  */
 export const pruneDeletedNotes = async (user: string, retentionDays: number): Promise<number> =>
   withUserTransaction(user, async (tx) => {
@@ -570,7 +592,19 @@ export const pruneDeletedNotes = async (user: string, retentionDays: number): Pr
     const replies = rootIds.length
       ? await query(tx, `DELETE FROM notes WHERE entity_type = 'note' AND entity_id = ANY($1)`, [rootIds])
       : { rowCount: 0 }
-    return gone.rows.length + (replies.rowCount ?? 0)
+    const attachments = await query(
+      tx,
+      `DELETE FROM note_attachments WHERE deleted_at < NOW() - make_interval(days => $1::int)`,
+      [retentionDays],
+    )
+    const templates = await query(
+      tx,
+      `DELETE FROM note_templates WHERE deleted_at < NOW() - make_interval(days => $1::int)`,
+      [retentionDays],
+    )
+    return (
+      gone.rows.length + (replies.rowCount ?? 0) + (attachments.rowCount ?? 0) + (templates.rowCount ?? 0)
+    )
   })
 
 /** There is no FK between a reply and its root, so removing roots must remove their replies by hand. */
