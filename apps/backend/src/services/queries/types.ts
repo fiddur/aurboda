@@ -1,5 +1,6 @@
 import type {
   ActivityComputedMetrics,
+  ActivityPerson,
   DataSource,
   FlaggedExclusion,
   PlaceSource,
@@ -320,6 +321,8 @@ export interface ActivityResult extends ActivityComputedMetrics {
   data?: Record<string, unknown>
   comments: CommentSummary[]
   override_target_ids?: string[]
+  /** Only when the caller asked for them: shared views never carry an activity's people. */
+  people?: ActivityPerson[]
 }
 
 /**

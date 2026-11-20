@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { addressingFor, AS_PUBLIC, feedPostContent, formatActivityWindow } from './object.ts'
+import { addressingFor, AS_PUBLIC, feedPostContent, formatActivityWindow, mentionsLine } from './object.ts'
 
 describe('addressingFor', () => {
   const followers = 'https://aurboda.net/u/fredrik/followers'
@@ -40,6 +40,29 @@ describe('formatActivityWindow', () => {
 })
 
 describe('feedPostContent', () => {
+  test('mentions read "with @handle" after the message, each a mention link', () => {
+    const { content } = feedPostContent('Run', 'running', [], {
+      mentions: [{ actor_uri: 'https://a.example/users/anna', handle: '@anna@a.example' }],
+      message: 'Lovely',
+    })
+    expect(content).toBe(
+      '<p><strong>Run</strong></p><p>Lovely</p><p>with <span class="h-card"><a href="https://a.example/users/anna" class="u-url mention">@anna@a.example</a></span></p>',
+    )
+  })
+
+  test('several mentions are joined, and an empty list adds nothing', () => {
+    const link = (n: string) =>
+      `<span class="h-card"><a href="https://a.example/users/${n}" class="u-url mention">@${n}@a.example</a></span>`
+    const mention = (n: string) => ({ actor_uri: `https://a.example/users/${n}`, handle: `@${n}@a.example` })
+    expect(mentionsLine([mention('a'), mention('b')])).toBe(`<p>with ${link('a')} and ${link('b')}</p>`)
+    expect(mentionsLine([mention('a'), mention('b'), mention('c')])).toBe(
+      `<p>with ${link('a')}, ${link('b')} and ${link('c')}</p>`,
+    )
+    expect(feedPostContent('Run', 'running', [], { mentions: [] }).content).toBe(
+      '<p><strong>Run</strong></p>',
+    )
+  })
+
   test('renders a bold headline with one stat per line and a humanized duration', () => {
     const { content } = feedPostContent('Evening qigong', 'yoga', [
       { key: 'duration', label: 'Duration', unit: 'seconds', value: 642 },

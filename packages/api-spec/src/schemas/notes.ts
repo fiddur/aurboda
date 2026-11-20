@@ -31,11 +31,12 @@ export const entityTypes = [
   'note',
   'time',
   'day',
+  'person',
 ] as const
 
 export const entityTypeSchema = z.enum(entityTypes).meta({
   description:
-    'Entity type for polymorphic references. `note` marks a reply — `entity_id` is the id of the comment it replies to. `time` marks a comment anchored to a moment — no `entity_id`, and `start_time`/`end_time` are supplied by the user. `day` marks an entry pinned to a calendar date — no `entity_id`, no times, and a required `date`.',
+    'Entity type for polymorphic references. `person` is a note about a person (no times; read through the person). `note` marks a reply — `entity_id` is the id of the comment it replies to. `time` marks a comment anchored to a moment — no `entity_id`, and `start_time`/`end_time` are supplied by the user. `day` marks an entry pinned to a calendar date — no `entity_id`, no times, and a required `date`.',
   example: 'activity',
   id: 'EntityType',
 })
@@ -43,7 +44,14 @@ export const entityTypeSchema = z.enum(entityTypes).meta({
 export type EntityType = z.infer<typeof entityTypeSchema>
 
 /** Entity types whose `entity_id` is a UUID. A metric's is a composite key and a `time` note has none. */
-export const uuidEntityTypes: readonly EntityType[] = ['activity', 'productivity', 'report', 'meal', 'note']
+export const uuidEntityTypes: readonly EntityType[] = [
+  'activity',
+  'productivity',
+  'report',
+  'meal',
+  'note',
+  'person',
+]
 
 export const isValidEntityId = (entityType: EntityType, entityId: string): boolean =>
   !uuidEntityTypes.includes(entityType) || UUID_RE.test(entityId)
@@ -433,7 +441,10 @@ export const notesQueryRangeSchema = z
   .object({
     from: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
     needs_text: needsTextSchema,
-    to: iso8601DateTimeSchema.meta({ description: 'End of the window (inclusive)' }),
+    to: iso8601DateTimeSchema.meta({
+      description:
+        'End of the window: inclusive for comments anchored at a time, exclusive for the dates of `day` entries (a window ending at a local midnight does not include the day it opens)',
+    }),
     tz: ianaTimezoneSchema.optional().meta({
       description:
         "IANA timezone the window's local dates are read in, to pick the `day` entries it covers (default: the user's timezone)",
@@ -467,7 +478,8 @@ export const deleteNoteResponseSchema = baseResponseSchema.meta({ id: 'DeleteNot
 
 export type DeleteNoteResponse = z.infer<typeof deleteNoteResponseSchema>
 
-export const notesSearchRootTypes = entityTypes.filter((type) => type !== 'note')
+/** Notes about a person are read through the person, so a deleted person's stay out of sight. */
+export const notesSearchRootTypes = entityTypes.filter((type) => type !== 'note' && type !== 'person')
 
 export const NOTES_SEARCH_DEFAULT_ENTITY_TYPES: readonly EntityType[] = freeStandingNoteTypes
 

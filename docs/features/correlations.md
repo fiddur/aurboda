@@ -103,7 +103,7 @@ The page keeps its tab and every selection in the URL, so a view can be bookmark
 | `impact_days`                     | The selected row's own period: 180, 365, 730, 1825 or 3650 days; absent follows `days`               |
 | `metrics`                         | Shown metrics: `hrv`, `hr`, `stress` and up to 4 other metric names, e.g. `hr,stress,body_battery`   |
 | `item`, `item_type`               | The selected row: its name and kind (`activity_type`, `location`, `meal_sensitivity` with flag id)   |
-| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep`, `type`, `year` or `field:<path>`                  |
+| `breakdown`                       | Break down by: `duration`, `time_of_day`, `sleep`, `type`, `year`, `people` or `field:<path>`        |
 | `lengths`, `hours`                | Length limits in minutes (default `15,30,60`) and time-of-day limits in hours (default `0,6,12,18`)  |
 | `filter`                          | Session filters, e.g. `duration:15-30,30-60;sleep:none`; each key URL-encoded                        |
 | `breakdown_metric`                | The metric the breakdown chart draws (`hrv`, `hr`, `stress` or a metric name); default stress        |
@@ -210,3 +210,18 @@ Different categories sample HRV from different time windows:
 - The Pearson correlation coefficient requires at least 3 data points and only measures linear relationships. Non-linear associations won't be captured.
 - Correlation does not imply causation. A strong correlation between two events might be caused by a third, unmeasured factor.
 - Auto-sync is triggered in the background (fire-and-forget) — it never blocks correlation computation, so the analysis returns from existing data immediately. Newly synced data lands on the next request, so the first load after a stale period may reflect slightly out-of-date data.
+
+## Time with people
+
+The [people](people.md) your activities were with can be analysed too, and nothing about them
+leaves your account.
+
+**In Explore**, the **time with people** selector is the minutes per day of your activities with
+anyone, or with one person. Overlapping activities count once, and every day is known (a day with
+nobody is 0). "Do I sleep better on days I spend time with Anna?" is trigger **time with people →
+Anna**, outcome **metric → sleep_score**, lag 1. An article cannot use this selector: published,
+it would name the people you spend time with.
+
+**In Context**, an activity's sessions can be broken down and filtered **With** a person: a group
+per person, by name, and "No one". A session with two people is in both of their groups. The
+dimension is offered once at least one session in the period has a person.

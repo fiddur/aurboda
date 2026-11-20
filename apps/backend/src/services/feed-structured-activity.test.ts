@@ -67,6 +67,18 @@ describe('assembleStructuredActivity', () => {
     expect(assembleStructuredActivity(activity, [], [], null, [], [])).not.toHaveProperty('exercises')
   })
 
+  test('never carries who the activity was with', () => {
+    const activity = {
+      activity_type: 'running',
+      people: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Secret Friend' }],
+      start_time: start,
+      title: 'Run',
+    }
+    const structured = assembleStructuredActivity(activity, [], [], 'Lovely')
+    expect(structured).not.toHaveProperty('people')
+    expect(JSON.stringify(structured)).not.toContain('Secret Friend')
+  })
+
   test('omits the optional fields when absent', () => {
     const structured = assembleStructuredActivity({ activity_type: 'yoga', start_time: start }, [], [])
     expect(structured).toEqual({

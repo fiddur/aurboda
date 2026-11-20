@@ -6,6 +6,7 @@ import type {
   FeedPostKind,
   FeedPostVisibility,
   FeedVisibility,
+  PostMention,
 } from '@aurboda/api-spec'
 
 /**
@@ -57,6 +58,8 @@ export interface FeedPostRecord {
   /** The object id of the challenge whose thread this post is in; null for most posts. */
   challenge_uri: string | null
   tags: string[]
+  /** The accounts an activity share mentions (absent in hand-built records: none). */
+  mentions?: PostMention[]
   /** Unguessable capability token for `followers`-only image URLs (see schema). */
   image_token: string
   created_at: Date
@@ -78,6 +81,8 @@ export interface FeedPostInput {
   autoshare_rule_id?: string | null
   /** Normalised hashtags; omitted stores none. */
   tags?: string[]
+  /** The accounts the share mentions; omitted stores none (an auto-share never mentions anyone). */
+  mentions?: PostMention[]
 }
 
 /** Input for creating an `article` post (no activity anchor / shared metrics). */
@@ -150,10 +155,11 @@ export interface FeedPostPatch {
   /** Replacement personal message; `null` clears it, `undefined` leaves it unchanged. */
   message?: string | null
   tags?: string[]
+  mentions?: PostMention[]
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, challenge_uri, tags, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, challenge_uri, tags, mentions, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -177,6 +183,7 @@ interface FeedPostRow {
   autoshare_rule_id: string | null
   challenge_uri: string | null
   tags: string[]
+  mentions: PostMention[]
   image_token: string
   created_at: Date
   updated_at: Date
@@ -203,10 +210,10 @@ const activityPostParams = (input: FeedPostInput): unknown[] => [
 export const createFeedPost = async (user: string, input: FeedPostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
-    `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS})
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS}, mentions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING ${FEED_POST_COLUMNS}`,
-    activityPostParams(input),
+    [...activityPostParams(input), JSON.stringify(input.mentions ?? [])],
   )
   return mapFeedPost(result.rows[0])
 }
@@ -537,6 +544,7 @@ export const updateFeedPost = async (
   if (patch.article !== undefined) set('article', JSON.stringify(patch.article))
   if (patch.message !== undefined) set('message', patch.message)
   if (patch.tags !== undefined) set('tags', patch.tags)
+  if (patch.mentions !== undefined) set('mentions', JSON.stringify(patch.mentions))
 
   if (sets.length === 0) return getFeedPostById(user, id)
 

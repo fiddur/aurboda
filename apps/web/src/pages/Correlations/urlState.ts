@@ -111,6 +111,7 @@ const SELECTOR_KINDS: readonly CorrelationSelector['kind'][] = [
   'productivity_category',
   'productivity_app',
   'sensitivity',
+  'people',
 ]
 
 const selectorValue = (selector: CorrelationSelector): string => {
@@ -121,6 +122,8 @@ const selectorValue = (selector: CorrelationSelector): string => {
       return selector.nutrient
     case 'sensitivity':
       return selector.flag
+    case 'people':
+      return selector.person_id ?? ''
     default:
       return selector.pattern
   }
@@ -143,15 +146,21 @@ export const decodeSelector = (raw: string): CorrelationSelector | null => {
         ? { kind, nutrient: value }
         : kind === 'sensitivity'
           ? { flag: value, kind }
-          : { kind, pattern: value }
+          : kind === 'people'
+            ? { kind, ...(value ? { person_id: value } : {}) }
+            : { kind, pattern: value }
   const parsed = selectorSchema.safeParse(candidate)
   return parsed.success ? parsed.data : null
 }
 
 /** Whether a URL-given Explore form is complete enough to run on load. */
 export const isExploreRunnable = (state: ExploreState): boolean =>
-  selectorValue(state.trigger) !== '' &&
-  (state.mode === 'event' ? state.outcomeValue !== '' : selectorValue(state.outcome) !== '')
+  isSelectorComplete(state.trigger) &&
+  (state.mode === 'event' ? state.outcomeValue !== '' : isSelectorComplete(state.outcome))
+
+/** A people selector without a person is the time with anyone; every other kind needs its value. */
+const isSelectorComplete = (selector: CorrelationSelector): boolean =>
+  selector.kind === 'people' || selectorValue(selector) !== ''
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 

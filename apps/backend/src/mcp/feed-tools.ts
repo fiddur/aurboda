@@ -99,6 +99,7 @@ import {
 } from '../services/feed.ts'
 import { serializeFollower } from '../services/followers.ts'
 import { serializeFollowedTag, serializeFollowing, setFollowedTagNotify } from '../services/following.ts'
+import { resolveEditedPostMentions, resolvePostMentions } from '../services/post-mentions.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -194,11 +195,13 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'share_activity',
-    'Publish an activity to your feed. `included_metrics` are the scalar summaries shared; `series_metrics` is a SEPARATE, explicit opt-in that also exposes those metrics on the public read-only series endpoint. Both default to empty (privacy-conservative) — a high-resolution series is far more revealing than an average, so only opt in deliberately. The post gets hashtags (federated, clickable on Mastodon): your default tags plus the activity type (e.g. `#aurboda #running`) unless `tags` replaces them; `#tags` typed in the message are always added.',
+    'Publish an activity to your feed. `included_metrics` are the scalar summaries shared; `series_metrics` is a SEPARATE, explicit opt-in that also exposes those metrics on the public read-only series endpoint. Both default to empty (privacy-conservative) — a high-resolution series is far more revealing than an average, so only opt in deliberately. The post gets hashtags (federated, clickable on Mastodon): your default tags plus the activity type (e.g. `#aurboda #running`) unless `tags` replaces them; `#tags` typed in the message are always added. `mention_people` (person ids, off unless given) mentions people the activity was with who have a fediverse handle: the post tags and addresses their accounts and reads "with @handle"; nothing else about any person is published.',
     { activity_id: z.string().uuid().describe('The activity to share'), ...shareActivityBodySchema.shape },
     async ({ activity_id, ...body }) => {
       const activity = await getActivityById(user, activity_id)
       if (!activity) return errorResponse('Activity not found')
+      const mentioned = await resolvePostMentions(user, activity, body.mention_people ?? [])
+      if (!mentioned.ok) return errorResponse(mentioned.error)
       const message = normalizeFeedMessage(body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? activity_id,
@@ -206,6 +209,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
+        mentions: mentioned.mentions,
         message,
         series_metrics: body.series_metrics,
         tags: await resolvePostTags(user, {
@@ -229,6 +233,8 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
     async ({ activity_id, ...body }) => {
       const activity = await getActivityById(user, activity_id)
       if (!activity) return errorResponse('Activity not found')
+      const mentioned = await resolvePostMentions(user, activity, body.mention_people ?? [])
+      if (!mentioned.ok) return errorResponse(mentioned.error)
       return jsonResponse(
         await previewActivityShare(
           user,
@@ -236,6 +242,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
           {
             include_exercises: body.include_exercises,
             included_metrics: body.included_metrics,
+            mentions: mentioned.mentions,
             ...(body.message === undefined ? {} : { message: body.message }),
             ...(body.tags === undefined ? {} : { tags: body.tags }),
           },
@@ -247,7 +254,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'update_feed_post',
-    'Update a feed post (scalar metric selection, series opt-in, visibility, attachments, message, hashtags). Only provided fields change.',
+    'Update a feed post (scalar metric selection, series opt-in, visibility, attachments, message, hashtags, mentioned people of an activity share). Only provided fields change.',
     { id: z.string().uuid().describe('Feed post ID'), ...updateFeedPostBodySchema.shape },
     async ({ id, ...body }) => {
       const message = normalizeFeedMessage(body.message)
@@ -256,6 +263,11 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (threadVisibilityLocked(existing, body.visibility)) {
         return errorResponse(THREAD_VISIBILITY_LOCKED_MESSAGE)
       }
+      const mentioned =
+        body.mention_people === undefined
+          ? undefined
+          : await resolveEditedPostMentions(user, existing.activity_id, body.mention_people)
+      if (mentioned && !mentioned.ok) return errorResponse(mentioned.error)
       const retag = await loadEditedPostTags(user, id, { message, tags: body.tags })
       if (!retag.found) return errorResponse('Feed post not found')
       const record = await updateFeedPost(user, id, {
@@ -263,6 +275,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
+        mentions: mentioned?.mentions,
         message,
         series_metrics: body.series_metrics,
         tags: retag.tags,

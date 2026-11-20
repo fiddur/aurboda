@@ -31,6 +31,7 @@ vi.mock('../db', () => ({
   getNoteRoot: vi.fn(),
   getNotesForEntity: vi.fn(),
   getNotesForTimeRange: vi.fn(),
+  getPerson: vi.fn(),
   getProductivityById: vi.fn(),
   getReportById: vi.fn(),
   getRepliesForRootIds: vi.fn(async () => new Map()),
@@ -227,6 +228,39 @@ describe('addNote', () => {
       undefined,
       PLAIN,
     )
+  })
+
+  test('a note about a live person has no times', async () => {
+    const personId = randomUUID()
+    vi.mocked(db.getPerson).mockResolvedValue({ id: personId } as db.PersonRecord)
+    vi.mocked(db.insertNote).mockResolvedValue(makeNote({ entity_id: personId, entity_type: 'person' }))
+
+    const result = await addNote('user', {
+      content: 'Loves rhubarb',
+      entity_id: personId,
+      entity_type: 'person',
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.getPerson).toHaveBeenCalledWith('user', personId)
+    expect(db.insertNote).toHaveBeenCalledWith(
+      'user',
+      'person',
+      personId,
+      'Loves rhubarb',
+      undefined,
+      undefined,
+      PLAIN,
+    )
+  })
+
+  test('a note about an unknown or deleted person is refused as not found', async () => {
+    vi.mocked(db.getPerson).mockResolvedValue(null)
+
+    const result = await addNote('user', { content: 'x', entity_id: randomUUID(), entity_type: 'person' })
+
+    expect(result).toMatchObject({ errorCode: 'not_found', success: false })
+    expect(db.insertNote).not.toHaveBeenCalled()
   })
 
   test('returns note data including time fields', async () => {

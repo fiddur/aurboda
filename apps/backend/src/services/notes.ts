@@ -1,7 +1,7 @@
 /**
  * A comment is a row in `notes` and comes in four shapes:
  *  - **on an entity** — `entity_type` is one of the real entities (activity,
- *    productivity, metric, report, meal) and `entity_id` points at it. Its
+ *    productivity, metric, report, meal, person) and `entity_id` points at it. Its
  *    `start_time`/`end_time` are a cache of the parent's timing, rewritten by
  *    `syncNoteTimesForEntity` whenever the parent moves.
  *  - **on a moment** — `entity_type = 'time'`, no `entity_id`; `start_time`
@@ -56,6 +56,7 @@ import {
   updateNoteTimesForEntity as dbUpdateNoteTimesForEntity,
   getActivityById,
   getMealById,
+  getPerson,
   getProductivityById,
   getReportById,
   type EntityType,
@@ -319,7 +320,8 @@ async function getEntityTimes(
     }
     case 'time':
     case 'day':
-      // A moment's times are supplied by the caller; a day has none.
+    case 'person':
+      // A moment's times are supplied by the caller; a day and a person have none.
       return undefined
   }
 }
@@ -392,6 +394,10 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
       date: root.date,
     })
     return { data: toNoteData(reply), success: true }
+  }
+
+  if (input.entity_type === 'person' && !(await getPerson(user, input.entity_id))) {
+    return { error: 'Person not found', errorCode: 'not_found', success: false }
   }
 
   const times = await getEntityTimes(user, input.entity_type, input.entity_id)

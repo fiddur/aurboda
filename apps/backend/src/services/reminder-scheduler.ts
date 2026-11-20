@@ -11,6 +11,7 @@ export interface ReminderSchedulerDeps {
   listUsers: () => Promise<string[]>
   raiseDue: (user: string) => Promise<unknown>
   raiseDueCheckIns?: (user: string) => Promise<unknown>
+  raiseImportantDates?: (user: string) => Promise<unknown>
   onUserError?: (user: string, error: unknown, step: string) => unknown
 }
 
@@ -25,6 +26,7 @@ export const runDueReminders = async (deps: ReminderSchedulerDeps): Promise<numb
   const onUserError = deps.onUserError ?? auditUserError
   const steps: [string, (user: string) => Promise<unknown>][] = [['Reminder', deps.raiseDue]]
   if (deps.raiseDueCheckIns) steps.push(['Check-in', deps.raiseDueCheckIns])
+  if (deps.raiseImportantDates) steps.push(['Important date', deps.raiseImportantDates])
   const users = await deps.listUsers()
   for (const user of users) {
     for (const [step, run] of steps) {

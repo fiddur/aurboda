@@ -143,6 +143,8 @@ each with `id`, `kind` (`image` or `audio`), `mime`, `size`, `width`/`height`
   photographed page legible -- and is stored as WebP.
 - **A recording** is stored exactly as recorded, as WebM, Ogg, MP4/M4A, MP3 or WAV
   -- the type its first bytes say, not the client's. Anything else is a `400`.
+  Unlike a picture, it keeps whatever metadata the recorder wrote into the file (a
+  phone's voice memo can carry where it was made).
 - **Where the bytes live**: in `note_attachments` in your own database, so the
   account export carries them. See
   [Data Storage → `note_attachments`](../data-storage.md#note_attachments---pictures-and-recordings-on-journal-entries).

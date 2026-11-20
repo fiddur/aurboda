@@ -35,6 +35,7 @@ import {
   getMediaPlays,
 } from '../db/index.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
+import { activityPeopleOf } from '../services/activity-people.ts'
 import { getActivityRecords } from '../services/activity-records.ts'
 import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
@@ -211,7 +212,7 @@ Use cases:
 
   server.tool(
     'query_activities',
-    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
+    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, `people` (who it was with, when anyone) and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
@@ -242,6 +243,7 @@ Use cases:
         undefined,
         route_id,
         category,
+        { people: true },
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
     },
@@ -337,6 +339,8 @@ The 'metrics' parameter controls time-series payload size:
 - pass 'all' for every metric with data in the activity range
 - pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
 
+people lists who the activity was with, when anyone.
+
 Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
     {
       id: z.string().describe('Activity ID. Prefix with "merged:" to get the merged cross-source view.'),
@@ -360,7 +364,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [summary, fullDetail, features, segmentEfforts] = await Promise.all([
+      const [summary, fullDetail, features, segmentEfforts, people] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -372,6 +376,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
         ),
         firstActivityFeatures(user, trackOwnerIds),
         activitySegmentEfforts(user, trackOwnerIds),
+        activityPeopleOf(user, trackOwnerIds),
       ])
 
       return tzJsonResponse(
@@ -384,6 +389,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             end_time: activity.end_time?.toISOString(),
             features,
             id: activity.id,
+            people,
             segment_efforts: segmentEfforts,
             source: activity.source,
             start_time: activity.start_time.toISOString(),

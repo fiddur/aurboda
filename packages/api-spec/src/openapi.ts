@@ -224,6 +224,21 @@ import {
   outboundSyncAckResponseSchema,
   outboundSyncResponseSchema,
 } from './schemas/outbound-sync.ts'
+import {
+  addPersonBodySchema,
+  addPersonDateBodySchema,
+  deletePersonQuerySchema,
+  importantDatesQuerySchema,
+  importantDatesResponseSchema,
+  peopleQuerySchema,
+  peopleResponseSchema,
+  personDateResponseSchema,
+  personDatesResponseSchema,
+  personDetailResponseSchema,
+  personResponseSchema,
+  updatePersonBodySchema,
+  updatePersonDateBodySchema,
+} from './schemas/people.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import {
   accountPlanResponseSchema,
@@ -3262,6 +3277,251 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/people': {
+      get: {
+        description:
+          "The user's private profiles of people, by name, each with the fediverse account read at query time when it has a handle. `archived=true` includes archived people; `deleted=true` lists the deleted ones that can still be restored instead, with `deleted_at` and `purge_at`.",
+        requestParams: { query: peopleQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: peopleResponseSchema } },
+            description: 'The people',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List people',
+        tags: ['People'],
+      },
+      post: {
+        description:
+          'Add a private profile of someone. A `handle` (`@name@server`) is resolved the way a follow resolves one and stored as the actor URI; at most one live profile per actor.',
+        requestBody: { content: { 'application/json': { schema: addPersonBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The new person',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a handle that does not resolve',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another person already has this fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a person',
+        tags: ['People'],
+      },
+    },
+    '/people/dates': {
+      get: {
+        description:
+          "Every occurrence between `from` and `to` (at most 400 days apart; default today to 60 days on, in the user's time zone) of the dates and birthdays of the live, non-archived people, by date. 29 February falls on 28 February in other years.",
+        requestParams: { query: importantDatesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: importantDatesResponseSchema } },
+            description: 'The occurrences',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid or too long a window',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List important dates',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}': {
+      delete: {
+        description:
+          'Soft-delete a person: they, their dates, notes and activity links go out of sight and can be restored for 30 days, after which they are removed for good. `purge=true` removes it all at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }),
+          query: deletePersonQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a person',
+        tags: ['People'],
+      },
+      get: {
+        description: 'A person with their dates and the 20 latest activities they were with.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDetailResponseSchema } },
+            description: 'The person',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a person',
+        tags: ['People'],
+      },
+      patch: {
+        description: 'Change a person; only the given fields. `handle: null` clears the fediverse account.',
+        requestBody: { content: { 'application/json': { schema: updatePersonBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The person after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a handle that does not resolve',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another person already has this fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a person',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}/restore': {
+      post: {
+        description:
+          'Bring back a deleted person with their dates, notes and activity links. A live person is answered as they are.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The restored person',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another live person has the same fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a person',
+        tags: ['People'],
+      },
+    },
+    // No '/people/{id}/posts' here: its entries are timeline entries, whose structured payload the
+    // Kotlin generator cannot express (as the feed's own routes, which are not listed either).
+    '/people/{id}/dates': {
+      get: {
+        description: "The person's yearly dates, by month and day.",
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDatesResponseSchema } },
+            description: 'The dates',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a person's dates",
+        tags: ['People'],
+      },
+      post: {
+        description:
+          'A yearly date; `notify_days_before` raises an `important_date` notification that many days ahead of each occurrence, from 08:00 local.',
+        requestBody: { content: { 'application/json': { schema: addPersonDateBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDateResponseSchema } },
+            description: 'The new date',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a date to a person',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}/dates/{date_id}': {
+      delete: {
+        description: 'Delete a date for good.',
+        requestParams: {
+          path: z.object({
+            date_id: z.string().uuid().meta({ description: 'Date ID' }),
+            id: z.string().uuid().meta({ description: 'Person ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person or date not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Delete a person's date",
+        tags: ['People'],
+      },
+      patch: {
+        description:
+          'Change a date; only the given fields; `year` and `notify_days_before` take null to clear.',
+        requestBody: { content: { 'application/json': { schema: updatePersonDateBodySchema } } },
+        requestParams: {
+          path: z.object({
+            date_id: z.string().uuid().meta({ description: 'Date ID' }),
+            id: z.string().uuid().meta({ description: 'Person ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDateResponseSchema } },
+            description: 'The date after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or not a real date',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person or date not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Update a person's date",
+        tags: ['People'],
+      },
+    },
+
     '/sync/outbound': {
       get: {
         description:
@@ -4570,6 +4830,10 @@ const openApiDocument = createDocument({
       name: 'Check-ins',
     },
     { description: 'Recurring reminders delivered as notifications', name: 'Reminders' },
+    {
+      description: 'Private profiles of people, their important dates and who an activity was with',
+      name: 'People',
+    },
     { description: 'User settings and preferences', name: 'Settings' },
     {
       description: 'Data synchronization with external services',

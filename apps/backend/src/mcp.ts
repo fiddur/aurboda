@@ -81,6 +81,7 @@ import { registerNoteTemplateTools } from './mcp/note-template-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
+import { registerPeopleTools } from './mcp/people-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReminderTools } from './mcp/reminder-tools.ts'
@@ -101,6 +102,7 @@ import { registerTrendTools } from './mcp/trend-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { defaultPeopleDeps } from './services/people.ts'
 import { accountUploadLimiter } from './services/rate-limit.ts'
 import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
 import { recordUsage } from './services/usage-recorder.ts'
@@ -262,6 +264,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   })
   registerReminderTools(server, user)
   registerCheckInTools(server, user)
+  registerPeopleTools(server, user, defaultPeopleDeps(deps.followActions?.resolve))
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

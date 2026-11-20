@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../../db/index.ts'
 import { computeContinuous } from './continuous.ts'
-import { resolveSelector } from './selectors.ts'
+import { resolveSelector, unionMinutesPerDay } from './selectors.ts'
 
 vi.mock('../../db', () => ({
   getEffectiveActivitiesInRange: vi.fn(),
@@ -12,6 +12,7 @@ vi.mock('../../db', () => ({
   getNutritionCompleteDaysInRange: vi.fn(),
   getProductivity: vi.fn(),
   getTimeSeries: vi.fn(),
+  listActivityIntervalsWithPeople: vi.fn(),
 }))
 
 const start = new Date('2024-01-01T00:00:00Z')
@@ -26,6 +27,7 @@ beforeEach(() => {
   vi.mocked(db.getNutritionCompleteDaysInRange).mockResolvedValue([])
   vi.mocked(db.getProductivity).mockResolvedValue([])
   vi.mocked(db.getTimeSeries).mockResolvedValue([])
+  vi.mocked(db.listActivityIntervalsWithPeople).mockResolvedValue([])
 })
 
 describe('resolveSelector - tag', () => {
@@ -181,5 +183,87 @@ describe('sensitivity vs the next night', () => {
 
     expect(correlate(1)).toMatchObject({ mean_with: 60, mean_without: 80, n_with: 2, n_without: 2 })
     expect(correlate(0)).toMatchObject({ mean_with: 80, mean_without: 60 })
+  })
+})
+
+const interval = (from: string, to: string) => ({ end_time: new Date(to), start_time: new Date(from) })
+
+describe('unionMinutesPerDay', () => {
+  test('overlapping activities count their union once', () => {
+    const daily = unionMinutesPerDay(
+      [
+        interval('2024-01-02T10:00:00Z', '2024-01-02T11:00:00Z'),
+        interval('2024-01-02T10:30:00Z', '2024-01-02T12:00:00Z'),
+        interval('2024-01-02T10:40:00Z', '2024-01-02T10:50:00Z'),
+        interval('2024-01-03T08:00:00Z', '2024-01-03T08:15:00Z'),
+      ],
+      start,
+      end,
+    )
+    expect(Object.fromEntries(daily)).toEqual({ '2024-01-02': 120, '2024-01-03': 15 })
+  })
+
+  test('an activity over midnight is split between its days, and time outside the range is dropped', () => {
+    const daily = unionMinutesPerDay(
+      [
+        interval('2023-12-31T23:00:00Z', '2024-01-01T00:30:00Z'),
+        interval('2024-01-02T23:30:00Z', '2024-01-03T00:45:00Z'),
+        interval('2024-01-05T23:00:00Z', '2024-01-06T02:00:00Z'),
+      ],
+      start,
+      end,
+    )
+    expect(Object.fromEntries(daily)).toEqual({
+      '2024-01-01': 30,
+      '2024-01-02': 30,
+      '2024-01-03': 45,
+      '2024-01-05': 60,
+    })
+  })
+
+  test('an empty or inverted interval counts nothing', () => {
+    expect(
+      unionMinutesPerDay([interval('2024-01-02T10:00:00Z', '2024-01-02T10:00:00Z')], start, end).size,
+    ).toBe(0)
+  })
+})
+
+describe('resolveSelector - people', () => {
+  test('minutes per day with people, every day known', async () => {
+    vi.mocked(db.listActivityIntervalsWithPeople).mockResolvedValue([
+      interval('2024-01-02T10:00:00Z', '2024-01-02T11:30:00Z'),
+    ])
+    const resolved = await resolveSelector('user', { kind: 'people' }, start, end)
+    expect(db.listActivityIntervalsWithPeople).toHaveBeenCalledWith('user', start, end, undefined)
+    expect(Object.fromEntries(resolved.daily)).toEqual({ '2024-01-02': 90 })
+    expect(resolved.eventDays).toEqual(['2024-01-02'])
+    expect(resolved.knownDays).toHaveLength(5)
+  })
+
+  test('one person: asks for that person, and a threshold picks the event days', async () => {
+    const personId = '11111111-1111-4111-8111-111111111111'
+    vi.mocked(db.listActivityIntervalsWithPeople).mockResolvedValue([
+      interval('2024-01-02T10:00:00Z', '2024-01-02T10:20:00Z'),
+      interval('2024-01-03T10:00:00Z', '2024-01-03T12:00:00Z'),
+    ])
+    const resolved = await resolveSelector(
+      'user',
+      { kind: 'people', person_id: personId, threshold: { op: 'gte', value: 60 } },
+      start,
+      end,
+    )
+    expect(db.listActivityIntervalsWithPeople).toHaveBeenCalledWith('user', start, end, personId)
+    expect(resolved.eventDays).toEqual(['2024-01-03'])
+  })
+
+  test('a deleted or unknown person reads as no time on every known day', async () => {
+    const resolved = await resolveSelector(
+      'user',
+      { kind: 'people', person_id: '99999999-9999-4999-8999-999999999999' },
+      start,
+      end,
+    )
+    expect(resolved.daily.size).toBe(0)
+    expect(resolved.knownDays).toHaveLength(5)
   })
 })

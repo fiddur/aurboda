@@ -355,6 +355,11 @@ export const socialTables: Record<string, string> = {
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
     CREATE INDEX IF NOT EXISTS idx_feed_posts_tags ON feed_posts USING GIN (tags);
   `,
+  // The people an activity share mentions, as `[{ actor_uri, handle }]`: the actor and the handle
+  // snapshot naming its `Mention`. Never a person id or name: profiles stay private.
+  feed_posts_mentions_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS mentions JSONB NOT NULL DEFAULT '[]'::jsonb;
+  `,
   // Unpublished article drafts: private work in progress, kept out of feed_posts
   // so no feed, outbox, timeline or public listing can ever see one. Publishing
   // creates a feed_posts row and deletes the draft.

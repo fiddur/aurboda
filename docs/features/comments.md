@@ -20,6 +20,11 @@ Attach a comment to anything Aurboda stores: an **activity** (a run, a sleep
 session, a tag like "Sauna"), a **productivity** record, a **metric** data point,
 a **report** ([lab results](./lab-reports.md)), or a **meal**.
 
+A comment can also be about a [**person**](./people.md) (`entity_type: "person"`
+with the person's ID). A person has no time, so such a note has none either: it is
+not on the Timeline or in search, and is read through the person. A note about an
+unknown or deleted person is refused as not found.
+
 The comment inherits its parent's `start_time`/`end_time`, so it shows up
 wherever that stretch of time is shown. The times are a cache of the parent's --
 they are rewritten whenever the parent moves, and cannot be edited on their own.

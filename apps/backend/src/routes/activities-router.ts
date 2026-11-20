@@ -49,6 +49,7 @@ import {
 } from '../db/index.ts'
 import { httpError } from '../http-error.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
+import { activityPeopleOf } from '../services/activity-people.ts'
 import { parseFitBuffer } from '../services/fit-parser.ts'
 import {
   addActivity,
@@ -167,10 +168,11 @@ const buildMergedResponse = async (
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
   const sourceIds = [...new Set([activity.id!, ...commentLookupIds])]
-  const [route, features, segmentEfforts] = await Promise.all([
+  const [route, features, segmentEfforts, people] = await Promise.all([
     routeSummary(user, sourceIds),
     firstActivityFeatures(user, sourceIds),
     activitySegmentEfforts(user, sourceIds),
+    activityPeopleOf(user, [...sourceIds, ...(activity.override_target_ids ?? [])]),
   ])
 
   return {
@@ -184,6 +186,7 @@ const buildMergedResponse = async (
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
     override_target_ids: activity.override_target_ids,
+    people,
     route,
     segment_efforts: segmentEfforts,
     source: activity.source,
@@ -242,6 +245,7 @@ export const createActivitiesRouter = (
         deductionRuleId,
         routeId,
         category,
+        { people: true },
       )
       res.json({ data: activities, success: true })
     },
@@ -252,7 +256,16 @@ export const createActivitiesRouter = (
     authMiddleware,
     validateBody(addActivityBodySchema),
     async (req, res) => {
-      const { activity_type, start_time, end_time, title, notes, merge_span, data: bodyData } = req.body
+      const {
+        activity_type,
+        start_time,
+        end_time,
+        title,
+        notes,
+        merge_span,
+        people,
+        data: bodyData,
+      } = req.body
       const user = req.user!
 
       const startDate = new Date(start_time)
@@ -266,6 +279,7 @@ export const createActivitiesRouter = (
           end_time: endDate,
           merge_span,
           notes,
+          people,
           start_time: startDate,
           title,
         },
@@ -474,6 +488,7 @@ export const createActivitiesRouter = (
         notes,
         data: bodyData,
         override_target_ids,
+        people,
       } = req.body
       const user = req.user!
 
@@ -486,6 +501,7 @@ export const createActivitiesRouter = (
           end_time: end_time === null ? null : end_time ? new Date(end_time) : undefined,
           notes,
           override_target_ids,
+          people,
           start_time: start_time ? new Date(start_time) : undefined,
           title,
         },
@@ -541,6 +557,7 @@ export const createActivitiesRouter = (
     const trackOwnerIds = [realId, ...(activity.override_target_ids ?? [])]
     const features = activity.deleted_at ? undefined : await firstActivityFeatures(user, trackOwnerIds)
     const segmentEfforts = activity.deleted_at ? undefined : await activitySegmentEfforts(user, trackOwnerIds)
+    const people = await activityPeopleOf(user, trackOwnerIds)
 
     res.json({
       data: {
@@ -553,6 +570,7 @@ export const createActivitiesRouter = (
         features,
         id: activity.id,
         override_target_ids: activity.override_target_ids,
+        people,
         route,
         segment_efforts: segmentEfforts,
         source: activity.source,
@@ -580,7 +598,7 @@ export const createActivitiesRouter = (
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [activityMetrics, fullDetail, features, segmentEfforts] = await Promise.all([
+      const [activityMetrics, fullDetail, features, segmentEfforts, people] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -592,6 +610,7 @@ export const createActivitiesRouter = (
         ),
         firstActivityFeatures(user, trackOwnerIds),
         activitySegmentEfforts(user, trackOwnerIds),
+        activityPeopleOf(user, trackOwnerIds),
       ])
 
       res.json({
@@ -605,6 +624,7 @@ export const createActivitiesRouter = (
           features,
           id: activity.id,
           override_target_ids: activity.override_target_ids,
+          people,
           segment_efforts: segmentEfforts,
           source: activity.source,
           start_time: activity.start_time.toISOString(),

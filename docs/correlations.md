@@ -23,14 +23,29 @@ series, and the set of days where its status is _known_:
 | `nutrition`                                  | per-day meal totals (calories/protein/carbs/fat/fiber) | days with a meal **or** marked meal-log-complete |
 | `productivity_category` / `productivity_app` | productivity minutes matched by category/app           | every day in range                               |
 | `sensitivity` (`flag`: a flag id)            | meals per day carrying the sensitivity flag            | days with a meal **or** marked meal-log-complete |
+| `people` (`person_id` optional)              | minutes per day of activities with people              | every day in range (absence = 0 minutes)         |
 
 ¹ The daily average of an instantaneous-sample metric (heart rate, stress, body
 battery, respiration, SpO2) is time-weighted: per 5-minute bin, then across the
 day's bins (see [Time-weighted averages](data-storage.md#time-weighted-averages)).
 
 `GET /correlations/selectors` (MCP: `list_correlation_selectors`) lists the
-available metrics, tags, activity types, nutrients, productivity categories and
-sensitivity flags (`sensitivities`: value the flag id, label its name).
+available metrics, tags, activity types, nutrients, productivity categories,
+sensitivity flags (`sensitivities`: value the flag id, label its name) and
+people (`people`: first "Time with people" with value `""`, then one entry per
+live, non-archived [person](features/people.md) with a linked activity, value
+the person id).
+
+A `people` selector is the time spent with [people](features/people.md): the
+minutes per UTC day of the live activities with an end that have at least one
+live person linked, or, with `person_id`, that person. Overlapping activities
+count their union of time once, an activity over midnight is split between its
+days, and an activity without an end counts nothing. Every day is known (a day
+with nobody is 0). A deleted or unknown `person_id` answers as no time on every
+day, like an unknown flag. The axis reads "Time with people (min)", or "Time
+with <name> (min)" with the name resolved when drawn. An article refuses a
+`people` selector (a `400`; a draft refuses it too): published, it would name
+the people you spend time with.
 
 A `sensitivity` selector counts the meals carrying the flag, through their food
 items' flags (resolved live) or the meal's own. Its known days are exactly the
@@ -383,6 +398,13 @@ Dimensions:
   `activity_type` and `tag`.
 - **`year`**: the four-digit calendar year the session starts in, in `tz`
   (`2024`). Mostly useful with a long `period_days`.
+- **`people`**: who the session was with ([people](features/people.md) linked to
+  any of its activities). The key is the person id, labelled by the person's
+  current name; a session with nobody is `(none)` ("No one"). A session with
+  several people counts under each of them, as multi-value fields do. Listed only
+  for `activity_type` and `tag`, and with `include_dimensions` only when at
+  least one session has a person. People are read only when the dimension is
+  asked for (breakdown, filter or `include_dimensions`).
 - For `activity_type=meal_sensitivity` (meals carrying a sensitivity flag, each
   a point occurrence at the meal's time) only `time_of_day`, `sleep` and `year`
   are listed; a meal has no length and no data fields.
@@ -421,7 +443,8 @@ hrv_effect, stress_effect, metric_effects?, timeline }` over the kept
   `omitted_groups`.
 - `dimensions` (with `include_dimensions=true`): `duration`, `time_of_day`,
   `sleep`, `type` and `year` (these two only with at least two groups; a
-  request for them is still answered), then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
+  request for them is still answered), `people` (only when a session has a
+  person), then, for `activity_type=activity_type` when a type named `activity` has a data schema, each categorical
   scalar field and categorical list-item field. Each lists its groups with
   `occurrences` counted **before** filters, so the counts stay put while filters
   change: every bucket for duration and time of day, the non-empty groups

@@ -1,6 +1,6 @@
 import { type TimelineDailyMetric, timelineDailyMetrics, type UserSettingsResponse } from '@aurboda/api-spec'
 import { useSignalEffect } from '@preact/signals'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
 import { useLocation } from 'preact-iso'
@@ -9,9 +9,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { LegendCategory } from './legendCategories'
 import type { ChartItem, Orientation } from './types'
 
-import { updateUserSettings } from '../../state/api'
+import { fetchImportantDates, updateUserSettings } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
-import { type AllDayMarkerGroup, journalDayMarkers, layoutAllDayMarkers } from './allDayMarkers'
+import {
+  type AllDayMarkerGroup,
+  importantDateMarkers,
+  journalDayMarkers,
+  layoutAllDayMarkers,
+  markerGroupHref,
+} from './allDayMarkers'
 import { CommentPanel, type CommentPanelState } from './CommentPanel'
 import { ALL_DAY_GLYPH_SIZE, drawAllDayMarkers } from './drawAllDayMarkers'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
@@ -31,6 +37,7 @@ import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerti
 import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { formatTimelineTick } from './formatting'
+import { importantDatesWindow } from './importantDatesWindow'
 import { isMultiDaySpan, type RangePreset } from './rangePreset'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
@@ -226,9 +233,23 @@ export const Timeline = () => {
   const [commentPanel, setCommentPanel] = useState<CommentPanelState | null>(null)
 
   const commentItems = useMemo(() => chartItems.filter((i) => i.column === 'Comments'), [chartItems])
+  const datesWindow = importantDatesWindow(
+    fetchStart,
+    effectiveViewEnd > fetchEnd ? effectiveViewEnd : fetchEnd,
+  )
+  const importantDatesQuery = useQuery({
+    enabled: !hiddenCategories.has('important_dates'),
+    queryFn: () => fetchImportantDates(datesWindow),
+    queryKey: ['people', 'dates', datesWindow.from, datesWindow.to],
+    staleTime: 5 * 60_000,
+  })
+  const importantDates = importantDatesQuery.data?.dates
   const dayMarkers = useMemo(
-    () => (hiddenCategories.has('comments') ? [] : journalDayMarkers(commentNotes)),
-    [commentNotes, hiddenCategories],
+    () => [
+      ...(hiddenCategories.has('comments') ? [] : journalDayMarkers(commentNotes)),
+      ...(hiddenCategories.has('important_dates') ? [] : importantDateMarkers(importantDates ?? [])),
+    ],
+    [commentNotes, importantDates, hiddenCategories],
   )
   const showCommentsTrack = commentItems.length > 0 || dayMarkers.length > 0
 
@@ -236,10 +257,9 @@ export const Timeline = () => {
   const handleDayMarkerClick = useCallback(
     (group: AllDayMarkerGroup) => {
       const [first] = group.markers
-      if (group.markers.length > 1) {
-        route(`/journal?date=${encodeURIComponent(group.date)}`)
-      } else if (first?.onClick) first.onClick()
-      else if (first?.href) route(first.href)
+      if (group.markers.length === 1 && first?.onClick) return first.onClick()
+      const href = markerGroupHref(group)
+      if (href) route(href)
     },
     [route],
   )

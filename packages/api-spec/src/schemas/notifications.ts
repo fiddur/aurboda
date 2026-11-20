@@ -22,6 +22,7 @@ export const notificationTypes = [
   'garmin_key_expiring',
   'reminder',
   'check_in_due',
+  'important_date',
 ] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
@@ -140,6 +141,12 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
     description: 'A check-in you scheduled is due',
     group: 'reminders',
     label: 'Check-ins',
+  },
+  important_date: {
+    admin_only: false,
+    description: 'A birthday or another date you asked to be reminded of is coming up',
+    group: 'reminders',
+    label: 'Important dates',
   },
 }
 

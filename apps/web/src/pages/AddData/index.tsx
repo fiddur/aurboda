@@ -10,6 +10,7 @@ import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ListFieldEditor } from '../../components/ListFieldEditor'
 import { MetricPicker } from '../../components/MetricPicker'
 import { enumValueLabel, fieldLabel, listFields, scalarFields } from '../../components/sessions/sessionView'
+import { WithPicker } from '../../components/WithPicker'
 import {
   addActivity,
   addActivityTypeDefinition,
@@ -176,6 +177,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
   const [hasEndTime, setHasEndTime] = useState(true)
   const [notes, setNotes] = useState('')
   const [comment, setComment] = useState('')
+  const [people, setPeople] = useState<string[]>([])
   const [structuredData, setStructuredData] = useState<Record<string, string>>({})
   const [listData, setListData] = useState<Record<string, Record<string, unknown>[]>>({})
   const [success, setSuccess] = useState('')
@@ -210,6 +212,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
         ...(data ? { data } : {}),
         ...(hasEndTime ? { end_time: new Date(endTime).toISOString() } : {}),
         ...(notes ? { notes } : {}),
+        ...(people.length > 0 ? { people } : {}),
         start_time: new Date(startTime).toISOString(),
         ...(title ? { title } : {}),
       })
@@ -236,6 +239,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
       setTitle('')
       setNotes('')
       setComment('')
+      setPeople([])
       setStructuredData({})
       setListData({})
       setStartTime(nowLocal())
@@ -301,6 +305,11 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
           />
         </div>
       )}
+
+      <div class="form-field">
+        <label for="add-activity-with">With</label>
+        <WithPicker id="add-activity-with" value={people} onChange={setPeople} />
+      </div>
 
       {dataFields.map((field) => (
         <SchemaFieldInput

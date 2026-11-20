@@ -62,6 +62,7 @@ import {
   openLiveChannel,
   pruneDeductionRuleRuns,
   pruneDeletedNotes,
+  pruneDeletedPeople,
   pruneSyncedOutboundSync,
   purgeDeletedCheckIns,
   rematerializeSupersededOnce,
@@ -211,6 +212,7 @@ import {
   type FollowActions,
   followActor,
   followTag,
+  resolveActorHandle,
   unfollowActor,
   unfollowTag,
 } from './services/following.ts'
@@ -240,6 +242,7 @@ import {
 import { allowHttpIssuer, createDiscoveryCache, createOidcClient } from './services/oidc-client.ts'
 import { createOidcProviderAdmin, oidcRedirectUri } from './services/oidc-providers.ts'
 import { createOidcService } from './services/oidc.ts'
+import { defaultPeopleDeps, raiseDueImportantDates } from './services/people.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { createPublicTagModeration } from './services/public-tag-moderation.ts'
@@ -1192,6 +1195,7 @@ const main = async () => {
         listUsers: () => listUserNames(userDb),
         raiseDue: (user) => raiseDueReminders(reminderDeps, user),
         raiseDueCheckIns: (user) => raiseDueCheckIns(checkInDeps, user),
+        raiseImportantDates: (user) => raiseDueImportantDates(defaultPeopleDeps(), user),
       })
     } catch (error) {
       console.error('Failed to initialize reminder scheduler:', error)
@@ -1250,6 +1254,7 @@ const main = async () => {
         pruneDeletedNotes,
         pruneDeletedCheckIns: (user, retentionDays) =>
           purgeDeletedCheckIns(user, new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)),
+        pruneDeletedPeople,
         pruneSyncedOutboundSync,
         pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })
@@ -1285,6 +1290,7 @@ const main = async () => {
     follow: (user, handle) => followActor(feedDeps, user, handle),
     followTag: (user, tag) => followTag(feedDeps, user, tag),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+    resolve: (user, handle) => resolveActorHandle(feedDeps, user, handle),
     unfollowTag: (user, tag) => unfollowTag(feedDeps, user, tag),
   }
   const reactionActions = createReactionActions(feedDeps, feedDeliver)

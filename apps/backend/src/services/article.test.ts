@@ -597,3 +597,22 @@ describe('articleSensitivityFlagIds and articleSharingWarnings', () => {
     expect(articleSharingWarnings([corrBlock()], {})).toEqual([])
   })
 })
+
+describe('people selectors in articles', () => {
+  const block = (trigger: unknown) => ({
+    outcome: { kind: 'metric', metric: 'sleep_score' },
+    trigger,
+    type: 'correlation',
+  })
+
+  test('a correlation block refuses a people selector, published or drafted', () => {
+    for (const trigger of [
+      { kind: 'people' },
+      { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' },
+    ]) {
+      expect(articleBlockSchema.safeParse(block(trigger)).success).toBe(false)
+      expect(articleDraftBlockSchema.safeParse(block(trigger)).success).toBe(false)
+    }
+    expect(articleBlockSchema.safeParse(block({ kind: 'activity', pattern: 'run' })).success).toBe(true)
+  })
+})

@@ -9,7 +9,7 @@
  * and is spliced into the delivered/served JSON-LD there (#896).
  */
 
-import { activityHeadline, type FeedPostVisibility, prettifyKey } from '@aurboda/api-spec'
+import { activityHeadline, type FeedPostVisibility, type PostMention, prettifyKey } from '@aurboda/api-spec'
 
 /** The AS2 magic collection every public object is addressed to. */
 export const AS_PUBLIC = 'https://www.w3.org/ns/activitystreams#Public'
@@ -107,6 +107,18 @@ export interface FeedPostContentExtras {
   exerciseLines?: string[]
   /** Pre-formatted activity-date line (see `formatActivityWindow`). */
   windowLabel?: string
+  /** The accounts the post mentions, as the "with @handle" line. */
+  mentions?: readonly PostMention[]
+}
+
+const mentionLink = (mention: PostMention): string =>
+  `<span class="h-card"><a href="${escapeHtml(mention.actor_uri)}" class="u-url mention">${escapeHtml(mention.handle)}</a></span>`
+
+/** "with @a", "with @a and @b", "with @a, @b and @c", each a mention link like the Note's `Mention` tags. */
+export const mentionsLine = (mentions: readonly PostMention[]): string => {
+  const links = mentions.map(mentionLink)
+  const last = links.pop()
+  return `<p>with ${links.length > 0 ? `${links.join(', ')} and ${last}` : last}</p>`
 }
 
 /**
@@ -126,6 +138,7 @@ export const feedPostContent = (
   const parts = [`<p><strong>${escapeHtml(heading)}</strong></p>`]
   const message = extras.message?.trim()
   if (message) parts.push(`<p>${escapeHtml(message).replaceAll('\n', '<br>')}</p>`)
+  if (extras.mentions && extras.mentions.length > 0) parts.push(mentionsLine(extras.mentions))
   if (extras.windowLabel) parts.push(`<p>${escapeHtml(extras.windowLabel)}</p>`)
   if (scalars.length > 0) parts.push(`<p>${scalars.map((s) => escapeHtml(formatScalar(s))).join('<br>')}</p>`)
   if (extras.exerciseLines && extras.exerciseLines.length > 0) {

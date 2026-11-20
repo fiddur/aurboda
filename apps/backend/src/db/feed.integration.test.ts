@@ -122,10 +122,21 @@ describe('Feed posts integration', () => {
 
     const created = await createFeedPostUnlessSuppressed(user, input, [anchor, other])
     expect(created).toMatchObject({ activity_id: anchor, tags: ['aurboda'], visibility: 'public' })
+    expect(created?.mentions).toEqual([])
 
     await insertAutoshareSuppressions(user, [other])
     expect(await createFeedPostUnlessSuppressed(user, input, [anchor, other])).toBeNull()
     expect((await listFeedPosts(user, 10)).map((post) => post.id)).toEqual([created!.id])
+  })
+
+  test('stores and replaces the mentioned accounts, none by default', async () => {
+    const user = getTestUser()
+    const anna = { actor_uri: 'https://friends.example/users/anna', handle: '@anna@friends.example' }
+    expect((await createFeedPost(user, postInput())).mentions).toEqual([])
+    const created = await createFeedPost(user, postInput({ mentions: [anna] }))
+    expect(created.mentions).toEqual([anna])
+    expect((await updateFeedPost(user, created.id, { message: 'x' }))?.mentions).toEqual([anna])
+    expect((await updateFeedPost(user, created.id, { mentions: [] }))?.mentions).toEqual([])
   })
 
   test('stores, patches and keeps hashtags', async () => {

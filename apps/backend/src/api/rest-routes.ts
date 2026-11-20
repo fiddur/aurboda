@@ -106,6 +106,7 @@ import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommen
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createOidcRouter } from '../routes/oidc-router.ts'
+import { createPeopleRouter } from '../routes/people-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
@@ -156,6 +157,7 @@ import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise
 import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { defaultPeopleDeps } from '../services/people.ts'
 import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
 import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
@@ -325,6 +327,7 @@ export const mountRestRouters = ({
   )
   httpd.use('/reminders', createRemindersRouter(authMiddleware))
   httpd.use(createCheckInsRouter(authMiddleware))
+  httpd.use('/people', createPeopleRouter(authMiddleware, defaultPeopleDeps(followActions.resolve)))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))

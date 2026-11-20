@@ -61,6 +61,8 @@ export interface FollowActions {
   unfollow: (user: string, id: string) => Promise<boolean>
   followTag: (user: string, tag: string) => Promise<FollowResult>
   unfollowTag: (user: string, tag: string) => Promise<boolean>
+  /** Resolve a handle to its actor without following it (a person's profile). */
+  resolve?: (user: string, handle: string) => ReturnType<typeof resolveActorHandle>
 }
 
 /**
@@ -189,6 +191,42 @@ const follow = async (
   }
 
   return { ok: true, record }
+}
+
+/**
+ * Resolve a handle to its actor and presentation the way a follow does, without following:
+ * a person's profile stores the actor URI it names.
+ */
+export const resolveActorHandle = async (
+  deps: FollowDeps,
+  user: string,
+  handle: string,
+): Promise<
+  | {
+      ok: true
+      actor: { actor_uri: string; handle: string | null; name: string | null; icon: string | null }
+    }
+  | { ok: false; error: string }
+> => {
+  const ctx = await deps.federation.createContext(new URL(deps.origin))
+  let actor: Actor | null
+  try {
+    const object = await ctx.lookupObject(handle, await signedFetchOptions(ctx, user))
+    actor = isActor(object) ? object : null
+  } catch {
+    actor = null
+  }
+  if (actor?.id == null) return { error: `Could not resolve an actor for “${handle}”.`, ok: false }
+  const presentation = await extractActorPresentation(actor)
+  return {
+    actor: {
+      actor_uri: actor.id.href,
+      handle: presentation.handle,
+      icon: presentation.avatar_url,
+      name: presentation.display_name,
+    },
+    ok: true,
+  }
 }
 
 const alreadyFollowed = (tag: string, through: FeedFollowingRecord | null): FollowResult => ({

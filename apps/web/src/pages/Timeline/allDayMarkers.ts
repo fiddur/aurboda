@@ -1,5 +1,6 @@
-import type { Note } from '@aurboda/api-spec'
+import type { ImportantDate, Note } from '@aurboda/api-spec'
 
+import { importantDateTitle, yearsPhrase } from '../People/people-view'
 import { commentLabel } from './commentItems'
 
 /**
@@ -15,9 +16,9 @@ export interface AllDayMarker {
   onClick?: () => void
 }
 
-export type AllDayMarkerKind = 'journal'
+export type AllDayMarkerKind = 'journal' | 'important_date'
 
-export const ALL_DAY_MARKER_ICONS: Record<AllDayMarkerKind, string> = { journal: '📓' }
+export const ALL_DAY_MARKER_ICONS: Record<AllDayMarkerKind, string> = { important_date: '🎉', journal: '📓' }
 
 export const journalEntryHref = (id: string): string => `/journal/${encodeURIComponent(id)}`
 
@@ -35,6 +36,27 @@ export const journalDayMarkers = (notes: readonly Note[]): AllDayMarker[] =>
         ]
       : [],
   )
+
+/** A person's birthday or other date, opening the person. */
+export const importantDateMarkers = (dates: readonly ImportantDate[]): AllDayMarker[] =>
+  dates.map((date) => {
+    const years = yearsPhrase(date.kind, date.years)
+    return {
+      date: date.date,
+      href: `/people/${encodeURIComponent(date.person.id)}`,
+      kind: 'important_date' as const,
+      label: years ? `${importantDateTitle(date)} (${years})` : importantDateTitle(date),
+    }
+  })
+
+/** Where a tap on a group goes: the one marker's page, else the journal's date or the People page. */
+export const markerGroupHref = (group: AllDayMarkerGroup): string | undefined => {
+  const [first] = group.markers
+  if (group.markers.length === 1) return first?.href
+  return group.markers.every((m) => m.kind === 'important_date')
+    ? '/people'
+    : `/journal?date=${encodeURIComponent(group.date)}`
+}
 
 /** Local midnight at the start of a YYYY-MM-DD date. */
 export const startOfLocalDate = (date: string): Date => {

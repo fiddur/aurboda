@@ -29,6 +29,10 @@ describe('isToolAllowedWhenReadOnly', () => {
     'list_deleted_note_attachments',
     'list_note_templates',
     'get_check_in_adherence',
+    'list_people',
+    'get_person',
+    'list_important_dates',
+    'list_person_posts',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([
@@ -59,6 +63,13 @@ describe('isToolAllowedWhenReadOnly', () => {
     'update_note_template',
     'delete_note_template',
     'restore_note_template',
+    'add_person',
+    'update_person',
+    'delete_person',
+    'restore_person',
+    'add_person_date',
+    'update_person_date',
+    'delete_person_date',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 

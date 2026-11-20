@@ -11,6 +11,7 @@ import {
   getActivityTypeDefinitions,
   getDistinctMetrics,
   getScreentimeCategories,
+  listPeopleWithActivities,
   listSensitivityFlags,
 } from '../../db/index.ts'
 
@@ -21,17 +22,22 @@ export const getCorrelationSelectors = async (user: string): Promise<Correlation
   const end = new Date()
   const start = new Date(end.getTime() - METRIC_LOOKBACK_DAYS * 86_400_000)
 
-  const [metrics, activityTypes, categories, flags] = await Promise.all([
+  const [metrics, activityTypes, categories, flags, people] = await Promise.all([
     getDistinctMetrics(user, start, end),
     getActivityTypeDefinitions(user),
     getScreentimeCategories(user),
     listSensitivityFlags(user),
+    listPeopleWithActivities(user),
   ])
 
   return {
     activity_types: activityTypes.map((t) => ({ label: t.display_name, value: t.name })),
     metrics: metrics.map((m) => ({ label: m, value: m })),
     nutrients: nutrientKeySchema.options.map((n) => ({ label: n, value: n })),
+    people: [
+      { label: 'Time with people', value: '' },
+      ...people.map((p) => ({ label: p.name, value: p.id })),
+    ],
     productivity_categories: categories.map((c) => {
       const path = c.name.join(' > ')
       return { label: path, value: path }

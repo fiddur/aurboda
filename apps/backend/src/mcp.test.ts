@@ -1014,6 +1014,7 @@ describe('MCP Server', () => {
         undefined,
         undefined,
         undefined,
+        { people: true },
       )
     })
 
@@ -2351,6 +2352,22 @@ describe('MCP Server', () => {
         'delete_note_template',
         'restore_note_template',
       ]) {
+        expect(names).toContain(name)
+      }
+    })
+
+    test('registers the people tools', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      for (const name of ['list_people', 'add_person', 'list_important_dates', 'list_person_posts']) {
         expect(names).toContain(name)
       }
     })

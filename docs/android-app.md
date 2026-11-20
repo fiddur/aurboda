@@ -38,7 +38,7 @@ successful load; after logging a type or metric not in use yet, the tab reloads 
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
-corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Journal, Meals,
+corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Journal, People, Meals,
 Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
 **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see

@@ -400,6 +400,20 @@ export const isTimelineEntryVisible = async (
   return result.rows.length > 0
 }
 
+/** The posts the user received from one actor, newest first. A boost card of their post counts. */
+export const listTimelineEntriesByActor = async (
+  user: string,
+  actorUri: string,
+  limit: number,
+): Promise<TimelineEntryRecord[]> => {
+  const result = await query<TimelineEntryRecord>(
+    user,
+    `SELECT ${TIMELINE_COLUMNS} FROM timeline_entry WHERE actor_uri = $1 ORDER BY published_at DESC, id DESC LIMIT $2`,
+    [actorUri, limit],
+  )
+  return result.rows
+}
+
 export const getTimelineEntryById = async (user: string, id: string): Promise<TimelineEntryRecord | null> => {
   const result = await query<TimelineEntryRecord>(
     user,

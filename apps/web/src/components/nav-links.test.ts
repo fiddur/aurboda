@@ -48,6 +48,7 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/meals/123')).toBe('Meals')
     expect(pageTitleForPath('/segments/123')).toBe('Segments')
     expect(pageTitleForPath('/check-ins/abc/edit')).toBe('Check-ins')
+    expect(pageTitleForPath('/people/abc')).toBe('People')
     expect(pageTitleForPath('/data-sources/unknown')).toBe('Data Sources')
     expect(pageTitleForPath('/admin/users/maja')).toBe('Admin')
     expect(pageTitleForPath('/strength/live')).toBe('Strength session')
@@ -136,6 +137,10 @@ describe('menuSwitches', () => {
 
   test('offers Check-ins in the main menu', () => {
     expect(groups[0]?.switches.map((s) => s.path)).toContain('/check-ins')
+  })
+
+  test('offers People in the main menu', () => {
+    expect(groups[0]?.switches.map((s) => s.path)).toContain('/people')
   })
 
   test('covers the Android-only More entries', () => {

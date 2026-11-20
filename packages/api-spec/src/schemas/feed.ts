@@ -28,7 +28,12 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
+import {
+  activityImpactTypeSchema,
+  isPublishableSelector,
+  publishableSelectorMessage,
+  selectorSchema,
+} from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -95,6 +100,23 @@ const postTagsSchema = z
   .array(z.string())
   .meta({ description: "The post's hashtags, lowercase without `#` (federated as AS2 `Hashtag`s)" })
 
+/** Most people one activity share can mention. */
+export const MAX_POST_MENTIONS = 10
+
+const mentionPeopleSchema = z.array(z.string().uuid()).max(MAX_POST_MENTIONS)
+
+const mentionPeopleDescription = `People to mention (person ids, at most ${MAX_POST_MENTIONS}): each must be linked to the activity and have a fediverse handle. The post then tags and addresses each one's account and reads "with @handle"; nothing else about them (no name, no id) is published`
+
+/** Who a post mentions: the actor its federated `Mention` points at, and the handle snapshot naming it. */
+export const postMentionSchema = z
+  .object({
+    actor_uri: z.string().meta({ description: "The mentioned account's actor URI" }),
+    handle: z.string().meta({ description: 'Its `@user@host` handle when the post was written' }),
+  })
+  .meta({ description: 'An account a post mentions', id: 'PostMention' })
+
+export type PostMention = z.infer<typeof postMentionSchema>
+
 /**
  * Defaults are privacy-conservative: nothing is shared unless listed, and
  * high-resolution `series_metrics` default to empty (opt-in only).
@@ -118,6 +140,9 @@ export const shareActivityBodySchema = z
       .max(64)
       .default([])
       .meta({ description: 'Scalar-summary metric keys to share (the single source of truth for the post)' }),
+    mention_people: mentionPeopleSchema
+      .optional()
+      .meta({ description: `${mentionPeopleDescription}. Absent or [] mentions nobody` }),
     message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description:
         'Personal message shown above the shared stats (plain text; linebreaks preserved). Empty/absent shares no text.',
@@ -146,6 +171,9 @@ export const updateFeedPostBodySchema = z
       .max(64)
       .optional()
       .meta({ description: 'Replacement set of shared scalar-summary metric keys' }),
+    mention_people: mentionPeopleSchema.optional().meta({
+      description: `Replacement set of mentioned people (activity shares only); [] mentions nobody, absent keeps the post's mentions. ${mentionPeopleDescription}`,
+    }),
     message: z.string().max(feedPostMessageMaxLength).optional().meta({
       description: 'Replacement personal message; an empty string clears it. Omit to keep the current one.',
     }),
@@ -454,6 +482,8 @@ export const defaultArticleChartBucket = (start: Date, end: Date): string =>
  * when `start`/`end` are omitted. `lag_days` shifts the outcome forward relative
  * to the trigger (e.g. does today's training load predict tomorrow's HRV).
  */
+const articleSelectorSchema = selectorSchema.refine(isPublishableSelector, publishableSelectorMessage)
+
 export const articleCorrelationBlockSchema = z
   .object({
     caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the scatter' }),
@@ -465,15 +495,16 @@ export const articleCorrelationBlockSchema = z
       .int()
       .optional()
       .meta({ description: 'Days the outcome lags the trigger (default: 0)' }),
-    outcome: selectorSchema.meta({
-      description: "Outcome dimension; a `sensitivity` selector is shown to readers by the flag's name",
+    outcome: articleSelectorSchema.meta({
+      description:
+        "Outcome dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is refused",
     }),
     start: iso8601DateTimeSchema
       .optional()
       .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
-    trigger: selectorSchema.meta({
+    trigger: articleSelectorSchema.meta({
       description:
-        "Trigger / predictor dimension; a `sensitivity` selector is shown to readers by the flag's name",
+        "Trigger / predictor dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is refused",
     }),
     type: z.literal('correlation'),
   })
@@ -650,6 +681,9 @@ export const feedPostSchema = z
     like_count: z.number().int().optional().meta({
       description:
         'How many remote actors favourited (`Like`d) this post; absent on share, update and public single-post responses',
+    }),
+    mentions: z.array(postMentionSchema).optional().meta({
+      description: 'The accounts an activity share mentions; absent when none',
     }),
     quote_count: z.number().int().optional().meta({
       description:
@@ -928,8 +962,10 @@ export const articleDraftChartBlockSchema = articleChartBlockSchema
 
 export const articleDraftCorrelationBlockSchema = articleCorrelationBlockSchema
   .extend({
-    outcome: selectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
-    trigger: selectorSchema.optional().meta({ description: 'Trigger / predictor dimension, once chosen' }),
+    outcome: articleSelectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
+    trigger: articleSelectorSchema
+      .optional()
+      .meta({ description: 'Trigger / predictor dimension, once chosen' }),
   })
   .meta({
     description: 'A correlation block in a draft; trigger and outcome may be unset',
