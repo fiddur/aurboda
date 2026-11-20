@@ -1003,5 +1003,24 @@ export { deleteProductivity, restoreActivity, restoreProductivity } from './rest
 export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility
-export { addNote, deleteNoteById, getNotesForEntity, getNotesInRange, updateNote } from './notes.ts'
-export type { AddNoteInput, NoteData, NoteReplyData, NoteResult, UpdateNoteInput } from './notes.ts'
+export {
+  addNote,
+  deleteNoteById,
+  getNoteRevisionsById,
+  getNotesForEntity,
+  getNotesInRange,
+  listDeletedNotes,
+  restoreNoteById,
+  searchNotesForUser,
+  updateNote,
+} from './notes.ts'
+export type {
+  AddNoteInput,
+  NoteData,
+  NoteReplyData,
+  NoteResult,
+  NoteRevisionData,
+  NotesSearchInput,
+  NotesSearchResult,
+  UpdateNoteInput,
+} from './notes.ts'

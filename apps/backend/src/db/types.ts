@@ -262,20 +262,36 @@ export interface Note {
   id: string
   entity_type: EntityType
   /**
-   * The entity this note hangs off. Null for an `entity_type = 'time'` note,
-   * which is anchored to a moment rather than an entity. For a reply
+   * The entity this note hangs off. Null for a `time` or `day` note, which is
+   * anchored to a moment or a date rather than an entity. For a reply
    * (`entity_type = 'note'`) it is the id of the root comment.
    */
   entity_id: string | null
   content: string
   /** Data source that created this note (e.g. 'oura'). Null for user-created notes. */
   source?: DataSource
-  /** Inherited from the parent entity's start_time. Null for metric notes (composite key). */
+  /** Inherited from the parent entity's start_time. Null for metric notes (composite key) and `day` notes. */
   start_time?: Date
   /** Inherited from the parent entity's end_time, if any. */
   end_time?: Date
+  /** YYYY-MM-DD: the calendar date of a `day` note, and of the replies under one. */
+  date?: string
+  title?: string
+  /** The tags set explicitly. */
+  tags?: string[]
+  /** The #hashtags in the content, recomputed at every content write. */
+  hashtags?: string[]
+  deleted_at?: Date
   created_at: Date
   updated_at: Date
+}
+
+export interface NoteRevision {
+  id: string
+  note_id: string
+  content: string
+  title?: string
+  saved_at: Date
 }
 
 export interface LabResult {

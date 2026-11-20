@@ -3,9 +3,12 @@
  * clients (Android app, MCP) never log in with a password, so without this
  * their audit logs grow without bound. The same pass prunes deduction rule
  * runs, which nothing reads back and every rule evaluation appends to, and
- * outbound sync rows the phone has already written to Health Connect. It also
- * prunes the server-wide per-user usage counters.
+ * outbound sync rows the phone has already written to Health Connect, and
+ * comments deleted longer ago than they can be restored. It also prunes the
+ * server-wide per-user usage counters.
  */
+import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
+
 import type { PgBoss } from './pg-boss.ts'
 
 import { USAGE_RETENTION_DAYS } from './central-user-usage.ts'
@@ -24,6 +27,7 @@ export interface AuditLogPruneDeps {
   prune: (user: string, retentionDays: number) => Promise<unknown>
   pruneDeductionRuleRuns: (user: string, retentionDays: number) => Promise<unknown>
   pruneSyncedOutboundSync: (user: string, retentionDays: number) => Promise<unknown>
+  pruneDeletedNotes: (user: string, retentionDays: number) => Promise<unknown>
   pruneUsageBefore: (day: Date) => Promise<unknown>
   now?: () => Date
 }
@@ -45,6 +49,7 @@ export const pruneAllAuditLogs = async (deps: AuditLogPruneDeps): Promise<number
     ['Audit log', (user) => deps.prune(user, retentionDays)],
     ['Deduction rule run', (user) => deps.pruneDeductionRuleRuns(user, DEDUCTION_RULE_RUN_RETENTION_DAYS)],
     ['Outbound sync', (user) => deps.pruneSyncedOutboundSync(user, SYNCED_OUTBOUND_SYNC_RETENTION_DAYS)],
+    ['Deleted note', (user) => deps.pruneDeletedNotes(user, DELETED_NOTE_RETENTION_DAYS)],
   ]
   let pruned = 0
   for (const user of users) {

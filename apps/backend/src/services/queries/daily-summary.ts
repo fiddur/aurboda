@@ -35,7 +35,7 @@ import {
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
 import { toMetricEntityId } from '../metric-entity-id.ts'
-import { toNoteReplyData } from '../notes.ts'
+import { toNoteData } from '../notes.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 import {
   categoryPathToString,
@@ -310,11 +310,11 @@ export async function getDailySummary(
     ])
   }
 
+  const dateStr = date.toISOString().split('T')[0]
   let start: Date
   let end: Date
   if (tz) {
     const { dateOnlyToRange } = await import('../../mcp/tz-utils.ts')
-    const dateStr = date.toISOString().slice(0, 10)
     const range = dateOnlyToRange(dateStr, tz)
     start = range.start
     end = range.end
@@ -360,7 +360,7 @@ export async function getDailySummary(
       start,
       end,
     ),
-    getNotesForTimeRange(user, start, end),
+    getNotesForTimeRange(user, start, end, { from: dateStr, to: dateStr }),
     getMeals(user, { start, end }),
     getDailyAggregateValue(user, 'steps', tz ? start : date, tz),
     getScreentimeCategories(user),
@@ -574,8 +574,6 @@ export async function getDailySummary(
     orphanedNotes.map((n) => n.id),
   )
 
-  const dateStr = date.toISOString().split('T')[0]
-
   return {
     activities,
     date: dateStr,
@@ -598,18 +596,7 @@ export async function getDailySummary(
     }),
     metrics_latest: metricsLatest,
     metrics_today: metricsToday,
-    notes: orphanedNotes.map((n) => ({
-      content: n.content,
-      created_at: n.created_at.toISOString(),
-      end_time: n.end_time?.toISOString(),
-      entity_id: n.entity_id,
-      entity_type: n.entity_type,
-      id: n.id,
-      replies: (orphanedReplies.get(n.id) ?? []).map(toNoteReplyData),
-      source: n.source,
-      start_time: n.start_time?.toISOString(),
-      updated_at: n.updated_at.toISOString(),
-    })),
+    notes: orphanedNotes.map((n) => toNoteData(n, orphanedReplies.get(n.id) ?? [])),
     scores,
     places: placeVisits
       .filter((p) => p.duration_minutes > 0)

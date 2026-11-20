@@ -136,6 +136,18 @@ import {
   muscleRecoveryResponseSchema,
 } from './schemas/muscle-recovery.ts'
 import {
+  addNoteBodySchema,
+  deleteNoteQuerySchema,
+  deleteNoteResponseSchema,
+  noteConflictResponseSchema,
+  noteResponseSchema,
+  noteRevisionsResponseSchema,
+  notesResponseSchema,
+  notesSearchQuerySchema,
+  notesSearchResponseSchema,
+  updateNoteBodySchema,
+} from './schemas/notes.ts'
+import {
   addPushSubscriptionBodySchema,
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
@@ -2417,6 +2429,161 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/notes': {
+      post: {
+        description:
+          'Add a comment: on an entity, a reply, about a moment (`time`) or for a day (`day`, with `date`). Optional `title` (not on a reply) and `tags`; #hashtags in the content are tags too. Only `time` and `day` entries may have empty content.',
+        requestBody: { content: { 'application/json': { schema: addNoteBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The new comment',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/deleted': {
+      get: {
+        description:
+          'The deleted comments that can still be restored, newest deletion first: deleted thread roots with the replies deleted with them, and deleted replies of live roots. Each has `deleted_at` and `purge_at`.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notesResponseSchema } },
+            description: 'The deleted comments',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List deleted comments',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/search': {
+      get: {
+        description:
+          'Search and list comment thread roots, newest first, replies nested. Without filters it lists the free-standing entries (`time` and `day`), which is what the journal reads.',
+        requestParams: { query: notesSearchQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notesSearchResponseSchema } },
+            description: 'A page of thread roots',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Search comments',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}': {
+      delete: {
+        description:
+          'Delete a comment and, on a thread root, its replies. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: deleteNoteQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a comment',
+        tags: ['Notes'],
+      },
+      patch: {
+        description:
+          "Change a comment's content, title or tags, and on a free-standing comment its anchor: times on a `time` entry, `date` on a `day` one (a date turns a `time` entry into a `day` one, a start_time the other way). With `expected_updated_at`, a comment changed since is a 409 carrying it as it now is. The replaced text is kept as a revision.",
+        requestBody: { content: { 'application/json': { schema: updateNoteBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The comment after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: noteConflictResponseSchema } },
+            description: 'Changed since expected_updated_at; nothing was written',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/restore': {
+      post: {
+        description:
+          'Restore a deleted comment, with the replies deleted with it. A reply whose root is deleted is a 409. A comment that is not deleted is answered as it is.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The restored comment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Restore the comment it replies to first',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/revisions': {
+      get: {
+        description: "A comment's earlier texts (content and title), newest first.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteRevisionsResponseSchema } },
+            description: 'The revisions',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List comment revisions',
+        tags: ['Notes'],
+      },
+    },
+
     '/reminders': {
       get: {
         description:
@@ -3797,6 +3964,7 @@ const openApiDocument = createDocument({
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },
     { description: 'Named and detected locations', name: 'Locations' },
+    { description: 'Comments on anything, and journal entries', name: 'Notes' },
     { description: 'Notifications: the bell, read state and per-type switches', name: 'Notifications' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
     { description: 'Recurring reminders delivered as notifications', name: 'Reminders' },

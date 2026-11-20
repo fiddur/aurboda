@@ -173,12 +173,17 @@ export const mapMcpSessionRow = (row: QueryResultRow): McpSessionRecord => ({
 export const mapNoteRow = (row: QueryResultRow): Note => ({
   content: row.content,
   created_at: new Date(row.created_at),
+  date: row.date ?? undefined,
+  deleted_at: row.deleted_at ? new Date(row.deleted_at) : undefined,
   end_time: row.end_time ? new Date(row.end_time) : undefined,
   entity_id: row.entity_id ?? null,
   entity_type: parseEntityType(row.entity_type),
+  hashtags: row.hashtags ?? [],
   id: row.id,
   source: row.source ? parseDataSource(row.source) : undefined,
   start_time: row.start_time ? new Date(row.start_time) : undefined,
+  tags: row.tags ?? [],
+  title: row.title ?? undefined,
   updated_at: new Date(row.updated_at),
 })
 
