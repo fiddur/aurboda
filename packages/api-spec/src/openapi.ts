@@ -55,6 +55,21 @@ import {
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
 import {
+  addCheckInFormBodySchema,
+  checkInFormResponseSchema,
+  checkInFormsQuerySchema,
+  checkInFormsResponseSchema,
+  checkInResponseSchema,
+  checkInsQuerySchema,
+  checkInsResponseSchema,
+  checkInTemplatesResponseSchema,
+  dueQuerySchema,
+  dueResponseSchema,
+  submitCheckInBodySchema,
+  updateCheckInBodySchema,
+  updateCheckInFormBodySchema,
+} from './schemas/check-ins.ts'
+import {
   baseResponseSchemaMeta,
   iso8601DateTimeSchema,
   metricTypeSchema,
@@ -2584,6 +2599,259 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/check-in-forms': {
+      get: {
+        description:
+          "The user's check-in forms with their questions, score, schedule and current version; `deleted=true` lists the deleted ones, restorable for 30 days.",
+        requestParams: { query: checkInFormsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormsResponseSchema } },
+            description: 'The forms',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-in forms',
+        tags: ['Check-ins'],
+      },
+      post: {
+        description:
+          'Create a check-in form, from `name` and `questions` or by copying a `template` (the other fields override its own). An answer to a question with `logs_to` is logged as a metric point; a metric name that does not exist yet becomes a custom metric on first use.',
+        requestBody: { content: { 'application/json': { schema: addCheckInFormBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The new form',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, unknown template, or a metric that cannot take check-in points',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-forms/{id}': {
+      delete: {
+        description:
+          'Delete a check-in form: it stops asking and its check-ins stay readable. Restorable for 30 days, then purged with its check-ins.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The deleted form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a check-in form',
+        tags: ['Check-ins'],
+      },
+      get: {
+        description: 'One check-in form, deleted or not.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a check-in form',
+        tags: ['Check-ins'],
+      },
+      patch: {
+        description:
+          'Change a check-in form. `questions` replaces them all; a change to a question other than its place, or to the score, makes a new version. A removed question key cannot come back with another type. A new or changed schedule starts with its next slot.',
+        requestBody: { content: { 'application/json': { schema: updateCheckInFormBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The form after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-forms/{id}/restore': {
+      post: {
+        description: 'Restore a deleted check-in form; its schedule starts again with its next slot.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The restored form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No deleted check-in form with that ID',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-templates': {
+      get: {
+        description:
+          'Built-in check-in forms to copy with `template` on POST /check-in-forms, each with its source and licence.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInTemplatesResponseSchema } },
+            description: 'The templates',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-in templates',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins': {
+      get: {
+        description:
+          'Check-ins newest first, each with its form name and the questions of the version it answered.',
+        requestParams: { query: checkInsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInsResponseSchema } },
+            description: 'The check-ins',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-ins',
+        tags: ['Check-ins'],
+      },
+      post: {
+        description:
+          "Save a check-in against the form's current version. Answers to questions with `logs_to` are logged as metric points at `answered_at` with data source `check_in`; 0, no, or no answer logs nothing. The due notification of a slot it does is marked read.",
+        requestBody: { content: { 'application/json': { schema: submitCheckInBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The check-in',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or answers',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Submit a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins/{id}': {
+      delete: {
+        description: 'Delete a check-in and the metric points it logged. Restorable for 30 days.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The deleted check-in',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a check-in',
+        tags: ['Check-ins'],
+      },
+      patch: {
+        description:
+          'Change a check-in. Answers are read against the version it answered; changing them or the time replaces exactly the metric points it logged.',
+        requestBody: { content: { 'application/json': { schema: updateCheckInBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The check-in after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or answers',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins/{id}/restore': {
+      post: {
+        description: 'Restore a deleted check-in; the metric points it logged are written again.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The restored check-in',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/due': {
+      get: {
+        description:
+          "The slots of the user's scheduled check-in forms on a day, each `upcoming`, `due`, `done` or `missed`.",
+        requestParams: { query: dueQuerySchema },
+        responses: {
+          200: { content: { 'application/json': { schema: dueResponseSchema } }, description: 'The slots' },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid date',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List due check-ins',
+        tags: ['Check-ins'],
+      },
+    },
+
     '/reminders': {
       get: {
         description:
@@ -3967,6 +4235,10 @@ const openApiDocument = createDocument({
     { description: 'Comments on anything, and journal entries', name: 'Notes' },
     { description: 'Notifications: the bell, read state and per-type switches', name: 'Notifications' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
+    {
+      description: 'Check-in forms, their answers logged as metrics, and their schedules',
+      name: 'Check-ins',
+    },
     { description: 'Recurring reminders delivered as notifications', name: 'Reminders' },
     { description: 'User settings and preferences', name: 'Settings' },
     {

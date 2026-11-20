@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto'
 
 import { activitiesTables } from './schema/activities.ts'
 import { activityFeaturesTables } from './schema/activity-features.ts'
+import { checkInsTables } from './schema/check-ins.ts'
 import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
@@ -55,6 +56,7 @@ export const SCHEMA_VERSION = 1
 export const createTableStatements: Record<string, string> = {
   ...activitiesTables,
   ...activityFeaturesTables,
+  ...checkInsTables,
   ...locationsTables,
   ...mealsTables,
   ...metricsTables,
@@ -271,6 +273,10 @@ export const tableCreationOrder = [
   'notification_preferences',
   'push_subscriptions',
   'reminders',
+  'check_in_forms',
+  'check_in_form_versions',
+  'check_ins',
+  'check_ins_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

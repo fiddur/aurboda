@@ -10,21 +10,29 @@ export const REMINDER_SCHEDULER_CRON = '*/5 * * * *'
 export interface ReminderSchedulerDeps {
   listUsers: () => Promise<string[]>
   raiseDue: (user: string) => Promise<unknown>
-  onUserError?: (user: string, error: unknown) => unknown
+  raiseDueCheckIns?: (user: string) => Promise<unknown>
+  onUserError?: (user: string, error: unknown, step: string) => unknown
 }
 
-const auditUserError = (user: string, error: unknown) =>
-  auditError(user, 'system', 'Reminder tick failed for user', { error: String(error) })
+const auditUserError = (user: string, error: unknown, step: string) =>
+  auditError(user, 'system', `${step} tick failed for user`, { error: String(error) })
 
-/** One tick over every user; one user's failure is audited and never stops the rest. Resolves to the users visited. */
+/**
+ * One tick over every user; one user's failure in a step is audited and stops neither that user's
+ * other steps nor the other users. Resolves to the users visited.
+ */
 export const runDueReminders = async (deps: ReminderSchedulerDeps): Promise<number> => {
   const onUserError = deps.onUserError ?? auditUserError
+  const steps: [string, (user: string) => Promise<unknown>][] = [['Reminder', deps.raiseDue]]
+  if (deps.raiseDueCheckIns) steps.push(['Check-in', deps.raiseDueCheckIns])
   const users = await deps.listUsers()
   for (const user of users) {
-    try {
-      await deps.raiseDue(user)
-    } catch (error) {
-      await onUserError(user, error)
+    for (const [step, run] of steps) {
+      try {
+        await run(user)
+      } catch (error) {
+        await onUserError(user, error, step)
+      }
     }
   }
   return users.length

@@ -75,6 +75,7 @@ import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
 import { createChallengeQuantpubRouter } from '../routes/challenge-quantpub-router.ts'
 import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
+import { createCheckInsRouter } from '../routes/check-ins-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
@@ -319,6 +320,7 @@ export const mountRestRouters = ({
     }),
   )
   httpd.use('/reminders', createRemindersRouter(authMiddleware))
+  httpd.use(createCheckInsRouter(authMiddleware))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))

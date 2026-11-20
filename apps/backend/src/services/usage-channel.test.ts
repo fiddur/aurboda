@@ -44,6 +44,8 @@ describe('isMutatingMcpTool', () => {
     'resend_post_updates',
     'hide_public_tag_post',
     'unhide_public_tag_post',
+    'submit_check_in',
+    'restore_check_in',
   ])('%s mutates', (name) => {
     expect(isMutatingMcpTool(name)).toBe(true)
   })
@@ -58,6 +60,8 @@ describe('isMutatingMcpTool', () => {
     'preview_challenge',
     'match_routes',
     'export_article_markdown',
+    'list_due',
+    'query_check_ins',
   ])('%s reads', (name) => {
     expect(isMutatingMcpTool(name)).toBe(false)
   })
