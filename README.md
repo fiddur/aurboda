@@ -44,6 +44,7 @@ Aurboda's reach is the point, so here's what it ingests today:
 | **Cronometer**                                       | Meals with full per-item macros and ~50 micronutrients                                                                          | CSV import                                                                         |
 | [**Livsmedelsverket**](docs/livsmedelsverket.md)     | Canonical food library: 2,500+ Swedish foods with macros + micros (per 100 g)                                                   | One-shot bulk import (UI button)                                                   |
 | [**Open Food Facts**](docs/openfoodfacts.md)         | Branded products by barcode (EAN/UPC): name, brand and nutrients per 100 g                                                      | On demand per barcode, cached 90 days                                              |
+| [**Check-ins**](docs/features/check-ins.md)          | Answers to your own check-in forms (scales, numbers, yes/no, choices) logged as metrics                                         | Web UI, REST API, or MCP; scheduled forms notify when due                          |
 | **Manual Entry**                                     | Any metric, tag, activity, meal, or note                                                                                        | Web UI, REST API, or MCP                                                           |
 
 <!-- END:data-sources -->
@@ -61,6 +62,7 @@ Everything above feeds a common data model, so every feature works across every 
 - **Automate** -- [deduction rules](docs/features/deduction-rules.md) that create activities from your data, plus custom activity types
 - **Share** -- read-only [public dashboards and federated challenges](docs/features/sharing.md) across Aurboda instances, plus a [federated activity feed](docs/features/feed.md) followable from Mastodon
 - **Stay informed** -- [notifications](docs/features/notifications.md) under a 🛎 bell, with per-type in-app and push switches, and your own recurring [reminders](docs/features/reminders.md)
+- **Check in** -- your own [check-in forms](docs/features/check-ins.md), answers logged as metrics, with schedules that notify when due
 - **Make it yours** -- [choose which pages show in the menu](docs/features/menu.md), so the menu holds only what you use
 - **AI access** -- full query access from Claude or any [MCP](docs/mcp-server.md) client (60+ tools)
 

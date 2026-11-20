@@ -485,6 +485,7 @@ describe('listNotificationTypeSettings', () => {
       'autoshare_pending',
       'garmin_key_expiring',
       'reminder',
+      'check_in_due',
       'admin_signup',
     ])
   })

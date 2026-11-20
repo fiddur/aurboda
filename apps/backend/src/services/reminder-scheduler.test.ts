@@ -29,3 +29,38 @@ describe('runDueReminders', () => {
     expect(errors).toEqual([['bob', boom]])
   })
 })
+
+describe('runDueReminders with check-ins', () => {
+  test('runs the check-in step for every user after the reminders', async () => {
+    const calls: string[] = []
+    await runDueReminders({
+      listUsers: async () => ['alice', 'bob'],
+      raiseDue: async (user) => calls.push(`reminders:${user}`),
+      raiseDueCheckIns: async (user) => calls.push(`check-ins:${user}`),
+    })
+    expect(calls).toEqual(['reminders:alice', 'check-ins:alice', 'reminders:bob', 'check-ins:bob'])
+  })
+
+  test('a failing step is reported with its name and stops neither the other step nor the other users', async () => {
+    const calls: string[] = []
+    const errors: [string, unknown, string][] = []
+    const boom = new Error('bad schedule')
+    await runDueReminders({
+      listUsers: async () => ['alice', 'bob'],
+      onUserError: (user, error, step) => errors.push([user, error, step]),
+      raiseDue: async (user) => {
+        if (user === 'alice') throw boom
+        calls.push(`reminders:${user}`)
+      },
+      raiseDueCheckIns: async (user) => {
+        if (user === 'bob') throw boom
+        calls.push(`check-ins:${user}`)
+      },
+    })
+    expect(calls).toEqual(['check-ins:alice', 'reminders:bob'])
+    expect(errors).toEqual([
+      ['alice', boom, 'Reminder'],
+      ['bob', boom, 'Check-in'],
+    ])
+  })
+})

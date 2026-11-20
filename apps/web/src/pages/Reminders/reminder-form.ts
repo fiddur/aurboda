@@ -35,18 +35,27 @@ export const PAGE_OPTIONS: PageOption[] = [
 const sameDays = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((day, i) => day === b[i])
 
-/** "Every day at 20:00", "Weekdays at 07:30", "Mon, Wed, Fri at 07:30". */
-export const scheduleLine = (timeOfDay: string, weekdays: readonly number[]): string => {
+/** "Every day", "Weekdays", "Weekends", "Mon, Wed, Fri". */
+export const weekdaysLine = (weekdays: readonly number[]): string => {
   const days = [...new Set(weekdays)].sort((a, b) => a - b)
-  const when = sameDays(days, ALL_DAYS)
+  return sameDays(days, ALL_DAYS)
     ? 'Every day'
     : sameDays(days, [1, 2, 3, 4, 5])
       ? 'Weekdays'
       : sameDays(days, [6, 7])
         ? 'Weekends'
         : days.map((day) => WEEKDAYS[day - 1]?.short ?? String(day)).join(', ')
-  return `${when} at ${timeOfDay}`
 }
+
+/** "08:00", "08:00 and 21:00", "08:00, 12:00 and 21:00", in time order. */
+export const timesLine = (times: readonly string[]): string => {
+  const sorted = [...new Set(times)].sort()
+  return sorted.length <= 1 ? (sorted[0] ?? '') : `${sorted.slice(0, -1).join(', ')} and ${sorted.at(-1)}`
+}
+
+/** "Every day at 20:00", "Weekdays at 07:30", "Mon, Wed, Fri at 07:30", "Every day at 08:00 and 21:00". */
+export const scheduleLine = (times: string | readonly string[], weekdays: readonly number[]): string =>
+  `${weekdaysLine(weekdays)} at ${timesLine(typeof times === 'string' ? [times] : times)}`
 
 /** Rounds HH:MM to the nearest five minutes (23:58 becomes 00:00). Null when it is not a time. */
 export const roundTime = (value: string): string | null => {

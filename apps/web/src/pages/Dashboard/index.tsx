@@ -4,6 +4,7 @@ import { defaultDashboardConfig } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { DueTodayCard } from '../../components/DueTodayCard'
 import { EditableDashboard } from '../../components/EditableDashboard'
 import { GetStartedGuide } from '../../components/GetStartedGuide'
 import { PeriodDashboardBar } from '../../components/PeriodSwitcher'
@@ -109,7 +110,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      {!isEditing && <GetStartedGuide />}
+      {!isEditing && (
+        <>
+          <GetStartedGuide />
+          <DueTodayCard />
+        </>
+      )}
 
       {!isLoading && period && <PeriodDashboardBar state={period} onShare={setSharingPeriod} />}
 

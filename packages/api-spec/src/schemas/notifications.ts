@@ -21,6 +21,7 @@ export const notificationTypes = [
   'autoshare_pending',
   'garmin_key_expiring',
   'reminder',
+  'check_in_due',
 ] as const
 
 export type NotificationType = (typeof notificationTypes)[number]
@@ -133,6 +134,12 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
     description: 'A reminder you set up yourself is due',
     group: 'reminders',
     label: 'Reminders',
+  },
+  check_in_due: {
+    admin_only: false,
+    description: 'A check-in you scheduled is due',
+    group: 'reminders',
+    label: 'Check-ins',
   },
 }
 

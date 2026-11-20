@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest'
 import {
   type AuditLogPruneDeps,
   DEDUCTION_RULE_RUN_RETENTION_DAYS,
+  DELETED_CHECK_IN_RETENTION_DAYS,
   pruneAllAuditLogs,
   SYNCED_OUTBOUND_SYNC_RETENTION_DAYS,
 } from './audit-log-prune-queue.ts'
@@ -14,6 +15,7 @@ const deps = (overrides: Partial<AuditLogPruneDeps>): AuditLogPruneDeps => ({
   prune: async () => 0,
   pruneDeductionRuleRuns: async () => 0,
   pruneDeletedNotes: async () => 0,
+  pruneDeletedCheckIns: async () => 0,
   pruneSyncedOutboundSync: async () => 0,
   pruneUsageBefore: async () => 0,
   ...overrides,
@@ -57,6 +59,16 @@ describe('pruneAllAuditLogs', () => {
     await pruneAllAuditLogs(deps({ pruneDeletedNotes }))
     expect(DELETED_NOTE_RETENTION_DAYS).toBe(30)
     expect(pruneDeletedNotes.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
+  test('purges every user’s check-ins and forms deleted over 30 days ago', async () => {
+    const pruneDeletedCheckIns = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedCheckIns }))
+    expect(DELETED_CHECK_IN_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedCheckIns.mock.calls).toEqual([
       ['alice', 30],
       ['bob', 30],
     ])

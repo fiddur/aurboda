@@ -35,6 +35,12 @@ export const NAV_LINKS_PRIMARY = [
     icon: '📝',
     description: 'Lab results and other values you enter by hand.',
   },
+  {
+    href: '/check-ins',
+    label: 'Check-ins',
+    icon: '📋',
+    description: 'Short forms you fill in, like a morning check-in, logged as metrics.',
+  },
   { href: '/add', label: '+ Add', icon: '➕', description: 'Add an activity, a metric or a note.' },
   { href: '/chart', label: 'Chart', icon: '📈', description: 'Draw any of your data over time.' },
 ]

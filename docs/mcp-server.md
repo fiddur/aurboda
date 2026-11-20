@@ -227,6 +227,17 @@ Recurring reminders delivered as `reminder` notifications. See [Reminders](featu
 | `update_reminder` | Change a reminder by `id`; only the given fields; `body` and `link` take null to clear           |
 | `delete_reminder` | Delete a reminder by `id`                                                                        |
 
+### Check-in tools
+
+Check-in forms whose answers are logged as metrics, with schedules. See [Check-ins](features/check-ins.md).
+
+| Tool                                                                                                                                     | What it does                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `list_check_in_forms`, `get_check_in_form`, `add_check_in_form`, `update_check_in_form`, `delete_check_in_form`, `restore_check_in_form` | Manage the forms, like `/check-in-forms`; `add_check_in_form` takes a `template`                        |
+| `list_check_in_templates`                                                                                                                | The built-in forms to copy, like `GET /check-in-templates`                                              |
+| `submit_check_in`, `query_check_ins`, `update_check_in`, `delete_check_in`, `restore_check_in`                                           | Fill in a form and manage the check-ins, like `/check-ins`; answers with `logs_to` become metric points |
+| `list_due`                                                                                                                               | The scheduled slots of a day with their state, like `GET /due`                                          |
+
 ### Auto-share tools
 
 The rules that publish new activities to the feed. See [Auto-share rules](features/auto-share-rules.md).

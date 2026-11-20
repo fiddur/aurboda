@@ -1,0 +1,862 @@
+.checkins-page {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.checkins-page *,
+.checkins-page *::before,
+.checkins-page *::after {
+  box-sizing: border-box;
+}
+
+.checkins-header,
+.checkins-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.checkins-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+}
+
+.checkins-page h2 {
+  margin: 1.5rem 0 0.6rem;
+  font-size: 1.15rem;
+}
+
+.checkins-section-header h2 {
+  margin: 0;
+}
+
+.checkins-section {
+  margin-top: 1.25rem;
+}
+
+.checkins-section > h2:first-child {
+  margin-top: 0;
+}
+
+.checkins-back {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.checkins-back a,
+.checkins-page a:not([class]) {
+  color: var(--color-accent);
+}
+
+.checkins-muted {
+  color: var(--color-text-muted);
+}
+
+.checkin-small {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.checkins-page small {
+  color: var(--color-text-muted);
+  font-weight: normal;
+}
+
+.checkins-page a.btn-primary,
+.checkins-page a.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.checkins-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.checkins-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.checkins-list > li {
+  border-top: 1px solid var(--color-border);
+}
+
+.checkins-list > li:first-child {
+  border-top: none;
+}
+
+.checkins-empty {
+  padding: 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+}
+
+.checkins-empty p {
+  margin: 0;
+}
+
+/* Due today */
+
+.checkin-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+}
+
+.checkin-slot-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 3.2rem;
+}
+
+.checkin-slot-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkin-slot-state {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.checkin-slot-state.state-due {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.checkin-slot.state-done .checkin-slot-main strong,
+.checkin-slot.state-missed .checkin-slot-main strong {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.checkin-fill {
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+}
+
+/* Forms */
+
+.checkin-form-row,
+.checkin-template {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.checkin-form-row.archived .checkin-form-main {
+  opacity: 0.65;
+}
+
+.checkin-form-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.checkin-form-description,
+.checkin-template-source {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.checkin-form-schedule,
+.checkin-form-latest {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.checkin-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.checkin-form-actions .btn-primary,
+.checkin-form-actions .btn-secondary {
+  padding: 0.45rem 0.9rem;
+}
+
+.checkins-archived {
+  margin-top: 0.75rem;
+}
+
+.checkins-templates,
+.checkins-deleted {
+  margin-top: 1.25rem;
+}
+
+.checkins-templates summary,
+.checkins-deleted summary {
+  cursor: pointer;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+}
+
+.checkins-templates[open] summary,
+.checkins-deleted[open] summary {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.checkins-deleted > p {
+  margin: 0.6rem 1rem;
+  font-size: 0.9rem;
+}
+
+.checkin-deleted-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+}
+
+.checkin-deleted-row .btn-secondary,
+.checkin-template .btn-secondary {
+  padding: 0.4rem 0.85rem;
+}
+
+/* Switches and undo */
+
+.checkin-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.checkin-switch input {
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  background: var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.checkin-switch input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.checkin-switch input:checked {
+  background: var(--color-primary);
+}
+
+.checkin-switch input:checked::after {
+  transform: translateX(16px);
+}
+
+.checkin-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  border-radius: 8px;
+}
+
+.checkin-undo > span {
+  flex: 1 1 auto;
+}
+
+.checkin-undo .btn-secondary {
+  padding: 0.35rem 0.85rem;
+}
+
+.checkin-undo-close {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0.25rem;
+}
+
+/* Filling in */
+
+.checkin-fill-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem;
+}
+
+.checkin-fill-form > p {
+  margin: 0;
+}
+
+.checkin-question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.checkin-prompt {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.checkin-required {
+  color: var(--color-accent);
+}
+
+.checkin-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.checkin-question.missing .checkin-prompt {
+  color: #dc2626;
+}
+
+.checkin-scale-buttons {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.35rem;
+}
+
+.checkin-scale-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.checkin-scale-labels span:last-child {
+  text-align: right;
+}
+
+.checkin-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.checkin-yes-no {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.checkin-choice {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.checkin-scale-buttons .checkin-choice {
+  min-width: 0;
+  padding: 0.5rem 0;
+}
+
+.checkin-choice:hover {
+  border-color: var(--color-accent);
+}
+
+.checkin-choice.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.checkin-choice:focus-visible,
+.checkin-stepper:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.checkin-number {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkin-number input {
+  width: 7rem;
+  min-height: 48px;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.checkin-stepper {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.checkin-unit {
+  color: var(--color-text-muted);
+}
+
+.checkin-text {
+  width: 100%;
+}
+
+.checkin-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.checkin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.checkin-field > span,
+.checkin-field > legend {
+  font-weight: 500;
+  padding: 0;
+}
+
+.checkins-page input[type='text'],
+.checkins-page input[type='number'],
+.checkins-page input[type='date'],
+.checkins-page input[type='time'],
+.checkins-page input[type='datetime-local'],
+.checkins-page textarea,
+.checkins-page select {
+  max-width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.checkin-field > input[type='text'],
+.checkin-field > textarea,
+.checkin-field > select,
+.checkin-text {
+  width: 100%;
+}
+
+.checkin-answered-at input {
+  width: auto;
+  align-self: flex-start;
+}
+
+.checkin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkin-save {
+  min-height: 48px;
+  min-width: 8rem;
+  font-size: 1.05rem;
+}
+
+.checkin-save.is-disabled {
+  opacity: 0.5;
+}
+
+.checkin-error {
+  color: #dc2626;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+ul.checkin-error {
+  padding-left: 1.2rem;
+}
+
+.checkin-saved {
+  padding: 1rem;
+}
+
+.checkin-saved p {
+  margin: 0 0 0.6rem;
+}
+
+.checkin-saved-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* History */
+
+.checkin-chart {
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.checkin-chart-title {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.checkin-chart-link {
+  color: var(--color-accent);
+  font-weight: normal;
+  font-size: 0.9rem;
+}
+
+.checkin-history-row {
+  padding: 0.75rem 1rem;
+}
+
+.checkin-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.checkin-score {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.checkin-history-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.75rem;
+}
+
+.checkin-link-btn {
+  border: none;
+  background: none;
+  padding: 0.2rem 0;
+  color: var(--color-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.checkin-link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.checkin-link-btn.danger {
+  color: #dc2626;
+}
+
+.checkin-answers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+.checkin-answers > div {
+  display: contents;
+}
+
+.checkin-answers dt {
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.checkin-answers dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.checkin-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+/* Editor */
+
+.checkin-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.checkin-editor h2 {
+  margin: 0.75rem 0 0;
+}
+
+.checkin-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.checkin-questions-editor {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.checkin-question-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.checkin-question-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.checkin-question-editor-tools {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.checkin-icon-btn {
+  min-width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.checkin-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.checkin-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.checkin-field-row .checkin-field {
+  flex: 1 1 5.5rem;
+}
+
+.checkin-field-row .checkin-field-wide {
+  flex: 2 1 9rem;
+}
+
+.checkin-field-row input {
+  width: 100%;
+}
+
+.checkin-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkin-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  flex: none;
+}
+
+.checkin-section-toggle {
+  font-size: 1.05rem;
+}
+
+.checkin-options-editor {
+  gap: 0.45rem;
+}
+
+.checkin-option-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.checkin-option-row input:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.checkin-option-value {
+  width: 5.5rem;
+  flex: none;
+}
+
+.checkin-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.checkin-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.checkin-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.checkin-day {
+  min-width: 2.9rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.checkin-day.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.checkin-day-start {
+  align-self: flex-start;
+}
+
+.checkin-add-question {
+  align-self: flex-start;
+}
+
+.checkin-version-note {
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  border-radius: 8px;
+}
+
+.checkin-editor-actions {
+  margin-top: 0.5rem;
+}
+
+.checkin-delete-form {
+  margin-left: auto;
+}
+
+@media (max-width: 480px) {
+  .checkins-page {
+    padding: 0.75rem;
+  }
+
+  .checkin-form-actions {
+    width: 100%;
+  }
+
+  .checkin-form-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .checkin-answers {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .checkin-answers dd {
+    margin-bottom: 0.4rem;
+  }
+
+  .checkin-delete-form {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .checkin-error,
+  .checkin-link-btn.danger,
+  .checkin-question.missing .checkin-prompt {
+    color: #f87171;
+  }
+}

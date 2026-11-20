@@ -63,6 +63,7 @@ import {
   pruneDeductionRuleRuns,
   pruneDeletedNotes,
   pruneSyncedOutboundSync,
+  purgeDeletedCheckIns,
   rematerializeSupersededOnce,
   resolveOrCreateActivityType,
   retireSingleLiftTypes,
@@ -173,6 +174,7 @@ import {
   type ThreadFederation,
 } from './services/challenge-thread-remote.ts'
 import { syncThreadEntryForPost } from './services/challenge-thread.ts'
+import { checkInDeps, raiseDueCheckIns } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -1185,6 +1187,7 @@ const main = async () => {
       await createReminderScheduler(boss, {
         listUsers: () => listUserNames(userDb),
         raiseDue: (user) => raiseDueReminders(reminderDeps, user),
+        raiseDueCheckIns: (user) => raiseDueCheckIns(checkInDeps, user),
       })
     } catch (error) {
       console.error('Failed to initialize reminder scheduler:', error)
@@ -1241,6 +1244,8 @@ const main = async () => {
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
         pruneDeletedNotes,
+        pruneDeletedCheckIns: (user, retentionDays) =>
+          purgeDeletedCheckIns(user, new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)),
         pruneSyncedOutboundSync,
         pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })

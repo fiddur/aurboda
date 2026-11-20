@@ -63,6 +63,7 @@ import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
+import { registerCheckInTools } from './mcp/check-in-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
@@ -256,6 +257,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webPush: deps.webPush,
   })
   registerReminderTools(server, user)
+  registerCheckInTools(server, user)
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

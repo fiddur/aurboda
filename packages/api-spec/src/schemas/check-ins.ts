@@ -1,0 +1,557 @@
+import { z } from 'zod'
+
+import {
+  baseResponseSchema,
+  dateOnlySchema,
+  iso8601DateTimeSchema,
+  queryBooleanSchema,
+  UUID_RE,
+} from './common.ts'
+import { scheduleSchema } from './schedules.ts'
+
+export const CHECK_IN_QUESTIONS_MAX = 40
+export const CHECK_IN_OPTIONS_MIN = 2
+export const CHECK_IN_OPTIONS_MAX = 20
+export const CHECK_IN_SCALE_STEPS_MAX = 11
+export const CHECK_IN_FORM_NAME_MAX = 120
+export const CHECK_IN_FORM_DESCRIPTION_MAX = 1000
+export const CHECK_IN_PROMPT_MAX = 300
+export const CHECK_IN_TEXT_ANSWER_MAX = 2000
+export const CHECK_IN_NOTE_MAX = 2000
+
+export const checkInQuestionKeyRe = /^[a-z][a-z0-9_]{0,39}$/
+
+/** The key a form's score is recorded under in a check-in's `logged`; no question key can take it. */
+export const CHECK_IN_SCORE_KEY = '_score'
+
+const keySchema = z
+  .string()
+  .regex(checkInQuestionKeyRe, 'Must be lowercase letters, digits and underscores, starting with a letter')
+
+const metricNameSchema = z
+  .string()
+  .min(1)
+  .max(50)
+  .regex(/^[a-z][a-z0-9_]*$/, 'Must be lowercase letters, numbers, and underscores, starting with a letter')
+  .meta({
+    description:
+      'A built-in metric, a custom metric, or a metric catalogue name; any other name is added as a custom metric on first use',
+    example: 'rested',
+  })
+
+export const checkInLogsToSchema = z.object({ metric: metricNameSchema }).meta({
+  description:
+    'Where an answer is logged: one point of `metric` at the check-in time, data source `check_in` (yes as 1, no as 0). An answer of 0, no, or none logs nothing.',
+  id: 'CheckInLogsTo',
+})
+
+export type CheckInLogsTo = z.infer<typeof checkInLogsToSchema>
+
+export const checkInOptionSchema = z
+  .object({
+    key: keySchema.meta({ description: 'Stable key of the option, the answer to a choice question' }),
+    label: z.string().trim().min(1).max(100).meta({ description: 'Text shown for the option' }),
+    value: z.number().optional().meta({ description: 'Numeric value of the option, logged and scored' }),
+  })
+  .meta({ id: 'CheckInOption' })
+
+export type CheckInOption = z.infer<typeof checkInOptionSchema>
+
+const questionBase = {
+  key: keySchema.meta({
+    description:
+      'Stable key the answer is stored under; a key removed from a form is not reused with another type',
+    example: 'rested',
+  }),
+  logs_to: checkInLogsToSchema.optional(),
+  prompt: z.string().trim().min(1).max(CHECK_IN_PROMPT_MAX).meta({ description: 'The question asked' }),
+  required: z.boolean().default(false).meta({ description: 'Whether an answer is required (default false)' }),
+}
+
+const optionsSchema = z.array(checkInOptionSchema).min(CHECK_IN_OPTIONS_MIN).max(CHECK_IN_OPTIONS_MAX)
+
+export const checkInQuestionSchema = z
+  .discriminatedUnion('type', [
+    z.object({
+      ...questionBase,
+      max: z.number().optional().meta({ description: 'Largest accepted answer' }),
+      min: z.number().optional().meta({ description: 'Smallest accepted answer' }),
+      step: z.number().positive().optional().meta({ description: 'Step the input offers' }),
+      type: z.literal('number'),
+      unit: z.string().trim().min(1).max(20).optional().meta({ description: 'Unit of the answer, e.g. mg' }),
+    }),
+    z.object({
+      ...questionBase,
+      max: z.number().int().meta({ description: 'Highest point of the scale' }),
+      max_label: z.string().trim().max(60).optional().meta({ description: 'Label of the highest point' }),
+      min: z.number().int().meta({ description: 'Lowest point of the scale' }),
+      min_label: z.string().trim().max(60).optional().meta({ description: 'Label of the lowest point' }),
+      type: z.literal('scale'),
+    }),
+    z.object({ ...questionBase, type: z.literal('yes_no') }),
+    z.object({ ...questionBase, options: optionsSchema, type: z.literal('choice') }),
+    z.object({ ...questionBase, options: optionsSchema, type: z.literal('multi_choice') }),
+    z.object({ ...questionBase, type: z.literal('text') }),
+  ])
+  .meta({
+    description:
+      'A question of a check-in form: `number`, `scale` (integers, at most 11 points), `yes_no`, `choice`, `multi_choice` or `text`',
+    id: 'CheckInQuestion',
+  })
+
+export type CheckInQuestion = z.infer<typeof checkInQuestionSchema>
+export type CheckInQuestionType = CheckInQuestion['type']
+
+export const checkInScoreSchema = z
+  .object({
+    factor: z
+      .number()
+      .refine((factor) => factor !== 0, 'Must not be 0')
+      .optional()
+      .meta({ description: 'Multiplies the sum (default 1)', example: 4 }),
+    metric: metricNameSchema,
+    questions: z
+      .array(keySchema)
+      .min(1)
+      .max(CHECK_IN_QUESTIONS_MAX)
+      .meta({ description: 'Keys of the numeric questions whose answers are summed' }),
+  })
+  .meta({
+    description:
+      'A score: the sum of some answers times `factor`, logged to `metric`. Absent when one of those answers is missing.',
+    id: 'CheckInScore',
+  })
+
+export type CheckInScore = z.infer<typeof checkInScoreSchema>
+
+export interface CheckInFormProblem {
+  path: (string | number)[]
+  message: string
+}
+
+export const isNumericCheckInQuestion = (question: CheckInQuestion): boolean =>
+  question.type === 'number' ||
+  question.type === 'scale' ||
+  question.type === 'yes_no' ||
+  (question.type === 'choice' && question.options.every((option) => option.value !== undefined))
+
+const questionProblems = (question: CheckInQuestion, index: number): CheckInFormProblem[] => {
+  const at = (field: string, message: string): CheckInFormProblem => ({
+    message,
+    path: ['questions', index, field],
+  })
+  const problems: CheckInFormProblem[] = []
+  if (question.type === 'number' && question.min !== undefined && question.max !== undefined) {
+    if (question.min >= question.max) problems.push(at('max', 'max must be above min'))
+  }
+  if (question.type === 'scale') {
+    if (question.min >= question.max) problems.push(at('max', 'max must be above min'))
+    else if (question.max - question.min + 1 > CHECK_IN_SCALE_STEPS_MAX) {
+      problems.push(at('max', `A scale has at most ${CHECK_IN_SCALE_STEPS_MAX} points`))
+    }
+  }
+  if (question.type === 'choice' || question.type === 'multi_choice') {
+    const keys = question.options.map((option) => option.key)
+    if (new Set(keys).size !== keys.length) problems.push(at('options', 'Option keys must be unique'))
+  }
+  if (question.logs_to) {
+    if (question.type === 'text' || question.type === 'multi_choice') {
+      problems.push(at('logs_to', `A ${question.type} answer cannot be logged to a metric`))
+    } else if (!isNumericCheckInQuestion(question)) {
+      problems.push(at('logs_to', 'A choice logged to a metric needs a numeric value on every option'))
+    }
+  }
+  return problems
+}
+
+const scoreProblems = (questions: readonly CheckInQuestion[], score: CheckInScore): CheckInFormProblem[] => {
+  const byKey = new Map(questions.map((question) => [question.key, question]))
+  const problems: CheckInFormProblem[] = []
+  if (new Set(score.questions).size !== score.questions.length) {
+    problems.push({ message: 'Score questions must be unique', path: ['score', 'questions'] })
+  }
+  score.questions.forEach((key, index) => {
+    const question = byKey.get(key)
+    if (!question) {
+      problems.push({ message: `No question "${key}"`, path: ['score', 'questions', index] })
+    } else if (!isNumericCheckInQuestion(question)) {
+      problems.push({
+        message: `Question "${key}" has no numeric answer to score`,
+        path: ['score', 'questions', index],
+      })
+    }
+  })
+  return problems
+}
+
+/** What is wrong with a form's questions and score taken together; empty when nothing is. */
+export const checkInFormProblems = (
+  questions: readonly CheckInQuestion[],
+  score: CheckInScore | null | undefined,
+): CheckInFormProblem[] => {
+  const problems: CheckInFormProblem[] = []
+  const seen = new Set<string>()
+  questions.forEach((question, index) => {
+    if (seen.has(question.key)) {
+      problems.push({
+        message: `Duplicate question key "${question.key}"`,
+        path: ['questions', index, 'key'],
+      })
+    }
+    seen.add(question.key)
+    problems.push(...questionProblems(question, index))
+  })
+  const metrics = new Set<string>()
+  const logged = [
+    ...questions.flatMap((question, index) =>
+      question.logs_to ? [{ metric: question.logs_to.metric, path: ['questions', index, 'logs_to'] }] : [],
+    ),
+    ...(score ? [{ metric: score.metric, path: ['score', 'metric'] }] : []),
+  ]
+  for (const { metric, path } of logged) {
+    if (metrics.has(metric)) {
+      problems.push({ message: `Metric "${metric}" is logged twice by this form`, path })
+    }
+    metrics.add(metric)
+  }
+  if (score) problems.push(...scoreProblems(questions, score))
+  return problems
+}
+
+const questionsSchema = z
+  .array(checkInQuestionSchema)
+  .min(1)
+  .max(CHECK_IN_QUESTIONS_MAX)
+  .meta({
+    description: `The questions, in the order they are asked (1 to ${CHECK_IN_QUESTIONS_MAX})`,
+  })
+
+const nameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(CHECK_IN_FORM_NAME_MAX)
+  .meta({ description: 'Name of the form, also the title of its due notification' })
+
+const descriptionSchema = z
+  .string()
+  .max(CHECK_IN_FORM_DESCRIPTION_MAX)
+  .meta({ description: 'Text shown above the questions' })
+
+const reportProblems = (
+  questions: readonly CheckInQuestion[] | undefined,
+  score: CheckInScore | null | undefined,
+  ctx: z.RefinementCtx,
+): void => {
+  if (!questions) return
+  for (const problem of checkInFormProblems(questions, score)) {
+    ctx.addIssue({ code: 'custom', message: problem.message, path: problem.path })
+  }
+}
+
+export const checkInFormSchema = z
+  .object({
+    archived: z.boolean().meta({ description: 'An archived form is kept but asks for nothing' }),
+    created_at: iso8601DateTimeSchema,
+    deleted_at: iso8601DateTimeSchema.nullable().meta({ description: 'When it was deleted; null when live' }),
+    description: z.string().nullable(),
+    id: z.string().uuid().meta({ description: 'Form ID' }),
+    name: z.string(),
+    notify: z.boolean().meta({ description: 'Whether a due slot raises a `check_in_due` notification' }),
+    questions: z.array(checkInQuestionSchema),
+    schedule: scheduleSchema.nullable().meta({ description: 'When the form is asked for; null for none' }),
+    score: checkInScoreSchema.nullable(),
+    updated_at: iso8601DateTimeSchema,
+    version: z
+      .number()
+      .int()
+      .meta({ description: 'Current version; it moves when a question or the score changes in substance' }),
+  })
+  .meta({ description: 'A check-in form the user built or copied from a template', id: 'CheckInForm' })
+
+export type CheckInForm = z.infer<typeof checkInFormSchema>
+
+export const addCheckInFormBodySchema = z
+  .object({
+    description: descriptionSchema.optional(),
+    name: nameSchema.optional(),
+    notify: z
+      .boolean()
+      .default(true)
+      .meta({ description: 'Raise a `check_in_due` notification when a slot is due (default true)' }),
+    questions: questionsSchema.optional(),
+    schedule: scheduleSchema.optional(),
+    score: checkInScoreSchema.optional(),
+    template: z
+      .string()
+      .optional()
+      .meta({ description: 'ID of a built-in template to copy; the other fields override its own' }),
+  })
+  .superRefine((body, ctx) => {
+    if (body.template === undefined) {
+      if (body.name === undefined) {
+        ctx.addIssue({ code: 'custom', message: 'Give a name or a template', path: ['name'] })
+      }
+      if (body.questions === undefined) {
+        ctx.addIssue({ code: 'custom', message: 'Give questions or a template', path: ['questions'] })
+      }
+    }
+    reportProblems(body.questions, body.score, ctx)
+  })
+  .meta({
+    description: 'A new check-in form, built from scratch or copied from a template',
+    id: 'AddCheckInFormBody',
+  })
+
+export type AddCheckInFormBody = z.infer<typeof addCheckInFormBodySchema>
+
+export const updateCheckInFormBodySchema = z
+  .object({
+    archived: z.boolean().optional().meta({ description: 'Archive or unarchive the form' }),
+    description: descriptionSchema.nullable().optional().meta({ description: 'New text; null clears it' }),
+    name: nameSchema.optional(),
+    notify: z.boolean().optional(),
+    questions: questionsSchema.optional(),
+    schedule: scheduleSchema.nullable().optional().meta({ description: 'New schedule; null removes it' }),
+    score: checkInScoreSchema.nullable().optional().meta({ description: 'New score; null removes it' }),
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: 'Give at least one field to change',
+    path: ['name'],
+  })
+  .superRefine((body, ctx) => reportProblems(body.questions, body.score, ctx))
+  .meta({
+    description:
+      'Fields of a check-in form to change; at least one. `questions` replaces them all. A change to a question (other than its place) or to the score makes a new version.',
+    id: 'UpdateCheckInFormBody',
+  })
+
+export type UpdateCheckInFormBody = z.infer<typeof updateCheckInFormBodySchema>
+
+export const checkInFormsQuerySchema = z
+  .object({
+    deleted: queryBooleanSchema
+      .optional()
+      .meta({ description: 'List the deleted forms (restorable for 30 days) instead of the live ones' }),
+  })
+  .meta({ id: 'CheckInFormsQuery' })
+
+export type CheckInFormsQuery = z.infer<typeof checkInFormsQuerySchema>
+
+export const checkInFormsResponseSchema = baseResponseSchema
+  .extend({ forms: z.array(checkInFormSchema) })
+  .meta({ id: 'CheckInFormsResponse' })
+
+export type CheckInFormsResponse = z.infer<typeof checkInFormsResponseSchema>
+
+export const checkInFormResponseSchema = baseResponseSchema
+  .extend({ form: checkInFormSchema.optional() })
+  .meta({ id: 'CheckInFormResponse' })
+
+export type CheckInFormResponse = z.infer<typeof checkInFormResponseSchema>
+
+export const checkInTemplateSchema = z
+  .object({
+    description: z.string(),
+    id: z.string().meta({ description: 'Template ID, given as `template` to copy it', example: 'morning' }),
+    licence: z.string().meta({ description: 'Terms the instrument may be used under' }),
+    name: z.string(),
+    questions: z.array(checkInQuestionSchema),
+    score: checkInScoreSchema.nullable(),
+    source: z.string().meta({ description: 'Where the instrument comes from' }),
+  })
+  .meta({ description: 'A built-in check-in form the user can copy and then edit', id: 'CheckInTemplate' })
+
+export type CheckInTemplate = z.infer<typeof checkInTemplateSchema>
+
+export const checkInTemplatesResponseSchema = baseResponseSchema
+  .extend({ templates: z.array(checkInTemplateSchema) })
+  .meta({ id: 'CheckInTemplatesResponse' })
+
+export type CheckInTemplatesResponse = z.infer<typeof checkInTemplatesResponseSchema>
+
+export const checkInAnswerValueSchema = z
+  .union([
+    z.number(),
+    z.boolean(),
+    z.string().max(CHECK_IN_TEXT_ANSWER_MAX),
+    z.array(z.string().max(40)).max(CHECK_IN_OPTIONS_MAX),
+  ])
+  .meta({
+    description:
+      'A number (`number`, `scale`), a boolean (`yes_no`), an option key (`choice`), option keys (`multi_choice`) or text (`text`)',
+    id: 'CheckInAnswerValue',
+  })
+
+export type CheckInAnswerValue = z.infer<typeof checkInAnswerValueSchema>
+
+const answersSchema = z
+  .record(z.string(), checkInAnswerValueSchema)
+  .refine((answers) => Object.keys(answers).length <= CHECK_IN_QUESTIONS_MAX, 'Too many answers')
+  .meta({ description: 'Answers keyed by question key; a question left out is unanswered' })
+
+export const checkInLoggedSchema = z
+  .object({ metric: z.string(), time: iso8601DateTimeSchema })
+  .meta({ description: 'A metric point a check-in wrote', id: 'CheckInLogged' })
+
+export const checkInStatuses = ['answered'] as const
+
+export const checkInSchema = z
+  .object({
+    answered_at: iso8601DateTimeSchema,
+    answers: z.record(z.string(), checkInAnswerValueSchema),
+    created_at: iso8601DateTimeSchema,
+    deleted_at: iso8601DateTimeSchema.nullable().meta({ description: 'When it was deleted; null when live' }),
+    form_id: z.string().uuid(),
+    form_name: z.string().meta({ description: "The form's current name" }),
+    form_version: z.number().int().meta({ description: 'The form version answered' }),
+    id: z.string().uuid().meta({ description: 'Check-in ID' }),
+    log_errors: z
+      .array(z.object({ error: z.string(), question_key: z.string() }))
+      .optional()
+      .meta({ description: 'Answers that could not be logged to their metric by this write, if any' }),
+    logged: z.record(z.string(), checkInLoggedSchema).meta({
+      description: `The metric points this check-in wrote, by question key (the score under \`${CHECK_IN_SCORE_KEY}\`)`,
+    }),
+    note: z.string().nullable(),
+    questions: z
+      .array(checkInQuestionSchema)
+      .meta({ description: 'The questions of the form version answered, to read the answers against' }),
+    scheduled_for: iso8601DateTimeSchema
+      .nullable()
+      .meta({ description: 'The schedule slot this check-in answers, if any' }),
+    score: z
+      .number()
+      .nullable()
+      .meta({ description: "The form version's score, if it has one and it is complete" }),
+    status: z.enum(checkInStatuses),
+    updated_at: iso8601DateTimeSchema,
+  })
+  .meta({ description: 'A filled-in check-in form', id: 'CheckIn' })
+
+export type CheckIn = z.infer<typeof checkInSchema>
+
+export const submitCheckInBodySchema = z
+  .object({
+    answered_at: iso8601DateTimeSchema.optional().meta({ description: 'When it was answered (default now)' }),
+    answers: answersSchema.default({}),
+    form_id: z.string().regex(UUID_RE, 'Must be a form ID').meta({ description: 'The form answered' }),
+    note: z.string().max(CHECK_IN_NOTE_MAX).optional().meta({ description: 'A note on the check-in' }),
+    scheduled_for: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'The schedule slot answered (its `scheduled_for` from GET /due)' }),
+  })
+  .meta({ description: "A check-in: answers to the form's current version", id: 'SubmitCheckInBody' })
+
+export type SubmitCheckInBody = z.infer<typeof submitCheckInBodySchema>
+
+export const updateCheckInBodySchema = z
+  .object({
+    answered_at: iso8601DateTimeSchema.optional(),
+    answers: answersSchema.optional().meta({ description: 'New answers, replacing them all' }),
+    note: z
+      .string()
+      .max(CHECK_IN_NOTE_MAX)
+      .nullable()
+      .optional()
+      .meta({ description: 'New note; null clears it' }),
+    scheduled_for: iso8601DateTimeSchema
+      .nullable()
+      .optional()
+      .meta({ description: 'New slot; null clears it' }),
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: 'Give at least one field to change',
+    path: ['answers'],
+  })
+  .meta({
+    description:
+      'Fields of a check-in to change; at least one. Answers are read against the version it answered, and its logged points are replaced.',
+    id: 'UpdateCheckInBody',
+  })
+
+export type UpdateCheckInBody = z.infer<typeof updateCheckInBodySchema>
+
+export const checkInsQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: '`next_cursor` of the previous page' }),
+    deleted: queryBooleanSchema
+      .optional()
+      .meta({ description: 'List the deleted check-ins (restorable for 30 days) instead of the live ones' }),
+    form_id: z
+      .string()
+      .regex(UUID_RE, 'Must be a form ID')
+      .optional()
+      .meta({ description: 'Only this form' }),
+    from: iso8601DateTimeSchema.optional().meta({ description: 'Answered at or after this time' }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .default(50)
+      .meta({ description: 'Max check-ins to return (1–200, default 50)' }),
+    to: iso8601DateTimeSchema.optional().meta({ description: 'Answered before this time' }),
+  })
+  .meta({ id: 'CheckInsQuery' })
+
+export type CheckInsQuery = z.infer<typeof checkInsQuerySchema>
+
+export const checkInsResponseSchema = baseResponseSchema
+  .extend({
+    check_ins: z.array(checkInSchema).meta({ description: 'Newest first' }),
+    next_cursor: z.string().nullable().meta({ description: 'Cursor for the next page, or null on the last' }),
+  })
+  .meta({ id: 'CheckInsResponse' })
+
+export type CheckInsResponse = z.infer<typeof checkInsResponseSchema>
+
+export const checkInResponseSchema = baseResponseSchema
+  .extend({ check_in: checkInSchema.optional() })
+  .meta({ id: 'CheckInResponse' })
+
+export type CheckInResponse = z.infer<typeof checkInResponseSchema>
+
+export const dueSlotStates = ['due', 'upcoming', 'done', 'missed'] as const
+
+export type DueSlotState = (typeof dueSlotStates)[number]
+
+export const dueSlotSchema = z
+  .object({
+    check_in_id: z.string().uuid().nullable().meta({ description: 'The check-in that did it, when done' }),
+    date: dateOnlySchema.meta({
+      description: "The day the slot belongs to (by the schedule's `day_starts_at`)",
+    }),
+    form_id: z.string().uuid(),
+    form_name: z.string(),
+    scheduled_for: iso8601DateTimeSchema.meta({ description: 'The instant of the slot' }),
+    state: z.enum(dueSlotStates).meta({
+      description:
+        '`upcoming` before its time, `due` after it, `done` once answered, `missed` once its day is over',
+    }),
+    time: z.string().meta({ description: 'Local time of the slot (HH:MM)', example: '08:00' }),
+  })
+  .meta({ description: 'A slot of a scheduled check-in form', id: 'DueSlot' })
+
+export type DueSlot = z.infer<typeof dueSlotSchema>
+
+export const dueQuerySchema = z
+  .object({
+    date: dateOnlySchema
+      .optional()
+      .meta({ description: "The day (YYYY-MM-DD); default each form's current day" }),
+  })
+  .meta({ id: 'DueQuery' })
+
+export type DueQuery = z.infer<typeof dueQuerySchema>
+
+export const dueResponseSchema = baseResponseSchema
+  .extend({
+    slots: z.array(dueSlotSchema).meta({ description: 'In time order' }),
+    timezone: z
+      .string()
+      .meta({ description: 'The time zone the slots are read in', example: 'Europe/Stockholm' }),
+  })
+  .meta({ id: 'DueResponse' })
+
+export type DueResponse = z.infer<typeof dueResponseSchema>

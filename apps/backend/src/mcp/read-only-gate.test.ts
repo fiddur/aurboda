@@ -19,6 +19,11 @@ describe('isToolAllowedWhenReadOnly', () => {
     'search_notes',
     'list_deleted_notes',
     'list_note_revisions',
+    'list_check_in_forms',
+    'get_check_in_form',
+    'list_check_in_templates',
+    'query_check_ins',
+    'list_due',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([
@@ -34,6 +39,14 @@ describe('isToolAllowedWhenReadOnly', () => {
     'update_reminder',
     'delete_reminder',
     'restore_note',
+    'add_check_in_form',
+    'update_check_in_form',
+    'delete_check_in_form',
+    'restore_check_in_form',
+    'submit_check_in',
+    'update_check_in',
+    'delete_check_in',
+    'restore_check_in',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 

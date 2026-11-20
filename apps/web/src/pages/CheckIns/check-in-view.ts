@@ -1,0 +1,168 @@
+import type {
+  CheckIn,
+  CheckInAnswerValue,
+  CheckInForm,
+  CheckInQuestion,
+  DueSlot,
+  Schedule,
+} from '@aurboda/api-spec'
+
+import { format, isSameDay, subDays } from 'date-fns'
+
+import { scheduleLine } from '../Reminders/reminder-form'
+
+/** "Every day at 08:00 and 21:00", "Weekdays at 07:30, from 2026-12-01 to 2027-01-31". */
+export const checkInScheduleLine = (schedule: Schedule): string => {
+  const base = scheduleLine(schedule.times, schedule.weekdays)
+  if (schedule.start_date && schedule.end_date) {
+    return `${base}, from ${schedule.start_date} to ${schedule.end_date}`
+  }
+  if (schedule.start_date) return `${base}, from ${schedule.start_date}`
+  if (schedule.end_date) return `${base}, until ${schedule.end_date}`
+  return base
+}
+
+/** "Due now", "Later today at 21:00", "Done", "Missed". */
+export const slotLabel = (slot: Pick<DueSlot, 'state' | 'time'>): string => {
+  switch (slot.state) {
+    case 'due':
+      return 'Due now'
+    case 'upcoming':
+      return `Later today at ${slot.time}`
+    case 'done':
+      return 'Done'
+    case 'missed':
+      return 'Missed'
+  }
+}
+
+/** The link that fills in a form, for a slot when one is given. */
+export const fillHref = (formId: string, scheduledFor?: string): string =>
+  `/check-ins/${encodeURIComponent(formId)}${scheduledFor ? `?slot=${encodeURIComponent(scheduledFor)}` : ''}`
+
+/** "today 08:12", "yesterday 21:03", "3 Nov 08:12", "3 Nov 2025 08:12". */
+export const whenLine = (at: Date, now: Date): string => {
+  const time = format(at, 'HH:mm')
+  if (isSameDay(at, now)) return `today ${time}`
+  if (isSameDay(at, subDays(now, 1))) return `yesterday ${time}`
+  return at.getFullYear() === now.getFullYear()
+    ? format(at, `d MMM '${time}'`)
+    : format(at, `d MMM yyyy '${time}'`)
+}
+
+export const formatNumber = (value: number): string =>
+  Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100)
+
+/** "Answered today 08:12", with ", score 14" when the check-in has one. */
+export const answeredLine = (checkIn: Pick<CheckIn, 'answered_at' | 'score'>, now: Date): string => {
+  const when = `Answered ${whenLine(new Date(checkIn.answered_at), now)}`
+  return checkIn.score === null ? when : `${when}, score ${formatNumber(checkIn.score)}`
+}
+
+/** The newest check-in of each form, from a newest-first list. */
+export const latestByForm = (checkIns: readonly CheckIn[]): Map<string, CheckIn> => {
+  const latest = new Map<string, CheckIn>()
+  for (const checkIn of checkIns) if (!latest.has(checkIn.form_id)) latest.set(checkIn.form_id, checkIn)
+  return latest
+}
+
+const NONE = '—'
+
+const optionLabel = (question: Extract<CheckInQuestion, { options: unknown }>, key: string): string =>
+  question.options.find((option) => option.key === key)?.label ?? key
+
+const numberText = (question: Extract<CheckInQuestion, { type: 'number' }>, value: number): string =>
+  `${formatNumber(value)}${question.unit ? ` ${question.unit}` : ''}`
+
+const multiText = (
+  question: Extract<CheckInQuestion, { type: 'multi_choice' }>,
+  value: CheckInAnswerValue,
+): string | null =>
+  Array.isArray(value) && value.length > 0 ? value.map((key) => optionLabel(question, key)).join(', ') : null
+
+const typedAnswer = (question: CheckInQuestion, value: CheckInAnswerValue): string | null => {
+  switch (question.type) {
+    case 'number':
+      return typeof value === 'number' ? numberText(question, value) : null
+    case 'scale':
+      return typeof value === 'number' ? `${value} of ${question.min}–${question.max}` : null
+    case 'yes_no':
+      return typeof value === 'boolean' ? (value ? 'Yes' : 'No') : null
+    case 'choice':
+      return typeof value === 'string' ? optionLabel(question, value) : null
+    case 'multi_choice':
+      return multiText(question, value)
+    case 'text':
+      return typeof value === 'string' && value.trim() !== '' ? value : null
+  }
+}
+
+/** An answer in words, read against the question it answered. */
+export const formatAnswer = (question: CheckInQuestion, value: CheckInAnswerValue | undefined): string =>
+  value === undefined ? NONE : (typedAnswer(question, value) ?? NONE)
+
+/** Mirrors the server: the value itself, yes as 1 and no as 0, or the chosen option's value. */
+export const numericAnswer = (
+  question: CheckInQuestion,
+  value: CheckInAnswerValue | undefined,
+): number | undefined => {
+  if (value === undefined) return undefined
+  switch (question.type) {
+    case 'number':
+    case 'scale':
+      return typeof value === 'number' ? value : undefined
+    case 'yes_no':
+      return typeof value === 'boolean' ? (value ? 1 : 0) : undefined
+    case 'choice':
+      return question.options.find((option) => option.key === value)?.value
+    default:
+      return undefined
+  }
+}
+
+export interface CheckInSeries {
+  /** What is charted, in words. */
+  label: string
+  metric: string
+  /** Oldest first. */
+  points: { date: string; value: number }[]
+}
+
+/**
+ * What the form's history charts: its score when it has one, else its first question logged to a
+ * metric. Each check-in is read against the questions it answered. Null when there is neither.
+ */
+export const checkInSeries = (form: CheckInForm, checkIns: readonly CheckIn[]): CheckInSeries | null => {
+  const oldestFirst = [...checkIns].sort((a, b) => a.answered_at.localeCompare(b.answered_at))
+  if (form.score) {
+    return {
+      label: 'Score',
+      metric: form.score.metric,
+      points: oldestFirst.flatMap((checkIn) =>
+        checkIn.score === null ? [] : [{ date: checkIn.answered_at, value: checkIn.score }],
+      ),
+    }
+  }
+  const question = form.questions.find((q) => q.logs_to)
+  if (!question?.logs_to) return null
+  return {
+    label: question.prompt,
+    metric: question.logs_to.metric,
+    points: oldestFirst.flatMap((checkIn) => {
+      const answered = checkIn.questions.find((q) => q.key === question.key)
+      const value = answered ? numericAnswer(answered, checkIn.answers[question.key]) : undefined
+      return value === undefined ? [] : [{ date: checkIn.answered_at, value }]
+    }),
+  }
+}
+
+/** Whether Home shows the Due today card: the Check-ins page is in the menu and a live form has a schedule. */
+export const showsDueCard = (forms: readonly CheckInForm[], checkInsHidden: boolean): boolean =>
+  !checkInsHidden &&
+  forms.some((form) => form.schedule !== null && !form.archived && form.deleted_at === null)
+
+/** The slots Home lists: those still to do today, due ones first. */
+export const openSlots = (slots: readonly DueSlot[]): DueSlot[] => [
+  ...slots.filter((slot) => slot.state === 'due'),
+  ...slots.filter((slot) => slot.state === 'upcoming'),
+]
