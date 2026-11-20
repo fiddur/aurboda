@@ -612,6 +612,7 @@ export {
   getFoodItemSensitivityFlagIds,
   getFoodItemSensitivityNamesBatch,
   getSensitivityFlagByName,
+  getSensitivityFlagsVersion,
   insertSensitivityFlag,
   listSensitivityFlags,
   mergeFoodItemSensitivities,

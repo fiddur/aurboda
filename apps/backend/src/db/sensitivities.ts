@@ -46,6 +46,22 @@ export const listSensitivityFlags = async (user: string): Promise<SensitivityFla
   return result.rows.map(mapFlagRow)
 }
 
+/**
+ * Changes whenever a flag is added, renamed or deleted, so a cache of anything that shows a
+ * flag's name can carry it in its key. Microseconds, since a rename can land within the
+ * millisecond of the previous change.
+ */
+export const getSensitivityFlagsVersion = async (user: string): Promise<string> => {
+  const result = await query(
+    user,
+    `SELECT COUNT(*)::int AS n,
+            COALESCE(FLOOR(EXTRACT(EPOCH FROM MAX(updated_at)) * 1000000)::bigint, 0)::text AS latest
+       FROM sensitivity_flags`,
+  )
+  const row = result.rows[0] as { n: number; latest: string }
+  return `${row.n}:${row.latest}`
+}
+
 export const getSensitivityFlagByName = async (
   user: string,
   name: string,

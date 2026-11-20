@@ -42,6 +42,7 @@ import {
   type FeedPostRecord,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
+  getSensitivityFlagsVersion,
   isMissingDatabase,
   listPublicFeedPostsKeyset,
 } from '../db/index.ts'
@@ -99,13 +100,35 @@ export interface FeedPublicRouterDeps {
   listOfficialRemotePosts?: PublicTagsApi['listOfficialRemotePosts']
   /** The public tag pages; absent, every tag 404s. */
   publicTags?: Pick<PublicTagActions, 'latest' | 'page'>
+  /** A user's sensitivity flag set version, which keys what can show a flag's name; injectable for tests. */
+  sensitivityFlagsVersion?: (user: string) => Promise<string>
 }
 
 /** What the structured-payload cache may hold, in the payloads' JSON bytes. */
 export const STRUCTURED_CACHE_BYTES = 32 * 1024 * 1024
 
-const structuredKey = (username: string, postId: string, updatedAt: Date): string =>
-  `structured:${username}:${postId}:${updatedAt.getTime()}`
+const structuredKey = (username: string, postId: string, updatedAt: Date, flagsVersion?: string): string =>
+  `structured:${username}:${postId}:${updatedAt.getTime()}${flagsVersion === undefined ? '' : `:flags@${flagsVersion}`}`
+
+/**
+ * The kinds whose structured payload can name a sensitivity flag: an article's blocks
+ * (`flag_names`, `activity_label`) and a dashboard's meal-sensitivity widget (`activity_label`).
+ * Renaming or deleting a flag leaves the post's `updated_at` alone, so their key carries the
+ * flag set's version too.
+ */
+const namesFlags = (kind: FeedPostRecord['kind']): boolean => kind === 'article' || kind === 'dashboard'
+
+/** Reads each user's flag set version at most once for the request that creates it. */
+const memoizedFlagsVersion = (read: (user: string) => Promise<string>) => {
+  const memo = new Map<string, Promise<string>>()
+  return (user: string): Promise<string> => {
+    const known = memo.get(user)
+    if (known) return known
+    const version = read(user)
+    memo.set(user, version)
+    return version
+  }
+}
 
 const localUsernames = (rows: readonly ({ origin: 'local'; username: string } | { origin: 'remote' })[]) =>
   rows.flatMap((entry) => (entry.origin === 'local' ? [entry.username] : []))
@@ -114,10 +137,16 @@ const localUsernames = (rows: readonly ({ origin: 'local'; username: string } | 
  * The Atom memo's key: every listed entry's id and `updated_at`, so an edit, a
  * new article or one dropping out (deleted, or flipped away from `public`)
  * misses it, plus an hourly bucket, matching the structured cache's TTL, since a
- * chart block's data can arrive without touching the post.
+ * chart block's data can arrive without touching the post, plus the flag set
+ * version of each listed article's author, since an article names its flags.
  */
-const atomMemoKey = (scope: string, rows: { id: string; updated_at: Date }[], now: number): string =>
-  `atom:${scope}:${Math.floor(now / 3_600_000)}:${rows.map((r) => `${r.id}@${r.updated_at.getTime()}`).join(',')}`
+const atomMemoKey = (
+  scope: string,
+  rows: { id: string; updated_at: Date }[],
+  now: number,
+  flagsVersions = '',
+): string =>
+  `atom:${scope}:${Math.floor(now / 3_600_000)}:${rows.map((r) => `${r.id}@${r.updated_at.getTime()}`).join(',')}:${flagsVersions}`
 
 export const createFeedPublicRouter = ({
   apiBaseUrl,
@@ -125,6 +154,7 @@ export const createFeedPublicRouter = ({
   publicTags,
   readOfficialFeed,
   renderableBlocks = renderableArticleBlocks,
+  sensitivityFlagsVersion = getSensitivityFlagsVersion,
   webHost,
 }: FeedPublicRouterDeps): TypedRouter => {
   const router = typedRouter()
@@ -150,6 +180,7 @@ export const createFeedPublicRouter = ({
     username: string,
     record: FeedPostRecord,
     settings: UserSettings | null,
+    flagsVersion: (user: string) => Promise<string>,
   ): Promise<FeedPost> => {
     const post = await serializeFeedPost(username, record, { settings, webHost })
     if (
@@ -159,7 +190,12 @@ export const createFeedPublicRouter = ({
       record.kind === 'exercise' ||
       record.kind === 'dashboard'
     ) {
-      const key = structuredKey(username, record.id, record.updated_at)
+      const key = structuredKey(
+        username,
+        record.id,
+        record.updated_at,
+        namesFlags(record.kind) ? await flagsVersion(username) : undefined,
+      )
       post.structured =
         (await structuredCache(key, () => resolveStructuredContent(username, record))) ?? undefined
     }
@@ -231,12 +267,13 @@ export const createFeedPublicRouter = ({
         decodeKeysetCursor(req.query.cursor),
       )
       const settingsByUser = await settingsOf(localUsernames(page.rows))
+      const flagsVersion = memoizedFlagsVersion(sensitivityFlagsVersion)
       const posts = await Promise.all(
         page.rows.map(async (entry): Promise<OfficialFeedEntry> => {
           if (entry.origin === 'remote') return { ...serializePublicTagPost(entry.row), origin: 'remote' }
           const { row, username } = entry
           return {
-            ...(await serializePublicPost(username, row, settingsByUser.get(username) ?? null)),
+            ...(await serializePublicPost(username, row, settingsByUser.get(username) ?? null, flagsVersion)),
             author_username: username,
             origin: 'local',
           }
@@ -268,8 +305,16 @@ export const createFeedPublicRouter = ({
       id: entry.origin === 'local' ? `${entry.username}/${entry.row.id}` : `@remote/${entry.row.id}`,
       updated_at: entry.row.updated_at,
     }))
+    const articleAuthors = [
+      ...new Set(
+        rows.flatMap((entry) => (entry.origin === 'local' && entry.row.article ? [entry.username] : [])),
+      ),
+    ].sort()
+    const flagsVersions = (
+      await Promise.all(articleAuthors.map(async (u) => `${u}=${await sensitivityFlagsVersion(u)}`))
+    ).join(',')
     // `#` is never in a username, so this scope can't meet a user's articles memo.
-    const xml = await atomCache(atomMemoKey('#official', memoRows, Date.now()), async () => {
+    const xml = await atomCache(atomMemoKey('#official', memoRows, Date.now(), flagsVersions), async () => {
       const settingsByUser = await settingsOf(localUsernames(rows))
       const entries = await Promise.all(
         rows.map(async (entry): Promise<OfficialFeedAtomEntry> => {
@@ -420,8 +465,9 @@ export const createFeedPublicRouter = ({
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows
         const last = records[records.length - 1]
         const settings = await getSettings(username).catch(() => null)
+        const flagsVersion = memoizedFlagsVersion(sensitivityFlagsVersion)
         const posts = await Promise.all(
-          records.map((record) => serializePublicPost(username, record, settings)),
+          records.map((record) => serializePublicPost(username, record, settings, flagsVersion)),
         )
         res.setHeader('Cache-Control', 'no-store')
         res.json({
@@ -457,7 +503,8 @@ export const createFeedPublicRouter = ({
       const articles = rows.filter(
         (record): record is FeedPostPageRow & { article: ArticleContent } => record.article != null,
       )
-      const xml = await atomCache(atomMemoKey(username, articles, Date.now()), async () => {
+      const flagsVersions = articles.length > 0 ? await sensitivityFlagsVersion(username) : ''
+      const xml = await atomCache(atomMemoKey(username, articles, Date.now(), flagsVersions), async () => {
         const entries = await Promise.all(
           articles.map(async (record) => ({
             created_at: record.created_at,
@@ -502,7 +549,7 @@ export const createFeedPublicRouter = ({
           return res.status(404).json({ error: 'Not found', success: false })
         }
         const settings = await getSettings(username).catch(() => null)
-        const post = await serializePublicPost(username, record, settings)
+        const post = await serializePublicPost(username, record, settings, sensitivityFlagsVersion)
         res.setHeader('Cache-Control', 'no-store')
         res.json({ post, success: true })
       } catch (error) {
@@ -537,7 +584,12 @@ export const createFeedPublicRouter = ({
         if (!post) {
           return res.status(404).json({ error: 'Not found', success: false })
         }
-        const key = structuredKey(username, postId, post.updated_at)
+        const key = structuredKey(
+          username,
+          postId,
+          post.updated_at,
+          namesFlags(post.kind) ? await sensitivityFlagsVersion(username) : undefined,
+        )
         const structured = await structuredCache(key, () => resolveStructuredContent(username, post))
         if (!structured) {
           return res.status(404).json({ error: 'Not found', success: false })
