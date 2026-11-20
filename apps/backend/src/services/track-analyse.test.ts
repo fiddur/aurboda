@@ -252,6 +252,7 @@ describe('backfillActivityFeatures', () => {
 })
 
 const reanalyseDeps = () => ({
+  dropStaleSuggestions: vi.fn(async (_user: string, _ids: string[]): Promise<unknown> => 0),
   getActivity: vi.fn(
     async (_user: string, id: string): Promise<Activity | null> => ({
       activity_type: id === 'strava-1' ? 'running' : 'walking',
@@ -270,7 +271,7 @@ describe('reanalyseActivities', () => {
     vi.clearAllMocks()
   })
 
-  test('re-matches routes and segments, then recomputes features for each row, auditing failures without throwing', async () => {
+  test('re-matches routes and segments, drops stale suggestions, then recomputes features for each row, auditing failures without throwing', async () => {
     const deps = {
       ...reanalyseDeps(),
       recomputeFeatures: vi.fn(async (_user: string, id: string) =>
@@ -283,6 +284,7 @@ describe('reanalyseActivities', () => {
 
     expect(deps.rematchRoutes).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
     expect(deps.rematchSegments).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
+    expect(deps.dropStaleSuggestions).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
     expect(deps.recomputeFeatures.mock.calls.map((c) => c[1])).toEqual(['a', 'b', 'c'])
     expect(auditError).toHaveBeenCalledTimes(2)
   })

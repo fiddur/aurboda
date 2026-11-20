@@ -21,14 +21,17 @@ import { dateToTemporalInstant } from './activitypub/temporal-interop.ts'
 import {
   addRemoteChallengeComment,
   admitPushedThreadNote,
+  applyHostThreadSignal,
   buildThreadDocument,
   copyRowFromItem,
   followRemoteCommentDelete,
   followRemoteCommentEdit,
+  FORCED_PULL_MIN_INTERVAL_MS,
   HOST_UNREACHABLE_MESSAGE,
   memberRecipients,
   NO_REMOTE_THREAD_MESSAGE,
   NOT_JOINED_MESSAGE,
+  OWN_PENDING_KEEP_MS,
   type PushedThreadDeps,
   readRemoteThread,
   type RemoteThreadDeps,
@@ -423,6 +426,9 @@ const remoteDeps = (
     },
     webHost: HOME,
   }
+  const removeCopy = async (_user: string, pid: string, objectUri: string) => {
+    copy = copy.filter((row) => !(row.participation_id === pid && row.object_uri === objectUri))
+  }
   return {
     copy: () => copy,
     created,
@@ -433,6 +439,7 @@ const remoteDeps = (
     fetched,
     posts,
     pushes,
+    removeCopy,
     states,
   }
 }
@@ -490,6 +497,25 @@ describe('syncRemoteThread', () => {
     expect(other.states).toEqual([])
     const junk = remoteDeps({ fetchThread: async () => ({ kind: 'nope' }) })
     await expect(syncRemoteThread(junk.deps, 'ola', participation())).rejects.toThrow()
+  })
+
+  test("the member's own comment the host has not taken in yet survives a pull while fresh", async () => {
+    const own = (minutesAgo: number) =>
+      copyRow({
+        actor_uri: OLA,
+        object_uri: `${HOME}/users/ola/feed/${minutesAgo}`,
+        published_at: new Date(NOW - minutesAgo * 60_000),
+      })
+    const fresh = own(2)
+    const stale = own(OWN_PENDING_KEEP_MS / 60_000 + 1)
+    const others = copyRow({ object_uri: `${HOST_WEB}/users/freja/feed/gone`, published_at: new Date(NOW) })
+    const fake = remoteDeps({ copy: [fresh, stale, others] })
+    await syncRemoteThread(fake.deps, 'ola', participation())
+    expect(fake.copy().map((row) => row.object_uri)).toEqual([
+      `${HOST_WEB}/users/freja/feed/a`,
+      fresh.object_uri,
+    ])
+    expect(fake.copy()[1]).toMatchObject({ actor_uri: OLA, content: fresh.content })
   })
 
   test('without a thread URL or a way to sign there is nothing to pull', async () => {
@@ -819,6 +845,7 @@ describe('admitPushedThreadNote', () => {
         notified.push(input)
       },
       now: () => NOW,
+      removeCopy: fake.removeCopy,
       updateThreadState: fake.deps.updateThreadState,
       upsertCopy: fake.deps.upsertCopy,
     }
@@ -865,11 +892,28 @@ describe('admitPushedThreadNote', () => {
   })
 
   test('an unknown sender is not stored and marks the copy stale', async () => {
-    const fake = pushedDeps()
+    const fake = pushedDeps(participation({ thread_synced_at: new Date(NOW - 2 * 60_000) }))
     const stranger = 'https://new.example/users/kim'
     expect(await admit(fake, pushed({ actor: stranger }), stranger)).toBeNull()
     expect(fake.copy()).toEqual([])
     expect(fake.states).toEqual([{ thread_synced_at: null }])
+  })
+
+  test('an unknown sender forces at most one pull a minute', async () => {
+    const stranger = 'https://new.example/users/kim'
+    const recent = pushedDeps(
+      participation({ thread_synced_at: new Date(NOW - FORCED_PULL_MIN_INTERVAL_MS) }),
+    )
+    expect(await admit(recent, pushed({ actor: stranger }), stranger)).toBeNull()
+    expect(recent.states).toEqual([])
+    const due = pushedDeps(
+      participation({ thread_synced_at: new Date(NOW - FORCED_PULL_MIN_INTERVAL_MS - 1) }),
+    )
+    await admit(due, pushed({ actor: stranger }), stranger)
+    expect(due.states).toEqual([{ thread_synced_at: null }])
+    const never = pushedDeps(participation({ thread_synced_at: null }))
+    await admit(never, pushed({ actor: stranger }), stranger)
+    expect(never.states).toEqual([{ thread_synced_at: null }])
   })
 
   test('authority: the Note lives on the sender host and names the sender', async () => {
@@ -894,5 +938,64 @@ describe('admitPushedThreadNote', () => {
     const current = participation({ thread_attendees: [ZED, other] })
     const second = { ...fake, deps: { ...fake.deps, getParticipationByObjectUri: async () => current } }
     expect(await admit(second, pushed({ actor: other, id: 'https://far.example/notes/1' }), other)).toBeNull()
+  })
+})
+
+describe('applyHostThreadSignal', () => {
+  const zedRow = () => copyRow({ actor_uri: ZED, object_uri: 'https://far.example/notes/9' })
+
+  const signalDeps = () => {
+    const row = zedRow()
+    const fake = remoteDeps({ copy: [row] })
+    const deps = {
+      getParticipationByObjectUri: fake.deps.getParticipationByObjectUri,
+      removeCopy: fake.removeCopy,
+      updateThreadState: fake.deps.updateThreadState,
+    }
+    return { ...fake, deps, row }
+  }
+
+  const signal = (kind: 'add' | 'remove', objectUri: string, actor = HOST_ACTOR, target = OBJECT_URI) => ({
+    actor_uri: actor,
+    kind,
+    me: 'ola',
+    object_uri: objectUri,
+    target_uri: target,
+  })
+
+  test("the host's Remove drops the row whoever wrote it and marks the copy stale", async () => {
+    const fake = signalDeps()
+    expect(await applyHostThreadSignal(fake.deps, signal('remove', fake.row.object_uri))).toBe(true)
+    expect(fake.copy()).toEqual([])
+    expect(fake.states).toEqual([{ thread_synced_at: null }])
+  })
+
+  test("the host's Add marks the copy stale and keeps the rows", async () => {
+    const fake = signalDeps()
+    expect(await applyHostThreadSignal(fake.deps, signal('add', fake.row.object_uri))).toBe(true)
+    expect(fake.copy()).toHaveLength(1)
+    expect(fake.states).toEqual([{ thread_synced_at: null }])
+  })
+
+  test('anyone but the host, or an unknown challenge, changes nothing', async () => {
+    const fake = signalDeps()
+    expect(await applyHostThreadSignal(fake.deps, signal('remove', fake.row.object_uri, ZED))).toBe(false)
+    expect(await applyHostThreadSignal(fake.deps, signal('add', fake.row.object_uri, ZED))).toBe(false)
+    expect(
+      await applyHostThreadSignal(
+        fake.deps,
+        signal('remove', fake.row.object_uri, HOST_ACTOR, 'https://host.example/users/freja/challenges/x'),
+      ),
+    ).toBe(false)
+    expect(fake.copy()).toHaveLength(1)
+    expect(fake.states).toEqual([])
+  })
+
+  test('a Remove of a row not in the copy still only marks it stale', async () => {
+    const fake = signalDeps()
+    expect(await applyHostThreadSignal(fake.deps, signal('remove', 'https://far.example/notes/none'))).toBe(
+      true,
+    )
+    expect(fake.copy()).toHaveLength(1)
   })
 })

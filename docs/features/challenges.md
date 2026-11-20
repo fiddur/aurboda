@@ -441,8 +441,8 @@ The rules:
    other servers (see _Members on other servers_), never to followers. Deleting a
    top-level entry takes its replies out of the thread with it, other people's included;
    their own feed posts stay.
-4. The host or an admin can **hide** an entry: it is then shown only to the host, and a
-   hidden entry hides the replies under it. Hiding is undone by unhiding.
+4. The host or an admin can **hide** an entry: it is then shown only to the host and
+   admins, and a hidden entry hides the replies under it. Hiding is undone by unhiding.
 5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
 6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
    the host and every local member except its author.
@@ -488,19 +488,27 @@ host.
   - The host delivers every comment written, edited or deleted on its side to its verified
     members.
   - A Note from someone who is not the host or an attendee is not taken into the copy; it
-    marks the copy for a fresh pull instead.
+    marks the copy for a fresh pull instead, at most once a minute.
+  - A comment of the member's own that the host has not taken in yet stays in the copy
+    through a pull for ten minutes; after that it goes (the host refused or removed it).
   - A comment pushed into the copy raises `challenge_comment`, linking to the member's page
     for the challenge.
-- **What is not pushed.** A fediverse reply or a share the host took in arrives with the
-  next pull.
-- **Hiding.** Hiding and unhiding happen on the host's server only (`403` elsewhere).
+- **What is not pushed.** A fediverse reply or a share (or the result) the host took in is
+  not pushed itself: the host sends its verified members an `Add` of the entry, which marks
+  the copy for a fresh pull, so it arrives with the next read.
+- **Hiding.** Hiding and unhiding happen on the host's server only (`403` elsewhere). Hiding
+  sends the verified members a `Remove` of the entry: it leaves the copy at once, and the
+  copy is marked for a fresh pull (which drops the replies under it too). Unhiding sends an
+  `Add`, and the entry is back with the next read. An `Add` or `Remove` is taken only from
+  the host of the challenge it names.
 
 The member's page for a joined challenge reads `GET /challenges/participations/:id`
 (MCP `get_joined_challenge`). It answers the participation, `host_page_url` and, when the
 host can be read, the challenge and standings as the host's page shows them. When the host
 cannot be read, those two are left out.
 
-A page lists 20 top-level entries newest first, each with up to 200 replies oldest first,
+A page lists 20 top-level entries newest first, each with up to 200 replies oldest first
+(of those the viewer sees: hidden replies do not count),
 with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
 `role` (`host`, `member` or `visitor`), the audiences they may comment with and
 `can_comment`. An entry the viewer wrote carries `own_post_id` and `message` (the markdown

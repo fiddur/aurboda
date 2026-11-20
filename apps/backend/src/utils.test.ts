@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { pushAll, reduceTimeSeries } from './utils.ts'
+import { mapWithConcurrency, pushAll, reduceTimeSeries } from './utils.ts'
 
 describe('reduceTimeSeries', () => {
   test('removes duplicate dates keeping first occurrence', () => {
@@ -90,5 +90,25 @@ describe('pushAll', () => {
     pushAll(target, items)
     expect(target).toHaveLength(200_000)
     expect(target[199_999]).toBe(199_999)
+  })
+})
+
+describe('mapWithConcurrency', () => {
+  test('keeps the input order and never exceeds the limit', async () => {
+    let inFlight = 0
+    let peak = 0
+    const result = await mapWithConcurrency([5, 1, 4, 2, 3, 0, 6], 3, async (n) => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, n))
+      inFlight--
+      return n * 10
+    })
+    expect(result).toEqual([50, 10, 40, 20, 30, 0, 60])
+    expect(peak).toBe(3)
+  })
+
+  test('an empty list maps to an empty list', async () => {
+    expect(await mapWithConcurrency([], 5, async (n: number) => n)).toEqual([])
   })
 })

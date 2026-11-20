@@ -40,6 +40,7 @@ import {
   listPublicChallenges,
 } from '../db/index.ts'
 import { isMissingDatabase } from '../db/pg-errors.ts'
+import { mapWithConcurrency } from '../utils.ts'
 import { type ChallengeHost, discoverInstance, specFromChallengeDocument } from './challenge-federation.ts'
 import { specToApi } from './challenge-spec.ts'
 import { isTransientFetchError, safeFetchGet } from './safe-fetch.ts'
@@ -206,23 +207,6 @@ export interface ChallengeDiscoveryResult {
 }
 
 export type DiscoverChallenges = (user: string) => Promise<ChallengeDiscoveryResult>
-
-const mapWithConcurrency = async <T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> => {
-  const results: R[] = []
-  let next = 0
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++
-      results[i] = await fn(items[i])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker))
-  return results
-}
 
 /**
  * One followee's public challenge listing: `null` when the followee is not an

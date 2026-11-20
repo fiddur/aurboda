@@ -280,7 +280,9 @@ Aurboda does not block a user from sharing their own data. A correlation block w
 The flag is stored by id and its name is resolved whenever the article renders (the Note's figure
 labels, the figures, the markdown export, the Atom feed, the structured payload's `flag_names`
 and `activity_label`), so renaming a flag renames it everywhere, and a deleted flag reads
-generically ("a sensitivity flag").
+generically ("a sensitivity flag"). Both the Note and the structured payload (and the Atom feed)
+switch at once: the public caches of an article's structured payload and of the Atom feeds key on
+the author's flag set as well as on the post's `updated_at`.
 
 The answers of the draft routes (create, get, update), the preview, article create, article
 update and draft publish, REST and MCP alike, carry `warnings` (`ArticleWarning[]`: `block`, the

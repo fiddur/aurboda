@@ -377,6 +377,7 @@ export {
 export {
   deleteThreadCopyEntry,
   getParticipationByObjectUri,
+  deleteParticipationThreadCopyEntry,
   getThreadCopyEntryById,
   getThreadCopyEntryByObjectUri,
   listThreadCopy,
@@ -612,6 +613,7 @@ export {
   getFoodItemSensitivityFlagIds,
   getFoodItemSensitivityNamesBatch,
   getSensitivityFlagByName,
+  getSensitivityFlagsVersion,
   insertSensitivityFlag,
   listSensitivityFlags,
   mergeFoodItemSensitivities,

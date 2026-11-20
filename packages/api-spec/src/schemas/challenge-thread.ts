@@ -42,7 +42,9 @@ export const challengeThreadReplySchema = z
     author: challengeThreadAuthorSchema,
     content: z.string().meta({ description: 'The entry as sanitised HTML' }),
     edited_at: z.string().nullable().meta({ description: 'When the entry was last edited (ISO 8601)' }),
-    hidden: z.boolean().meta({ description: 'Hidden by the host; only the host is shown hidden entries' }),
+    hidden: z
+      .boolean()
+      .meta({ description: 'Hidden by the host; only the host and admins are shown hidden entries' }),
     id: z.string().uuid().meta({ description: 'Thread entry ID' }),
     images: z.array(timelineImageSchema).meta({ description: 'Images attached to the entry' }),
     in_reply_to_id: z

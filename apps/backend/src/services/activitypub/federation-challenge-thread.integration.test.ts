@@ -1,10 +1,21 @@
-import { Create, Delete, Mention, Note, Tombstone, Update } from '@fedify/fedify/vocab'
+import { Add, Create, Delete, Mention, Note, Remove, Tombstone, Update } from '@fedify/fedify/vocab'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { RaiseNotificationInput } from '../notifications.ts'
 
+import {
+  getThreadCopyEntryByObjectUri,
+  listThreadCopy,
+  updateParticipationThreadState,
+  upsertThreadCopyEntry,
+} from '../../db/challenge-thread-copy.ts'
 import { getChallengeThreadEntryByObjectUri, upsertChallengeThreadEntry } from '../../db/challenge-thread.ts'
-import { createChallenge, upsertChallengeMember } from '../../db/challenges.ts'
+import {
+  createChallenge,
+  createChallengeParticipation,
+  getParticipationById,
+  upsertChallengeMember,
+} from '../../db/challenges.ts'
 import { createReplyPost } from '../../db/feed.ts'
 import { listNotifications } from '../../db/notifications.ts'
 import { listTimelineEntries } from '../../db/timeline.ts'
@@ -13,8 +24,10 @@ import { actorDocument, inboxContext } from '../../test/inbox-context.ts'
 import { createInboundThreadDeps, type InboundThreadDeps } from '../challenge-thread-inbound.ts'
 import {
   createFeedFederation,
+  handleInboundAdd,
   handleInboundCreate,
   handleInboundDelete,
+  handleInboundRemove,
   handleInboundUpdate,
 } from './federation.ts'
 import { AS_PUBLIC } from './object.ts'
@@ -150,6 +163,20 @@ describe('Inbound challenge thread comments', () => {
     expect(await getChallengeThreadEntryByObjectUri(host, CAROL_NOTE)).toBeNull()
   })
 
+  test('a failing copy delete does not skip the later steps, and still surfaces', async () => {
+    const { host } = await hostedThread()
+    const failing = {
+      deleteCopy: async () => {
+        throw new Error('copy delete failed')
+      },
+    }
+    await expect(
+      handleInboundDelete(inboxCtx(host), deleteBy(CAROL), ORIGIN, createInboundThreadDeps(ORIGIN), failing),
+    ).rejects.toThrow('copy delete failed')
+    expect(await getChallengeThreadEntryByObjectUri(host, CAROL_NOTE)).toBeNull()
+    expect(await listTimelineEntries(host, 10)).toEqual([])
+  })
+
   test('a Delete from another actor leaves the entry', async () => {
     const { host } = await hostedThread()
     await handleInboundDelete(inboxCtx(host), deleteBy(DAVE), ORIGIN)
@@ -234,5 +261,100 @@ describe('Inbound challenge thread comments', () => {
     expect(notified.map((n) => n.user).sort()).toEqual([host, member].sort())
     expect(await notificationTypes(member)).toEqual([])
     expect((await listTimelineEntries(member, 10)).map((e) => e.object_uri)).toEqual([CAROL_NOTE])
+  })
+})
+
+describe('Host signals for a challenge joined on another server', () => {
+  const HOST_ACTOR = 'https://host.example/users/freja'
+  const OBJECT_URI = 'https://host.example/users/freja/challenges/nov'
+  const HOST_NOTE = 'https://host.example/users/freja/feed/1'
+
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const joined = async () => {
+    const user = getTestUser()
+    const participation = await createChallengeParticipation(user, {
+      challenge_url: 'https://host.example/u/freja/nov',
+      end_ts: new Date('2026-12-01T00:00:00Z'),
+      host_identity: 'https://host.example/u/freja',
+      name: 'Nov',
+      spec: {
+        activity_type_id: null,
+        aggregation: 'sum',
+        bucket_size: '1d',
+        filter_field: null,
+        filter_value: null,
+        measure: null,
+        pattern: 'steps',
+        source_type: 'metric',
+        unit: 'steps',
+      },
+      start_ts: new Date('2026-11-01T00:00:00Z'),
+      timezone: 'UTC',
+    })
+    await updateParticipationThreadState(user, participation.id, {
+      challenge_object_uri: OBJECT_URI,
+      host_actor_uri: HOST_ACTOR,
+      thread_synced_at: new Date(),
+    })
+    await upsertThreadCopyEntry(user, participation.id, {
+      actor_uri: CAROL,
+      audience: 'participants',
+      avatar_url: null,
+      content: '<p>spam</p>',
+      display_name: 'Carol',
+      edited_at: null,
+      handle: null,
+      images: [],
+      in_reply_to_uri: OBJECT_URI,
+      kind: 'comment',
+      object_uri: CAROL_NOTE,
+      published_at: new Date('2026-11-10T10:00:00Z'),
+      url: null,
+    })
+    return { participation, user }
+  }
+
+  const fromHost = { actor: new URL(HOST_ACTOR), object: new URL(CAROL_NOTE), target: new URL(OBJECT_URI) }
+  const syncedAt = async (user: string, id: string) =>
+    (await getParticipationById(user, id))?.thread_synced_at ?? null
+
+  test("the host's Remove drops another author's row and marks the copy stale", async () => {
+    const { participation, user } = await joined()
+    await handleInboundRemove(
+      inboxCtx(user),
+      new Remove({ ...fromHost, id: new URL(`${HOST_ACTOR}#removes/1`) }),
+    )
+    expect(await getThreadCopyEntryByObjectUri(user, participation.id, CAROL_NOTE)).toBeNull()
+    expect(await syncedAt(user, participation.id)).toBeNull()
+  })
+
+  test("the host's Add marks the copy stale and keeps the rows", async () => {
+    const { participation, user } = await joined()
+    await handleInboundAdd(inboxCtx(user), new Add({ ...fromHost, id: new URL(`${HOST_ACTOR}#adds/1`) }))
+    expect(await listThreadCopy(user, participation.id)).toHaveLength(1)
+    expect(await syncedAt(user, participation.id)).toBeNull()
+  })
+
+  test('a Remove or Add from anyone else, or of another target, is ignored', async () => {
+    const { participation, user } = await joined()
+    await handleInboundRemove(inboxCtx(user), new Remove({ ...fromHost, actor: new URL(CAROL) }))
+    await handleInboundAdd(inboxCtx(user), new Add({ ...fromHost, actor: new URL(CAROL) }))
+    await handleInboundRemove(
+      inboxCtx(user),
+      new Remove({ ...fromHost, object: new URL(HOST_NOTE), target: new URL(`${HOST_ACTOR}/featured`) }),
+    )
+    expect(await listThreadCopy(user, participation.id)).toHaveLength(1)
+    expect(await syncedAt(user, participation.id)).not.toBeNull()
   })
 })

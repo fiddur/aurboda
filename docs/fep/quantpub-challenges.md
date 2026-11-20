@@ -234,9 +234,32 @@ an entry, and whose `context` is the challenge `id`.
 A member's server SHOULD accept such a Note into its copy of the thread only
 when the Note's `context` names a challenge the user joined and the sender is
 that challenge's `host` or one of its `attendees`. It SHOULD pull the thread
-again when anyone else sends one. Entries a host takes from elsewhere (a
-fediverse reply, a share) are not delivered; members see them at the next
-pull.
+again when anyone else sends one, and MAY limit how often that forces a pull.
+
+Entries a host takes from elsewhere (a fediverse reply, a share) are not
+delivered themselves. Instead the host signals its verified members with plain
+ActivityStreams activities whose `object` is the entry `id` and whose `target`
+is the challenge `id`, addressed `to` those members:
+
+- `Add` when it takes such an entry in, and when it unhides an entry;
+- `Remove` when it hides an entry.
+
+```json
+{
+  "@context": "https://www.w3.org/ns/activitystreams",
+  "type": "Remove",
+  "id": "https://qs.example.net/users/freja#removes/0b5e…",
+  "actor": "https://qs.example.net/users/freja",
+  "object": "https://mastodon.example/users/kim/statuses/42",
+  "target": "https://qs.example.net/users/freja/challenges/november-steps",
+  "to": "https://ola.example/users/ola"
+}
+```
+
+A member's server SHOULD take either only from the `host` of the challenge
+`target` names, and ignore it otherwise. On `Remove` it SHOULD drop the entry
+from its copy at once, whoever wrote it; on either it SHOULD pull the thread
+again at the next read rather than fetch the `object`.
 
 ### 4. Joining and leaving
 

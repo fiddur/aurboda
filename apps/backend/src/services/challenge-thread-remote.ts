@@ -39,6 +39,7 @@ import type {
 import type { RaiseNotificationInput } from './notifications.ts'
 
 import {
+  deleteParticipationThreadCopyEntry,
   deleteThreadCopyEntry,
   getParticipationByObjectUri,
   getParticipationByUrl,
@@ -74,6 +75,8 @@ import {
   THREAD_PAGE_SIZE,
   type ThreadFailure,
   type ThreadPush,
+  type ThreadSignal,
+  type ThreadSignalKind,
   verifiedRemoteActors,
 } from './challenge-thread.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
@@ -85,6 +88,8 @@ import { ownObjectPrefix } from './timeline.ts'
 
 export const THREAD_DOCUMENT_LIMIT = 500
 export const THREAD_COPY_MAX_AGE_MS = 5 * 60 * 1000
+export const FORCED_PULL_MIN_INTERVAL_MS = 60_000
+export const OWN_PENDING_KEEP_MS = 10 * 60 * 1000
 const MAX_ITEM_IMAGES = 4
 const MAX_ATTENDEES = 1000
 
@@ -307,12 +312,23 @@ export const copyRowFromItem = (item: QuantChallengeThreadItem, now: number): Th
   }
 }
 
+const copyInput = ({
+  created_at: _created,
+  id: _id,
+  participation_id: _participation,
+  ...input
+}: ThreadCopyEntryRecord): ThreadCopyEntryInput => input
+
 /**
  * Pull the host's thread with a request signed as `user` (which also verifies the member's actor
- * with the host), replace the copy with it and remember the audiences and attendees.
+ * with the host), replace the copy with it and remember the audiences and attendees. The member's
+ * own comments of the last `OWN_PENDING_KEEP_MS` that the host has not taken in yet stay.
  */
 export const syncRemoteThread = async (
-  deps: Pick<RemoteThreadDeps, 'fetchThread' | 'now' | 'replaceCopy' | 'updateThreadState'>,
+  deps: Pick<
+    RemoteThreadDeps,
+    'fetchThread' | 'listCopy' | 'now' | 'replaceCopy' | 'updateThreadState' | 'webHost'
+  >,
   user: string,
   participation: ChallengeParticipationRecord,
 ): Promise<ChallengeParticipationRecord> => {
@@ -327,6 +343,16 @@ export const syncRemoteThread = async (
   for (const item of document.items.slice(0, THREAD_DOCUMENT_LIMIT)) {
     const row = copyRowFromItem(item, now)
     if (row != null && !rows.has(row.object_uri)) rows.set(row.object_uri, row)
+  }
+  const ownActor = buildActorUrl(deps.webHost, user)
+  for (const own of await deps.listCopy(user, participation.id)) {
+    if (
+      own.actor_uri === ownActor &&
+      !rows.has(own.object_uri) &&
+      now - own.published_at.getTime() <= OWN_PENDING_KEEP_MS
+    ) {
+      rows.set(own.object_uri, copyInput(own))
+    }
   }
   await deps.replaceCopy(user, participation.id, [...rows.values()])
   const updated = await deps.updateThreadState(user, participation.id, {
@@ -785,6 +811,7 @@ export const createRemoteThreadDeps = (
 /** How this server pushes comments and pulls threads; absent in tests and on a server without federation. */
 export interface ThreadFederation {
   push?: ThreadPush
+  signal?: ThreadSignal
   fetchThread?: (user: string, url: string) => Promise<unknown>
 }
 
@@ -832,6 +859,8 @@ export interface PushedThreadDeps {
   upsertCopy: RemoteThreadDeps['upsertCopy']
   updateThreadState: RemoteThreadDeps['updateThreadState']
   deleteCopy: (user: string, objectUri: string, actorUri: string) => Promise<unknown>
+  /** One participation's copy of an entry, whoever wrote it. */
+  removeCopy: (user: string, participationId: string, objectUri: string) => Promise<unknown>
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
 }
 
@@ -841,6 +870,7 @@ export const createPushedThreadDeps = (): PushedThreadDeps => ({
   getParticipationByObjectUri,
   notify: notifier.raiseBestEffort,
   now: Date.now,
+  removeCopy: deleteParticipationThreadCopyEntry,
   updateThreadState: updateParticipationThreadState,
   upsertCopy: upsertThreadCopyEntry,
 })
@@ -857,7 +887,10 @@ const participationInContext = async (
   return null
 }
 
-/** The participation a pushed Note is for, when its sender may push there; an unknown sender marks the copy stale. */
+/**
+ * The participation a pushed Note is for, when its sender may push there. An unknown sender marks
+ * the copy stale, at most once every `FORCED_PULL_MIN_INTERVAL_MS`.
+ */
 const pushTarget = async (
   deps: PushedThreadDeps,
   input: InboundThreadNote,
@@ -867,7 +900,10 @@ const pushTarget = async (
   const participation = await participationInContext(deps, me, note)
   if (participation == null) return null
   if (actorUri !== participation.host_actor_uri && !participation.thread_attendees.includes(actorUri)) {
-    await deps.updateThreadState(me, participation.id, { thread_synced_at: null })
+    const syncedAt = participation.thread_synced_at?.getTime()
+    if (syncedAt == null || deps.now() - syncedAt > FORCED_PULL_MIN_INTERVAL_MS) {
+      await deps.updateThreadState(me, participation.id, { thread_synced_at: null })
+    }
     return null
   }
   if (!isSendersNote(note.id, note, actorUri)) return null
@@ -947,4 +983,31 @@ export const admitPushedThreadNote = async (
     await deps.notify(input.me, pushedCommentNotification(participation, entry))
   }
   return { quiet: true }
+}
+
+export interface HostThreadSignal {
+  /** The local user whose inbox the activity reached. */
+  me: string
+  /** The signature-verified sender. */
+  actor_uri: string
+  kind: ThreadSignalKind
+  object_uri: string
+  target_uri: string
+}
+
+/**
+ * The host's `Remove` (an entry hidden) or `Add` (an entry unhidden or taken in without a push) for
+ * a challenge `me` joined on another server: a `Remove` drops that copy row, whoever wrote it, and
+ * both mark the copy stale so the next read pulls the host's document. Anything not from that
+ * participation's host is ignored. Whether it applied.
+ */
+export const applyHostThreadSignal = async (
+  deps: Pick<PushedThreadDeps, 'getParticipationByObjectUri' | 'removeCopy' | 'updateThreadState'>,
+  signal: HostThreadSignal,
+): Promise<boolean> => {
+  const participation = await deps.getParticipationByObjectUri(signal.me, signal.target_uri)
+  if (participation?.host_actor_uri == null || participation.host_actor_uri !== signal.actor_uri) return false
+  if (signal.kind === 'remove') await deps.removeCopy(signal.me, participation.id, signal.object_uri)
+  await deps.updateThreadState(signal.me, participation.id, { thread_synced_at: null })
+  return true
 }

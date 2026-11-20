@@ -156,6 +156,38 @@ describe('Segments integration', () => {
       expect(corner.ok && corner.line.end.lat).toBeCloseTo(LAT0 + 200 / M_PER_DEG_LAT, 5)
     })
 
+    test('from an activity: of a cut in several parts, the longest', async () => {
+      const user = getTestUser()
+      const activityId = await addTrackedActivity(L_SHAPE)
+      const before = densify([
+        [0, 0],
+        [180, 0],
+      ]).map((xy, i) => [xy, i * 5] as const)
+      const after = densify([
+        [200, 0],
+        [980, 0],
+      ]).map((xy, i) => [xy, i * 5] as const)
+      const zm = [...before, ...after]
+        .map(([xy, m]) => {
+          const [lon, lat] = toLonLat(xy)
+          return `${lon.toFixed(7)} ${lat.toFixed(7)} 0 ${m}`
+        })
+        .join(', ')
+      await upsertActivityTrack(user, {
+        activity_id: activityId,
+        ewkt: `SRID=4326;LINESTRING ZM(${zm})`,
+        full_resolution: true,
+        source: 'garmin',
+      })
+
+      const cut = await segmentLineFromActivity(user, activityId, 30, 190)
+      expect(cut.ok).toBe(true)
+      if (!cut.ok) return
+      expect(cut.line.length_m).toBeCloseTo(640, -1)
+      expect(cut.line.start.lon).toBeCloseTo(LON0 + 320 / M_PER_DEG_LON, 5)
+      expect(cut.line.end.lon).toBeCloseTo(LON0 + 960 / M_PER_DEG_LON, 5)
+    })
+
     test('from an activity: refuses offsets outside the track and an activity without one', async () => {
       const user = getTestUser()
       const activityId = await addTrackedActivity(L_SHAPE)
@@ -407,6 +439,9 @@ describe('Segments integration', () => {
       const activityId = await addTrackedActivity(L_SHAPE)
       const segment = await cutFirstLeg(activityId)
       expect(segment).toMatchObject({ created_from_activity_title: null, created_from_route_name: null })
+
+      await query(user, `UPDATE activities SET title = '' WHERE id = $1`, [activityId])
+      expect((await getSegmentById(user, segment.id))!.created_from_activity_title).toBe('')
 
       await query(user, `UPDATE activities SET title = 'Morning run' WHERE id = $1`, [activityId])
       expect((await getSegmentById(user, segment.id))!.created_from_activity_title).toBe('Morning run')

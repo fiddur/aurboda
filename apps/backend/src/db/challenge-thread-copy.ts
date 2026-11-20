@@ -152,6 +152,20 @@ export const deleteThreadCopyEntry = async (
   return result.rowCount ?? 0
 }
 
+/** Delete one participation's copy of `objectUri`, whoever wrote it. The number deleted. */
+export const deleteParticipationThreadCopyEntry = async (
+  user: string,
+  participationId: string,
+  objectUri: string,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM challenge_thread_copies WHERE participation_id = $1 AND object_uri = $2`,
+    [participationId, objectUri],
+  )
+  return result.rowCount ?? 0
+}
+
 export interface ParticipationThreadState {
   challenge_object_uri?: string | null
   host_actor_uri?: string | null

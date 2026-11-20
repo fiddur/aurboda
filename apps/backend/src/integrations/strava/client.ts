@@ -161,6 +161,10 @@ export const stravaClient = (
         )
 
         const { access_token, refresh_token, expires_at, athlete } = response.data
+        const onUserAuthenticated = options?.onUserAuthenticated
+        // Before the token is stored, so a sign-in that cannot be linked leaves no grant behind.
+        if (onUserAuthenticated && !athlete) throw new Error('Strava token response has no athlete')
+        const athleteId = onUserAuthenticated && athlete ? stravaIdOf(athlete) : null
 
         await upsertOAuthToken(user, {
           access_token,
@@ -170,8 +174,8 @@ export const stravaClient = (
           scopes: STRAVA_SCOPES.split(','),
         })
 
-        if (options?.onUserAuthenticated && athlete) {
-          await options.onUserAuthenticated(stravaIdOf(athlete), user)
+        if (onUserAuthenticated && athleteId !== null) {
+          await onUserAuthenticated(athleteId, user)
         }
 
         return { ok: true }

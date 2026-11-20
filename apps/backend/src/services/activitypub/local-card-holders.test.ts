@@ -6,18 +6,21 @@ const NOTE = 'https://aurboda.example/users/bob/feed/1'
 const BOB = 'https://aurboda.example/users/bob'
 
 describe('createLocalBoostCardHolders', () => {
-  test('lists the users that hold a card, asking one user at a time', async () => {
+  test('lists the users that hold a card, asking at most five at a time', async () => {
     let inFlight = 0
+    let peak = 0
+    const users = Array.from({ length: 12 }, (_, i) => `user${i}`)
     const holds = vi.fn(async (user: string) => {
       inFlight++
-      expect(inFlight).toBe(1)
-      await Promise.resolve()
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 1))
       inFlight--
-      return user !== 'carol'
+      return user !== 'user3'
     })
-    const list = createLocalBoostCardHolders({ holds, listUsers: async () => ['alice', 'carol', 'dave'] })
-    expect(await list(NOTE, BOB)).toEqual(['alice', 'dave'])
-    expect(holds).toHaveBeenCalledWith('alice', NOTE, BOB)
+    const list = createLocalBoostCardHolders({ holds, listUsers: async () => users })
+    expect(await list(NOTE, BOB)).toEqual(users.filter((u) => u !== 'user3'))
+    expect(peak).toBe(5)
+    expect(holds).toHaveBeenCalledWith('user0', NOTE, BOB)
   })
 
   test('a missing or failing database skips that user only', async () => {

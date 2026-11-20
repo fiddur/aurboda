@@ -21,6 +21,7 @@ import {
   followPostDeleteInThread,
   followPostEditInThread,
   isThreadParticipant,
+  MAX_REPLIES_PER_ENTRY,
   MAX_THREAD_ENTRIES,
   OTHER_SERVER_MESSAGE,
   ownPostIdOf,
@@ -31,6 +32,7 @@ import {
   type RemoteThreadBranch,
   resolveHostedChallenge,
   setChallengeThreadEntryHidden,
+  syncThreadEntryForPost,
   type ThreadCandidate,
   type ThreadPushChange,
   threadVisibilityLocked,
@@ -496,9 +498,14 @@ describe('addChallengeComment', () => {
       members?: ChallengeMemberRecord[]
       remote?: RemoteThreadBranch
       upsertFails?: boolean
+      hidden?: ChallengeThreadEntryRecord
+      tops?: ChallengeThreadEntryRecord[]
+      replies?: ChallengeThreadEntryRecord[]
     } = {},
   ) => {
     const pushes: { change: ThreadPushChange; recipients: string[]; user: string }[] = []
+    const signals: { host: string; kind: string; object: string; target: string; recipients: string[] }[] = []
+    const asked: { include_hidden: boolean; perRoot?: number }[] = []
     const created: ReplyPostInput[] = []
     const deleted: string[] = []
     const upserts: ChallengeThreadEntryInput[] = []
@@ -520,8 +527,15 @@ describe('addChallengeComment', () => {
       getEntryByObjectUri: async () => over.existing ?? null,
       getOwnPost: async () => null,
       listMembers: async () => over.members ?? MEMBERS,
-      listReplies: async () => [],
-      listTopLevel: async () => [],
+      listReplies: async (_host, _ids, visibility, perRoot) => {
+        asked.push({ include_hidden: visibility.include_hidden, perRoot })
+        return over.replies ?? []
+      },
+      listTopLevel: async (_host, _id, visibility, limit) =>
+        (over.tops ?? [])
+          .filter((top) => visibility.include_hidden || top.hidden_at == null)
+          .slice(0, limit)
+          .map((top) => ({ ...top, cursor_ts: top.published_at.toISOString() })),
       loadChallenge: async () => challenge(),
       notify: async (user) => {
         notified.push(user)
@@ -536,14 +550,18 @@ describe('addChallengeComment', () => {
         handle: `@${user}@aurboda.test`,
       }),
       resolveTags: async () => [],
-      setHidden: async () => null,
+      setHidden: async (_host, _challengeId, _entryId, hidden) =>
+        over.hidden == null ? null : { ...over.hidden, hidden_at: hidden ? new Date() : null },
+      signal: (host, kind, object, target, recipients) => {
+        signals.push({ host, kind, object, recipients, target })
+      },
       upsert: async (_host, input) => {
         upserts.push(input)
         return over.upsertFails ? null : { entry: entry({ ...input, id: 'new' }), inserted: true }
       },
       webHost: WEB,
     }
-    return { created, deleted, delivered, deps, notified, pushes, upserts }
+    return { asked, created, deleted, delivered, deps, notified, pushes, signals, upserts }
   }
 
   const body = { audience: 'participants' as const, challenge_url: `${WEB}/u/alice/abc`, message: ' Go! ' }
@@ -720,5 +738,97 @@ describe('addChallengeComment', () => {
     await followPostDeleteInThread(deps, 'bob', elsewhere)
     expect(calls).toEqual([`edit bob ${POST_ID}`, `delete bob ${POST_ID}`])
     expect(pushes).toEqual([])
+  })
+
+  test('hiding sends Remove, unhiding Add, to the verified members on other servers only', async () => {
+    const { deps, pushes, signals } = fakeDeps({ hidden: entry(), members: remoteMembers })
+    const url = `${WEB}/u/alice/abc`
+    expect(await setChallengeThreadEntryHidden(deps, 'alice', false, url, 'e1', true)).toMatchObject({
+      entry: { hidden: true },
+      ok: true,
+    })
+    await setChallengeThreadEntryHidden(deps, 'carol', true, url, 'e1', false)
+    expect(signals).toEqual([
+      { host: 'alice', kind: 'remove', object: entry().object_uri, recipients: [OLA], target: CHALLENGE_URI },
+      { host: 'alice', kind: 'add', object: entry().object_uri, recipients: [OLA], target: CHALLENGE_URI },
+    ])
+    expect(pushes).toEqual([])
+  })
+
+  test('a refused or missing hide signals nothing, nor does one with no member on another server', async () => {
+    const url = `${WEB}/u/alice/abc`
+    const refused = fakeDeps({ hidden: entry(), members: remoteMembers })
+    await setChallengeThreadEntryHidden(refused.deps, 'bob', false, url, 'e1', true)
+    const missing = fakeDeps({ members: remoteMembers })
+    await setChallengeThreadEntryHidden(missing.deps, 'alice', false, url, 'e1', true)
+    const local = fakeDeps({ hidden: entry() })
+    await setChallengeThreadEntryHidden(local.deps, 'alice', false, url, 'e1', true)
+    expect([...refused.signals, ...missing.signals, ...local.signals]).toEqual([])
+  })
+
+  const sharePost = (): FeedPostRecord => ({
+    ...reply({ in_reply_to_actor_uri: null, in_reply_to_uri: null, kind: 'challenge', visibility: 'public' }),
+    message: 'Day one done',
+  })
+
+  test('a share taken into the thread sends Add; an edited comment, already pushed, does not', async () => {
+    const shared = fakeDeps({ members: remoteMembers })
+    await syncThreadEntryForPost(shared.deps, 'bob', sharePost())
+    expect(shared.signals).toEqual([
+      {
+        host: 'alice',
+        kind: 'add',
+        object: `${WEB}/users/bob/feed/${POST_ID}`,
+        recipients: [OLA],
+        target: CHALLENGE_URI,
+      },
+    ])
+    const edited = fakeDeps({ existing: entry({ audience: 'participants' }), members: remoteMembers })
+    await followPostEditInThread(edited.deps, 'bob', reply())
+    expect(edited.signals).toEqual([])
+  })
+
+  test('an admin who is not the host reads hidden entries as the host does; a member does not', async () => {
+    const tops = [
+      entry({ hidden_at: new Date(), id: 'h1', object_uri: `${WEB}/users/bob/feed/h1` }),
+      entry({ id: 'e2', object_uri: `${WEB}/users/bob/feed/e2` }),
+    ]
+    const { asked, deps } = fakeDeps({ tops })
+    const url = `${WEB}/u/alice/abc`
+    const ids = (result: Awaited<ReturnType<typeof readChallengeThread>>) =>
+      result.ok ? result.entries.map((e) => [e.id, e.hidden]) : result
+    expect(ids(await readChallengeThread(deps, 'carol', url, undefined, true))).toEqual([
+      ['h1', true],
+      ['e2', false],
+    ])
+    expect(ids(await readChallengeThread(deps, 'bob', url))).toEqual([['e2', false]])
+    expect(asked).toEqual([
+      { include_hidden: true, perRoot: MAX_REPLIES_PER_ENTRY },
+      { include_hidden: true, perRoot: MAX_THREAD_ENTRIES },
+    ])
+  })
+})
+
+describe('reading a hosted thread', () => {
+  const top = entry({ id: 't1', object_uri: `${WEB}/users/bob/feed/t1` })
+  const replyTo = (n: number, hidden = false) =>
+    entry({
+      hidden_at: hidden ? new Date() : null,
+      id: `r${n}`,
+      in_reply_to_uri: top.object_uri,
+      object_uri: `${WEB}/users/bob/feed/r${n}`,
+      published_at: new Date(Date.UTC(2026, 9, 6, 0, 0, n)),
+      root_entry_id: 't1',
+    })
+
+  test('hidden replies do not use up the reply cap of a member', async () => {
+    const replies = [
+      ...Array.from({ length: 5 }, (_, i) => replyTo(i, true)),
+      ...Array.from({ length: MAX_REPLIES_PER_ENTRY + 5 }, (_, i) => replyTo(100 + i)),
+    ]
+    const shown = assembleThread([top], replies, () => null, false)[0]?.replies ?? []
+    expect(shown).toHaveLength(MAX_REPLIES_PER_ENTRY)
+    expect(shown[0]?.id).toBe('r100')
+    expect(assembleThread([top], replies, () => null, true)[0]?.replies).toHaveLength(MAX_REPLIES_PER_ENTRY)
   })
 })

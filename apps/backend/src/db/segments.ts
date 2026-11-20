@@ -130,7 +130,10 @@ export const segmentLineFromActivity = async (
        SELECT t.activity_type,
               CASE WHEN $2::float8 >= ST_M(ST_StartPoint(t.geom)) AND $3::float8 <= ST_M(ST_EndPoint(t.geom))
                 THEN ST_SimplifyPreserveTopology(
-                  ST_GeometryN(ST_LineMerge(ST_CollectionExtract(ST_Force2D(ST_LocateBetween(t.geom, $2::float8, $3::float8)), 2)), 1),
+                  (SELECT d.geom
+                   FROM ST_Dump(ST_LineMerge(ST_CollectionExtract(ST_Force2D(ST_LocateBetween(t.geom, $2::float8, $3::float8)), 2))) d
+                   ORDER BY ST_Length(d.geom::geography) DESC
+                   LIMIT 1),
                   $4)
               END AS line
        FROM t
@@ -265,7 +268,7 @@ const mapSegmentRow = (row: QueryResultRow): SegmentRecord => ({
   best_elapsed_s: row.best_elapsed_s == null ? null : Number(row.best_elapsed_s),
   created_at: row.created_at as Date,
   created_from_activity_id: (row.created_from_activity_id as string | null) ?? null,
-  created_from_activity_title: (row.created_from_activity_title as string | null) || null,
+  created_from_activity_title: (row.created_from_activity_title as string | null) ?? null,
   created_from_route_id: (row.created_from_route_id as string | null) ?? null,
   created_from_route_name: (row.created_from_route_name as string | null) ?? null,
   effort_count: Number(row.effort_count),

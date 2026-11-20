@@ -215,6 +215,47 @@ describe('stravaClient OAuth state', () => {
     expect(onUserAuthenticated).toHaveBeenCalledWith(expected, 'alice')
   })
 
+  test.each([
+    ['no athlete', undefined],
+    ['an athlete with no usable id', { id: 9007199254740992 }],
+  ])('complete answers auth_failed for %s, storing no token', async (_, athlete) => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', athlete, expires_at: 1_795_000_000, refresh_token: 'refresh' },
+    })
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+    expect(auditWarn).toHaveBeenCalledWith(
+      'alice',
+      'auth',
+      'Strava OAuth connection failed',
+      expect.anything(),
+    )
+  })
+
+  test('complete stores the token with no athlete when nothing links the athlete', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', expires_at: 1_795_000_000, refresh_token: 'refresh' },
+    })
+    const unlinked = stravaClient(
+      async () => ({ clientId: 'client-id', clientSecret: 'client-secret' }),
+      'https://example.com/api',
+      { auditWarn, now: () => now },
+    )
+
+    expect(await unlinked.complete('alice', 'the-code', stateFor('alice'))).toEqual({ ok: true })
+    expect(upsertOAuthToken).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ access_token: 'access' }),
+    )
+  })
+
   test('complete answers auth_failed when the exchange fails, storing nothing and auditing no secret', async () => {
     vi.mocked(schemaInitialized).mockResolvedValue(true)
     mockedAxios.post = vi.fn().mockRejectedValue(new Error('400 for the-code with client-secret'))

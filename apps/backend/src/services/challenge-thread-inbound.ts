@@ -34,8 +34,11 @@ import {
   isThreadParticipant,
   type LoadChallenge,
   parseChallengeObjectUrl,
+  signalVerifiedMembers,
   type ThreadAuthor,
   type ThreadCandidate,
+  type ThreadSignal,
+  verifiedRemoteActors,
 } from './challenge-thread.ts'
 import { buildActorUrl, buildChallengeObjectUrl } from './share-urls.ts'
 
@@ -54,8 +57,8 @@ export interface InboundThreadDeps extends AdmitDeps {
   now: () => number
 }
 
-export const createInboundThreadDeps = (origin: string): InboundThreadDeps => ({
-  ...createChallengeThreadDeps({ webHost: origin }),
+export const createInboundThreadDeps = (origin: string, signal?: ThreadSignal): InboundThreadDeps => ({
+  ...createChallengeThreadDeps({ signal, webHost: origin }),
   countByActorSince: countChallengeThreadEntriesByActorSince,
   deleteEntriesByActor: deleteChallengeThreadEntriesByActor,
   getChallengeById,
@@ -275,14 +278,19 @@ const admitIntoThread = async (
     now,
   )
   const admitted = await admitThreadEntry(deps, host, challenge, candidate)
-  return admitted.admitted ? admission : null
+  if (!admitted.admitted) return null
+  if (!verifiedRemoteActors(members).includes(actorUri)) {
+    signalVerifiedMembers(deps, thread, members, 'add', admitted.entry.object_uri)
+  }
+  return admission
 }
 
 /**
  * Admit an inbound Note into a thread hosted here, or say it is none (null: handle it as before).
  * Authority as for the timeline (same host, explicit attribution); a non-public Note only with the
  * challenge as its `context`; participants-only from participants; and at most
- * `INBOUND_NON_MEMBER_DAILY_LIMIT` new entries a day from anyone else.
+ * `INBOUND_NON_MEMBER_DAILY_LIMIT` new entries a day from anyone else. An entry the verified members
+ * on other servers did not get pushed by its author is signalled (`add`) to them.
  */
 export const admitInboundThreadNote = async (
   deps: InboundThreadDeps,
