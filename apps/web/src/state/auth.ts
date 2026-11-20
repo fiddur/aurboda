@@ -145,6 +145,10 @@ export const signup = async (
 }
 
 export const logout = () => {
+  const token = auth.value.token
+  if (token) {
+    import('./push-signout').then(({ forgetBrowserPush }) => forgetBrowserPush(token)).catch(() => undefined)
+  }
   clearCachedDashboards(() => localStorage)
   clearPeriodData(() => sessionStorage)
   auth.value = {}

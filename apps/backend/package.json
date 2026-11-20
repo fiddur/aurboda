@@ -44,6 +44,7 @@
     "sanitize-html": "^2.17.5",
     "satori": "0.26.0",
     "sharp": "^0.34.5",
+    "web-push": "^3.6.7",
     "zod": "^4.3.5"
   },
   "devDependencies": {
@@ -58,6 +59,7 @@
     "@types/pg-format": "^1.0.5",
     "@types/sanitize-html": "^2.16.1",
     "@types/supertest": "^6.0.3",
+    "@types/web-push": "^3.6.4",
     "ajv": "8.17.1",
     "supertest": "^7.2.2",
     "testcontainers": "^11.11.0",

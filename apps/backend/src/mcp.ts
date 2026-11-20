@@ -45,6 +45,7 @@ import type { RelayActions } from './services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
+import type { WebPush } from './services/web-push.ts'
 
 import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
 import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
@@ -151,6 +152,8 @@ interface McpDeps {
   skipAutoshare?: SkipAutoshare
   /** `run_notification_action`. */
   runNotificationAction?: RunNotificationAction
+  /** Browser push subscriptions (`list_push_subscriptions`, `delete_push_subscription`, `send_test_push`). */
+  webPush?: WebPush
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   /** Open challenges from followed peers (`discover_challenges`). */
@@ -253,6 +256,8 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     user,
     deps.centralDb?.isAdmin ?? (async () => false),
     deps.runNotificationAction,
+    undefined,
+    deps.webPush,
   )
   registerReminderTools(server, user)
   registerMealTools(server, user)

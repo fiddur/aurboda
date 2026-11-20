@@ -2,6 +2,7 @@ import { notificationsQuerySchema, setNotificationPreferenceBodySchema, UUID_RE 
 import { z } from 'zod'
 
 import type { RunNotificationAction } from '../services/notification-actions.ts'
+import type { WebPush } from '../services/web-push.ts'
 
 import {
   getNotificationTypeSettings,
@@ -19,6 +20,7 @@ export const registerNotificationTools = (
   isAdmin: (user: string) => Promise<boolean>,
   runAction?: RunNotificationAction,
   store: NotificationStore = notificationStore,
+  webPush?: WebPush,
 ) => {
   server.tool(
     'list_notifications',
@@ -89,4 +91,36 @@ export const registerNotificationTools = (
       return jsonResponse({ success: true, type_setting: setting })
     },
   )
+
+  if (webPush) {
+    server.tool(
+      'list_push_subscriptions',
+      "List the browsers subscribed to the user's push notifications (Web Push), oldest first, each with a readable browser label and when a push last reached it. Subscribing needs a browser: Settings → Notifications on the web.",
+      {},
+      async () => jsonResponse({ subscriptions: await webPush.list(user), success: true }),
+    )
+
+    server.tool(
+      'delete_push_subscription',
+      'Remove a subscribed browser by its ID (from list_push_subscriptions). It gets no more pushes.',
+      { id: z.string().describe('The subscription ID') },
+      async ({ id }) => {
+        if (!UUID_RE.test(id) || !(await webPush.remove(user, id))) {
+          return errorResponse('Subscription not found')
+        }
+        return jsonResponse({ success: true })
+      },
+    )
+
+    server.tool(
+      'send_test_push',
+      'Send "Aurboda can reach this browser" to every subscribed browser at once (not stored as a notification). Answers how many browsers accepted it out of how many are subscribed.',
+      {},
+      async () => {
+        const result = await webPush.sendTest(user)
+        if (result === null) return errorResponse('This server does not offer browser push')
+        return jsonResponse({ ...result, success: true })
+      },
+    )
+  }
 }

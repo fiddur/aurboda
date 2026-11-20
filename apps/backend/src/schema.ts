@@ -264,6 +264,7 @@ export const tableCreationOrder = [
   'notifications_actions',
   'notifications_indexes',
   'notification_preferences',
+  'push_subscriptions',
   'reminders',
 ]
 

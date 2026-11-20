@@ -34,4 +34,16 @@ export const notificationsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications (created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (created_at DESC) WHERE read_at IS NULL
   `,
+  push_subscriptions: `
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      endpoint        TEXT NOT NULL UNIQUE,
+      p256dh          TEXT NOT NULL,
+      auth            TEXT NOT NULL,
+      user_agent      TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_success_at TIMESTAMPTZ,
+      failure_count   INTEGER NOT NULL DEFAULT 0
+    )
+  `,
 }
