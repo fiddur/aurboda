@@ -16,6 +16,9 @@ describe('isToolAllowedWhenReadOnly', () => {
     'mark_notification_read',
     'mark_all_notifications_read',
     'list_reminders',
+    'search_notes',
+    'list_deleted_notes',
+    'list_note_revisions',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([
@@ -30,6 +33,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'add_reminder',
     'update_reminder',
     'delete_reminder',
+    'restore_note',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 

@@ -61,6 +61,7 @@ import {
   migrateAllUsers,
   openTimelineChannel,
   pruneDeductionRuleRuns,
+  pruneDeletedNotes,
   pruneSyncedOutboundSync,
   rematerializeSupersededOnce,
   resolveOrCreateActivityType,
@@ -1240,6 +1241,7 @@ const main = async () => {
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
+        pruneDeletedNotes,
         pruneSyncedOutboundSync,
         pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })

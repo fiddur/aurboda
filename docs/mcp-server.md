@@ -183,17 +183,22 @@ See [Metric catalogue](features/metric-catalog.md). A catalogue metric is added 
 
 ### Comment tools
 
-Comments (stored as "notes") hang off anything, or off a bare point in time, and
-can be threaded one level deep. See [Comments](features/comments.md) for the data
-model.
+Comments (stored as "notes") hang off anything, or off a bare point in time or a
+whole day, and can be threaded one level deep. Journal entries are free-standing
+comments. See [Comments](features/comments.md) for the data model and
+[Journal](features/journal.md).
 
-| Tool          | What it does                                                                                                                                                                                                                                             |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add_note`    | Add a comment in one of three shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), or about a moment (`entity_type: "time"`, no `entity_id`, `start_time` required, `end_time` optional) |
-| `get_notes`   | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                      |
-| `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                                    |
-| `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
-| `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
+| Tool                  | What it does                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add_note`            | Add a comment in one of four shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), about a moment (`entity_type: "time"`, `start_time` required, `end_time` optional) or a day (`entity_type: "day"`, `date` required); optional `title` and `tags` |
+| `get_notes`           | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                                                                                |
+| `query_notes`         | Every comment anchored in a `from`/`to` time range, and the `day` comments on its dates -- threads nested, replies never listed separately                                                                                                                                                                         |
+| `search_notes`        | Search and list thread roots newest first: full-text `q`, `tags`, `from`/`to` dates, `on_this_day`, `entity_types`, paged with `cursor`                                                                                                                                                                            |
+| `update_note`         | Change a comment's content, title and tags; times on a `time` comment, `date` on a `day` one (switching kinds); `expected_updated_at` refuses a stale edit; moving one moves its whole thread                                                                                                                      |
+| `delete_note`         | Delete a comment, restorable for 30 days; deleting a thread root deletes its replies too; `purge: true` removes it for good                                                                                                                                                                                        |
+| `restore_note`        | Restore a deleted comment with the replies deleted with it                                                                                                                                                                                                                                                         |
+| `list_deleted_notes`  | The deleted comments that can still be restored, with `deleted_at` and `purge_at`                                                                                                                                                                                                                                  |
+| `list_note_revisions` | A comment's earlier texts, newest first                                                                                                                                                                                                                                                                            |
 
 ### Notification tools
 

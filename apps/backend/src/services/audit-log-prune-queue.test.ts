@@ -1,3 +1,4 @@
+import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
@@ -12,6 +13,7 @@ const deps = (overrides: Partial<AuditLogPruneDeps>): AuditLogPruneDeps => ({
   listUsers: async () => ['alice', 'bob'],
   prune: async () => 0,
   pruneDeductionRuleRuns: async () => 0,
+  pruneDeletedNotes: async () => 0,
   pruneSyncedOutboundSync: async () => 0,
   pruneUsageBefore: async () => 0,
   ...overrides,
@@ -50,6 +52,16 @@ describe('pruneAllAuditLogs', () => {
     ])
   })
 
+  test('removes for good every user’s comments deleted more than 30 days ago', async () => {
+    const pruneDeletedNotes = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedNotes }))
+    expect(DELETED_NOTE_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedNotes.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
   test("one user's failure does not stop the rest", async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const prune = vi.fn(async (user: string) => {
@@ -67,6 +79,7 @@ describe('pruneAllAuditLogs', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const pruneDeductionRuleRuns = vi.fn(async () => 0)
     const pruneSyncedOutboundSync = vi.fn(async () => 0)
+    const pruneDeletedNotes = vi.fn(async () => 0)
     const pruned = await pruneAllAuditLogs(
       deps({
         listUsers: async () => ['alice'],
@@ -74,12 +87,14 @@ describe('pruneAllAuditLogs', () => {
           throw new Error('boom')
         },
         pruneDeductionRuleRuns,
+        pruneDeletedNotes,
         pruneSyncedOutboundSync,
       }),
     )
     expect(pruned).toBe(0)
     expect(pruneDeductionRuleRuns).toHaveBeenCalledOnce()
     expect(pruneSyncedOutboundSync).toHaveBeenCalledOnce()
+    expect(pruneDeletedNotes).toHaveBeenCalledOnce()
     consoleError.mockRestore()
   })
 

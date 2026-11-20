@@ -1272,6 +1272,43 @@ describe('getDailySummary', () => {
     expect(result.notes[0].replies!.map((r) => r.content)).toEqual(['Drank water', 'Better now'])
   })
 
+  test("reads the date's day entries with the timed comments, and lists them under notes", async () => {
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([
+      {
+        content: 'A quiet day',
+        created_at: new Date('2024-01-15T20:00:00Z'),
+        date: '2024-01-15',
+        entity_id: null,
+        entity_type: 'day',
+        hashtags: ['rest'],
+        id: 'day-note',
+        tags: [],
+        title: 'Sunday',
+        updated_at: new Date('2024-01-15T20:00:00Z'),
+      },
+    ])
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'), undefined, 'Europe/Stockholm')
+
+    expect(vi.mocked(db.getNotesForTimeRange).mock.calls.at(-1)![3]).toEqual({
+      from: '2024-01-15',
+      to: '2024-01-15',
+    })
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        date: '2024-01-15',
+        entity_type: 'day',
+        id: 'day-note',
+        tags: ['rest'],
+        title: 'Sunday',
+      }),
+    ])
+  })
+
   test('attaches comments to meals and keeps them out of the day-level notes', async () => {
     const mealId = 'meal-123'
     vi.mocked(db.getTimeSeries).mockResolvedValue([])
