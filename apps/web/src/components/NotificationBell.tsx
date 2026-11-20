@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { useLatestNotifications, useMarkAllNotificationsRead } from './notification-queries'
 import { NotificationList } from './NotificationList'
 import { badgeText, bellLabel } from './notifications'
+import { PushOffer } from './PushOffer'
 import './NotificationBell.css'
 
 function Badge({ unread }: { unread: number }) {
@@ -88,6 +89,7 @@ export function NotificationBellDropdown() {
             </button>
           </div>
           <div class="notification-panel-body">
+            <PushOffer />
             {isLoading ? (
               <p class="notification-empty">Loading…</p>
             ) : error ? (

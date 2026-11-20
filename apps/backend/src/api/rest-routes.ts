@@ -46,6 +46,7 @@ import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
 import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
+import type { WebPush } from '../services/web-push.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
@@ -219,6 +220,8 @@ interface RestRoutesDeps {
   skipAutoshare: SkipAutoshare
   /** Runs a notification's action server-side. */
   runNotificationAction: RunNotificationAction
+  /** Browser push: the VAPID key, the subscriptions and the test push. */
+  webPush: WebPush
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
@@ -274,6 +277,7 @@ export const mountRestRouters = ({
   autosharePreviewDeps,
   skipAutoshare,
   runNotificationAction,
+  webPush,
   dataExport,
   feedDeliver,
   threadFederation,
@@ -308,6 +312,7 @@ export const mountRestRouters = ({
     createNotificationsRouter(authMiddleware, {
       isAdmin: centralDb.isAdmin,
       runAction: runNotificationAction,
+      webPush,
     }),
   )
   httpd.use('/reminders', createRemindersRouter(authMiddleware))

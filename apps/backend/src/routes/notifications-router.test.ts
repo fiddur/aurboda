@@ -11,6 +11,7 @@ import type {
 } from '../db/index.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
 import type { NotificationStore } from '../services/notifications.ts'
+import type { WebPush } from '../services/web-push.ts'
 
 import { encodeKeysetCursor } from '../services/keyset-cursor.ts'
 import { createNotificationsRouter } from './notifications-router.ts'
@@ -64,12 +65,52 @@ const fakeStore = (overrides: Partial<NotificationStore> = {}) => {
 
 const noAction: RunNotificationAction = async () => ({ status: 'not_found' })
 
-const app = (store: NotificationStore, admin = true, runAction: RunNotificationAction = noAction) => {
+const SUBSCRIPTION = {
+  browser: 'Firefox on Android',
+  created_at: '2026-11-01T10:00:00.000Z',
+  current: true,
+  id: ID,
+  last_success_at: null,
+}
+
+const fakeWebPush = (overrides: Partial<WebPush> = {}) => {
+  const calls: unknown[][] = []
+  const webPush: WebPush = {
+    config: async () => ({ enabled: true, public_key: 'pub' }),
+    deliverNotification: async () => ({ failed: 0, reached: 0, removed: 0 }),
+    enabled: true,
+    list: async (user, endpoint) => {
+      calls.push(['list', user, endpoint])
+      return [SUBSCRIPTION]
+    },
+    remove: async (user, id) => {
+      calls.push(['remove', user, id])
+      return id === ID
+    },
+    sendTest: async (user) => {
+      calls.push(['sendTest', user])
+      return { reached: 1, total: 2 }
+    },
+    subscribe: async (user, body, userAgent) => {
+      calls.push(['subscribe', user, body, userAgent])
+      return { status: 'ok', subscription: SUBSCRIPTION }
+    },
+    ...overrides,
+  }
+  return { calls, webPush }
+}
+
+const app = (
+  store: NotificationStore,
+  admin = true,
+  runAction: RunNotificationAction = noAction,
+  webPush: WebPush = fakeWebPush().webPush,
+) => {
   const server = express()
   server.use(express.json())
   server.use(
     '/notifications',
-    createNotificationsRouter(auth, { isAdmin: async () => admin, runAction, store }),
+    createNotificationsRouter(auth, { isAdmin: async () => admin, runAction, store, webPush }),
   )
   return server
 }
@@ -259,5 +300,80 @@ describe('POST /notifications/:id/actions/:key', () => {
     ).post(`/notifications/${ID}/actions/skip`)
     expect(res.status).toBe(409)
     expect(res.body).toEqual({ error: 'This activity was already shared', success: false })
+  })
+})
+
+describe('browser push routes', () => {
+  const pushApp = (webPush: WebPush) => app(fakeStore().store, true, noAction, webPush)
+  const ENDPOINT = 'https://push.example/send/abc'
+  const body = { endpoint: ENDPOINT, expirationTime: null, keys: { auth: 'a', p256dh: 'p' } }
+
+  test('GET /push/config answers the configuration', async () => {
+    const res = await supertest(pushApp(fakeWebPush().webPush)).get('/notifications/push/config')
+    expect(res.body).toEqual({ enabled: true, public_key: 'pub', success: true })
+  })
+
+  test('GET /push/subscriptions lists, naming the current endpoint', async () => {
+    const { webPush, calls } = fakeWebPush()
+    const res = await supertest(pushApp(webPush))
+      .get('/notifications/push/subscriptions')
+      .query({ endpoint: ENDPOINT })
+    expect(res.body).toEqual({ subscriptions: [SUBSCRIPTION], success: true })
+    expect(calls).toEqual([['list', 'tester', ENDPOINT]])
+  })
+
+  test('POST /push/subscriptions stores the browser subscription with its user agent', async () => {
+    const { webPush, calls } = fakeWebPush()
+    const res = await supertest(pushApp(webPush))
+      .post('/notifications/push/subscriptions')
+      .set('User-Agent', 'Firefox')
+      .send(body)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ subscription: SUBSCRIPTION, success: true })
+    expect(calls).toEqual([
+      ['subscribe', 'tester', { endpoint: ENDPOINT, keys: { auth: 'a', p256dh: 'p' } }, 'Firefox'],
+    ])
+  })
+
+  test('POST /push/subscriptions refuses an invalid body, a bad endpoint and a disabled server', async () => {
+    const invalid = await supertest(pushApp(fakeWebPush().webPush))
+      .post('/notifications/push/subscriptions')
+      .send({ endpoint: ENDPOINT })
+    expect(invalid.status).toBe(400)
+
+    const bad = fakeWebPush({
+      subscribe: async () => ({ message: 'not public', status: 'invalid_endpoint' }),
+    })
+    const badRes = await supertest(pushApp(bad.webPush)).post('/notifications/push/subscriptions').send(body)
+    expect(badRes.status).toBe(400)
+    expect(badRes.body).toEqual({ error: 'not public', success: false })
+
+    const off = fakeWebPush({ subscribe: async () => ({ status: 'disabled' }) })
+    expect(
+      (await supertest(pushApp(off.webPush)).post('/notifications/push/subscriptions').send(body)).status,
+    ).toBe(409)
+  })
+
+  test('DELETE /push/subscriptions/:id removes one, 404 when there is none', async () => {
+    const { webPush } = fakeWebPush()
+    expect(
+      (await supertest(pushApp(webPush)).delete(`/notifications/push/subscriptions/${ID}`)).body,
+    ).toEqual({
+      success: true,
+    })
+    expect(
+      (await supertest(pushApp(webPush)).delete(`/notifications/push/subscriptions/${ID2}`)).status,
+    ).toBe(404)
+    expect((await supertest(pushApp(webPush)).delete('/notifications/push/subscriptions/nope')).status).toBe(
+      404,
+    )
+  })
+
+  test('POST /push/test answers how many browsers were reached, 409 when push is off', async () => {
+    const res = await supertest(pushApp(fakeWebPush().webPush)).post('/notifications/push/test')
+    expect(res.body).toEqual({ reached: 1, success: true, total: 2 })
+
+    const off = fakeWebPush({ sendTest: async () => null })
+    expect((await supertest(pushApp(off.webPush)).post('/notifications/push/test')).status).toBe(409)
   })
 })

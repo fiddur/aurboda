@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { fetchNotificationTypes, setNotificationPreference } from '../state/api'
 import { groupNotificationSettings } from './notifications'
+import { PushSettings } from './PushSettings'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 
@@ -56,7 +57,7 @@ export function NotificationSettings() {
     <SettingsSection
       id={SECTION_ID}
       title="Notifications"
-      description="In-app notifications show under the 🛎️ bell. Push notifications are delivered by the Aurboda Android app."
+      description="In-app notifications show under the 🛎️ bell. Push notifications go to the Aurboda Android app and to the browsers you turn push on in."
       headerExtra={<SaveStatusIndicator state={status} />}
       isLoading={isLoading}
       isEmpty={!isLoading && (error !== null || (types?.length ?? 0) === 0)}
@@ -64,6 +65,7 @@ export function NotificationSettings() {
         error ? 'Could not load notification settings.' : 'No notification types to configure yet.'
       }
     >
+      <PushSettings />
       {groupNotificationSettings(types ?? []).map((group) => (
         <div class="notification-group" key={group.group}>
           <div class="notification-group-header">

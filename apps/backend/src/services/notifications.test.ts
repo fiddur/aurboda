@@ -207,6 +207,96 @@ describe('createNotifier().reviseBestEffort', () => {
   })
 })
 
+describe('createNotifier push queueing', () => {
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  const pushDeps = (overrides: Partial<NotifierDeps> = {}) => {
+    const queued: [string, string][] = []
+    const fake = fakeDeps({
+      enqueuePush: async (user, id) => {
+        queued.push([user, id])
+      },
+      ...overrides,
+    })
+    return { ...fake, queued }
+  }
+
+  test('a stored notification with push on is queued for the browsers', async () => {
+    const { deps, queued } = pushDeps()
+    const row = await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([['alice', row!.id]])
+  })
+
+  test('one with push off is not queued', async () => {
+    const { deps, queued } = pushDeps({ getPreference: async () => ({ in_app: true, push: false }) })
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('a deduplicated raise stores nothing and queues nothing', async () => {
+    const { deps, queued } = pushDeps({ insert: async () => null })
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('the raise neither waits for the queue nor fails with it', async () => {
+    const { deps, errors } = fakeDeps({
+      enqueuePush: async () => {
+        throw new Error('queue down')
+      },
+    })
+    const row = await createNotifier(deps).raise('alice', input)
+    expect(row).not.toBeNull()
+    await settle()
+    expect(errors).toEqual([new Error('queue down')])
+
+    const hanging = fakeDeps({ enqueuePush: () => new Promise<void>(() => {}) })
+    await expect(createNotifier(hanging.deps).raise('alice', input)).resolves.not.toBeNull()
+  })
+
+  test('without a queue nothing is attempted', async () => {
+    const { deps, errors } = fakeDeps()
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(errors).toEqual([])
+  })
+
+  test('a revision of an unread push notification is queued again', async () => {
+    const { deps, queued } = pushDeps()
+    const row = await createNotifier(deps).revise('alice', 'k', { title: 'Shared' })
+    await settle()
+    expect(queued).toEqual([['alice', row!.id]])
+  })
+
+  test('a revision of a read notification is not queued', async () => {
+    const { deps, queued } = pushDeps({
+      revise: async () => ({
+        ...record({ in_app: true, push: true, title: 'x', type: 'admin_signup' }),
+        read_at: NOW,
+      }),
+    })
+    await createNotifier(deps).revise('alice', 'k', { title: 'Shared' })
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('each row revised by reviseOpen is queued', async () => {
+    const rows = ['a', 'b'].map((id) => ({
+      ...record({ in_app: true, push: true, title: 'x', type: 'autoshare_pending' }),
+      id,
+    }))
+    const { deps, queued } = pushDeps({ reviseOpen: async () => rows })
+    await createNotifier(deps).reviseOpen('alice', ['k1', 'k2'], { actions: [] })
+    await settle()
+    expect(queued).toEqual([
+      ['alice', 'a'],
+      ['alice', 'b'],
+    ])
+  })
+})
+
 describe('serializeNotification', () => {
   test('includes the actions', () => {
     const row = record({

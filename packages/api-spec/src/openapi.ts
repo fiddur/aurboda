@@ -136,11 +136,17 @@ import {
   muscleRecoveryResponseSchema,
 } from './schemas/muscle-recovery.ts'
 import {
+  addPushSubscriptionBodySchema,
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
   notificationsQuerySchema,
   notificationsResponseSchema,
   notificationTypesResponseSchema,
+  pushConfigResponseSchema,
+  pushSubscriptionResponseSchema,
+  pushSubscriptionsQuerySchema,
+  pushSubscriptionsResponseSchema,
+  sendTestPushResponseSchema,
   setNotificationPreferenceBodySchema,
   setNotificationPreferenceResponseSchema,
 } from './schemas/notifications.ts'
@@ -2208,6 +2214,99 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List notifications',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/config': {
+      get: {
+        description:
+          'Whether this server offers browser push (Web Push), and the VAPID public key to subscribe with. `enabled` is false when the web address is not HTTPS; `localhost` counts as allowed for development.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushConfigResponseSchema } },
+            description: 'The push configuration',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the browser push configuration',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/subscriptions': {
+      get: {
+        description:
+          "The browsers subscribed to this user's push notifications, oldest first. The keys are never returned. Name this browser's own `endpoint` to have its subscription marked `current`.",
+        requestParams: { query: pushSubscriptionsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushSubscriptionsResponseSchema } },
+            description: 'The subscribed browsers',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List push subscriptions',
+        tags: ['Notifications'],
+      },
+      post: {
+        description:
+          'Subscribe a browser: the body is its `PushSubscription` JSON. Subscribing the same endpoint again updates it. The endpoint must be an HTTPS URL on a public address. A user keeps at most 20 subscriptions; past that the one that has gone longest without a push is dropped.',
+        requestBody: { content: { 'application/json': { schema: addPushSubscriptionBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushSubscriptionResponseSchema } },
+            description: 'The stored subscription',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or the endpoint is not an HTTPS URL on a public address',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'This server does not offer browser push',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Subscribe a browser to push',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/subscriptions/{id}': {
+      delete: {
+        description: 'Remove a subscribed browser. It gets no more pushes from this server.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Subscription ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Subscription not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Remove a push subscription',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/test': {
+      post: {
+        description:
+          'Send "Aurboda can reach this browser" to every subscribed browser at once. It is not stored as a notification. Answers how many browsers accepted it.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sendTestPushResponseSchema } },
+            description: 'How many browsers were reached',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'This server does not offer browser push',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Send a test push',
         tags: ['Notifications'],
       },
     },

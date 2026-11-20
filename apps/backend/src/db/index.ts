@@ -920,6 +920,16 @@ export {
   upsertNotificationPreference,
 } from './notifications.ts'
 export {
+  deletePushSubscription,
+  listPushSubscriptions,
+  type PushSubscriptionInsert,
+  type PushSubscriptionRecord,
+  recordPushFailure,
+  recordPushSuccess,
+  trimPushSubscriptions,
+  upsertPushSubscription,
+} from './push-subscriptions.ts'
+export {
   deleteReminder,
   getReminder,
   insertReminder,

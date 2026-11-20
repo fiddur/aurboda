@@ -359,6 +359,18 @@ the server). A fediverse handle on this server links to the local public profile
 one elsewhere to `https://<host>/@<name>`; the Reddit username links to a new private message. The
 public `GET /status` carries both as `contact_fediverse` and `contact_reddit` (null when unset).
 
+## Browser push
+
+Notifications can be pushed to browsers ([browser push](features/notifications.md#browser-push))
+with no setup: the server generates its VAPID key pair on first use and keeps it in the central
+database's `server_settings` (`web_push_vapid_keys`), so every instance of a deployment uses the
+same pair. Keep it: a new pair makes every browser's subscription stop working until the user
+enables push again. Browsers offer push only on a secure origin, so it is on only when `WEB_HOST`
+is HTTPS (`localhost` also works, for development); otherwise Settings shows nothing about it.
+The server sends pushes to the browser vendors' push services (`fcm.googleapis.com`,
+`updates.push.services.mozilla.com`, `web.push.apple.com` and the like), so it needs outbound
+HTTPS to them.
+
 ## Federation
 
 **Tag actor host** (`tag_actor_host`, Admin Settings → **Federation**, `PATCH /admin/settings`):

@@ -221,7 +221,12 @@ import { createInvitationAuth } from './services/invitation.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
-import { notificationStore, notifier, notifyAdminsOfUnfinishedSignup } from './services/notifications.ts'
+import {
+  notificationStore,
+  notifier,
+  notifyAdminsOfUnfinishedSignup,
+  setNotificationPushEnqueuer,
+} from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -289,6 +294,8 @@ import {
   recordUsage,
   startUsageFlushing,
 } from './services/usage-recorder.ts'
+import { createWebPushQueue } from './services/web-push-queue.ts'
+import { createWebPush } from './services/web-push.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -1186,6 +1193,21 @@ const main = async () => {
     console.warn('⚠️ Reminders disabled (no job queue)')
   }
 
+  const webPush = createWebPush({ getVapidKeys: () => centralDb.getOrCreateVapidKeys(), webHost })
+  if (boss && webPush.enabled) {
+    try {
+      const webPushQueue = await createWebPushQueue(boss, {
+        deliver: (user, notificationId, options) =>
+          webPush.deliverNotification(user, notificationId, options),
+      })
+      setNotificationPushEnqueuer(webPushQueue.enqueue)
+    } catch (error) {
+      console.error('Failed to initialize Web Push queue:', error)
+    }
+  } else if (!webPush.enabled) {
+    console.info(`🔔 Browser push off: WEB_HOST (${webHost}) is not HTTPS`)
+  }
+
   // Challenge completion: a scheduled sweep over every user's hosted challenges
   // that closed (grace period ago) posts the final standings — winners tagged —
   // to the host's feed through the SAME challenge fan-out a manual share uses.
@@ -1293,6 +1315,7 @@ const main = async () => {
       autosharePreviewDeps: autoshareDeps,
       runNotificationAction: notificationActionRunner,
       skipAutoshare: skipAutoshareActivity,
+      webPush,
       relayActions,
       oidcProviders: oidc.providers,
       postUpdateResender,
@@ -1507,6 +1530,7 @@ const main = async () => {
     autosharePreviewDeps: autoshareDeps,
     runNotificationAction: notificationActionRunner,
     skipAutoshare: skipAutoshareActivity,
+    webPush,
     adminMiddleware,
     dataExport,
     adminUsers,

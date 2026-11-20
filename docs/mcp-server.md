@@ -207,6 +207,9 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 | `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |
 | `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
 | `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
+| `list_push_subscriptions`     | The browsers subscribed to browser push, with a readable browser label                                                                |
+| `delete_push_subscription`    | Remove a subscribed browser by `id`                                                                                                   |
+| `send_test_push`              | Send a test push to every subscribed browser; answers `reached` and `total`                                                           |
 
 ### Reminder tools
 

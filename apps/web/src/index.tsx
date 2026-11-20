@@ -10,6 +10,8 @@ import { Header } from './components/Header.jsx'
 import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { useBrowserTimezoneDefault } from './components/useBrowserTimezoneDefault.js'
+import { useNotificationReadParam } from './components/useNotificationReadParam.js'
+import { usePushReconcile } from './components/usePushReconcile.js'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
@@ -135,6 +137,8 @@ function AppShell() {
   // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
   const showPlanBanner = shouldShowPlanBanner(path, isLoggedIn)
   useBrowserTimezoneDefault()
+  useNotificationReadParam()
+  usePushReconcile()
 
   return (
     <>

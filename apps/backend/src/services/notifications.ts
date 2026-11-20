@@ -67,6 +67,8 @@ export interface NotifierDeps {
     dedupeKeys: string[],
     patch: NotificationRevisionPatch,
   ) => Promise<NotificationRecord[]>
+  /** Queues a stored push notification for the user's browsers; absent where there is no job queue. */
+  enqueuePush?: (user: string, notificationId: string) => Promise<void>
   now?: () => Date
   logError?: (message: string, error: unknown) => void
 }
@@ -112,6 +114,16 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
   const now = deps.now ?? (() => new Date())
   const logError = deps.logError ?? ((message, error) => console.error(message, error))
 
+  const queuePush = (user: string, row: NotificationRecord | null): void => {
+    const enqueuePush = deps.enqueuePush
+    if (enqueuePush == null || row == null || !row.push || row.read_at != null) return
+    void Promise.resolve()
+      .then(() => enqueuePush(user, row.id))
+      .catch((error: unknown) =>
+        logError(`⚠️ Failed to queue push of notification ${row.id} for ${user}:`, error),
+      )
+  }
+
   const raise = async (user: string, input: RaiseNotificationInput): Promise<NotificationRecord | null> => {
     validateInput(input)
     const preference = await deps.getPreference(user, input.type)
@@ -131,6 +143,7 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
       actions: input.actions ?? [],
     })
     if (row) {
+      queuePush(user, row)
       const at = now().getTime()
       await deps.prune(
         user,
@@ -155,7 +168,9 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     patch: NotificationRevisionPatch,
   ): Promise<NotificationRecord | null> => {
     validateRevision(patch)
-    return deps.revise(user, { dedupe_key: dedupeKey }, patch)
+    const row = await deps.revise(user, { dedupe_key: dedupeKey }, patch)
+    queuePush(user, row)
+    return row
   }
 
   const reviseBestEffort = async (
@@ -176,13 +191,25 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     patch: NotificationRevisionPatch,
   ): Promise<NotificationRecord[]> => {
     validateRevision(patch)
-    return deps.reviseOpen(user, dedupeKeys, patch)
+    const rows = await deps.reviseOpen(user, dedupeKeys, patch)
+    for (const row of rows) queuePush(user, row)
+    return rows
   }
 
   return { raise, raiseBestEffort, revise, reviseBestEffort, reviseOpen }
 }
 
+let pushEnqueuer: NotifierDeps['enqueuePush'] | null = null
+
+/** Set once the job queue is up; until then, and without one, nothing is pushed to browsers. */
+export const setNotificationPushEnqueuer = (enqueue: NotifierDeps['enqueuePush'] | null): void => {
+  pushEnqueuer = enqueue
+}
+
 export const notifier: Notifier = createNotifier({
+  enqueuePush: async (user, notificationId) => {
+    await pushEnqueuer?.(user, notificationId)
+  },
   getPreference: (user, type) => getNotificationPreference(user, type),
   insert: (user, input) => insertNotification(user, input),
   prune: (user, readBefore, anyBefore) => pruneNotifications(user, readBefore, anyBefore),

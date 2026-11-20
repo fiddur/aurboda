@@ -294,3 +294,107 @@ export const setNotificationPreferenceResponseSchema = baseResponseSchema
   .meta({ id: 'SetNotificationPreferenceResponse' })
 
 export type SetNotificationPreferenceResponse = z.infer<typeof setNotificationPreferenceResponseSchema>
+
+export const PUSH_ENDPOINT_MAX_LENGTH = 2048
+
+export const pushConfigResponseSchema = baseResponseSchema
+  .extend({
+    enabled: z.boolean().meta({
+      description:
+        'Whether this server offers browser push: false when its web address is not HTTPS (browsers refuse push there; `localhost` is allowed for development)',
+    }),
+    public_key: z.string().optional().meta({
+      description:
+        'The server’s VAPID public key (URL-safe base64), the `applicationServerKey` to subscribe with; absent when push is not enabled',
+    }),
+  })
+  .meta({ id: 'PushConfigResponse' })
+
+export type PushConfigResponse = z.infer<typeof pushConfigResponseSchema>
+
+export const addPushSubscriptionBodySchema = z
+  .object({
+    endpoint: z
+      .string()
+      .url()
+      .max(PUSH_ENDPOINT_MAX_LENGTH)
+      .meta({ description: 'The push service URL the browser was given (`PushSubscription.endpoint`)' }),
+    keys: z
+      .object({
+        auth: z.string().min(1).max(256).meta({ description: 'The subscription’s auth secret' }),
+        p256dh: z.string().min(1).max(256).meta({ description: 'The subscription’s P-256 public key' }),
+      })
+      .meta({ description: 'The keys the payload is encrypted to (`PushSubscription.toJSON().keys`)' }),
+  })
+  .meta({
+    description:
+      'A browser’s `PushSubscription` as `toJSON()` gives it. Other fields (such as `expirationTime`) are ignored.',
+    id: 'AddPushSubscriptionBody',
+  })
+
+export type AddPushSubscriptionBody = z.infer<typeof addPushSubscriptionBodySchema>
+
+export const pushSubscriptionSchema = z
+  .object({
+    browser: z.string().meta({
+      description: 'A readable label derived from the browser’s user agent',
+      example: 'Firefox on Android',
+    }),
+    created_at: iso8601DateTimeSchema.meta({ description: 'When the browser subscribed' }),
+    current: z.boolean().meta({
+      description: 'Whether this is the subscription whose `endpoint` the request named',
+    }),
+    id: z.string().uuid().meta({ description: 'Subscription ID' }),
+    last_success_at: iso8601DateTimeSchema
+      .nullable()
+      .meta({ description: 'When a push last reached it, or null if none has yet' }),
+  })
+  .meta({ description: 'A browser subscribed to this user’s push notifications', id: 'PushSubscription' })
+
+export type PushSubscription = z.infer<typeof pushSubscriptionSchema>
+
+export const pushSubscriptionsQuerySchema = z
+  .object({
+    endpoint: z.string().max(PUSH_ENDPOINT_MAX_LENGTH).optional().meta({
+      description: 'This browser’s own endpoint, so its subscription is marked `current`',
+    }),
+  })
+  .meta({ id: 'PushSubscriptionsQuery' })
+
+export type PushSubscriptionsQuery = z.infer<typeof pushSubscriptionsQuerySchema>
+
+export const pushSubscriptionsResponseSchema = baseResponseSchema
+  .extend({ subscriptions: z.array(pushSubscriptionSchema) })
+  .meta({ id: 'PushSubscriptionsResponse' })
+
+export type PushSubscriptionsResponse = z.infer<typeof pushSubscriptionsResponseSchema>
+
+export const pushSubscriptionResponseSchema = baseResponseSchema
+  .extend({ subscription: pushSubscriptionSchema.optional() })
+  .meta({ id: 'PushSubscriptionResponse' })
+
+export type PushSubscriptionResponse = z.infer<typeof pushSubscriptionResponseSchema>
+
+export const sendTestPushResponseSchema = baseResponseSchema
+  .extend({
+    reached: z
+      .number()
+      .int()
+      .optional()
+      .meta({ description: 'How many subscribed browsers accepted the test push' }),
+    total: z.number().int().optional().meta({ description: 'How many browsers were subscribed' }),
+  })
+  .meta({ id: 'SendTestPushResponse' })
+
+export type SendTestPushResponse = z.infer<typeof sendTestPushResponseSchema>
+
+/** What a push carries to the service worker, encrypted to the browser. */
+export const webPushPayloadSchema = z.object({
+  body: z.string().nullable(),
+  id: z.string(),
+  link: z.string().nullable(),
+  title: z.string(),
+  type: z.string(),
+})
+
+export type WebPushPayload = z.infer<typeof webPushPayloadSchema>

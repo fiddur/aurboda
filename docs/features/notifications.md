@@ -2,7 +2,7 @@
 
 One central place for everything the server wants to tell a user: a 🛎 bell with an unread badge,
 read state, and per-type switches for whether a type shows under the bell and whether it is pushed
-to the phone.
+to the phone app and to the browsers the user turned push on in.
 
 ## Model
 
@@ -54,7 +54,7 @@ notify.
 ## The two switches
 
 Each type has an **In-app** switch (show under the bell) and a **Push** switch (deliver to the
-phone), both on by default, set in Settings → **Notifications** or with `PUT
+Android app and to subscribed browsers, see [Browser push](#browser-push)), both on by default, set in Settings → **Notifications** or with `PUT
 /notifications/types/:type`. They are applied when a notification is raised, and copied onto the
 row:
 
@@ -83,16 +83,69 @@ notification is still revised to say what happened.
 
 The only action so far is `skip` ("Don't share") on `autoshare_pending`.
 
+## Browser push
+
+A browser can receive the push notifications too, as system notifications, with no Aurboda tab
+open (Web Push). Settings → **Notifications** has **Push in this browser**: **Enable** asks the
+browser for permission and subscribes it, **Disable** unsubscribes it, **Send test** sends "Aurboda
+can reach this browser" to every subscribed browser, and the user's other subscribed browsers are
+listed with **Remove**. When the browser has blocked notifications the section says so and how to
+allow them again. The bell's dropdown offers enabling once (dismissing it is remembered in that
+browser) to a signed-in user whose browser is not subscribed. Neither is shown inside the Android
+app's embedded pages (the app delivers natively), in a browser without the Push API, or when the
+server does not offer push. On an iPhone or iPad, push works only for a web app added to the home
+screen, which the text says. Signing out removes the browser's subscription, and a subscription
+that the signed-in account does not list (another account used the browser, or it was removed from
+elsewhere) is dropped when the app loads and before enabling, so one account's notifications never
+show in another's session.
+
+**Keys.** The server has one VAPID key pair, generated on first use and kept in the central
+database's `server_settings` (`web_push_vapid_keys`). The VAPID subject is the web address
+(`WEB_HOST`). Push is offered only when `WEB_HOST` is HTTPS (or `localhost`, for development),
+since browsers refuse it elsewhere; `GET /notifications/push/config` answers `enabled: false`
+otherwise.
+
+**Subscriptions** live in the user's database, table `push_subscriptions`: `endpoint` (unique),
+the keys `p256dh` and `auth`, `user_agent`, `created_at`, `last_success_at` and `failure_count`.
+Subscribing the same endpoint again updates it. The endpoint must be an HTTPS URL on a public
+address (the outbound check federation uses), checked when subscribing and again before each send.
+A user keeps at most 20; past that the one that has gone longest without a push is dropped. Answers
+never include the keys: a subscription is listed with a browser label derived from its user agent
+("Firefox on Android").
+
+**Sending.** When a notification with its push switch on is stored, the notifier queues a job
+(pg-boss queue `web-push`) and returns; the raise never waits for it nor fails because of it.
+The job sends `{ id, type, title, body, link }`, encrypted to each browser by the Web Push standard
+so the push service cannot read it, with a TTL of one day and, for a notification with a dedupe
+key, a `Topic` derived from that key. A revised notification (such as `autoshare_pending` turning
+into "was shared") is queued again under the same topic and with the same notification id as its
+tag, so it replaces the one shown. A notification already read when the job runs is not sent.
+An answer of 404 or 410 deletes the subscription; a success stamps `last_success_at` and clears
+`failure_count`; any other failure counts up, and the job is retried twice with backoff, to the
+failed browsers only. A subscription that fails 20 times in a row is deleted. A notification
+marked read elsewhere is not withdrawn from the browser.
+
+**Service worker.** `apps/web/public/sw.js` (served at `/sw.js` with `Cache-Control: no-cache`)
+does only this: no caching, no offline. On `push` it shows the notification, tagged with its id;
+a click focuses an open Aurboda tab and navigates it (or opens one) to the notification's `link`,
+or `/notifications` without one, with `?notification_read=<id>`. The page then marks it read, as a
+click in the bell does, and drops the parameter from the address.
+
 ## API
 
-| Route                                  | MCP tool                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /notifications`                   | `list_notifications`          | Newest first, `limit` (1–100, default 20), keyset `cursor` from `next_cursor`. By default the in-app ones; `push_only=true` lists those meant for push whatever their in-app switch. `unread_only` and `after` (ISO time, strictly after) narrow it, which is what a device poller uses with its high-water mark. `ids` (comma-separated, at most 100) lists only those notifications, read or not unless `unread_only` is set, so a device can update or withdraw the ones it shows; an id missing from the answer was deleted. `unread_count` always counts every unread in-app notification |
-| `POST /notifications/:id/read`         | `mark_notification_read`      | Mark one read; an already read one keeps its first `read_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `POST /notifications/:id/actions/:key` | `run_notification_action`     | Run one of the notification's `actions`; answers the revised notification, 404 when it offers no such action (any more), 409 with the reason when it cannot be done                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `POST /notifications/read-all`         | `mark_all_notifications_read` | Mark every unread one read; returns how many                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `GET /notifications/types`             | `list_notification_types`     | The types this user can receive, with label, description, group and both switches                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `PUT /notifications/types/:type`       | `set_notification_preference` | Body `{ in_app?, push? }` (at least one); 404 for an unknown type or an admin-only one for a non-admin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Route                                          | MCP tool                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /notifications`                           | `list_notifications`          | Newest first, `limit` (1–100, default 20), keyset `cursor` from `next_cursor`. By default the in-app ones; `push_only=true` lists those meant for push whatever their in-app switch. `unread_only` and `after` (ISO time, strictly after) narrow it, which is what a device poller uses with its high-water mark. `ids` (comma-separated, at most 100) lists only those notifications, read or not unless `unread_only` is set, so a device can update or withdraw the ones it shows; an id missing from the answer was deleted. `unread_count` always counts every unread in-app notification |
+| `POST /notifications/:id/read`                 | `mark_notification_read`      | Mark one read; an already read one keeps its first `read_at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `POST /notifications/:id/actions/:key`         | `run_notification_action`     | Run one of the notification's `actions`; answers the revised notification, 404 when it offers no such action (any more), 409 with the reason when it cannot be done                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `POST /notifications/read-all`                 | `mark_all_notifications_read` | Mark every unread one read; returns how many                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET /notifications/types`                     | `list_notification_types`     | The types this user can receive, with label, description, group and both switches                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `PUT /notifications/types/:type`               | `set_notification_preference` | Body `{ in_app?, push? }` (at least one); 404 for an unknown type or an admin-only one for a non-admin                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /notifications/push/config`               | —                             | `{ enabled, public_key }`: whether the server offers browser push, and the VAPID key to subscribe with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /notifications/push/subscriptions`        | `list_push_subscriptions`     | The subscribed browsers; `endpoint` marks this browser's own one `current`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `POST /notifications/push/subscriptions`       | —                             | Subscribe a browser with its `PushSubscription` JSON (needs a browser, so no MCP tool); 400 for an endpoint that is not HTTPS on a public address, 409 when push is off                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `DELETE /notifications/push/subscriptions/:id` | `delete_push_subscription`    | Remove a subscribed browser                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `POST /notifications/push/test`                | `send_test_push`              | Send a test push to every subscribed browser (not stored); answers `reached` and `total`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## The bell
 

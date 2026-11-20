@@ -83,6 +83,7 @@ import {
   CREATE_USER_USAGE_DAILY_TABLE,
   type UserUsageApi,
 } from './central-user-usage.ts'
+import { createWebPushKeysApi, type WebPushKeysApi } from './central-web-push.ts'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
@@ -195,7 +196,8 @@ export interface CentralDb
     RelaysApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
-    UserUsageApi {
+    UserUsageApi,
+    WebPushKeysApi {
   /** Creates the tables; resolves true when this call seeded `signup_mode`, i.e. on a fresh install. */
   initializeCentralDb: (initialSignupMode?: SignupMode) => Promise<boolean>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
@@ -301,7 +303,7 @@ const ensureDatabase = async (): Promise<boolean> => {
   }
 }
 
-const CREATE_SERVER_SETTINGS_TABLE = `
+export const CREATE_SERVER_SETTINGS_TABLE = `
   CREATE TABLE IF NOT EXISTS server_settings (
     key VARCHAR(100) PRIMARY KEY,
     value JSONB NOT NULL,
@@ -598,6 +600,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),
     ...createUserUsageApi(getClient),
+    ...createWebPushKeysApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()

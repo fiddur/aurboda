@@ -79,7 +79,9 @@ used, interaction-rich screen) without affecting the other tabs.
 
 The phone shows the server's [notifications](features/notifications.md) that are meant for
 push. The server decides what is pushed: each notification type has its own **Push** switch,
-set on the web Settings page under Notifications. The app only delivers them.
+set on the web Settings page under Notifications. The app only delivers them. The web page's
+"Push in this browser" part ([browser push](features/notifications.md#browser-push)) is hidden in
+the app's embedded pages: push in the app is native, so there is nothing to add there.
 
 **The device switch.** "Notifications on this device" on the Account screen turns delivery on
 or off for this phone. Turning it on requests `POST_NOTIFICATIONS` (Android 13+) and schedules
