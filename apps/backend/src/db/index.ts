@@ -990,6 +990,7 @@ export {
   type CheckInPatch,
   type CheckInRecord,
   deleteCheckInPoints,
+  deleteSkippedCheckIns,
   getCheckIn,
   getCheckInForm,
   insertCheckIn,

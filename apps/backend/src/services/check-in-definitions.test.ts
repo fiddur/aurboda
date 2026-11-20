@@ -3,10 +3,16 @@ import type { CheckInQuestion } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
+  activityItemsFor,
+  activityTargetProblems,
   answerProblems,
+  defaultProblems,
   definitionChanged,
+  isTakenAnswer,
   metricPointsFor,
   numericAnswer,
+  presetAnswers,
+  presetLine,
   reusedKeyProblems,
   scoreOf,
 } from './check-in-definitions.ts'
@@ -216,5 +222,106 @@ describe('metricPointsFor', () => {
     expect(metricPointsFor([{ ...feel, logs_to: undefined }], score, { feel: 'bad' })).toEqual([
       { key: '_score', metric: 'total', value: 0 },
     ])
+  })
+})
+
+const supplement: CheckInQuestion = {
+  default: 50,
+  key: 'vitamin_d',
+  logs_to: { activity_type: 'supplement', answer_field: 'dose', fields: { substance: 'vitamin D' } },
+  prompt: 'Vitamin D',
+  required: true,
+  type: 'number',
+  unit: 'µg',
+}
+const fishOil: CheckInQuestion = {
+  default: true,
+  key: 'fish_oil',
+  logs_to: { activity_type: 'supplement', fields: { substance: 'fish oil' } },
+  prompt: 'Fish oil',
+  required: false,
+  type: 'yes_no',
+}
+
+describe('activityItemsFor', () => {
+  test('one activity per taken answer, the answer in answer_field; 0, no and none log nothing', () => {
+    expect(
+      activityItemsFor([supplement, fishOil, rested], { fish_oil: true, rested: 3, vitamin_d: 50 }),
+    ).toEqual([
+      { activity_type: 'supplement', data: { dose: 50, substance: 'vitamin D' }, key: 'vitamin_d' },
+      { activity_type: 'supplement', data: { substance: 'fish oil' }, key: 'fish_oil' },
+    ])
+    expect(activityItemsFor([supplement, fishOil], { fish_oil: false, vitamin_d: 0 })).toEqual([])
+    expect(activityItemsFor([supplement, fishOil], {})).toEqual([])
+  })
+
+  test('metric questions make no activities, and activity questions no metric points', () => {
+    expect(metricPointsFor([supplement], null, { vitamin_d: 50 })).toEqual([])
+  })
+})
+
+describe('defaultProblems', () => {
+  test('a default must be a valid answer of its question', () => {
+    expect(defaultProblems([supplement, fishOil])).toEqual([])
+    expect(defaultProblems([{ ...rested, default: 7 }])).toEqual([
+      'The default of "rested" must be a whole number from 1 to 5',
+    ])
+    expect(defaultProblems([{ ...fishOil, default: 1 }])).toEqual([
+      'The default of "fish_oil" must be true or false',
+    ])
+  })
+})
+
+describe('activityTargetProblems', () => {
+  const schema = {
+    fields: [
+      { name: 'substance', required: true, type: 'string' as const },
+      { min: 0, name: 'dose', type: 'number' as const },
+    ],
+  }
+
+  test('accepts declared fields and a number answer_field', () => {
+    expect(activityTargetProblems(supplement, supplement.logs_to!, schema)).toEqual([])
+    expect(activityTargetProblems(supplement, supplement.logs_to!, undefined)).toEqual([])
+  })
+
+  test('refuses an unknown field, a non-number answer_field and a missing required field', () => {
+    const problems = activityTargetProblems(
+      supplement,
+      { activity_type: 'supplement', answer_field: 'substance', fields: { colour: 'red' } },
+      schema,
+    )
+    expect(problems).toHaveLength(2)
+    expect(problems[0]).toContain('"colour" is not a field of this type')
+    expect(problems[1]).toContain('answer_field "substance" is not a number field')
+    expect(
+      activityTargetProblems(supplement, { activity_type: 'supplement', answer_field: 'dose' }, schema),
+    ).toEqual(['"vitamin_d" logs to "supplement": its field "substance" is required'])
+  })
+})
+
+describe('presets', () => {
+  test('presetAnswers takes the defaults', () => {
+    expect(presetAnswers([supplement, fishOil, rested])).toEqual({ fish_oil: true, vitamin_d: 50 })
+  })
+
+  test('presetLine lists the items taken, with dose and unit', () => {
+    expect(presetLine([supplement, fishOil, { ...rested, default: 4 }])).toBe(
+      'Vitamin D 50 µg, Fish oil, How rested? 4',
+    )
+    expect(
+      presetLine([
+        { ...fishOil, default: false },
+        { ...supplement, default: 0 },
+      ]),
+    ).toBe('')
+  })
+
+  test('isTakenAnswer: given and not 0 or no', () => {
+    expect(isTakenAnswer(fishOil, true)).toBe(true)
+    expect(isTakenAnswer(fishOil, false)).toBe(false)
+    expect(isTakenAnswer(supplement, 0)).toBe(false)
+    expect(isTakenAnswer(supplement, undefined)).toBe(false)
+    expect(isTakenAnswer(supplement, 25)).toBe(true)
   })
 })

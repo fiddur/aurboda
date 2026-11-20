@@ -2,6 +2,7 @@ import {
   addCheckInFormBodySchema,
   checkInFormProblems,
   checkInsQuerySchema,
+  isCheckInRoutine,
   scheduleSchema,
   submitCheckInBodySchema,
   updateCheckInBodySchema,
@@ -177,5 +178,107 @@ describe('checkInsQuerySchema', () => {
     expect(checkInsQuerySchema.parse({ deleted: 'true', limit: '10' })).toEqual({ deleted: true, limit: 10 })
     expect(checkInsQuerySchema.parse({}).limit).toBe(50)
     expect(checkInsQuerySchema.safeParse({ limit: '500' }).success).toBe(false)
+  })
+})
+
+describe('logs_to', () => {
+  const question = (logsTo: unknown, type = 'number') => ({
+    key: 'item',
+    logs_to: logsTo,
+    prompt: 'Item',
+    type,
+    ...(type === 'choice'
+      ? {
+          options: [
+            { key: 'a', label: 'A' },
+            { key: 'b', label: 'B' },
+          ],
+        }
+      : {}),
+  })
+  const parse = (...questions: unknown[]) => addCheckInFormBodySchema.safeParse({ name: 'F', questions })
+
+  test('takes a metric or an activity type', () => {
+    expect(parse(question({ metric: 'dose_mg' })).success).toBe(true)
+    expect(
+      parse(question({ activity_type: 'supplement', answer_field: 'dose', fields: { substance: 'zinc' } }))
+        .success,
+    ).toBe(true)
+    expect(parse(question({ activity_type: 'supplement' }, 'yes_no')).success).toBe(true)
+  })
+
+  test.each([
+    [{}],
+    [{ activity_type: 'supplement', metric: 'dose_mg' }],
+    [{ fields: { substance: 'zinc' }, metric: 'dose_mg' }],
+  ])('refuses %j', (logsTo) => {
+    expect(parse(question(logsTo)).success).toBe(false)
+  })
+
+  test('an activity is logged from number, scale and yes/no only; yes/no has no answer_field', () => {
+    expect(messages(parse(question({ activity_type: 'supplement' }, 'choice')))).toContain(
+      'A choice answer cannot be logged as an activity',
+    )
+    expect(
+      messages(parse(question({ activity_type: 'supplement', answer_field: 'dose' }, 'yes_no'))),
+    ).toContain('A yes/no answer logs the activity on yes and has no answer_field')
+  })
+
+  test('only metric targets count towards a metric logged twice', () => {
+    expect(
+      parse(question({ activity_type: 'supplement' }), {
+        ...question({ activity_type: 'supplement' }),
+        key: 'other',
+      }).success,
+    ).toBe(true)
+  })
+})
+
+describe('isCheckInRoutine', () => {
+  const item = { key: 'a', prompt: 'A', required: true, type: 'yes_no' as const }
+  test('every required question has a default, and one has', () => {
+    expect(isCheckInRoutine([{ ...item, default: true }])).toBe(true)
+    expect(
+      isCheckInRoutine([
+        { ...item, default: true },
+        { ...item, key: 'b', required: false },
+      ]),
+    ).toBe(true)
+    expect(isCheckInRoutine([item])).toBe(false)
+    expect(isCheckInRoutine([{ ...item, required: false }])).toBe(false)
+    expect(isCheckInRoutine([{ ...item, default: '', type: 'text' as const }])).toBe(false)
+  })
+})
+
+describe('skips and entities on submit', () => {
+  const form_id = '00000000-0000-4000-8000-000000000001'
+  const scheduled_for = '2026-11-20T07:00:00.000Z'
+
+  test('a skip needs scheduled_for and takes no answers', () => {
+    expect(submitCheckInBodySchema.safeParse({ form_id, scheduled_for, status: 'skipped' }).success).toBe(
+      true,
+    )
+    expect(messages(submitCheckInBodySchema.safeParse({ form_id, status: 'skipped' }))).toEqual([
+      'A skip needs scheduled_for',
+    ])
+    expect(
+      messages(
+        submitCheckInBodySchema.safeParse({ answers: { a: 1 }, form_id, scheduled_for, status: 'skipped' }),
+      ),
+    ).toEqual(['A skip has no answers'])
+    expect(
+      messages(
+        submitCheckInBodySchema.safeParse({ form_id, scheduled_for, status: 'skipped', use_defaults: true }),
+      ),
+    ).toEqual(['A skip has no answers'])
+  })
+
+  test('entity_type and entity_id go together', () => {
+    expect(submitCheckInBodySchema.safeParse({ entity_type: 'activity', form_id }).success).toBe(false)
+    expect(
+      submitCheckInBodySchema.safeParse({ entity_id: form_id, entity_type: 'activity', form_id }).success,
+    ).toBe(true)
+    expect(checkInsQuerySchema.safeParse({ entity_id: form_id }).success).toBe(false)
+    expect(checkInsQuerySchema.safeParse({ entity_id: form_id, entity_type: 'activity' }).success).toBe(true)
   })
 })

@@ -28,6 +28,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'get_note_attachment',
     'list_deleted_note_attachments',
     'list_note_templates',
+    'get_check_in_adherence',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([

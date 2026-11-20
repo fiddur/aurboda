@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { currentDay, dayWindow, slotsForDay, slotStates } from './due-items.ts'
+import { currentDay, dayWindow, slotsBetween, slotsForDay, slotStates } from './due-items.ts'
 
 const TZ = 'Europe/Stockholm'
 const every = { day_starts_at: '04:00', times: ['08:00', '00:30'], weekdays: [1, 2, 3, 4, 5, 6, 7] }
@@ -78,7 +78,7 @@ describe('slotStates', () => {
   test('a check-in for a slot does that slot', () => {
     const states = slotStates(
       slots,
-      [{ answered_at: at('15:00'), id: 'a', scheduled_for: slots[1]!.at }],
+      [{ answered_at: at('15:00'), status: 'answered', id: 'a', scheduled_for: slots[1]!.at }],
       at('16:00'),
     )
     expect(states.map((s) => [s.state, s.check_in_id])).toEqual([
@@ -92,8 +92,8 @@ describe('slotStates', () => {
     const states = slotStates(
       slots,
       [
-        { answered_at: at('09:00'), id: 'free', scheduled_for: null },
-        { answered_at: at('08:30'), id: 'first', scheduled_for: slots[0]!.at },
+        { answered_at: at('09:00'), status: 'answered', id: 'free', scheduled_for: null },
+        { answered_at: at('08:30'), status: 'answered', id: 'first', scheduled_for: slots[0]!.at },
       ],
       at('13:00'),
     )
@@ -107,9 +107,58 @@ describe('slotStates', () => {
   test('an unscheduled check-in outside the day does nothing', () => {
     const states = slotStates(
       slots,
-      [{ answered_at: at('02:00'), id: 'early', scheduled_for: null }],
+      [{ answered_at: at('02:00'), status: 'answered', id: 'early', scheduled_for: null }],
       at('13:00'),
     )
     expect(states.every((s) => s.check_in_id === null)).toBe(true)
+  })
+})
+
+describe('skipped slots', () => {
+  const day = slotsForDay(
+    { times: ['08:00', '21:00'], weekdays: [1, 2, 3, 4, 5, 6, 7] },
+    '2026-11-20',
+    'Europe/Stockholm',
+  )
+  const now = new Date('2026-11-20T12:00:00Z')
+
+  test('a skip of a slot makes it skipped', () => {
+    const states = slotStates(
+      day,
+      [{ answered_at: now, id: 's', scheduled_for: day[0]!.at, status: 'skipped' }],
+      now,
+    )
+    expect(states.map((s) => [s.state, s.check_in_id])).toEqual([
+      ['skipped', 's'],
+      ['upcoming', null],
+    ])
+  })
+
+  test('an answer to the same slot wins over a skip', () => {
+    const states = slotStates(
+      day,
+      [
+        { answered_at: now, id: 's', scheduled_for: day[0]!.at, status: 'skipped' },
+        { answered_at: now, id: 'a', scheduled_for: day[0]!.at, status: 'answered' },
+      ],
+      now,
+    )
+    expect(states[0]).toMatchObject({ check_in_id: 'a', state: 'done' })
+  })
+})
+
+describe('slotsBetween', () => {
+  test('lists every day, empty on days the schedule skips', () => {
+    const days = slotsBetween(
+      { times: ['08:00'], weekdays: [1] },
+      '2026-11-15',
+      '2026-11-17',
+      'Europe/Stockholm',
+    )
+    expect(days.map((d) => [d.date, d.slots.length])).toEqual([
+      ['2026-11-15', 0],
+      ['2026-11-16', 1],
+      ['2026-11-17', 0],
+    ])
   })
 })

@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query'
 export const CHECK_INS_KEY = ['checkIns'] as const
 
 export const checkInKeys = {
+  adherence: (id: string) => [...CHECK_INS_KEY, 'adherence', id] as const,
+  byActivity: (id: string) => [...CHECK_INS_KEY, 'by-activity', id] as const,
   deletedCheckIns: [...CHECK_INS_KEY, 'deleted-check-ins'] as const,
   deletedForms: [...CHECK_INS_KEY, 'deleted-forms'] as const,
   due: [...CHECK_INS_KEY, 'due'] as const,

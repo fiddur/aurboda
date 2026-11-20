@@ -56,6 +56,8 @@ import {
 } from './schemas/challenges.ts'
 import {
   addCheckInFormBodySchema,
+  checkInAdherenceQuerySchema,
+  checkInAdherenceResponseSchema,
   checkInFormResponseSchema,
   checkInFormsQuerySchema,
   checkInFormsResponseSchema,
@@ -2993,6 +2995,33 @@ const openApiDocument = createDocument({
         tags: ['Check-ins'],
       },
     },
+    '/check-in-forms/{id}/adherence': {
+      get: {
+        description:
+          "How a form was kept up from `from` to `to` (local days, at most 366, default the last 30): its slots counted `done`, `skipped`, `missed` and `upcoming` (today's still open), per day and in total, read against the form's current schedule; and per question how many answered check-ins answered it with something other than 0 or no.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+          query: checkInAdherenceQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInAdherenceResponseSchema } },
+            description: 'The adherence',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid dates, or a window longer than 366 days',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get check-in adherence',
+        tags: ['Check-ins'],
+      },
+    },
     '/check-in-forms/{id}/restore': {
       post: {
         description: 'Restore a deleted check-in form; its schedule starts again with its next slot.',
@@ -3032,7 +3061,7 @@ const openApiDocument = createDocument({
     '/check-ins': {
       get: {
         description:
-          'Check-ins newest first, each with its form name and the questions of the version it answered.',
+          'Check-ins newest first, each with its form name and the questions of the version it answered. `entity_type` and `entity_id` list those tied to an activity.',
         requestParams: { query: checkInsQuerySchema },
         responses: {
           200: {
@@ -3046,7 +3075,7 @@ const openApiDocument = createDocument({
       },
       post: {
         description:
-          "Save a check-in against the form's current version. Answers to questions with `logs_to` are logged as metric points at `answered_at` with data source `check_in`; 0, no, or no answer logs nothing. The due notification of a slot it does is marked read.",
+          "Save a check-in against the form's current version. Answers to questions with `logs_to` are logged as metric points or activities at `answered_at` with data source `check_in`; 0, no, or no answer logs nothing. `use_defaults` saves a routine's preset answers. `status: skipped` records the slot `scheduled_for` as skipped; answering a skipped slot later replaces the skip. The due notification of a slot it does or skips is marked read and its actions cleared.",
         requestBody: { content: { 'application/json': { schema: submitCheckInBodySchema } } },
         responses: {
           200: {
@@ -3055,11 +3084,16 @@ const openApiDocument = createDocument({
           },
           400: {
             content: { 'application/json': { schema: errorResponseSchema } },
-            description: 'Invalid body or answers',
+            description:
+              'Invalid body or answers, `use_defaults` on a form that is not a routine, a skip of no slot of the form, or an entity that is not a live activity',
           },
           404: {
             content: { 'application/json': { schema: errorResponseSchema } },
             description: 'Check-in form not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A skip of a slot already done or skipped',
           },
         },
         security: [{ bearerAuth: [] }],
@@ -3069,7 +3103,8 @@ const openApiDocument = createDocument({
     },
     '/check-ins/{id}': {
       delete: {
-        description: 'Delete a check-in and the metric points it logged. Restorable for 30 days.',
+        description:
+          'Delete a check-in, the metric points it logged and the activities it logged. Restorable for 30 days.',
         requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
         responses: {
           200: {
@@ -3087,7 +3122,7 @@ const openApiDocument = createDocument({
       },
       patch: {
         description:
-          'Change a check-in. Answers are read against the version it answered; changing them or the time replaces exactly the metric points it logged.',
+          'Change a check-in. Answers are read against the version it answered; changing them or the time replaces exactly the metric points and activities it logged. A skipped check-in takes no answers.',
         requestBody: { content: { 'application/json': { schema: updateCheckInBodySchema } } },
         requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
         responses: {
@@ -3111,7 +3146,8 @@ const openApiDocument = createDocument({
     },
     '/check-ins/{id}/restore': {
       post: {
-        description: 'Restore a deleted check-in; the metric points it logged are written again.',
+        description:
+          'Restore a deleted check-in; the metric points it logged are written again and its activities restored.',
         requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
         responses: {
           200: {
@@ -3131,7 +3167,7 @@ const openApiDocument = createDocument({
     '/due': {
       get: {
         description:
-          "The slots of the user's scheduled check-in forms on a day, each `upcoming`, `due`, `done` or `missed`.",
+          "The slots of the user's scheduled check-in forms on a day, each `upcoming`, `due`, `done`, `skipped` or `missed`.",
         requestParams: { query: dueQuerySchema },
         responses: {
           200: { content: { 'application/json': { schema: dueResponseSchema } }, description: 'The slots' },

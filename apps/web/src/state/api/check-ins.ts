@@ -1,6 +1,8 @@
 import type {
   AddCheckInFormBody,
   CheckIn,
+  CheckInAdherence,
+  CheckInAdherenceResponse,
   CheckInForm,
   CheckInFormResponse,
   CheckInFormsResponse,
@@ -90,6 +92,8 @@ export const fetchCheckInTemplates = async (): Promise<CheckInTemplate[]> => {
 
 export interface CheckInsFilter {
   form_id?: string
+  entity_type?: 'activity'
+  entity_id?: string
   deleted?: boolean
   limit?: number
 }
@@ -132,4 +136,11 @@ export const restoreCheckIn = (id: string): Promise<CheckIn> =>
 export const fetchDue = async (): Promise<DueResponse> => {
   const response = await axios.get<DueResponse>(`${API_URL}/due`, { headers: authHeaders() })
   return response.data
+}
+
+export const fetchCheckInAdherence = async (formId: string): Promise<CheckInAdherence> => {
+  const response = await axios.get<CheckInAdherenceResponse>(`${formUrl(formId)}/adherence`, {
+    headers: authHeaders(),
+  })
+  return present(response.data.adherence, 'adherence')
 }

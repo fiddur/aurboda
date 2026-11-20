@@ -37,7 +37,7 @@ type this user can receive.
 | `autoshare_pending`    | Feed         | An [auto-share rule](auto-share-rules.md#pending-share-notification) is about to share a new activity; revised in place to "was shared" or "will not be shared" (also when the share no longer happens)                                                                                                                                                                                                    | The activity's owner                              |
 | `garmin_key_expiring`  | Data sources | A [Garmin Personal API key](../garmin.md#expiry-reminders) has 14 days left, again at 3 days, once it has expired, and once Garmin refuses it; checked by the five-minute sync tick, each step once per expiry date (the refusal once per refusal; again about every 90 days while a dead key stays connected, once the read reminder is pruned), and marked read when the key is replaced or disconnected | The key's owner                                   |
 | `reminder`             | Reminders    | A [reminder](reminders.md) you set up is due (once per occurrence; its earlier unread ones are marked read)                                                                                                                                                                                                                                                                                                | The reminder's owner                              |
-| `check_in_due`         | Reminders    | A slot of a [check-in](check-ins.md) form you scheduled is due (once per slot, within an hour of its time; marked read when a check-in does the slot)                                                                                                                                                                                                                                                      | The form's owner                                  |
+| `check_in_due`         | Reminders    | A slot of a [check-in](check-ins.md) form you scheduled is due (once per slot, within an hour of its time; marked read when a check-in does or skips the slot); a routine's lists its items and offers Done and Skip                                                                                                                                                                                       | The form's owner                                  |
 | `admin_signup`         | Admin        | An account is created (password, passkey or single sign-on signup), or a single sign-on signup could not be finished nor rolled back                                                                                                                                                                                                                                                                       | Every admin except the new account itself         |
 
 The feed types are raised by the ActivityPub inbox (`apps/backend/src/services/activitypub/federation.ts`)
@@ -82,7 +82,14 @@ read and clears its actions, so it runs at most once; a second call answers 404.
 cannot do it (the activity was already shared, say) the answer is 409 with the reason, and the
 notification is still revised to say what happened.
 
-The only action so far is `skip` ("Don't share") on `autoshare_pending`.
+The actions so far:
+
+- `skip` ("Don't share") on `autoshare_pending`,
+- `done` ("Done") and `skip` ("Skip") on the `check_in_due` of a [routine](check-ins.md#routines):
+  Done saves the routine as preset for the slot and revises the notification to "Done at HH:MM",
+  Skip records the slot as skipped and revises it to "Skipped" (see
+  [the due notification](check-ins.md#due-notification)). A check-in done or skipped in the page
+  clears the actions too.
 
 ## Browser push
 

@@ -79,7 +79,11 @@ describe('check-in forms', () => {
   test('templates are listed and copied', async () => {
     const { api } = setup()
     const templates = await api.get('/check-in-templates')
-    expect(templates.body.templates.map((t: { id: string }) => t.id)).toEqual(['morning', 'mood_energy'])
+    expect(templates.body.templates.map((t: { id: string }) => t.id)).toEqual([
+      'morning',
+      'mood_energy',
+      'morning_supplements',
+    ])
     const copied = await api.post('/check-in-forms').send({ template: 'mood_energy' })
     expect(copied.body.form.name).toBe('Mood and energy')
   })
@@ -126,5 +130,65 @@ describe('GET /due', () => {
     ])
     expect((await api.get('/due?date=2026-11-19')).body.slots[0].state).toBe('missed')
     expect((await api.get('/due?date=yesterday')).status).toBe(400)
+  })
+})
+
+describe('routines', () => {
+  const routine = {
+    name: 'Morning stack',
+    questions: [
+      {
+        default: 50,
+        key: 'vitamin_d',
+        logs_to: { activity_type: 'supplement', answer_field: 'dose', fields: { substance: 'vitamin D' } },
+        prompt: 'Vitamin D',
+        required: true,
+        type: 'number',
+        unit: 'µg',
+      },
+    ],
+    schedule: { times: ['08:00'] },
+  }
+
+  test('use_defaults, skipping with its 409, and the adherence', async () => {
+    const { activities, api } = setup()
+    const created = (await api.post('/check-in-forms').send(routine)).body.form
+    expect(created.is_routine).toBe(true)
+    const done = await api.post('/check-ins').send({ form_id: created.id, use_defaults: true })
+    expect(done.body.check_in.answers).toEqual({ vitamin_d: 50 })
+    expect(Object.keys(done.body.check_in.activities)).toEqual(['vitamin_d'])
+    expect(activities.size).toBe(1)
+
+    const slot = '2026-11-19T07:00:00.000Z'
+    const skip = { form_id: created.id, scheduled_for: slot, status: 'skipped' }
+    expect((await api.post('/check-ins').send({ form_id: created.id, status: 'skipped' })).status).toBe(400)
+    expect((await api.post('/check-ins').send(skip)).body.check_in.status).toBe('skipped')
+    const again = await api.post('/check-ins').send(skip)
+    expect(again.status).toBe(409)
+    expect(again.body).toMatchObject({ error: 'This slot is already skipped', success: false })
+
+    const adherence = await api.get(`/check-in-forms/${created.id}/adherence?from=2026-11-19&to=2026-11-20`)
+    expect(adherence.status).toBe(200)
+    expect(adherence.body.adherence.totals).toEqual({ done: 1, missed: 0, skipped: 1, upcoming: 0 })
+    expect(
+      (await api.get(`/check-in-forms/${created.id}/adherence?from=2026-11-21&to=2026-11-20`)).status,
+    ).toBe(400)
+    expect((await api.get(`/check-in-forms/${created.id}/adherence?from=nope`)).status).toBe(400)
+    expect((await api.get(`/check-in-forms/${MISSING}/adherence`)).status).toBe(404)
+  })
+
+  test('check-ins tied to an activity', async () => {
+    const { api } = setup()
+    const created = (await api.post('/check-in-forms').send(routine)).body.form
+    const done = (await api.post('/check-ins').send({ form_id: created.id, use_defaults: true })).body
+      .check_in
+    const activityId = done.activities.vitamin_d.activity_id
+    const tied = await api
+      .post('/check-ins')
+      .send({ entity_id: activityId, entity_type: 'activity', form_id: created.id, use_defaults: true })
+    expect(tied.body.check_in).toMatchObject({ entity_id: activityId, entity_type: 'activity' })
+    const listed = await api.get(`/check-ins?entity_type=activity&entity_id=${activityId}`)
+    expect(listed.body.check_ins.map((c: { id: string }) => c.id)).toEqual([tied.body.check_in.id])
+    expect((await api.get(`/check-ins?entity_id=${activityId}`)).status).toBe(400)
   })
 })

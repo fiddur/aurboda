@@ -41,6 +41,7 @@ describe('check-in MCP tools', () => {
       'add_check_in_form',
       'delete_check_in',
       'delete_check_in_form',
+      'get_check_in_adherence',
       'get_check_in_form',
       'list_check_in_forms',
       'list_check_in_templates',
@@ -81,7 +82,7 @@ describe('check-in MCP tools', () => {
   test('check-ins, templates and due slots', async () => {
     const { call, json, points } = setup()
     const { form } = await json('add_check_in_form', { schedule: { times: ['08:00'] }, template: 'morning' })
-    expect((await json('list_check_in_templates')).templates).toHaveLength(2)
+    expect((await json('list_check_in_templates')).templates).toHaveLength(3)
     const { check_in } = await json('submit_check_in', { answers: { rested: 4 }, form_id: form.id })
     expect(points).toHaveLength(1)
     expect((await json('query_check_ins', {})).check_ins).toHaveLength(1)
@@ -94,5 +95,27 @@ describe('check-in MCP tools', () => {
     expect((await json('delete_check_in', { id: check_in.id })).check_in.deleted_at).not.toBeNull()
     expect((await json('restore_check_in', { id: check_in.id })).check_in.deleted_at).toBeNull()
     expect(await call('submit_check_in', { answers: {}, form_id: form.id })).toMatchObject({ error: true })
+  })
+
+  test('a routine in one go, a skip and the adherence', async () => {
+    const { call, json } = setup()
+    const { form } = await json('add_check_in_form', {
+      schedule: { times: ['08:00'] },
+      template: 'morning_supplements',
+    })
+    expect(form.is_routine).toBe(true)
+    const { check_in } = await json('submit_check_in', { form_id: form.id, use_defaults: true })
+    expect(check_in.answers).toEqual({ magnesium: 200, vitamin_d: 50 })
+    const skip = { form_id: form.id, scheduled_for: '2026-11-19T07:00:00.000Z', status: 'skipped' }
+    expect((await json('submit_check_in', skip)).check_in.status).toBe('skipped')
+    expect(await call('submit_check_in', skip)).toMatchObject({ error: true })
+    const { adherence } = await json('get_check_in_adherence', {
+      from: '2026-11-19',
+      id: form.id,
+      to: '2026-11-20',
+    })
+    expect(adherence.totals).toEqual({ done: 1, missed: 0, skipped: 1, upcoming: 0 })
+    expect(adherence.questions.map((q: { answered: number }) => q.answered)).toEqual([1, 1])
+    expect(await call('get_check_in_adherence', { from: 'x', id: form.id })).toMatchObject({ error: true })
   })
 })

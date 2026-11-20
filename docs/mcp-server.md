@@ -249,14 +249,15 @@ Recurring reminders delivered as `reminder` notifications. See [Reminders](featu
 
 ### Check-in tools
 
-Check-in forms whose answers are logged as metrics, with schedules. See [Check-ins](features/check-ins.md).
+Check-in forms whose answers are logged as metrics or activities, with schedules, routines, skipping and adherence. See [Check-ins](features/check-ins.md).
 
-| Tool                                                                                                                                     | What it does                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `list_check_in_forms`, `get_check_in_form`, `add_check_in_form`, `update_check_in_form`, `delete_check_in_form`, `restore_check_in_form` | Manage the forms, like `/check-in-forms`; `add_check_in_form` takes a `template`                        |
-| `list_check_in_templates`                                                                                                                | The built-in forms to copy, like `GET /check-in-templates`                                              |
-| `submit_check_in`, `query_check_ins`, `update_check_in`, `delete_check_in`, `restore_check_in`                                           | Fill in a form and manage the check-ins, like `/check-ins`; answers with `logs_to` become metric points |
-| `list_due`                                                                                                                               | The scheduled slots of a day with their state, like `GET /due`                                          |
+| Tool                                                                                                                                     | What it does                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_check_in_forms`, `get_check_in_form`, `add_check_in_form`, `update_check_in_form`, `delete_check_in_form`, `restore_check_in_form` | Manage the forms, like `/check-in-forms`; `add_check_in_form` takes a `template`                                                                                                      |
+| `list_check_in_templates`                                                                                                                | The built-in forms to copy, like `GET /check-in-templates`                                                                                                                            |
+| `submit_check_in`, `query_check_ins`, `update_check_in`, `delete_check_in`, `restore_check_in`                                           | Fill in a form and manage the check-ins, like `/check-ins`; answers with `logs_to` become metric points or activities; `use_defaults` saves a routine, `status: skipped` skips a slot |
+| `list_due`                                                                                                                               | The scheduled slots of a day with their state, like `GET /due`                                                                                                                        |
+| `get_check_in_adherence`                                                                                                                 | A form's slots done, skipped and missed and how often each question was answered, like `GET /check-in-forms/{id}/adherence`                                                           |
 
 ### Auto-share tools
 

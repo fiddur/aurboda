@@ -1,6 +1,8 @@
 import type {
   AddCheckInFormBody,
+  CheckInAnswerValue,
   CheckInForm,
+  CheckInLogsTo,
   CheckInOption,
   CheckInQuestion,
   CheckInQuestionType,
@@ -15,6 +17,7 @@ import {
   CHECK_IN_SCALE_STEPS_MAX,
   checkInFormProblems,
   DEFAULT_DAY_STARTS_AT,
+  isCheckInRoutine,
   SCHEDULE_TIMES_MAX,
 } from '@aurboda/api-spec'
 
@@ -44,6 +47,16 @@ export interface OptionDraft {
   value: string
 }
 
+export type LogAs = 'metric' | 'activity'
+
+export type FieldKind = 'string' | 'number' | 'boolean'
+
+export interface ActivityFieldDraft {
+  name: string
+  value: string
+  kind: FieldKind
+}
+
 export interface QuestionDraft {
   /** Local id for lists and the score's picks; never sent. */
   id: string
@@ -60,7 +73,16 @@ export interface QuestionDraft {
   max_label: string
   options: OptionDraft[]
   logs: boolean
+  log_as: LogAs
   metric: string
+  activity_type: string
+  activity_fields: ActivityFieldDraft[]
+  answer_field: string
+  /**
+   * The preset answer as typed: a number's or scale's text, `yes` or `no`, a choice's option index,
+   * a text, or a multi-choice's option keys joined by commas.
+   */
+  preset: string
 }
 
 export interface FormDraft {
@@ -103,8 +125,12 @@ export const keyFromText = (text: string, taken: ReadonlySet<string>, fallback =
 }
 
 export const newQuestion = (type: CheckInQuestionType = 'scale'): QuestionDraft => ({
+  activity_fields: [],
+  activity_type: '',
+  answer_field: '',
   id: localId(),
   key: null,
+  log_as: 'metric',
   logs: false,
   max: type === 'scale' ? '5' : '',
   max_label: '',
@@ -118,6 +144,7 @@ export const newQuestion = (type: CheckInQuestionType = 'scale'): QuestionDraft 
           { key: null, label: '', value: '' },
         ]
       : [],
+  preset: '',
   prompt: '',
   required: false,
   step: '',
@@ -129,12 +156,15 @@ export const newQuestion = (type: CheckInQuestionType = 'scale'): QuestionDraft 
 export const changeType = (question: QuestionDraft, type: CheckInQuestionType): QuestionDraft => {
   const fresh = newQuestion(type)
   const keepsOptions = type === 'choice' || type === 'multi_choice'
+  const numeric = (t: CheckInQuestionType) => t === 'number' || t === 'scale'
+  const next = { ...question, type }
   return {
     ...question,
-    logs: canLog({ ...question, type }) ? question.logs : false,
+    logs: question.logs && (question.log_as === 'activity' ? canLogActivity(next) : canLog(next)),
     max: type === 'scale' && question.type !== 'scale' ? fresh.max : question.max,
     min: type === 'scale' && question.type !== 'scale' ? fresh.min : question.min,
     options: keepsOptions && question.options.length >= 2 ? question.options : fresh.options,
+    preset: numeric(type) && numeric(question.type) ? question.preset : '',
     type,
   }
 }
@@ -148,14 +178,76 @@ export const canLog = (question: Pick<QuestionDraft, 'type' | 'options'>): boole
     question.options.length > 0 &&
     question.options.every((option) => option.value.trim() !== ''))
 
+/** Whether the answer can be saved as an activity: numbers, scales and yes/no. */
+export const canLogActivity = (question: Pick<QuestionDraft, 'type'>): boolean =>
+  question.type === 'number' || question.type === 'scale' || question.type === 'yes_no'
+
+/** Whether the question takes a preset answer in the editor; a multi-choice keeps one set elsewhere. */
+export const canPreset = (question: Pick<QuestionDraft, 'type'>): boolean => question.type !== 'multi_choice'
+
 /** Whether the question has a numeric answer a score can sum. */
 export const canScore = canLog
 
+/** Mirrors the server's routine rule on the draft: every required question has a preset, and one does. */
+export const draftIsRoutine = (questions: readonly Pick<QuestionDraft, 'preset' | 'required'>[]): boolean =>
+  isCheckInRoutine(
+    questions.map((question, index) => ({
+      key: `q${index}`,
+      prompt: 'q',
+      required: question.required,
+      type: 'text',
+      ...(question.preset.trim() === '' ? {} : { default: question.preset }),
+    })),
+  )
+
 const text = (value: number | undefined): string => (value === undefined ? '' : String(value))
 
+const fieldKind = (value: string | number | boolean): FieldKind =>
+  typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'string'
+
+const logsDraft = (logsTo: CheckInLogsTo | undefined): Partial<QuestionDraft> => {
+  if (!logsTo) return { logs: false }
+  if (logsTo.activity_type !== undefined) {
+    return {
+      activity_fields: Object.entries(logsTo.fields ?? {}).map(([name, value]) => ({
+        kind: fieldKind(value),
+        name,
+        value: String(value),
+      })),
+      activity_type: logsTo.activity_type,
+      answer_field: logsTo.answer_field ?? '',
+      log_as: 'activity',
+      logs: true,
+    }
+  }
+  return { log_as: 'metric', logs: true, metric: logsTo.metric ?? '' }
+}
+
+const presetDraft = (question: CheckInQuestion): string => {
+  const value = question.default
+  if (value === undefined) return ''
+  switch (question.type) {
+    case 'yes_no':
+      return value === true ? 'yes' : value === false ? 'no' : ''
+    case 'choice': {
+      const index = question.options.findIndex((option) => option.key === value)
+      return index < 0 ? '' : String(index)
+    }
+    case 'multi_choice':
+      return Array.isArray(value) ? value.join(',') : ''
+    default:
+      return typeof value === 'number' || typeof value === 'string' ? String(value) : ''
+  }
+}
+
 const questionDraft = (question: CheckInQuestion): QuestionDraft => {
-  const base = { ...newQuestion(question.type), key: question.key, prompt: question.prompt }
-  const logs = { logs: question.logs_to !== undefined, metric: question.logs_to?.metric ?? '' }
+  const base = {
+    ...newQuestion(question.type),
+    key: question.key,
+    preset: presetDraft(question),
+    prompt: question.prompt,
+  }
+  const logs = logsDraft(question.logs_to)
   const required = question.required ?? false
   switch (question.type) {
     case 'number':
@@ -367,22 +459,117 @@ const buildTyped = (question: QuestionDraft, label: string, base: QuestionBase):
   }
 }
 
+const fieldValue = (field: ActivityFieldDraft): string | number | boolean | undefined => {
+  const typed = field.value.trim()
+  if (typed === '') return undefined
+  if (field.kind === 'number') return parseNumber(typed)
+  if (field.kind === 'boolean') return typed === 'true'
+  return typed
+}
+
+const buildActivityLog = (question: QuestionDraft, label: string): Built<CheckInLogsTo | undefined> => {
+  const errors: string[] = []
+  const activityType = question.activity_type.trim()
+  if (activityType === '') errors.push(`${label}: pick the activity type to save the answer as.`)
+  const answerField = question.type === 'yes_no' ? '' : question.answer_field.trim()
+  const fields: Record<string, string | number | boolean> = {}
+  for (const field of question.activity_fields) {
+    const name = field.name.trim()
+    const value = fieldValue(field)
+    if (name === '' || name === answerField || value === undefined) continue
+    if (typeof value === 'number' && Number.isNaN(value)) {
+      errors.push(`${label}: the field ${name} must be a number.`)
+      continue
+    }
+    fields[name] = value
+  }
+  return {
+    errors,
+    value: {
+      activity_type: activityType,
+      ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      ...(answerField ? { answer_field: answerField } : {}),
+    },
+  }
+}
+
+const buildLogsTo = (question: QuestionDraft, label: string): Built<CheckInLogsTo | undefined> => {
+  if (!question.logs) return { errors: [], value: undefined }
+  if (question.log_as === 'activity') {
+    return canLogActivity(question) ? buildActivityLog(question, label) : { errors: [], value: undefined }
+  }
+  if (!canLog(question)) return { errors: [], value: undefined }
+  const metric = question.metric.trim()
+  return {
+    errors: METRIC_NAME_RE.test(metric) ? [] : [`${label}: ${METRIC_NAME_PROBLEM}`],
+    value: { metric },
+  }
+}
+
+const numberPresetProblem = (question: CheckInQuestion, value: number): string | null => {
+  if (Number.isNaN(value)) return 'the preset answer must be a number.'
+  if (question.type === 'scale') {
+    return Number.isInteger(value) && value >= question.min && value <= question.max
+      ? null
+      : `the preset answer must be a whole number from ${question.min} to ${question.max}.`
+  }
+  if (question.type !== 'number') return null
+  if (question.min !== undefined && value < question.min) {
+    return `the preset answer must be at least ${question.min}.`
+  }
+  if (question.max !== undefined && value > question.max) {
+    return `the preset answer must be at most ${question.max}.`
+  }
+  return null
+}
+
+const buildPreset = (
+  draft: QuestionDraft,
+  question: CheckInQuestion,
+  label: string,
+): Built<CheckInAnswerValue | undefined> => {
+  const typed = draft.preset.trim()
+  if (typed === '') return { errors: [], value: undefined }
+  switch (question.type) {
+    case 'number':
+    case 'scale': {
+      const value = parseNumber(typed) ?? NaN
+      const problem = numberPresetProblem(question, value)
+      return problem ? { errors: [`${label}: ${problem}`], value: undefined } : { errors: [], value }
+    }
+    case 'yes_no':
+      return { errors: [], value: typed === 'yes' }
+    case 'choice': {
+      const option = question.options[Number(typed)]
+      return { errors: [], value: option?.key }
+    }
+    case 'multi_choice': {
+      const keys = typed.split(',').filter((key) => question.options.some((option) => option.key === key))
+      return { errors: [], value: keys.length > 0 ? keys : undefined }
+    }
+    case 'text':
+      return { errors: [], value: typed }
+  }
+}
+
 const buildQuestion = (question: QuestionDraft, index: number, key: string): Built<CheckInQuestion> => {
   const label = `Question ${index + 1}`
   const errors: string[] = []
   const prompt = question.prompt.trim()
   if (prompt === '') errors.push(`${label}: write the question.`)
-  const metric = question.metric.trim()
-  const logs = question.logs && canLog(question)
-  if (logs && !METRIC_NAME_RE.test(metric)) errors.push(`${label}: ${METRIC_NAME_PROBLEM}`)
+  const logsTo = buildLogsTo(question, label)
   const base: QuestionBase = {
     key,
     prompt,
     required: question.required,
-    ...(logs ? { logs_to: { metric } } : {}),
+    ...(logsTo.value ? { logs_to: logsTo.value } : {}),
   }
   const built = buildTyped(question, label, base)
-  return { errors: [...errors, ...built.errors], value: built.value }
+  const preset = buildPreset(question, built.value, label)
+  return {
+    errors: [...errors, ...logsTo.errors, ...built.errors, ...preset.errors],
+    value: preset.value === undefined ? built.value : { ...built.value, default: preset.value },
+  }
 }
 
 export interface BuiltForm {
@@ -532,3 +719,85 @@ export const startsNewVersion = (
   const before = new Map(existing.questions.map((question) => [question.key, normalizedQuestion(question)]))
   return next.questions.some((question) => before.get(question.key) !== normalizedQuestion(question))
 }
+
+export type IntakeKind = 'medication' | 'supplement'
+
+export interface IntakeDraft {
+  substance: string
+  dose: string
+  unit: string
+  kind: IntakeKind
+  log_as: LogAs
+}
+
+export const emptyIntakeDraft = (kind: IntakeKind = 'supplement'): IntakeDraft => ({
+  dose: '',
+  kind,
+  log_as: 'activity',
+  substance: '',
+  unit: 'mg',
+})
+
+const asciiSlug = (from: string): string =>
+  from
+    .replaceAll(/[µμ]/g, 'u')
+    .normalize('NFKD')
+    .replaceAll(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '_')
+    .replaceAll(/^_+|_+$/g, '')
+
+/** "Ibuprofen" and "mg" make `ibuprofen_mg`, "Vitamin D" and "µg" make `vitamin_d_ug`; a valid metric name. */
+export const metricNameForDose = (substance: string, unit: string): string => {
+  const name = [asciiSlug(substance), asciiSlug(unit)].filter(Boolean).join('_')
+  const lettered = /^[a-z]/.test(name) ? name : `dose_${name}`.replace(/_+$/, '')
+  return lettered.slice(0, 50).replace(/_+$/, '')
+}
+
+const capitalized = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1)
+
+/** What is missing from the shortcut's answers, in plain words; empty when the question can be made. */
+export const intakeProblems = (intake: IntakeDraft): string[] => {
+  const problems: string[] = []
+  if (intake.substance.trim() === '') problems.push('Name the medication or supplement.')
+  const dose = parseNumber(intake.dose)
+  const doseOk = dose !== undefined && !Number.isNaN(dose) && dose > 0
+  if (!doseOk) problems.push('Give the dose as a number above 0.')
+  if (intake.unit.trim() === '') problems.push('Give the unit of the dose.')
+  return problems
+}
+
+/**
+ * The question the "Add medication or supplement" shortcut makes: a number question preset to the dose,
+ * logged as the dose metric of the substance or as a `medication` / `supplement` activity.
+ */
+export const intakeQuestion = (intake: IntakeDraft): QuestionDraft => {
+  const substance = intake.substance.trim()
+  const unit = intake.unit.trim()
+  const dose = String(parseNumber(intake.dose) ?? '')
+  const base: QuestionDraft = {
+    ...newQuestion('number'),
+    logs: true,
+    min: '0',
+    preset: dose,
+    prompt: capitalized(substance),
+    unit,
+  }
+  if (intake.log_as === 'metric') {
+    return { ...base, log_as: 'metric', metric: metricNameForDose(substance, unit) }
+  }
+  return {
+    ...base,
+    activity_fields: [
+      { kind: 'string', name: 'substance', value: substance },
+      { kind: 'string', name: 'dose_unit', value: unit },
+    ],
+    activity_type: intake.kind,
+    answer_field: 'dose',
+    log_as: 'activity',
+  }
+}
+
+/** Whether the question is the untouched one a new form starts with, which the shortcut replaces. */
+export const isBlankQuestion = (question: QuestionDraft): boolean =>
+  question.key === null && question.prompt.trim() === '' && !question.logs && question.preset.trim() === ''

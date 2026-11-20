@@ -1,4 +1,10 @@
-import type { CheckInAnswerValue, CheckInQuestion, CheckInScore, Schedule } from '@aurboda/api-spec'
+import type {
+  CheckInAnswerValue,
+  CheckInQuestion,
+  CheckInScore,
+  CheckInStatus,
+  Schedule,
+} from '@aurboda/api-spec'
 
 import type { KeysetCursor } from '../services/keyset-cursor.ts'
 
@@ -59,11 +65,17 @@ export interface CheckInRecord {
   form_id: string
   form_version: number
   form_name: string
-  status: 'answered'
+  status: CheckInStatus
   answered_at: Date
   scheduled_for: Date | null
   answers: Record<string, CheckInAnswerValue>
   logged: Record<string, CheckInLoggedPoint>
+  /** Question key to the activity the answer logged. */
+  activity_ids: Record<string, string>
+  /** The ids of `activity_ids` whose activity is not deleted. */
+  live_activity_ids: string[]
+  entity_type: 'activity' | null
+  entity_id: string | null
   note: string | null
   questions: CheckInQuestion[]
   score_definition: CheckInScore | null
@@ -75,10 +87,14 @@ export interface CheckInRecord {
 export interface CheckInInsert {
   form_id: string
   form_version: number
+  status: CheckInStatus
   answered_at: Date
   scheduled_for: Date | null
   answers: Record<string, CheckInAnswerValue>
   logged: Record<string, CheckInLoggedPoint>
+  activity_ids: Record<string, string>
+  entity_type: 'activity' | null
+  entity_id: string | null
   note: string | null
 }
 
@@ -87,6 +103,7 @@ export interface CheckInPatch {
   scheduled_for?: Date | null
   answers?: Record<string, CheckInAnswerValue>
   logged?: Record<string, CheckInLoggedPoint>
+  activity_ids?: Record<string, string>
   note?: string | null
 }
 
@@ -94,6 +111,7 @@ export interface ListCheckInsOptions {
   from?: Date
   to?: Date
   form_id?: string
+  entity?: { type: 'activity'; id: string }
   limit: number
   before?: KeysetCursor
   deleted?: boolean
@@ -101,8 +119,10 @@ export interface ListCheckInsOptions {
 
 export interface SlotCheckInRecord {
   id: string
+  status: CheckInStatus
   answered_at: Date
   scheduled_for: Date | null
+  answers: Record<string, CheckInAnswerValue>
 }
 
 const FORM_COLUMNS =
@@ -253,8 +273,14 @@ export const listCheckInFormVersions = async (
 
 const CHECK_IN_SELECT = `
   SELECT c.id, c.form_id, c.form_version, f.name AS form_name, c.status, c.answered_at, c.scheduled_for,
-         c.answers, c.logged, c.note, v.questions, v.score AS score_definition, c.deleted_at,
-         c.created_at, c.updated_at, c.answered_at::text AS cursor_ts
+         c.answers, c.logged, c.activity_ids, c.entity_type, c.entity_id, c.note, v.questions,
+         v.score AS score_definition, c.deleted_at, c.created_at, c.updated_at,
+         c.answered_at::text AS cursor_ts,
+         ARRAY(
+           SELECT a.id::text FROM activities a
+            WHERE a.deleted_at IS NULL
+              AND a.id = ANY(ARRAY(SELECT value::uuid FROM jsonb_each_text(c.activity_ids)))
+         ) AS live_activity_ids
     FROM check_ins c
     JOIN check_in_forms f ON f.id = c.form_id
     JOIN check_in_form_versions v ON v.form_id = c.form_id AND v.version = c.form_version`
@@ -273,16 +299,21 @@ export const getCheckIn = async (user: string, id: string): Promise<CheckInRecor
 export const insertCheckIn = async (user: string, input: CheckInInsert): Promise<CheckInRecord> => {
   const result = await query<{ id: string }>(
     user,
-    `INSERT INTO check_ins (form_id, form_version, answered_at, scheduled_for, answers, logged, note)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+    `INSERT INTO check_ins (form_id, form_version, status, answered_at, scheduled_for, answers, logged,
+                            activity_ids, entity_type, entity_id, note)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11)
      RETURNING id`,
     [
       input.form_id,
       input.form_version,
+      input.status,
       input.answered_at,
       input.scheduled_for,
       json(input.answers),
       json(input.logged),
+      json(input.activity_ids),
+      input.entity_type,
+      input.entity_id,
       input.note,
     ],
   )
@@ -303,6 +334,11 @@ export const listCheckIns = async (
   if (options.from) conditions.push(`c.answered_at >= ${param(options.from)}`)
   if (options.to) conditions.push(`c.answered_at < ${param(options.to)}`)
   if (options.form_id) conditions.push(`c.form_id = ${param(options.form_id)}`)
+  if (options.entity) {
+    conditions.push(
+      `c.entity_type = ${param(options.entity.type)} AND c.entity_id = ${param(options.entity.id)}`,
+    )
+  }
   if (options.before) {
     conditions.push(
       `(c.answered_at, c.id) < (${param(options.before.ts)}::timestamptz, ${param(options.before.id)}::uuid)`,
@@ -331,6 +367,9 @@ export const updateCheckIn = async (
   }
   if (patch.logged !== undefined) {
     fields.push({ expression: 'logged = $NEXT::jsonb', values: [json(patch.logged)] })
+  }
+  if (patch.activity_ids !== undefined) {
+    fields.push({ expression: 'activity_ids = $NEXT::jsonb', values: [json(patch.activity_ids)] })
   }
   if (patch.note !== undefined) fields.push({ column: 'note', value: patch.note })
   const update = buildDynamicUpdate('check_ins', id, fields, {
@@ -363,13 +402,31 @@ export const listFormCheckInsBetween = async (
 ): Promise<SlotCheckInRecord[]> => {
   const result = await query<SlotCheckInRecord>(
     user,
-    `SELECT id, answered_at, scheduled_for FROM check_ins
+    `SELECT id, status, answered_at, scheduled_for, answers FROM check_ins
      WHERE form_id = $1 AND deleted_at IS NULL
        AND ((answered_at >= $2 AND answered_at < $3) OR (scheduled_for >= $2 AND scheduled_for < $3))
      ORDER BY answered_at, id`,
     [formId, from, to],
   )
   return result.rows
+}
+
+/**
+ * Hard-deletes the live skips of a slot, which an answer to the slot replaces. Resolves to how many
+ * it deleted.
+ */
+export const deleteSkippedCheckIns = async (
+  user: string,
+  formId: string,
+  scheduledFor: Date,
+): Promise<number> => {
+  const result = await query(
+    user,
+    `DELETE FROM check_ins
+     WHERE form_id = $1 AND scheduled_for = $2 AND status = 'skipped' AND deleted_at IS NULL`,
+    [formId, scheduledFor],
+  )
+  return result.rowCount ?? 0
 }
 
 /**

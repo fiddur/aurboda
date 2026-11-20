@@ -1,10 +1,14 @@
 import {
   CHECK_IN_SCORE_KEY,
   type CheckInAnswerValue,
+  type CheckInLogsTo,
   type CheckInQuestion,
   type CheckInScore,
+  type DataSchemaDefinition,
   isNumericCheckInQuestion,
 } from '@aurboda/api-spec'
+
+import { validatePartialActivityData } from './data-schema-validation.ts'
 
 const canonical = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
@@ -188,13 +192,124 @@ export const metricPointsFor = (
 ): CheckInMetricPoint[] => {
   const points: CheckInMetricPoint[] = []
   for (const question of questions) {
-    if (!question.logs_to) continue
+    const metric = question.logs_to?.metric
+    if (metric === undefined) continue
     const value = numericAnswer(question, answers[question.key])
     if (value === undefined || value === 0) continue
     const unit = question.type === 'number' ? question.unit : undefined
-    points.push({ key: question.key, metric: question.logs_to.metric, value, ...(unit ? { unit } : {}) })
+    points.push({ key: question.key, metric, value, ...(unit ? { unit } : {}) })
   }
   const total = scoreOf(questions, score, answers)
   if (score && total !== null) points.push({ key: CHECK_IN_SCORE_KEY, metric: score.metric, value: total })
   return points
 }
+
+export interface CheckInActivityItem {
+  key: string
+  activity_type: string
+  data: Record<string, unknown>
+}
+
+/**
+ * The activities a check-in's answers make: one per answered question logged to an activity type,
+ * with its fixed fields and the answer in `answer_field`. An answer of 0, no, or none logs nothing.
+ */
+export const activityItemsFor = (
+  questions: readonly CheckInQuestion[],
+  answers: Record<string, CheckInAnswerValue>,
+): CheckInActivityItem[] =>
+  questions.flatMap((question) => {
+    const activityType = question.logs_to?.activity_type
+    if (activityType === undefined) return []
+    const value = numericAnswer(question, answers[question.key])
+    if (value === undefined || value === 0) return []
+    const { answer_field: answerField, fields } = question.logs_to!
+    const data: Record<string, unknown> = { ...fields }
+    if (answerField !== undefined && question.type !== 'yes_no') data[answerField] = value
+    return [{ activity_type: activityType, data, key: question.key }]
+  })
+
+/** What is wrong with the questions' preset answers; empty when nothing is. */
+export const defaultProblems = (questions: readonly CheckInQuestion[]): string[] =>
+  questions.flatMap((question) => {
+    if (question.default === undefined || isBlank(question.default)) return []
+    const problem = answerProblem(question, question.default)
+    return problem ? [`The default of ${problem}`] : []
+  })
+
+/**
+ * What is wrong with logging a question as an activity of a type with this data schema: a fixed
+ * field the type does not have or of the wrong kind, an `answer_field` that is not a number field,
+ * or a required field neither fixed nor the answer. A type without a schema takes anything.
+ */
+export const activityTargetProblems = (
+  question: CheckInQuestion,
+  logsTo: CheckInLogsTo,
+  schema: DataSchemaDefinition | undefined,
+): string[] => {
+  if (!schema) return []
+  const label = `"${question.key}" logs to "${logsTo.activity_type}"`
+  const fields = logsTo.fields ?? {}
+  const problems = (validatePartialActivityData(fields, schema).errors ?? []).map(
+    (error) => `${label}: ${error}`,
+  )
+  if (logsTo.answer_field !== undefined) {
+    const field = schema.fields.find((candidate) => candidate.name === logsTo.answer_field)
+    if (field?.type !== 'number') {
+      problems.push(`${label}: answer_field "${logsTo.answer_field}" is not a number field of that type`)
+    }
+  }
+  for (const field of schema.fields) {
+    if (field.required && !(field.name in fields) && field.name !== logsTo.answer_field) {
+      problems.push(`${label}: its field "${field.name}" is required`)
+    }
+  }
+  return problems
+}
+
+/** The preset answers of the questions that have one. */
+export const presetAnswers = (questions: readonly CheckInQuestion[]): Record<string, CheckInAnswerValue> =>
+  Object.fromEntries(
+    questions.flatMap((question) =>
+      question.default === undefined || isBlank(question.default) ? [] : [[question.key, question.default]],
+    ),
+  )
+
+/** Whether an answer counts as taken: given, and not 0 or no. */
+export const isTakenAnswer = (question: CheckInQuestion, value: CheckInAnswerValue | undefined): boolean => {
+  if (isBlank(value)) return false
+  if (question.type === 'yes_no') return value === true
+  if (question.type === 'number' || question.type === 'scale') return typeof value === 'number' && value !== 0
+  return true
+}
+
+const presetItem = (question: CheckInQuestion, value: CheckInAnswerValue): string | null => {
+  if (!isTakenAnswer(question, value)) return null
+  switch (question.type) {
+    case 'number':
+      return `${question.prompt} ${value}${question.unit ? ` ${question.unit}` : ''}`
+    case 'scale':
+      return `${question.prompt} ${value}`
+    case 'yes_no':
+      return question.prompt
+    case 'choice':
+      return `${question.prompt}: ${question.options.find((option) => option.key === value)?.label ?? value}`
+    case 'multi_choice': {
+      const keys = Array.isArray(value) ? value : []
+      const labels = keys.map((key) => question.options.find((option) => option.key === key)?.label ?? key)
+      return `${question.prompt}: ${labels.join(', ')}`
+    }
+    case 'text':
+      return `${question.prompt}: ${value}`
+  }
+}
+
+/** A routine's preset items in a line: "Vitamin D 50 µg, Magnesium 200 mg". */
+export const presetLine = (questions: readonly CheckInQuestion[]): string =>
+  questions
+    .flatMap((question) => {
+      if (question.default === undefined) return []
+      const item = presetItem(question, question.default)
+      return item ? [item] : []
+    })
+    .join(', ')
