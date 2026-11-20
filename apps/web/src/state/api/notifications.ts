@@ -1,21 +1,29 @@
 import type {
+  AddPushSubscriptionBody,
+  BaseResponse,
   MarkAllNotificationsReadResponse,
   Notification,
   NotificationResponse,
   NotificationsResponse,
   NotificationTypeSetting,
   NotificationTypesResponse,
+  PushConfigResponse,
+  PushSubscription,
+  PushSubscriptionResponse,
+  PushSubscriptionsResponse,
+  SendTestPushResponse,
   SetNotificationPreferenceBody,
   SetNotificationPreferenceResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
+import { sha256Hex } from '../../components/push'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 import { apiErrorMessage } from './feed'
 
-const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
+const authHeaders = (token = auth.value.token) => ({ Authorization: `Bearer ${token}` })
 
 export interface FetchNotificationsParams {
   limit?: number
@@ -81,5 +89,59 @@ export const runNotificationAction = async (id: string, key: string): Promise<No
     return response.data.notification
   } catch (error) {
     throw new Error(apiErrorMessage(error, 'Couldn’t do that. Please try again.'))
+  }
+}
+
+export const fetchPushConfig = async (): Promise<PushConfigResponse> => {
+  const response = await axios.get<PushConfigResponse>(`${API_URL}/notifications/push/config`, {
+    headers: authHeaders(),
+  })
+  return response.data
+}
+
+/**
+ * The browser's own endpoint is named by its hash, so it never appears in a URL.
+ * `token` lets sign-out still reach the server after the session is cleared.
+ */
+export const fetchPushSubscriptions = async (
+  endpoint?: string,
+  token?: string,
+): Promise<PushSubscription[]> => {
+  const response = await axios.get<PushSubscriptionsResponse>(`${API_URL}/notifications/push/subscriptions`, {
+    headers: authHeaders(token),
+    params: endpoint === undefined ? undefined : { endpoint_hash: await sha256Hex(endpoint) },
+  })
+  return response.data.subscriptions
+}
+
+export const addPushSubscription = async (
+  body: AddPushSubscriptionBody,
+): Promise<PushSubscription | undefined> => {
+  try {
+    const response = await axios.post<PushSubscriptionResponse>(
+      `${API_URL}/notifications/push/subscriptions`,
+      body,
+      { headers: authHeaders() },
+    )
+    return response.data.subscription
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t turn on push for this browser.'))
+  }
+}
+
+export const deletePushSubscription = async (id: string, token?: string): Promise<void> => {
+  await axios.delete<BaseResponse>(`${API_URL}/notifications/push/subscriptions/${encodeURIComponent(id)}`, {
+    headers: authHeaders(token),
+  })
+}
+
+export const sendTestPush = async (): Promise<SendTestPushResponse> => {
+  try {
+    const response = await axios.post<SendTestPushResponse>(`${API_URL}/notifications/push/test`, undefined, {
+      headers: authHeaders(),
+    })
+    return response.data
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t send a test push.'))
   }
 }

@@ -1,7 +1,7 @@
 import type {
   ActivityComputedMetrics,
+  ActivityPerson,
   DataSource,
-  EntityType,
   FlaggedExclusion,
   PlaceSource,
   SleepDebtDay,
@@ -11,7 +11,7 @@ import type { MetricType } from '../../schema.ts'
 import type { HrZoneSecs } from '../settings.ts'
 
 import { getActivityTypeDefinitions, getNotesByEntityIds, getRepliesForRootIds } from '../../db/index.ts'
-import { type NoteReplyData, toNoteReplyData } from '../notes.ts'
+import { type NoteData, type NoteReplyData, toNoteReplyData } from '../notes.ts'
 
 /** Build a map of activity_type -> display_category from type definitions. */
 export const buildCategoryMap = async (user: string): Promise<Map<string, string>> => {
@@ -237,20 +237,7 @@ export interface MealSummary {
   id?: string
 }
 
-export interface NoteSummary {
-  id: string
-  entity_type: EntityType
-  /** Null for a `time` note, which is anchored to a moment rather than an entity. */
-  entity_id: string | null
-  content: string
-  source?: string
-  start_time?: string
-  end_time?: string
-  created_at: string
-  updated_at: string
-  /** Replies in this comment's thread, oldest first. */
-  replies?: NoteReplyData[]
-}
+export type NoteSummary = NoteData
 
 export interface DailySummaryMetricEntry {
   time: string
@@ -334,6 +321,8 @@ export interface ActivityResult extends ActivityComputedMetrics {
   data?: Record<string, unknown>
   comments: CommentSummary[]
   override_target_ids?: string[]
+  /** Only when the caller asked for them: shared views never carry an activity's people. */
+  people?: ActivityPerson[]
 }
 
 /**

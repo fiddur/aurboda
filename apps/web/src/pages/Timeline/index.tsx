@@ -1,16 +1,25 @@
 import { type TimelineDailyMetric, timelineDailyMetrics, type UserSettingsResponse } from '@aurboda/api-spec'
 import { useSignalEffect } from '@preact/signals'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as d3 from 'd3'
 import { endOfDay, format, parseISO, startOfDay } from 'date-fns'
+import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import type { LegendCategory } from './legendCategories'
 import type { ChartItem, Orientation } from './types'
 
-import { updateUserSettings } from '../../state/api'
+import { fetchImportantDates, updateUserSettings } from '../../state/api'
 import { packLanes } from '../../utils/lanePacking'
+import {
+  type AllDayMarkerGroup,
+  importantDateMarkers,
+  journalDayMarkers,
+  layoutAllDayMarkers,
+  markerGroupHref,
+} from './allDayMarkers'
 import { CommentPanel, type CommentPanelState } from './CommentPanel'
+import { ALL_DAY_GLYPH_SIZE, drawAllDayMarkers } from './drawAllDayMarkers'
 import { COMMENTS_TRACK_HEIGHT, drawCommentsTrack } from './drawCommentsTrack'
 import { drawDailyMetricTracks, layoutDailyTracks } from './drawDailyMetricTracks'
 import { attachHoverHandlers, clampLabelLayout, drawItemIcon, getDetailUrl, truncateLabel } from './drawItems'
@@ -28,6 +37,7 @@ import { drawColumnItems, drawHorizontalNowLine, drawNowLine } from './drawVerti
 import { fetchWindowFromRange } from './fetchRange'
 import { findOverlappingScrobbles } from './findOverlappingScrobbles'
 import { formatTimelineTick } from './formatting'
+import { importantDatesWindow } from './importantDatesWindow'
 import { isMultiDaySpan, type RangePreset } from './rangePreset'
 import { TimelineContextMenu } from './TimelineContextMenu'
 import { TimelineControls } from './TimelineControls'
@@ -223,7 +233,36 @@ export const Timeline = () => {
   const [commentPanel, setCommentPanel] = useState<CommentPanelState | null>(null)
 
   const commentItems = useMemo(() => chartItems.filter((i) => i.column === 'Comments'), [chartItems])
-  const showCommentsTrack = commentItems.length > 0
+  const datesWindow = importantDatesWindow(
+    fetchStart,
+    effectiveViewEnd > fetchEnd ? effectiveViewEnd : fetchEnd,
+  )
+  const importantDatesQuery = useQuery({
+    enabled: !hiddenCategories.has('important_dates'),
+    queryFn: () => fetchImportantDates(datesWindow),
+    queryKey: ['people', 'dates', datesWindow.from, datesWindow.to],
+    staleTime: 5 * 60_000,
+  })
+  const importantDates = importantDatesQuery.data?.dates
+  const dayMarkers = useMemo(
+    () => [
+      ...(hiddenCategories.has('comments') ? [] : journalDayMarkers(commentNotes)),
+      ...(hiddenCategories.has('important_dates') ? [] : importantDateMarkers(importantDates ?? [])),
+    ],
+    [commentNotes, importantDates, hiddenCategories],
+  )
+  const showCommentsTrack = commentItems.length > 0 || dayMarkers.length > 0
+
+  const { route } = useLocation()
+  const handleDayMarkerClick = useCallback(
+    (group: AllDayMarkerGroup) => {
+      const [first] = group.markers
+      if (group.markers.length === 1 && first?.onClick) return first.onClick()
+      const href = markerGroupHref(group)
+      if (href) route(href)
+    },
+    [route],
+  )
 
   const handleCommentClick = useCallback((item: ChartItem) => {
     const rootIds = item.comment_ids ?? (item.comment_id ? [item.comment_id] : [])
@@ -728,6 +767,22 @@ export const Timeline = () => {
           handleCommentClick,
         )
 
+        const commentsSlot = slotOf('Comments')
+        drawAllDayMarkers({
+          cross: commentsSlot
+            ? commentsSlot.x + commentsSlot.width / 2
+            : chartWidth - ALL_DAY_GLYPH_SIZE / 2 - 2,
+          groups: layoutAllDayMarkers(
+            dayMarkers,
+            currentYScale,
+            { from: domainStart, to: domainEnd },
+            ALL_DAY_GLYPH_SIZE + 4,
+          ),
+          onClick: handleDayMarkerClick,
+          orientation: 'vertical',
+          parent: chartGroup,
+        })
+
         if (musicSlot) {
           const domainStartMs = domainStart.getTime()
           const domainEndMs = domainEnd.getTime()
@@ -887,6 +942,18 @@ export const Timeline = () => {
             showTooltip,
             trackY: trackComments,
             xScale: currentXScale,
+          })
+          drawAllDayMarkers({
+            cross: trackComments,
+            groups: layoutAllDayMarkers(
+              dayMarkers,
+              currentXScale,
+              { from: domainStart, to: domainEnd },
+              ALL_DAY_GLYPH_SIZE + 4,
+            ),
+            onClick: handleDayMarkerClick,
+            orientation: 'horizontal',
+            parent: chartGroup,
           })
         }
 
@@ -1088,8 +1155,10 @@ export const Timeline = () => {
     columnData,
     columns,
     commentItems,
+    dayMarkers,
     showCommentsTrack,
     handleCommentClick,
+    handleDayMarkerClick,
     effectiveViewEnd,
     effectiveViewStart,
     hiddenCategories,

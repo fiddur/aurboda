@@ -69,8 +69,13 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
   'productivity_app',
 ]
 
-// Every selector kind (continuous mode allows a metric or a meal sensitivity on either side).
-const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS, 'sensitivity']
+// Every selector kind (continuous mode allows a metric, a meal sensitivity or the time with people on either side).
+const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = [
+  'metric',
+  ...EVENT_TRIGGER_KINDS,
+  'sensitivity',
+  'people',
+]
 
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: ExploreMode) => {

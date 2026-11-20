@@ -170,6 +170,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'Type or paste a barcode on /food-items or in a meal',
   },
   {
+    name: 'Check-ins',
+    doc: 'features/check-ins.md',
+    provides:
+      'Answers to your own check-in forms (scales, numbers, yes/no, choices) logged as metrics or activities (e.g. medication, supplements)',
+    how: 'Web UI, REST API, or MCP; scheduled forms notify when due',
+    adminSetup: 'None',
+    userSetup: 'Build a form or copy a template',
+  },
+  {
     name: 'Manual Entry',
     provides: 'Any metric, tag, activity, meal, or note',
     how: 'Web UI, REST API, or MCP',

@@ -9,7 +9,11 @@ vi.mock('../../services/audit-log', () => ({
 import express from 'express'
 import request from 'supertest'
 
-import { createStravaWebhookRouter, type StravaWebhookRouterDeps } from './webhook-router.ts'
+import {
+  createStravaWebhookRouter,
+  type StravaWebhookRouterDeps,
+  stravaWebhookBodyParser,
+} from './webhook-router.ts'
 
 const createDeps = (overrides?: Partial<StravaWebhookRouterDeps>): StravaWebhookRouterDeps => ({
   enqueueActivityFetch: vi.fn(),
@@ -22,6 +26,7 @@ const createDeps = (overrides?: Partial<StravaWebhookRouterDeps>): StravaWebhook
 
 const createApp = (deps: StravaWebhookRouterDeps) => {
   const app = express()
+  app.use('/webhooks/strava', stravaWebhookBodyParser())
   app.use(express.json())
   app.use('/webhooks/strava', createStravaWebhookRouter(deps))
   return app
@@ -76,8 +81,8 @@ describe('Strava webhook router', () => {
       // Wait for async handler
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      expect(deps.getUsernameByStravaAthleteId).toHaveBeenCalledWith(87654321)
-      expect(deps.enqueueActivityFetch).toHaveBeenCalledWith('testuser', 12345678, 1)
+      expect(deps.getUsernameByStravaAthleteId).toHaveBeenCalledWith('87654321')
+      expect(deps.enqueueActivityFetch).toHaveBeenCalledWith('testuser', '12345678', 1)
     })
 
     test('enqueues activity fetch on update', async () => {
@@ -98,7 +103,7 @@ describe('Strava webhook router', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      expect(deps.enqueueActivityFetch).toHaveBeenCalledWith('testuser', 12345678, 1)
+      expect(deps.enqueueActivityFetch).toHaveBeenCalledWith('testuser', '12345678', 1)
     })
 
     test('soft-deletes activity on delete event', async () => {
@@ -116,7 +121,7 @@ describe('Strava webhook router', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      expect(deps.softDeleteStravaActivity).toHaveBeenCalledWith('testuser', 12345678)
+      expect(deps.softDeleteStravaActivity).toHaveBeenCalledWith('testuser', '12345678')
     })
 
     test('handles athlete deauthorization', async () => {
@@ -134,7 +139,7 @@ describe('Strava webhook router', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      expect(deps.handleDeauthorization).toHaveBeenCalledWith(87654321)
+      expect(deps.handleDeauthorization).toHaveBeenCalledWith('87654321')
     })
 
     test('ignores events for unknown athletes', async () => {
@@ -155,6 +160,93 @@ describe('Strava webhook router', () => {
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       expect(deps.enqueueActivityFetch).not.toHaveBeenCalled()
+    })
+
+    const postRaw = (app: express.Express, body: string) =>
+      request(app).post('/webhooks/strava').set('Content-Type', 'application/json').send(body)
+
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+
+    test('passes 64-bit ids exactly on create', async () => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      const res = await postRaw(
+        app,
+        '{"aspect_type":"create","event_time":1516126040,"object_id":9007199254740993,"object_type":"activity","owner_id":9223372036854775807,"subscription_id":1}',
+      )
+      expect(res.status).toBe(200)
+      expect(res.text).toBe('EVENT_RECEIVED')
+      await settle()
+
+      expect(deps.getUsernameByStravaAthleteId).toHaveBeenCalledWith('9223372036854775807')
+      expect(deps.enqueueActivityFetch).toHaveBeenCalledWith('testuser', '9007199254740993', 1)
+    })
+
+    test('passes 64-bit ids exactly on delete', async () => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      await postRaw(
+        app,
+        '{"aspect_type":"delete","event_time":1516126040,"object_id":9007199254740993,"object_type":"activity","owner_id":9223372036854775807,"subscription_id":1}',
+      )
+      await settle()
+
+      expect(deps.getUsernameByStravaAthleteId).toHaveBeenCalledWith('9223372036854775807')
+      expect(deps.softDeleteStravaActivity).toHaveBeenCalledWith('testuser', '9007199254740993')
+    })
+
+    test('passes a 64-bit athlete id exactly on deauthorization', async () => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      await postRaw(
+        app,
+        '{"aspect_type":"delete","event_time":1516126040,"object_id":9223372036854775807,"object_type":"athlete","owner_id":9223372036854775807,"subscription_id":1}',
+      )
+      await settle()
+
+      expect(deps.handleDeauthorization).toHaveBeenCalledWith('9223372036854775807')
+    })
+
+    test.each([
+      [
+        'a non-numeric owner_id',
+        '{"aspect_type":"create","object_id":1,"object_type":"activity","owner_id":"abc"}',
+      ],
+      [
+        'a fractional owner_id',
+        '{"aspect_type":"create","object_id":1,"object_type":"activity","owner_id":1.5}',
+      ],
+      [
+        'an object as object_id',
+        '{"aspect_type":"create","object_id":{},"object_type":"activity","owner_id":2}',
+      ],
+      [
+        'an owner_id above int64',
+        '{"aspect_type":"create","object_id":1,"object_type":"activity","owner_id":9223372036854775808}',
+      ],
+      [
+        'an athlete owner_id above int64',
+        '{"aspect_type":"delete","object_id":1,"object_type":"athlete","owner_id":9223372036854775808}',
+      ],
+      [
+        'a non-numeric athlete owner_id',
+        '{"aspect_type":"delete","object_id":1,"object_type":"athlete","owner_id":"abc"}',
+      ],
+    ])('ignores an event with %s', async (_, body) => {
+      const deps = createDeps()
+      const app = createApp(deps)
+
+      const res = await postRaw(app, body)
+      expect(res.status).toBe(200)
+      await settle()
+
+      expect(deps.getUsernameByStravaAthleteId).not.toHaveBeenCalled()
+      expect(deps.enqueueActivityFetch).not.toHaveBeenCalled()
+      expect(deps.softDeleteStravaActivity).not.toHaveBeenCalled()
+      expect(deps.handleDeauthorization).not.toHaveBeenCalled()
     })
   })
 })

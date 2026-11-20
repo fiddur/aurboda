@@ -4,6 +4,7 @@ import type { ThreadCopyEntryInput } from './challenge-thread-copy.ts'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  deleteParticipationThreadCopyEntry,
   deleteThreadCopyEntry,
   getThreadCopyEntryById,
   getThreadCopyEntryByObjectUri,
@@ -115,6 +116,19 @@ describe('challenge thread copies (integration)', () => {
     await upsertThreadCopyEntry(user, q.id, ola)
     expect(await deleteThreadCopyEntry(user, ola.object_uri, HOST)).toBe(0)
     expect(await deleteThreadCopyEntry(user, ola.object_uri, OLA)).toBe(2)
+  })
+
+  test('a participation-scoped delete takes any author, in that participation only', async () => {
+    const user = getTestUser()
+    const p = await participation(user)
+    const q = await participation(user, 'dec')
+    const ola = row(1, { actor_uri: OLA, object_uri: 'https://far.example/users/ola/feed/1' })
+    await upsertThreadCopyEntry(user, p.id, ola)
+    await upsertThreadCopyEntry(user, q.id, ola)
+    expect(await deleteParticipationThreadCopyEntry(user, p.id, ola.object_uri)).toBe(1)
+    expect(await getThreadCopyEntryByObjectUri(user, p.id, ola.object_uri)).toBeNull()
+    expect(await getThreadCopyEntryByObjectUri(user, q.id, ola.object_uri)).not.toBeNull()
+    expect(await deleteParticipationThreadCopyEntry(user, p.id, ola.object_uri)).toBe(0)
   })
 
   test('leaving a challenge drops its copy', async () => {

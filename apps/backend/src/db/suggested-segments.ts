@@ -165,6 +165,25 @@ export const upsertSuggestion = async (
     return 'inserted'
   })
 
+/** Drops the pending suggestions found on these activities whose type is no longer the activity's. */
+export const deletePendingSuggestionsOfOtherType = async (
+  user: string,
+  activityIds: string[],
+): Promise<number> => {
+  if (activityIds.length === 0) return 0
+  const result = await query(
+    user,
+    `DELETE FROM suggested_segments ss
+     USING activities a
+     WHERE a.id = ss.source_activity_id
+       AND ss.source_activity_id = ANY($1::uuid[])
+       AND ss.status = 'pending'
+       AND ss.activity_type <> ${effectiveType('a')}`,
+    [activityIds],
+  )
+  return result.rowCount ?? 0
+}
+
 export const markSuggestionsScanned = async (user: string, activityId: string): Promise<void> => {
   await query(user, `UPDATE activity_tracks SET segments_suggested_at = NOW() WHERE activity_id = $1`, [
     activityId,

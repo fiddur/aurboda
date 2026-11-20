@@ -25,6 +25,13 @@ describe('scheduleLine', () => {
   test('lists other days in week order', () => {
     expect(scheduleLine('07:30', [5, 1, 3])).toBe('Mon, Wed, Fri at 07:30')
   })
+
+  test('joins several times in time order', () => {
+    expect(scheduleLine(['21:00', '08:00'], [1, 2, 3, 4, 5, 6, 7])).toBe('Every day at 08:00 and 21:00')
+    expect(scheduleLine(['12:00', '08:00', '21:00'], [1, 2, 3, 4, 5])).toBe(
+      'Weekdays at 08:00, 12:00 and 21:00',
+    )
+  })
 })
 
 describe('roundTime', () => {

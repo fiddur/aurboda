@@ -32,7 +32,7 @@ import { closeAllUserPools, dropUserDb, getDbForUser } from './db/connection.ts'
 import { getLargestTables, getUserDatabaseSizes } from './db/database-sizes.ts'
 import {
   createChallengePost,
-  emitTimelineNotify,
+  emitLiveNotify,
   expandAncestorTypes,
   getDeductionRulesByIds,
   getDetectedLocationById,
@@ -59,9 +59,12 @@ import {
   markChallengeResultPublished,
   markEnrichTransientFailure,
   migrateAllUsers,
-  openTimelineChannel,
+  openLiveChannel,
   pruneDeductionRuleRuns,
+  pruneDeletedNotes,
+  pruneDeletedPeople,
   pruneSyncedOutboundSync,
+  purgeDeletedCheckIns,
   rematerializeSupersededOnce,
   resolveOrCreateActivityType,
   retireSingleLiftTypes,
@@ -98,6 +101,7 @@ import {
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
+import { stravaWebhookBodyParser } from './integrations/strava/webhook-router.ts'
 import { createMcpRouter } from './mcp.ts'
 import { createActorAcceptNormalizer, createActorHtmlRouter } from './routes/actor-html-router.ts'
 import {
@@ -127,6 +131,7 @@ import {
   deliverFeedReplyUpdate,
   deliverFeedUpdate,
   createThreadPush,
+  createThreadSignal,
   deliverQuoteStampDeletes,
   revokeQuoteStamps,
   toDeliverableArticle,
@@ -170,6 +175,8 @@ import {
   type ThreadFederation,
 } from './services/challenge-thread-remote.ts'
 import { syncThreadEntryForPost } from './services/challenge-thread.ts'
+import { checkInDueActionHandlers } from './services/check-in-actions.ts'
+import { checkInDeps, raiseDueCheckIns } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -205,6 +212,7 @@ import {
   type FollowActions,
   followActor,
   followTag,
+  resolveActorHandle,
   unfollowActor,
   unfollowTag,
 } from './services/following.ts'
@@ -216,10 +224,16 @@ import {
 } from './services/garmin-push-queue.ts'
 import { createGeocodeQueue } from './services/geocode-queue.ts'
 import { createInvitationAuth } from './services/invitation.ts'
+import { createLiveHub } from './services/live-hub.ts'
 import { getPlaceVisits, type NamedLocationsChanged } from './services/locations.ts'
 import { createLoginMethodCounter } from './services/login-methods.ts'
 import { runNotificationAction } from './services/notification-actions.ts'
-import { notificationStore, notifier, notifyAdminsOfUnfinishedSignup } from './services/notifications.ts'
+import {
+  notificationStore,
+  notifier,
+  notifyAdminsOfUnfinishedSignup,
+  setNotificationPushEnqueuer,
+} from './services/notifications.ts'
 import {
   ensureDefaultOfficialFeed,
   officialRemoteHandles,
@@ -228,6 +242,7 @@ import {
 import { allowHttpIssuer, createDiscoveryCache, createOidcClient } from './services/oidc-client.ts'
 import { createOidcProviderAdmin, oidcRedirectUri } from './services/oidc-providers.ts'
 import { createOidcService } from './services/oidc.ts'
+import { defaultPeopleDeps, raiseDueImportantDates } from './services/people.ts'
 import { createPgBoss } from './services/pg-boss.ts'
 import { installProcessGuards } from './services/process-guards.ts'
 import { createPublicTagModeration } from './services/public-tag-moderation.ts'
@@ -266,7 +281,6 @@ import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
 import { readTagActorHost } from './services/tag-actor-host.ts'
-import { createTimelineHub } from './services/timeline-hub.ts'
 import {
   backfillReplyLinks,
   type RetroEnrichTrigger,
@@ -287,6 +301,8 @@ import {
   recordUsage,
   startUsageFlushing,
 } from './services/usage-recorder.ts'
+import { createWebPushQueue } from './services/web-push-queue.ts'
+import { createWebPush } from './services/web-push.ts'
 import { createWebAuthnService } from './services/webauthn.ts'
 
 declare global {
@@ -748,12 +764,11 @@ const main = async () => {
   // Mount OAuth endpoints BEFORE body-parser (uses its own parsers)
   httpd.use(createOAuthRouter({ centralDb, failedLogins: rateLimits.failedLogins, loginToUserDb, webHost }))
 
-  // Live home-timeline updates: one in-process hub fans Postgres NOTIFY pings out
-  // to a user's open SSE streams. Injected into the feed router (SSE endpoint) and
-  // the federation ingest (which pings it when a new post is received).
-  const timelineHub = createTimelineHub({ emit: emitTimelineNotify, openChannel: openTimelineChannel })
+  const liveHub = createLiveHub({ emit: emitLiveNotify, openChannel: openLiveChannel })
   const onNewTimelineEntry = (user: string) => {
-    void timelineHub.notify(user).catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
+    void liveHub
+      .notify(user, 'timeline')
+      .catch((err) => console.error(`⚠️ timeline notify failed for ${user}:`, err))
   }
 
   const federationQueueAbort = new AbortController()
@@ -807,6 +822,7 @@ const main = async () => {
   const threadFederation: ThreadFederation = {
     fetchThread: createSignedThreadFetch(feedFederation, webHost),
     push: createThreadPush(feedDeps),
+    signal: createThreadSignal(feedDeps),
   }
   const relayActions = createRelayActions({ federation: feedFederation, origin: webHost, store: centralDb })
   const publicTagModeration = createPublicTagModeration({
@@ -1037,7 +1053,10 @@ const main = async () => {
   const skipAutoshareActivity = skipAutoshare(autoshareSkipDeps)
   const notificationActionRunner = runNotificationAction({
     get: notificationStore.get,
-    handlers: { autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) } },
+    handlers: {
+      autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) },
+      check_in_due: checkInDueActionHandlers(checkInDeps),
+    },
     revise: notificationStore.revise,
   })
   const feedRefreshWindowDeps = createFeedRefreshWindowDeps(feedDeliver.updated)
@@ -1175,12 +1194,29 @@ const main = async () => {
       await createReminderScheduler(boss, {
         listUsers: () => listUserNames(userDb),
         raiseDue: (user) => raiseDueReminders(reminderDeps, user),
+        raiseDueCheckIns: (user) => raiseDueCheckIns(checkInDeps, user),
+        raiseImportantDates: (user) => raiseDueImportantDates(defaultPeopleDeps(), user),
       })
     } catch (error) {
       console.error('Failed to initialize reminder scheduler:', error)
     }
   } else {
     console.warn('⚠️ Reminders disabled (no job queue)')
+  }
+
+  const webPush = createWebPush({ getVapidKeys: () => centralDb.getOrCreateVapidKeys(), webHost })
+  if (boss && webPush.enabled) {
+    try {
+      const webPushQueue = await createWebPushQueue(boss, {
+        deliver: (user, notificationId, options) =>
+          webPush.deliverNotification(user, notificationId, options),
+      })
+      setNotificationPushEnqueuer(webPushQueue.enqueue)
+    } catch (error) {
+      console.error('Failed to initialize Web Push queue:', error)
+    }
+  } else if (!webPush.enabled) {
+    console.info(`🔔 Browser push off: WEB_HOST (${webHost}) is not HTTPS`)
   }
 
   // Challenge completion: a scheduled sweep over every user's hosted challenges
@@ -1215,6 +1251,10 @@ const main = async () => {
         listUsers: () => listUserNames(userDb),
         prune: pruneAuditLog,
         pruneDeductionRuleRuns,
+        pruneDeletedNotes,
+        pruneDeletedCheckIns: (user, retentionDays) =>
+          purgeDeletedCheckIns(user, new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)),
+        pruneDeletedPeople,
         pruneSyncedOutboundSync,
         pruneUsageBefore: (day) => centralDb.pruneUsageBefore(day),
       })
@@ -1250,6 +1290,7 @@ const main = async () => {
     follow: (user, handle) => followActor(feedDeps, user, handle),
     followTag: (user, tag) => followTag(feedDeps, user, tag),
     unfollow: (user, id) => unfollowActor(feedDeps, user, id),
+    resolve: (user, handle) => resolveActorHandle(feedDeps, user, handle),
     unfollowTag: (user, tag) => unfollowTag(feedDeps, user, tag),
   }
   const reactionActions = createReactionActions(feedDeps, feedDeliver)
@@ -1290,6 +1331,7 @@ const main = async () => {
       autosharePreviewDeps: autoshareDeps,
       runNotificationAction: notificationActionRunner,
       skipAutoshare: skipAutoshareActivity,
+      webPush,
       relayActions,
       oidcProviders: oidc.providers,
       postUpdateResender,
@@ -1366,8 +1408,10 @@ const main = async () => {
     }),
   )
 
-  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large.
+  // Ahead of the global parser, which skips a body already parsed: Garmin pushes can be large,
+  // and Strava's 64-bit ids need the lossless parse.
   httpd.use('/webhooks/garmin', garminPushBodyParser(garminPushToken(sessionSecret)))
+  httpd.use('/webhooks/strava', stravaWebhookBodyParser())
   httpd.use(json({ limit: '10mb' }))
 
   httpd.use(createAuditLogMiddleware(auth, isDeletedUser))
@@ -1502,6 +1546,7 @@ const main = async () => {
     autosharePreviewDeps: autoshareDeps,
     runNotificationAction: notificationActionRunner,
     skipAutoshare: skipAutoshareActivity,
+    webPush,
     adminMiddleware,
     dataExport,
     adminUsers,
@@ -1536,7 +1581,7 @@ const main = async () => {
     retroEnrichTimeline,
     syncProvider,
     tagActorHost,
-    timelineHub,
+    liveHub,
     userDb,
     webAuthn,
     oidc,

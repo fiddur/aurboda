@@ -42,7 +42,10 @@ const START = new Date('2026-07-01T08:00:00Z')
 const END = new Date('2026-07-01T08:40:00Z')
 
 const startApp = (
-  deps: Pick<FeedPublicRouterDeps, 'listOfficialRemotePosts' | 'readOfficialFeed' | 'renderableBlocks'> = {},
+  deps: Pick<
+    FeedPublicRouterDeps,
+    'listOfficialRemotePosts' | 'readOfficialFeed' | 'renderableBlocks' | 'sensitivityFlagsVersion'
+  > = {},
 ) => {
   const app = express()
   app.use(
@@ -806,6 +809,152 @@ describe('GET /public/official-feed', () => {
       expect(atom.text).toContain('<id>https://aurboda.net/notes/2</id>')
       expect(atom.text).toContain(`<id>https://qs.example/u/${first}/posts/${local[1].id}</id>`)
       expect(atom.text).toContain('<title type="text">remote 2</title>')
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('sensitivity flag versions in the public caches (#1878)', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const heartRate = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      metric: 'heart_rate' as const,
+      source: 'garmin' as const,
+      time: new Date(START.getTime() + (from + i) * 300_000),
+      value: 60 + from + i,
+    }))
+
+  const chartArticle = (user: string) =>
+    createArticlePost(user, {
+      article: {
+        blocks: [
+          {
+            bucket: '5m',
+            end: END.toISOString(),
+            metric: 'heart_rate',
+            start: START.toISOString(),
+            type: 'chart',
+          },
+        ],
+        title: 'HR',
+      },
+      visibility: 'public',
+    })
+
+  const versionOf = () => {
+    const calls: string[] = []
+    let version = 'v1'
+    return {
+      bump: () => {
+        version = 'v2'
+      },
+      calls,
+      sensitivityFlagsVersion: async (user: string) => {
+        calls.push(user)
+        return version
+      },
+    }
+  }
+
+  test('an article’s payload is produced again when the flag set changes, its updated_at unchanged', async () => {
+    const user = getTestUser()
+    await insertTimeSeries(user, heartRate(0, 2))
+    const article = await chartArticle(user)
+    const flags = versionOf()
+    const { request, close } = startApp({ sensitivityFlagsVersion: flags.sensitivityFlagsVersion })
+    const samples = async (path: string) => {
+      const res = await request.get(path)
+      expect(res.status).toBe(200)
+      const structured = res.body.structured ?? res.body.posts[0].structured
+      return structured.blocks[0].samples.length as number
+    }
+    try {
+      const listing = `/public/${user}/posts`
+      const single = `/public/${user}/feed/${article.id}`
+      const before = await samples(listing)
+      expect(await samples(single)).toBe(before)
+
+      await insertTimeSeries(user, heartRate(4, 2))
+      expect(await samples(listing)).toBe(before)
+      expect(await samples(single)).toBe(before)
+
+      flags.bump()
+      const after = await samples(single)
+      expect(after).toBeGreaterThan(before)
+      expect(await samples(listing)).toBe(after)
+    } finally {
+      await close()
+    }
+  })
+
+  test('a post that cannot name a flag never reads the version', async () => {
+    const user = getTestUser()
+    const id = await seedPost(user, 'public')
+    const flags = versionOf()
+    const { request, close } = startApp({ sensitivityFlagsVersion: flags.sensitivityFlagsVersion })
+    try {
+      expect((await request.get(`/public/${user}/posts`)).status).toBe(200)
+      expect((await request.get(`/public/${user}/posts/${id}`)).status).toBe(200)
+      expect((await request.get(`/public/${user}/feed/${id}`)).status).toBe(200)
+      expect(flags.calls).toEqual([])
+    } finally {
+      await close()
+    }
+  })
+
+  test('a listing of several articles reads the version once', async () => {
+    const user = getTestUser()
+    for (let i = 0; i < 3; i++) {
+      await createArticlePost(user, {
+        article: { blocks: [{ markdown: `Body ${i}`, type: 'prose' }], title: `Post ${i}` },
+        visibility: 'public',
+      })
+    }
+    const flags = versionOf()
+    const { request, close } = startApp({ sensitivityFlagsVersion: flags.sensitivityFlagsVersion })
+    try {
+      const res = await request.get(`/public/${user}/posts`)
+      expect(res.body.posts).toHaveLength(3)
+      expect(flags.calls).toEqual([user])
+    } finally {
+      await close()
+    }
+  })
+
+  test('the articles Atom memo renders again when the flag set changes', async () => {
+    const user = getTestUser()
+    const post = await createArticlePost(user, {
+      article: { blocks: [{ markdown: 'Body', type: 'prose' }], title: 'Cached' },
+      visibility: 'public',
+    })
+    const rendered: string[] = []
+    const flags = versionOf()
+    const { request, close } = startApp({
+      renderableBlocks: async (_user, postId) => {
+        rendered.push(postId)
+        return new Set()
+      },
+      sensitivityFlagsVersion: flags.sensitivityFlagsVersion,
+    })
+    try {
+      await request.get(`/public/${user}/articles.atom`)
+      await request.get(`/public/${user}/articles.atom`)
+      expect(rendered).toEqual([post.id])
+      flags.bump()
+      await request.get(`/public/${user}/articles.atom`)
+      expect(rendered).toEqual([post.id, post.id])
     } finally {
       await close()
     }

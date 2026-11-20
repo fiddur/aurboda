@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { defaultSuggestedSegmentOps, lineWkt } from '../services/suggested-segments.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { insertActivity, deleteActivity } from './activities/index.ts'
+import { insertActivity, insertOverride, deleteActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { createRouteWithPair } from './routes.ts'
 import { insertSegment } from './segments.ts'
@@ -12,6 +12,7 @@ import {
   claimSuggestedSegment,
   countUnscannedTrackedActivities,
   decideSuggestedSegment,
+  deletePendingSuggestionsOfOtherType,
   getSuggestedSegment,
   getSuggestionInput,
   listSuggestedSegments,
@@ -219,6 +220,44 @@ describe('Suggested segments integration', () => {
       expect(await decideSuggestedSegment(user, stored!.id, 'dismissed')).toBe(true)
       expect(await upsertSuggestion(user, other)).toBe('skipped')
       expect(await listSuggestedSegments(user)).toEqual([])
+    })
+  })
+
+  describe('after a retype', () => {
+    test('drops the pending suggestions of these activities whose type is no longer theirs', async () => {
+      const user = getTestUser()
+      const retyped = await addTrackedActivity(EAST)
+      const overridden = await addTrackedActivity(EAST)
+      const kept = await addTrackedActivity(EAST)
+      const suggest = async (source: string, x: number) => {
+        const before = new Set((await listSuggestedSegments(user)).map((s) => s.id))
+        await upsertSuggestion(user, {
+          activity_count: 2,
+          activity_type: 'running',
+          source_activity_id: source,
+          wkt: wkt([
+            [x, 0],
+            [x + 800, 0],
+          ]),
+        })
+        return (await listSuggestedSegments(user)).find((s) => !before.has(s.id))!.id
+      }
+      await suggest(retyped, 0)
+      const dismissed = await suggest(retyped, 10_000)
+      await decideSuggestedSegment(user, dismissed, 'dismissed')
+      await suggest(overridden, 20_000)
+      const ofKept = await suggest(kept, 30_000)
+
+      await query(user, `UPDATE activities SET activity_type = 'walking' WHERE id = $1`, [retyped])
+      const { end_time, start_time } = (
+        await query(user, `SELECT start_time, end_time FROM activities WHERE id = $1`, [overridden])
+      ).rows[0] as { start_time: Date; end_time: Date }
+      await insertOverride(user, [overridden], { activity_type: 'walking', end_time, start_time })
+
+      expect(await deletePendingSuggestionsOfOtherType(user, [retyped, overridden, kept])).toBe(2)
+      expect((await listSuggestedSegments(user)).map((s) => s.id)).toEqual([ofKept])
+      expect((await getSuggestedSegment(user, dismissed))?.status).toBe('dismissed')
+      expect(await deletePendingSuggestionsOfOtherType(user, [])).toBe(0)
     })
   })
 

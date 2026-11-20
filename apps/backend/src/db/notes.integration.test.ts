@@ -9,7 +9,9 @@ import {
   deleteNote,
   deleteNotesForEntitiesIn,
   deleteNotesForEntityIn,
+  getDeletedNotes,
   getNoteById,
+  getNoteRevisions,
   getNoteRoot,
   getNotesByEntityIds,
   getNotesForEntity,
@@ -17,8 +19,14 @@ import {
   getRepliesForRootIds,
   getUserNotesJoined,
   insertNote,
+  type NoteFieldUpdates,
+  type NotesSearchParams,
+  pruneDeletedNotes,
   replaceUserNotes,
-  updateNoteFields,
+  restoreNote,
+  searchNotes,
+  softDeleteNote,
+  updateNoteGuarded,
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
@@ -31,6 +39,22 @@ const DAY = { end: new Date('2024-01-15T23:59:59Z'), start: new Date('2024-01-15
 
 const contentInDay = async (user: string): Promise<string[]> =>
   (await getNotesForTimeRange(user, DAY.start, DAY.end)).map((n) => n.content)
+
+const REVISIONS = { limit: 50, min_interval_minutes: 10 }
+
+const updateNoteFields = async (user: string, id: string, fields: NoteFieldUpdates) => {
+  const result = await updateNoteGuarded(user, id, fields, { revisions: REVISIONS })
+  return result.status === 'updated' ? result.note : null
+}
+
+const search = (user: string, params: Partial<NotesSearchParams> = {}) =>
+  searchNotes(user, { entity_types: ['time', 'day'], limit: 50, tz: 'UTC', ...params })
+
+const ageDeletion = (user: string, id: string, days: number) =>
+  query(user, `UPDATE notes SET deleted_at = NOW() - make_interval(days => $2::int) WHERE id = $1`, [
+    id,
+    days,
+  ])
 
 describe('Notes Integration Tests', () => {
   beforeAll(async () => {
@@ -150,7 +174,7 @@ describe('Notes Integration Tests', () => {
     })
   })
 
-  describe('updateNoteFields', () => {
+  describe('updateNoteGuarded', () => {
     test('updates note content and updated_at', async () => {
       const user = getTestUser()
       const entityId = randomUUID()
@@ -891,6 +915,518 @@ describe('Notes Integration Tests', () => {
       const user = getTestUser()
       const result = await deleteNote(user, randomUUID())
       expect(result).toBe(false)
+    })
+  })
+  describe('journal fields', () => {
+    test('a day note keeps its date as a calendar date, with no times', async () => {
+      const user = getTestUser()
+      const note = await insertNote(user, 'day', null, '', undefined, undefined, {
+        date: '2024-02-29',
+        hashtags: ['travel'],
+        tags: ['family'],
+        title: 'Leap day',
+      })
+
+      const found = await getNoteById(user, note.id)
+      expect(found).toMatchObject({
+        content: '',
+        date: '2024-02-29',
+        entity_id: null,
+        entity_type: 'day',
+        hashtags: ['travel'],
+        tags: ['family'],
+        title: 'Leap day',
+      })
+      expect(found!.start_time).toBeUndefined()
+    })
+
+    test('the shape check refuses a day note with times or without a date', async () => {
+      const user = getTestUser()
+      await expect(insertNote(user, 'day', null, 'x', new Date('2024-01-15T09:00:00Z'))).rejects.toThrow()
+      await expect(insertNote(user, 'day', null, 'x')).rejects.toThrow()
+      await expect(
+        insertNote(user, 'time', null, 'x', new Date('2024-01-15T09:00:00Z'), undefined, {
+          date: '2024-01-15',
+        }),
+      ).rejects.toThrow()
+    })
+  })
+
+  describe('updateNoteGuarded — conflicts, revisions and kinds', () => {
+    test('a stale expected_updated_at writes nothing and answers the current note', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'First', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteFields(user, created.id, { content: 'Changed elsewhere' })
+
+      const result = await updateNoteGuarded(
+        user,
+        created.id,
+        { content: 'Mine' },
+        { expected_updated_at: created.updated_at, revisions: REVISIONS },
+      )
+
+      expect(result.status).toBe('conflict')
+      expect(result.status === 'conflict' && result.note.content).toBe('Changed elsewhere')
+      expect((await getNoteById(user, created.id))!.content).toBe('Changed elsewhere')
+    })
+
+    test('a matching expected_updated_at writes', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'First', new Date('2024-01-15T09:00:00Z'))
+
+      const result = await updateNoteGuarded(
+        user,
+        created.id,
+        { content: 'Second' },
+        { expected_updated_at: created.updated_at, revisions: REVISIONS },
+      )
+
+      expect(result.status).toBe('updated')
+      expect((await getNoteById(user, created.id))!.content).toBe('Second')
+    })
+
+    test('a move worked out for a time entry that became a day entry meanwhile is a conflict', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Moving', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteGuarded(
+        user,
+        created.id,
+        { date: '2024-01-15', end_time: null, entity_type: 'day', start_time: null },
+        { revisions: REVISIONS },
+      )
+
+      const result = await updateNoteGuarded(
+        user,
+        created.id,
+        { start_time: new Date('2024-01-15T10:00:00Z') },
+        { expected_entity_type: 'time', revisions: REVISIONS },
+      )
+
+      expect(result.status).toBe('conflict')
+      expect(result.status === 'conflict' && result.note.entity_type).toBe('day')
+      const stored = (await getNoteById(user, created.id))!
+      expect(stored.entity_type).toBe('day')
+      expect(stored.date).toBe('2024-01-15')
+    })
+
+    test('concurrent kind switch and move: one applies, the other conflicts, never a shape error', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Race', new Date('2024-01-15T09:00:00Z'))
+
+      const results = await Promise.all([
+        updateNoteGuarded(
+          user,
+          created.id,
+          { date: '2024-01-15', end_time: null, entity_type: 'day', start_time: null },
+          { expected_entity_type: 'time', revisions: REVISIONS },
+        ),
+        updateNoteGuarded(
+          user,
+          created.id,
+          { start_time: new Date('2024-01-15T11:00:00Z') },
+          { expected_entity_type: 'time', revisions: REVISIONS },
+        ),
+      ])
+
+      expect(results.map((r) => r.status)).toContain('updated')
+    })
+
+    test('a soft-deleted note is not found', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Gone', new Date('2024-01-15T09:00:00Z'))
+      await softDeleteNote(user, created.id)
+
+      const result = await updateNoteGuarded(user, created.id, { content: 'x' }, { revisions: REVISIONS })
+      expect(result.status).toBe('not_found')
+    })
+
+    test('keeps the replaced text as a revision, once per burst of saves', async () => {
+      const user = getTestUser()
+      const created = await insertNote(
+        user,
+        'time',
+        null,
+        'v1',
+        new Date('2024-01-15T09:00:00Z'),
+        undefined,
+        {
+          title: 'T1',
+        },
+      )
+
+      await updateNoteFields(user, created.id, { content: 'v2' })
+      await updateNoteFields(user, created.id, { content: 'v3' })
+      await updateNoteFields(user, created.id, { tags: ['x'] })
+
+      const revisions = await getNoteRevisions(user, created.id)
+      expect(revisions.map((r) => [r.content, r.title])).toEqual([['v1', 'T1']])
+    })
+
+    test('a change after the interval keeps another revision, newest first', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'v1', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteFields(user, created.id, { content: 'v2' })
+      await query(user, `UPDATE note_revisions SET saved_at = NOW() - interval '11 minutes'`)
+      await updateNoteFields(user, created.id, { title: 'Titled' })
+
+      const revisions = await getNoteRevisions(user, created.id)
+      expect(revisions.map((r) => r.content)).toEqual(['v2', 'v1'])
+    })
+
+    test('an unchanged content keeps no revision', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'Same', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteFields(user, created.id, { content: 'Same' })
+      expect(await getNoteRevisions(user, created.id)).toEqual([])
+    })
+
+    test('keeps only the newest revisions up to the limit', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'v0', new Date('2024-01-15T09:00:00Z'))
+      for (let i = 1; i <= 5; i++) {
+        await updateNoteGuarded(
+          user,
+          created.id,
+          { content: `v${i}` },
+          { revisions: { limit: 3, min_interval_minutes: 0 } },
+        )
+      }
+      const revisions = await getNoteRevisions(user, created.id)
+      expect(revisions.map((r) => r.content)).toEqual(['v4', 'v3', 'v2'])
+    })
+
+    test('revisions go with the note when it is removed for good', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, 'v1', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteFields(user, created.id, { content: 'v2' })
+      await deleteNote(user, created.id)
+      const left = await query(user, `SELECT 1 FROM note_revisions`)
+      expect(left.rows).toHaveLength(0)
+    })
+
+    test('a time note given a date becomes a day note, and its replies follow', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+
+      const updated = await updateNoteFields(user, root.id, {
+        date: '2024-01-20',
+        end_time: null,
+        entity_type: 'day',
+        start_time: null,
+      })
+
+      expect(updated).toMatchObject({ date: '2024-01-20', entity_type: 'day' })
+      expect(updated!.start_time).toBeUndefined()
+      const movedReply = await getNoteById(user, reply.id)
+      expect(movedReply!.date).toBe('2024-01-20')
+      expect(movedReply!.start_time).toBeUndefined()
+    })
+
+    test('a day note given a start_time becomes a time note, and its replies follow', async () => {
+      const user = getTestUser()
+      const root = await insertNote(user, 'day', null, 'Root', undefined, undefined, { date: '2024-01-20' })
+      const reply = await insertNote(user, 'note', root.id, 'Reply', undefined, undefined, {
+        date: '2024-01-20',
+      })
+      const start = new Date('2024-01-20T08:00:00Z')
+
+      const updated = await updateNoteFields(user, root.id, {
+        date: null,
+        end_time: null,
+        entity_type: 'time',
+        start_time: start,
+      })
+
+      expect(updated).toMatchObject({ entity_type: 'time', start_time: start })
+      expect(updated!.date).toBeUndefined()
+      const movedReply = await getNoteById(user, reply.id)
+      expect(movedReply!.start_time).toEqual(start)
+      expect(movedReply!.date).toBeUndefined()
+    })
+  })
+
+  describe('soft deletion', () => {
+    test('deleting a root hides it and its live replies from every reader', async () => {
+      const user = getTestUser()
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T11:00:00Z'),
+        source: 'manual',
+        start_time: new Date('2024-01-15T10:00:00Z'),
+      })
+      const root = await insertNote(
+        user,
+        'activity',
+        activityId,
+        'Root',
+        new Date('2024-01-15T10:00:00Z'),
+        new Date('2024-01-15T11:00:00Z'),
+      )
+      const reply = await insertNote(user, 'note', root.id, 'Reply', new Date('2024-01-15T10:00:00Z'))
+
+      expect(await softDeleteNote(user, root.id)).toBe(true)
+
+      expect(await getNoteById(user, root.id)).toBeNull()
+      expect(await getNoteById(user, reply.id)).toBeNull()
+      expect(await getNoteRoot(user, reply.id)).toBeNull()
+      expect(await getNotesForEntity(user, 'activity', activityId)).toEqual([])
+      expect((await getNotesByEntityIds(user, 'activity', [activityId])).size).toBe(0)
+      expect((await getRepliesForRootIds(user, [root.id])).size).toBe(0)
+      expect(await getUserNotesJoined(user, 'activity', activityId)).toBeUndefined()
+      expect(await contentInDay(user)).toEqual([])
+      expect((await search(user, { entity_types: ['activity'] })).notes).toEqual([])
+      expect((await getNoteById(user, root.id, { include_deleted: true }))!.deleted_at).toBeInstanceOf(Date)
+    })
+
+    test('a deleted note cannot be deleted again', async () => {
+      const user = getTestUser()
+      const note = await insertNote(user, 'time', null, 'x', new Date('2024-01-15T09:00:00Z'))
+      expect(await softDeleteNote(user, note.id)).toBe(true)
+      expect(await softDeleteNote(user, note.id)).toBe(false)
+      expect(await softDeleteNote(user, randomUUID())).toBe(false)
+    })
+
+    test('restoring a root brings back the replies deleted with it, not one deleted before', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const earlier = await insertNote(user, 'note', root.id, 'Deleted on its own', start)
+      const later = await insertNote(user, 'note', root.id, 'Deleted with the root', start)
+      await softDeleteNote(user, earlier.id)
+      await ageDeletion(user, earlier.id, 1)
+      await softDeleteNote(user, root.id)
+
+      const result = await restoreNote(user, root.id)
+
+      expect(result.status).toBe('restored')
+      expect(await getNoteById(user, root.id)).not.toBeNull()
+      expect(await getNoteById(user, later.id)).not.toBeNull()
+      expect(await getNoteById(user, earlier.id)).toBeNull()
+    })
+
+    test('a reply under a deleted root cannot be restored until the root is', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+      await softDeleteNote(user, root.id)
+
+      expect((await restoreNote(user, reply.id)).status).toBe('root_deleted')
+      expect(await getNoteById(user, reply.id)).toBeNull()
+    })
+
+    test('restoring a reply under a live root brings back only the reply', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      const reply = await insertNote(user, 'note', root.id, 'Reply', start)
+      await softDeleteNote(user, reply.id)
+
+      const result = await restoreNote(user, reply.id)
+
+      expect(result.status === 'restored' && result.note.deleted_at).toBeUndefined()
+      expect(await getNoteById(user, reply.id)).not.toBeNull()
+    })
+
+    test('restoring a live note answers it as it is; an unknown one is not found', async () => {
+      const user = getTestUser()
+      const note = await insertNote(user, 'time', null, 'Live', new Date('2024-01-15T12:00:00Z'))
+      const result = await restoreNote(user, note.id)
+      expect(result.status === 'restored' && result.note.content).toBe('Live')
+      expect((await restoreNote(user, randomUUID())).status).toBe('not_found')
+    })
+
+    test('lists deleted roots with the replies deleted with them, and deleted replies of live roots', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const liveRoot = await insertNote(user, 'time', null, 'Live root', start)
+      const lonelyReply = await insertNote(user, 'note', liveRoot.id, 'Deleted reply', start)
+      const deletedRoot = await insertNote(user, 'time', null, 'Deleted root', start)
+      const withRoot = await insertNote(user, 'note', deletedRoot.id, 'Went with the root', start)
+      await softDeleteNote(user, lonelyReply.id)
+      await ageDeletion(user, lonelyReply.id, 1)
+      await softDeleteNote(user, deletedRoot.id)
+
+      const deleted = await getDeletedNotes(user)
+
+      expect(deleted.map((d) => d.note.content)).toEqual(['Deleted root', 'Deleted reply'])
+      expect(deleted[0]!.replies.map((r) => r.id)).toEqual([withRoot.id])
+      expect(deleted[1]!.replies).toEqual([])
+    })
+
+    test('the system deletes still remove soft-deleted comments of a removed entity', async () => {
+      const user = getTestUser()
+      const entityId = randomUUID()
+      const note = await insertNote(user, 'meal', entityId, 'Salty')
+      await softDeleteNote(user, note.id)
+
+      expect(await withUserTransaction(user, (tx) => deleteNotesForEntityIn(tx, 'meal', entityId))).toBe(1)
+      expect(await getNoteById(user, note.id, { include_deleted: true })).toBeNull()
+    })
+
+    test('the prune removes notes deleted longer ago than the retention, with their replies', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T12:00:00Z')
+      const oldRoot = await insertNote(user, 'time', null, 'Old', start)
+      const oldReply = await insertNote(user, 'note', oldRoot.id, 'Old reply', start)
+      const recent = await insertNote(user, 'time', null, 'Recent', start)
+      const live = await insertNote(user, 'time', null, 'Live', start)
+      await softDeleteNote(user, oldRoot.id)
+      await query(
+        user,
+        `UPDATE notes SET deleted_at = NOW() - interval '31 days' WHERE deleted_at IS NOT NULL`,
+      )
+      await softDeleteNote(user, recent.id)
+
+      expect(await pruneDeletedNotes(user, 30)).toBe(2)
+
+      expect(await getNoteById(user, oldRoot.id, { include_deleted: true })).toBeNull()
+      expect(await getNoteById(user, oldReply.id, { include_deleted: true })).toBeNull()
+      expect(await getNoteById(user, recent.id, { include_deleted: true })).not.toBeNull()
+      expect(await getNoteById(user, live.id)).not.toBeNull()
+    })
+  })
+
+  describe('getNotesForTimeRange — day notes', () => {
+    test('returns the day notes on the given local dates, first', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'time', null, 'Timed', new Date('2024-01-15T09:00:00Z'))
+      await insertNote(user, 'day', null, 'The day', undefined, undefined, { date: '2024-01-15' })
+      await insertNote(user, 'day', null, 'Next day', undefined, undefined, { date: '2024-01-16' })
+      await insertNote(user, 'day', null, 'Day before', undefined, undefined, { date: '2024-01-14' })
+
+      const notes = await getNotesForTimeRange(user, DAY.start, DAY.end, {
+        from: '2024-01-15',
+        to: '2024-01-15',
+      })
+      expect(notes.map((n) => n.content)).toEqual(['The day', 'Timed'])
+      expect(await contentInDay(user)).toEqual(['Timed'])
+    })
+
+    test('hides a deleted day note', async () => {
+      const user = getTestUser()
+      const note = await insertNote(user, 'day', null, 'Gone', undefined, undefined, { date: '2024-01-15' })
+      await softDeleteNote(user, note.id)
+      const notes = await getNotesForTimeRange(user, DAY.start, DAY.end, {
+        from: '2024-01-15',
+        to: '2024-01-15',
+      })
+      expect(notes).toEqual([])
+    })
+  })
+
+  describe('searchNotes', () => {
+    test('finds words in the title or the content, the last word as a prefix', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      await insertNote(user, 'time', null, 'Walked along the river', start)
+      await insertNote(user, 'time', null, 'Nothing here', start, undefined, { title: 'Riverside café' })
+      await insertNote(user, 'time', null, 'Unrelated', start)
+
+      const exact = await search(user, { text: { websearch: 'river' } })
+      expect(exact.notes.map((n) => n.content)).toEqual(['Walked along the river'])
+
+      const prefix = await search(user, { text: { prefix: 'river', websearch: '' } })
+      expect(prefix.notes.map((n) => n.content).sort()).toEqual(['Nothing here', 'Walked along the river'])
+    })
+
+    test('a text too long for one search vector is still saved, and found by its beginning', async () => {
+      const user = getTestUser()
+      const words = Array.from({ length: 400_000 }, (_, i) => `w${i.toString(36)}`).join(' ')
+      const note = await insertNote(user, 'time', null, `opening ${words}`, new Date('2024-01-15T09:00:00Z'))
+
+      expect(note.content.length).toBeGreaterThan(2_000_000)
+      expect((await search(user, { text: { websearch: 'opening' } })).notes.map((n) => n.id)).toEqual([
+        note.id,
+      ])
+    })
+
+    test('a match in a reply returns its root; a deleted reply does not count', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      await insertNote(user, 'note', root.id, 'mentions pancakes', start)
+      const other = await insertNote(user, 'time', null, 'Other root', start)
+      const gone = await insertNote(user, 'note', other.id, 'also waffles', start)
+      await softDeleteNote(user, gone.id)
+
+      expect((await search(user, { text: { websearch: 'pancakes' } })).notes.map((n) => n.id)).toEqual([
+        root.id,
+      ])
+      expect((await search(user, { text: { websearch: 'waffles' } })).notes).toEqual([])
+    })
+
+    test('tags must all be present, explicit or hashtag', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      await insertNote(user, 'time', null, 'both', start, undefined, {
+        hashtags: ['family'],
+        tags: ['travel'],
+      })
+      await insertNote(user, 'time', null, 'one', start, undefined, { tags: ['travel'] })
+
+      const both = await search(user, { tags: ['travel', 'family'] })
+      expect(both.notes.map((n) => n.content)).toEqual(['both'])
+      const one = await search(user, { tags: ['travel'] })
+      expect(one.notes.map((n) => n.content).sort()).toEqual(['both', 'one'])
+    })
+
+    test('from/to compare the local day in tz', async () => {
+      const user = getTestUser()
+      // 23:30 UTC on the 14th is already the 15th in Stockholm.
+      await insertNote(user, 'time', null, 'Late', new Date('2024-01-14T23:30:00Z'))
+      await insertNote(user, 'day', null, 'Day 15', undefined, undefined, { date: '2024-01-15' })
+      await insertNote(user, 'day', null, 'Day 16', undefined, undefined, { date: '2024-01-16' })
+
+      const utc = await search(user, { from: '2024-01-15', to: '2024-01-15', tz: 'UTC' })
+      expect(utc.notes.map((n) => n.content)).toEqual(['Day 15'])
+      const stockholm = await search(user, { from: '2024-01-15', to: '2024-01-15', tz: 'Europe/Stockholm' })
+      // Newest first: the 15th starts at 23:00 UTC on the 14th in Stockholm, before 'Late'.
+      expect(stockholm.notes.map((n) => n.content)).toEqual(['Late', 'Day 15'])
+    })
+
+    test('on this day: the same month and day in earlier years, with 29 February on a non-leap 28th', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'day', null, '2024-02-29', undefined, undefined, { date: '2024-02-29' })
+      await insertNote(user, 'day', null, '2023-02-28', undefined, undefined, { date: '2023-02-28' })
+      await insertNote(user, 'day', null, '2025-02-28', undefined, undefined, { date: '2025-02-28' })
+      await insertNote(user, 'day', null, '2024-03-01', undefined, undefined, { date: '2024-03-01' })
+
+      const page = await search(user, { on_this_day: { before_year: 2025, month_days: ['02-28', '02-29'] } })
+      expect(page.notes.map((n) => n.content)).toEqual(['2024-02-29', '2023-02-28'])
+
+      const leap = await search(user, { on_this_day: { before_year: 2028, month_days: ['02-29'] } })
+      expect(leap.notes.map((n) => n.content)).toEqual(['2024-02-29'])
+    })
+
+    test('pages newest first across day and time notes; a day note is anchored at the start of its date', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'time', null, 'A 15th 08:00', new Date('2024-01-15T08:00:00Z'))
+      await insertNote(user, 'day', null, 'B the 15th', undefined, undefined, { date: '2024-01-15' })
+      await insertNote(user, 'time', null, 'C 14th 20:00', new Date('2024-01-14T20:00:00Z'))
+      await insertNote(user, 'day', null, 'D the 16th', undefined, undefined, { date: '2024-01-16' })
+      await insertNote(user, 'time', null, 'E 15th 08:00 again', new Date('2024-01-15T08:00:00Z'))
+
+      const seen: string[] = []
+      let cursor: NotesSearchParams['cursor']
+      for (let i = 0; i < 5; i++) {
+        const page = await search(user, { cursor, limit: 2 })
+        seen.push(...page.notes.map((n) => n.content))
+        if (!page.next_cursor) break
+        cursor = page.next_cursor
+      }
+      expect(seen).toEqual(['D the 16th', 'E 15th 08:00 again', 'A 15th 08:00', 'B the 15th', 'C 14th 20:00'])
+    })
+
+    test('leaves out comments with no anchor and types not asked for', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'metric', '2024-01-15T10:00:00.000Z|heart_rate|oura', 'Metric comment')
+      await insertNote(user, 'time', null, 'Moment', new Date('2024-01-15T10:00:00Z'))
+
+      expect((await search(user)).notes.map((n) => n.content)).toEqual(['Moment'])
+      expect((await search(user, { entity_types: ['metric'] })).notes).toEqual([])
     })
   })
 })

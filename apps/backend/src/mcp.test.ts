@@ -57,10 +57,15 @@ vi.mock('./services/mutations', () => ({
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
   deleteNoteById: vi.fn(),
+  getNoteForUser: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
+  getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn().mockResolvedValue([]),
   getNotesInRange: vi.fn().mockResolvedValue([]),
+  listDeletedNotes: vi.fn().mockResolvedValue([]),
   restoreActivity: vi.fn(),
+  restoreNoteById: vi.fn(),
+  searchNotesForUser: vi.fn(),
   updateActivity: vi.fn(),
   updateNote: vi.fn(),
 }))
@@ -784,7 +789,9 @@ describe('MCP Server', () => {
       const result = await callTool('alice', 'delete_note', { id: '00000000-0000-4000-8000-000000000000' })
 
       expect(result.isError).toBeUndefined()
-      expect(mutations.deleteNoteById).toHaveBeenCalledWith('alice', '00000000-0000-4000-8000-000000000000')
+      expect(mutations.deleteNoteById).toHaveBeenCalledWith('alice', '00000000-0000-4000-8000-000000000000', {
+        purge: false,
+      })
     })
   })
 
@@ -1007,6 +1014,7 @@ describe('MCP Server', () => {
         undefined,
         undefined,
         undefined,
+        { people: true },
       )
     })
 
@@ -2231,6 +2239,7 @@ describe('MCP Server', () => {
           entity_type: 'time',
           id: 'note-1',
           start_time: '2024-01-15T12:00:00.000Z',
+          tags: [],
           updated_at: '2024-01-15T12:00:00.000Z',
         },
         success: true,
@@ -2266,6 +2275,7 @@ describe('MCP Server', () => {
           id: 'note-1',
           replies: [],
           start_time: '2024-01-15T12:00:00.000Z',
+          tags: [],
           updated_at: '2024-01-15T12:00:00.000Z',
         },
       ])
@@ -2283,7 +2293,197 @@ describe('MCP Server', () => {
         'testuser',
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-15T23:59:59Z'),
+        'UTC',
+        { needs_text: undefined },
       )
+    })
+
+    test('query_notes and get_note refuse a tz that is not an IANA zone with a tool error', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      for (const [name, args] of [
+        ['query_notes', { from: '2024-01-15T00:00:00Z', to: '2024-01-15T23:59:59Z', tz: 'Mars/Olympus' }],
+        ['get_note', { id: '00000000-0000-4000-8000-000000000000', tz: 'Mars/Olympus' }],
+      ] as const) {
+        const response = await mcpPost(app)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ id: 1, jsonrpc: '2.0', method: 'tools/call', params: { arguments: args, name } })
+        const parsed = parseSSEResponse(response.text) as {
+          result: { content: { text: string }[]; isError?: boolean }
+        }
+        expect(parsed.result.isError).toBe(true)
+        expect(parsed.result.content[0].text).toContain('Not an IANA timezone')
+      }
+      expect(mutations.getNotesInRange).not.toHaveBeenCalledWith(
+        'testuser',
+        expect.anything(),
+        expect.anything(),
+        'Mars/Olympus',
+        expect.anything(),
+      )
+    })
+
+    test('registers the journal tools', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      for (const name of [
+        'get_note',
+        'search_notes',
+        'list_note_revisions',
+        'restore_note',
+        'list_deleted_notes',
+        'add_note_attachment',
+        'get_note_attachment',
+        'delete_note_attachment',
+        'restore_note_attachment',
+        'list_deleted_note_attachments',
+        'list_note_templates',
+        'add_note_template',
+        'update_note_template',
+        'delete_note_template',
+        'restore_note_template',
+      ]) {
+        expect(names).toContain(name)
+      }
+    })
+
+    test('registers the people tools', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: 1, jsonrpc: '2.0', method: 'tools/list' })
+
+      const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
+      const names = parsed.result.tools.map((t) => t.name)
+
+      for (const name of ['list_people', 'add_person', 'list_important_dates', 'list_person_posts']) {
+        expect(names).toContain(name)
+      }
+    })
+
+    test('add_note accepts a day entry with a title and tags', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(mutations.addNote).mockResolvedValue({ success: true })
+
+      await callNoteTool(app, token, 'add_note', {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        tags: ['travel'],
+        title: 'Away',
+      })
+
+      expect(mutations.addNote).toHaveBeenLastCalledWith('testuser', {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        tags: ['travel'],
+        title: 'Away',
+      })
+    })
+
+    test('search_notes passes its filters to the search', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(mutations.searchNotesForUser).mockResolvedValue({
+        data: [],
+        next_cursor: null,
+        success: true,
+      })
+
+      const { toolResult } = await callNoteTool(app, token, 'search_notes', {
+        limit: 5,
+        on_this_day: '2026-11-20',
+        q: 'walk',
+        tags: 'travel',
+      })
+
+      expect(toolResult).toEqual({ data: [], next_cursor: null, success: true })
+      expect(mutations.searchNotesForUser).toHaveBeenCalledWith('testuser', {
+        limit: 5,
+        on_this_day: '2026-11-20',
+        q: 'walk',
+        tags: 'travel',
+      })
+    })
+
+    test('update_note answers a conflict with an error carrying the current note', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      vi.mocked(mutations.updateNote).mockResolvedValue({
+        data: {
+          content: 'Changed elsewhere',
+          created_at: '2024-01-15T12:00:00.000Z',
+          entity_id: null,
+          entity_type: 'time',
+          id: 'note-1',
+          tags: [],
+          updated_at: '2024-01-15T13:00:00.000Z',
+        },
+        error: 'This comment was changed elsewhere',
+        errorCode: 'conflict',
+        success: false,
+      })
+
+      const response = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            arguments: {
+              content: 'Mine',
+              expected_updated_at: '2024-01-15T12:00:00.000Z',
+              id: '00000000-0000-4000-8000-000000000000',
+            },
+            name: 'update_note',
+          },
+        })
+      const parsed = parseSSEResponse(response.text) as {
+        result: { content: { text: string }[]; isError?: boolean }
+      }
+
+      expect(parsed.result.isError).toBe(true)
+      expect(parsed.result.content[0].text).toContain('This comment was changed elsewhere')
+      expect(parsed.result.content[0].text).toContain('Changed elsewhere')
+      expect(mutations.updateNote).toHaveBeenCalledWith('testuser', '00000000-0000-4000-8000-000000000000', {
+        content: 'Mine',
+        expected_updated_at: '2024-01-15T12:00:00.000Z',
+      })
+    })
+
+    test('delete_note purges on request; restore_note and list tools answer', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const id = '00000000-0000-4000-8000-000000000000'
+      vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, success: true })
+      vi.mocked(mutations.restoreNoteById).mockResolvedValue({ success: true })
+      vi.mocked(mutations.getNoteRevisionsById).mockResolvedValue({ data: [], success: true })
+      vi.mocked(mutations.listDeletedNotes).mockResolvedValue([])
+
+      await callNoteTool(app, token, 'delete_note', { id, purge: true })
+      expect(mutations.deleteNoteById).toHaveBeenLastCalledWith('testuser', id, { purge: true })
+
+      expect((await callNoteTool(app, token, 'restore_note', { id })).toolResult.success).toBe(true)
+      expect((await callNoteTool(app, token, 'list_note_revisions', { id })).toolResult.data).toEqual([])
+      expect((await callNoteTool(app, token, 'list_deleted_notes', {})).toolResult.data).toEqual([])
+
+      vi.mocked(mutations.getNoteForUser).mockResolvedValue({ success: true })
+      expect((await callNoteTool(app, token, 'get_note', { id, tz: 'UTC' })).toolResult.success).toBe(true)
+      expect(mutations.getNoteForUser).toHaveBeenLastCalledWith('testuser', id)
     })
   })
 

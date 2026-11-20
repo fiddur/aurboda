@@ -183,17 +183,42 @@ See [Metric catalogue](features/metric-catalog.md). A catalogue metric is added 
 
 ### Comment tools
 
-Comments (stored as "notes") hang off anything, or off a bare point in time, and
-can be threaded one level deep. See [Comments](features/comments.md) for the data
-model.
+Comments (stored as "notes") hang off anything, or off a bare point in time or a
+whole day, and can be threaded one level deep. Journal entries are free-standing
+comments. See [Comments](features/comments.md) for the data model and
+[Journal](features/journal.md).
 
-| Tool          | What it does                                                                                                                                                                                                                                             |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add_note`    | Add a comment in one of three shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), or about a moment (`entity_type: "time"`, no `entity_id`, `start_time` required, `end_time` optional) |
-| `get_notes`   | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                      |
-| `query_notes` | Every comment anchored in a `from`/`to` time range -- threads nested, replies never listed separately                                                                                                                                                    |
-| `update_note` | Change a comment's content; `start_time`/`end_time` only on a `time` comment, and moving one moves its whole thread                                                                                                                                      |
-| `delete_note` | Delete a comment; deleting a thread root deletes its replies too                                                                                                                                                                                         |
+| Tool                  | What it does                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add_note`            | Add a comment in one of four shapes: on an entity (`entity_type` + `entity_id`), a reply (`entity_type: "note"`, `entity_id` = the comment's id), about a moment (`entity_type: "time"`, `start_time` required, `end_time` optional) or a day (`entity_type: "day"`, `date` required); optional `title` and `tags` |
+| `get_notes`           | All comments on one entity, each with its thread nested in `replies` (oldest first)                                                                                                                                                                                                                                |
+| `get_note`            | One comment by id: a thread root with its replies and attachments, or a single reply                                                                                                                                                                                                                               |
+| `query_notes`         | Every comment anchored in a `from`/`to` time range, and the `day` comments on its dates (the window's end exclusive, `tz` an IANA name) -- threads nested, replies never listed separately                                                                                                                         |
+| `search_notes`        | Search and list thread roots newest first: full-text `q`, `tags`, `from`/`to` dates, `on_this_day`, `entity_types`, paged with `cursor`                                                                                                                                                                            |
+| `update_note`         | Change a comment's content, title and tags; times on a `time` comment, `date` on a `day` one (switching kinds); `expected_updated_at` refuses a stale edit; moving one moves its whole thread                                                                                                                      |
+| `delete_note`         | Delete a comment, restorable for 30 days; deleting a thread root deletes its replies too; `purge: true` removes it for good                                                                                                                                                                                        |
+| `restore_note`        | Restore a deleted comment with the replies deleted with it                                                                                                                                                                                                                                                         |
+| `list_deleted_notes`  | The deleted comments that can still be restored, with `deleted_at` and `purge_at`                                                                                                                                                                                                                                  |
+| `list_note_revisions` | A comment's earlier texts, newest first                                                                                                                                                                                                                                                                            |
+
+Pictures and recordings on journal entries, and entry templates:
+
+| Tool                            | What it does                                                                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit |
+| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                          |
+| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                     |
+| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                     |
+| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                    |
+| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                 |
+| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                       |
+| `update_note_template`          | Change a template's name or text                                                                                                                    |
+| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                        |
+| `restore_note_template`         | Restore a deleted template                                                                                                                          |
+
+To transcribe photographed diary pages: `search_notes` with `needs_text: true`, then
+`get_note_attachment` for each page in `position` order, then `update_note` with the
+text and `expected_updated_at`. The photos stay attached.
 
 ### Notification tools
 
@@ -207,6 +232,9 @@ The bell's notifications and per-type switches. See [Notifications](features/not
 | `list_notification_types`     | The types this user can receive with their in-app and push switches                                                                   |
 | `set_notification_preference` | Turn a `type` on or off in-app and/or as a push                                                                                       |
 | `run_notification_action`     | Run one of a notification's `actions` by `id` and `key` (the keys come from `list_notifications`), e.g. `skip` on `autoshare_pending` |
+| `list_push_subscriptions`     | The browsers subscribed to browser push, with a readable browser label                                                                |
+| `delete_push_subscription`    | Remove a subscribed browser by `id`                                                                                                   |
+| `send_test_push`              | Send a test push to every subscribed browser; answers `reached` and `total`                                                           |
 
 ### Reminder tools
 
@@ -218,6 +246,40 @@ Recurring reminders delivered as `reminder` notifications. See [Reminders](featu
 | `add_reminder`    | Create one: `title`, `time_of_day` (HH:MM, five-minute steps), `weekdays` (default every day), … |
 | `update_reminder` | Change a reminder by `id`; only the given fields; `body` and `link` take null to clear           |
 | `delete_reminder` | Delete a reminder by `id`                                                                        |
+
+### Check-in tools
+
+Check-in forms whose answers are logged as metrics or activities, with schedules, routines, skipping and adherence. See [Check-ins](features/check-ins.md).
+
+| Tool                                                                                                                                     | What it does                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_check_in_forms`, `get_check_in_form`, `add_check_in_form`, `update_check_in_form`, `delete_check_in_form`, `restore_check_in_form` | Manage the forms, like `/check-in-forms`; `add_check_in_form` takes a `template`                                                                                                      |
+| `list_check_in_templates`                                                                                                                | The built-in forms to copy, like `GET /check-in-templates`                                                                                                                            |
+| `submit_check_in`, `query_check_ins`, `update_check_in`, `delete_check_in`, `restore_check_in`                                           | Fill in a form and manage the check-ins, like `/check-ins`; answers with `logs_to` become metric points or activities; `use_defaults` saves a routine, `status: skipped` skips a slot |
+| `list_due`                                                                                                                               | The scheduled slots of a day with their state, like `GET /due`                                                                                                                        |
+| `get_check_in_adherence`                                                                                                                 | A form's slots done, skipped and missed and how often each question was answered, like `GET /check-in-forms/{id}/adherence`                                                           |
+
+### People tools
+
+Private profiles of the people in your life, their dates and the activities you did with them.
+See [People](features/people.md). Each tool has a REST twin under `/people`.
+
+| Tool                   | What it does                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `list_people`          | The people by name; `archived` includes archived ones, `deleted` lists deleted ones    |
+| `get_person`           | One person with their dates and the 20 latest activities with them                     |
+| `add_person`           | Add a person: `name`, `relationship`, `birth_date`, `pronouns`, `handle`, …            |
+| `update_person`        | Change the given fields; null clears an optional one                                   |
+| `delete_person`        | Delete, restorable for 30 days; `purge` removes it for good                            |
+| `restore_person`       | Restore a deleted person                                                               |
+| `add_person_date`      | Add a date (`label`, `kind`, `month`, `day`, optional `year` and `notify_days_before`) |
+| `update_person_date`   | Change a date                                                                          |
+| `delete_person_date`   | Delete a date for good                                                                 |
+| `list_important_dates` | Every date and birthday occurring between `from` and `to`                              |
+| `list_person_posts`    | The person's recent posts from your timeline, when they have a fediverse handle        |
+
+`add_activity` and `update_activity` take `people` (person IDs), and `query_activities` and
+`get_activity_detail` carry `people: [{ id, name }]`.
 
 ### Auto-share tools
 

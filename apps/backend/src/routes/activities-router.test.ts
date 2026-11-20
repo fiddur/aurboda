@@ -48,6 +48,8 @@ vi.mock('../services/activity-features.ts', () => ({ firstActivityFeatures: vi.f
 
 vi.mock('../services/segments.ts', () => ({ activitySegmentEfforts: vi.fn() }))
 
+vi.mock('../services/activity-people.ts', () => ({ activityPeopleOf: vi.fn().mockResolvedValue(undefined) }))
+
 const db = await import('../db/index.ts')
 const queries = await import('../services/queries/index.ts')
 const activityFeatures = await import('../services/activity-features.ts')

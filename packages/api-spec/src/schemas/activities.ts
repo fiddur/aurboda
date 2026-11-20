@@ -180,6 +180,26 @@ export const activityComputedMetricsSchema = activitySummaryMetricsSchema
 
 export type ActivityComputedMetrics = z.infer<typeof activityComputedMetricsSchema>
 
+/** Most people one activity can be with. */
+export const ACTIVITY_PEOPLE_MAX = 20
+
+export const activityPersonSchema = z
+  .object({
+    id: z.string().uuid().meta({ description: 'Person ID' }),
+    name: z.string().meta({ description: "The person's name, as it is now" }),
+  })
+  .meta({ description: 'Someone the activity was with', id: 'ActivityPerson' })
+
+export type ActivityPerson = z.infer<typeof activityPersonSchema>
+
+const activityPeopleInputSchema = z
+  .array(z.string())
+  .max(ACTIVITY_PEOPLE_MAX)
+  .refine((ids) => new Set(ids).size === ids.length, 'People must be unique')
+  .meta({
+    description: `IDs of the people the activity was with (at most ${ACTIVITY_PEOPLE_MAX}). Private: never shared.`,
+  })
+
 export const activitySchema = activityComputedMetricsSchema
   .extend({
     activity_type: z.string().meta({ description: 'Activity type' }),
@@ -193,6 +213,9 @@ export const activitySchema = activityComputedMetricsSchema
     override_target_ids: z.array(z.string().uuid()).optional().meta({
       description:
         'When non-empty, this activity is a user-edited aurboda override that hides the listed synced activities in merged views (#715, #735). One override may target multiple synced rows when claiming a cross-source merge group as a whole. Each target may be overridden by at most one override.',
+    }),
+    people: z.array(activityPersonSchema).optional().meta({
+      description: 'The people the activity was with, by name; absent when none. Private: never in a share.',
     }),
     source: z.string().optional().meta({ description: 'Data source' }),
     start_time: iso8601DateTimeSchema,
@@ -306,6 +329,7 @@ export const addActivityBodySchema = z
       description:
         'Activity notes. For workouts, use format: "Exercise Name: reps×weight, reps×weight" per line.',
     }),
+    people: activityPeopleInputSchema.optional(),
     start_time: iso8601DateTimeSchema.meta({ description: 'Start time of the activity' }),
     title: z
       .string()
@@ -362,6 +386,9 @@ export const updateActivityBodySchema = z
     override_target_ids: z.array(z.string().uuid()).min(1).optional().meta({
       description:
         'When the PATCH targets a synced activity from a merged view, the caller passes the full list of source ids the new override should claim. Defaults to just the targeted activity (single-target case).',
+    }),
+    people: activityPeopleInputSchema.optional().meta({
+      description: `Replaces the people the activity was with (IDs, at most ${ACTIVITY_PEOPLE_MAX}); [] clears them, absent leaves them`,
     }),
     start_time: iso8601DateTimeSchema.optional().meta({ description: 'New start time of the activity' }),
     title: z.string().optional().meta({ description: 'New activity title' }),

@@ -45,6 +45,7 @@ import type { RelayActions } from './services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from './services/settings.ts'
 import type { StravaQueue } from './services/strava-queue.ts'
 import type { RetroEnrichTrigger } from './services/timeline-retro-enrich.ts'
+import type { WebPush } from './services/web-push.ts'
 
 import { registerAccountDeletionTools } from './mcp/account-deletion-tools.ts'
 import { registerAccountEmailTools } from './mcp/account-email-tools.ts'
@@ -62,6 +63,7 @@ import { registerAdminUserTools } from './mcp/admin-user-tools.ts'
 import { registerAutoshareRuleTools } from './mcp/autoshare-rule-tools.ts'
 import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
+import { registerCheckInTools } from './mcp/check-in-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
@@ -74,9 +76,12 @@ import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
+import { registerNoteAttachmentTools } from './mcp/note-attachment-tools.ts'
+import { registerNoteTemplateTools } from './mcp/note-template-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
+import { registerPeopleTools } from './mcp/people-tools.ts'
 import { registerQueryTools } from './mcp/query-tools.ts'
 import { refuseMutatingTools } from './mcp/read-only-gate.ts'
 import { registerReminderTools } from './mcp/reminder-tools.ts'
@@ -97,6 +102,7 @@ import { registerTrendTools } from './mcp/trend-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
+import { defaultPeopleDeps } from './services/people.ts'
 import { accountUploadLimiter } from './services/rate-limit.ts'
 import { isMutatingMcpTool, mcpToolCallNames } from './services/usage-channel.ts'
 import { recordUsage } from './services/usage-recorder.ts'
@@ -151,6 +157,8 @@ interface McpDeps {
   skipAutoshare?: SkipAutoshare
   /** `run_notification_action`. */
   runNotificationAction?: RunNotificationAction
+  /** Browser push subscriptions (`list_push_subscriptions`, `delete_push_subscription`, `send_test_push`). */
+  webPush?: WebPush
   centralDb?: CentralDb
   deductionQueue?: DeductionQueue
   /** Open challenges from followed peers (`discover_challenges`). */
@@ -248,13 +256,15 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
-  registerNotificationTools(
-    server,
-    user,
-    deps.centralDb?.isAdmin ?? (async () => false),
-    deps.runNotificationAction,
-  )
+  registerNoteAttachmentTools(server, user, { uploadLimiter: accountUploadLimiter })
+  registerNoteTemplateTools(server, user)
+  registerNotificationTools(server, user, deps.centralDb?.isAdmin ?? (async () => false), {
+    runAction: deps.runNotificationAction,
+    webPush: deps.webPush,
+  })
   registerReminderTools(server, user)
+  registerCheckInTools(server, user)
+  registerPeopleTools(server, user, defaultPeopleDeps(deps.followActions?.resolve))
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)
   if (deps.centralDb) {

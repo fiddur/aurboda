@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'preact/hooks'
 import type { ImageUpload, UploadImage } from './image-upload'
 
 import { renderMarkdown } from '../../utils/markdown'
-import { useImageUpload } from './image-upload'
+import { pictureDropHandlers, useImageUpload } from './image-upload'
 import './style.css'
 
 interface MarkdownEditorProps {
@@ -12,6 +12,16 @@ interface MarkdownEditorProps {
   placeholder?: string
   rows?: number
   upload?: UploadImage
+  /**
+   * Pictures picked, pasted or dropped go here instead of into the text (the journal keeps them
+   * as attachments of the entry). Takes precedence over `upload`.
+   */
+  attachPictures?: (files: File[]) => void
+  /** Shown under the editor in `attachPictures` mode. */
+  attachHint?: string
+  /** Called when the text area loses focus. */
+  onBlur?: () => void
+  ariaLabel?: string
 }
 
 const PictureIcon = () => (
@@ -22,7 +32,7 @@ const PictureIcon = () => (
   </svg>
 )
 
-const PictureButton = ({ pictures }: { pictures: ImageUpload }) => (
+const PictureButton = ({ take }: { take: (files: File[]) => void }) => (
   <label class="md-editor-picture" title="Add a picture">
     <PictureIcon />
     <input
@@ -35,7 +45,7 @@ const PictureButton = ({ pictures }: { pictures: ImageUpload }) => (
         const input = e.currentTarget
         const chosen = [...(input.files ?? [])]
         input.value = ''
-        pictures.take(chosen)
+        take(chosen)
       }}
     />
   </label>
@@ -57,15 +67,32 @@ const PictureStatus = ({ pictures }: { pictures: ImageUpload }) => (
   </div>
 )
 
-export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4, upload }: MarkdownEditorProps) => {
+/** Where picked, pasted and dropped pictures go: into the text (`upload`), or to `attachPictures`. */
+const pictureInput = (pictures: ImageUpload, attachPictures: ((files: File[]) => void) | undefined) =>
+  attachPictures
+    ? { enabled: true, handlers: pictureDropHandlers(attachPictures), take: attachPictures }
+    : { enabled: pictures.enabled, handlers: pictures.enabled ? pictures.handlers : {}, take: pictures.take }
+
+export const MarkdownEditor = ({
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+  upload,
+  attachPictures,
+  attachHint,
+  onBlur,
+  ariaLabel,
+}: MarkdownEditorProps) => {
   const [tab, setTab] = useState<'write' | 'preview'>('write')
   const textarea = useRef<HTMLTextAreaElement>(null)
   const pictures = useImageUpload({
     cursor: () => textarea.current?.selectionStart,
     onChange,
-    upload,
+    upload: attachPictures ? undefined : upload,
     value,
   })
+  const picking = pictureInput(pictures, attachPictures)
 
   const handleInput = useCallback(
     (e: Event) => {
@@ -94,7 +121,7 @@ export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4, upload 
           >
             Preview
           </button>
-          {pictures.enabled && tab === 'write' && <PictureButton pictures={pictures} />}
+          {picking.enabled && tab === 'write' && <PictureButton take={picking.take} />}
         </div>
 
         {tab === 'write' ? (
@@ -105,13 +132,16 @@ export const MarkdownEditor = ({ value, onChange, placeholder, rows = 4, upload 
             onInput={handleInput}
             placeholder={placeholder ?? 'Write a note (markdown supported)…'}
             rows={rows}
-            {...(pictures.enabled ? pictures.handlers : {})}
+            onBlur={onBlur}
+            aria-label={ariaLabel}
+            {...picking.handlers}
           />
         ) : (
           <div class="md-editor-preview" dangerouslySetInnerHTML={{ __html: rendered as string }} />
         )}
       </div>
       {pictures.enabled && <PictureStatus pictures={pictures} />}
+      {attachPictures && attachHint && <p class="md-editor-hint">{attachHint}</p>}
     </>
   )
 }

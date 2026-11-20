@@ -134,11 +134,24 @@ In **vertical mode** the comments are a column of their own, rightmost, when the
 glyph centred on the comment's start, with a slim bar underneath when the comment
 covers a span rather than a moment.
 
+A [journal](./journal.md) entry written for a whole day (no time of day) has no
+moment to sit on, so it is an **all-day marker** instead: a 📓 at the start of its
+date on the same track (clamped to the window's start for a day already under
+way), one marker per date however many entries it holds. Clicking it opens the
+entry in the journal, or the journal at that date when there are several. Hiding
+comments hides the markers too.
+
+The birthdays and other dates of your [people](./people.md) are all-day markers on the
+same track, with their own 🎉 glyph, read from `GET /people/dates` for the window (at most
+400 days of it). Clicking one opens the person; several dates on one day open the
+People page, and a day with both dates and journal entries opens the journal at that date.
+The legend's **Important dates** toggle shows or hides them on their own.
+
 **Clicking a bubble** opens the comment panel: the whole thread, with Edit,
 Delete and a reply box. A comment that hangs off something links back to it, so
 you can get from the remark to the run it is about in one click. A comment about
 a bare moment can be moved -- its start and end times are editable right in the
-panel. Comments that arrived from a data source (Oura, Health Connect) show a
+panel -- and has **Open in the journal**, which opens it in the journal's editor. Comments that arrived from a data source (Oura, Health Connect) show a
 source badge and cannot be edited here: the next sync would overwrite them. They
 can still be replied to and deleted. Press **Escape** or click outside to close
 the panel.

@@ -121,7 +121,7 @@ export const impactExtraMetricsError = (metrics: string[]): string | null => {
   return null
 }
 
-export const IMPACT_FIXED_DIMENSIONS = ['duration', 'time_of_day', 'sleep', 'type', 'year'] as const
+export const IMPACT_FIXED_DIMENSIONS = ['duration', 'time_of_day', 'sleep', 'type', 'year', 'people'] as const
 export const IMPACT_FIELD_DIMENSION_PREFIX = 'field:'
 export const DEFAULT_IMPACT_DURATION_BUCKETS = [15, 30, 60]
 export const DEFAULT_IMPACT_TIME_BUCKETS = [0, 6, 12, 18]
@@ -179,11 +179,10 @@ export const impactDimensionSchema = z
   .string()
   .refine(isImpactDimension, {
     message:
-      'dimension must be duration, time_of_day, sleep, type, year or field:<path> (e.g. field:session_name)',
+      'dimension must be duration, time_of_day, sleep, type, year, people or field:<path> (e.g. field:session_name)',
   })
   .meta({
-    description:
-      'What to break down or filter an activity by: duration (session length in minutes), time_of_day (local start hour), sleep (sleep in the window before/after), type (the activity type of the session, a subtype when a parent type is analysed), year (local calendar year of the start), or field:<path> for a data field of the activity type, a scalar (field:session_name) or a list item (field:sets.exercise)',
+    description: `What to break down or filter an activity by: duration (session length in minutes), time_of_day (local start hour), sleep (sleep in the window before/after), type (the activity type of the session, a subtype when a parent type is analysed), year (local calendar year of the start), people (who the session was with: a group per person id, labelled by name, and ${IMPACT_NO_VALUE_KEY} for sessions with no one; a session with several people is in each of their groups), or field:<path> for a data field of the activity type, a scalar (field:session_name) or a list item (field:sets.exercise)`,
     example: 'field:session_name',
   })
 
@@ -530,7 +529,7 @@ export const activityImpactQuerySchema = z
     activity_type: activityImpactTypeSchema,
     breakdown: impactDimensionSchema.optional().meta({
       description:
-        'Also analyse the sessions per group of this dimension: duration, time_of_day, sleep, type, year or field:<path> (e.g. field:session_name)',
+        'Also analyse the sessions per group of this dimension: duration, time_of_day, sleep, type, year, people or field:<path> (e.g. field:session_name)',
       example: 'duration',
     }),
     duration_buckets: z
@@ -1410,10 +1409,24 @@ export const selectorSchema = z
       kind: z.literal('sensitivity'),
       threshold: thresholdSpecSchema.optional(),
     }),
+    z.object({
+      kind: z.literal('people'),
+      person_id: z.string().uuid().optional().meta({
+        description:
+          'Person id (see list_correlation_selectors people); absent for the time with anyone. A deleted or unknown person reads as no time',
+      }),
+      threshold: thresholdSpecSchema.optional(),
+    }),
   ])
   .meta({ id: 'CorrelationSelector' })
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
+
+/** An article publishes its selectors, so it refuses a `people` one, which would name a person. */
+export const isPublishableSelector = (selector: CorrelationSelector): boolean => selector.kind !== 'people'
+
+export const publishableSelectorMessage =
+  'A people selector cannot be published in an article: it would name the people you spend time with'
 
 /**
  * Short axis label for a selector, including its unit where known. Shared single
@@ -1421,12 +1434,17 @@ export type CorrelationSelector = z.infer<typeof selectorSchema>
  * and the backend server-side scatter renderer (article-block PNGs), so an axis
  * reads the same in-app and in a federated/exported image.
  */
-export const describeSelectorAxis = (selector: CorrelationSelector, flagName?: string): string =>
-  selector.kind === 'sensitivity'
-    ? `Meals with ${flagName || 'a sensitivity flag'} (count)`
-    : describeDataAxis(selector)
+export const describeSelectorAxis = (selector: CorrelationSelector, name?: string): string => {
+  if (selector.kind === 'sensitivity') return `Meals with ${name || 'a sensitivity flag'} (count)`
+  if (selector.kind === 'people') {
+    return selector.person_id ? `Time with ${name || 'a person'} (min)` : 'Time with people (min)'
+  }
+  return describeDataAxis(selector)
+}
 
-const describeDataAxis = (selector: Exclude<CorrelationSelector, { kind: 'sensitivity' }>): string => {
+const describeDataAxis = (
+  selector: Exclude<CorrelationSelector, { kind: 'sensitivity' } | { kind: 'people' }>,
+): string => {
   switch (selector.kind) {
     case 'metric': {
       if (!isValidMetric(selector.metric)) return selector.metric || 'metric'
@@ -1599,6 +1617,10 @@ export const correlationSelectorsDataSchema = z
     metrics: z.array(selectorOptionSchema),
     nutrients: z.array(selectorOptionSchema),
     productivity_categories: z.array(selectorOptionSchema),
+    people: z.array(selectorOptionSchema).meta({
+      description:
+        'Time with people: the first entry (value "") is the time with anyone (a people selector without person_id), then one per live, non-archived person with a linked activity (value is the person id)',
+    }),
     sensitivities: z.array(selectorOptionSchema).meta({
       description: 'Sensitivity flags: value is the flag id for a sensitivity selector, label its name',
     }),

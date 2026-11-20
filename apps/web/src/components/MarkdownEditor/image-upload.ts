@@ -82,6 +82,25 @@ const REFUSED_TYPE = 'image/svg+xml'
 const imagesIn = (files: FileList | null | undefined): File[] =>
   [...(files ?? [])].filter((file) => file.type.startsWith('image/'))
 
+/** Paste and drop handlers that hand the pictures to `take` and leave the text alone. */
+export const pictureDropHandlers = (take: (files: File[]) => void): ImageUpload['handlers'] => ({
+  onDragOver: (event) => {
+    if (event.dataTransfer?.types.includes('Files') === true) event.preventDefault()
+  },
+  onDrop: (event) => {
+    const pictures = imagesIn(event.dataTransfer?.files)
+    if (pictures.length === 0) return
+    event.preventDefault()
+    take(pictures)
+  },
+  onPaste: (event) => {
+    const pictures = imagesIn(event.clipboardData?.files)
+    if (pictures.length === 0) return
+    event.preventDefault()
+    take(pictures)
+  },
+})
+
 export interface ImageUpload {
   enabled: boolean
   handlers: {

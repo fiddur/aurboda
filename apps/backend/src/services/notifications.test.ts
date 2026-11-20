@@ -11,11 +11,13 @@ import {
   canConfigureNotificationType,
   createNotifier,
   listNotificationTypeSettings,
+  type NotificationStore,
   type NotifierDeps,
   notifyAdminsOfSignup,
   notifyAdminsOfUnfinishedSignup,
   type RaiseNotificationInput,
   serializeNotification,
+  withNotificationPing,
 } from './notifications.ts'
 
 const NOW = new Date('2026-11-13T12:00:00Z')
@@ -207,6 +209,226 @@ describe('createNotifier().reviseBestEffort', () => {
   })
 })
 
+describe('createNotifier push queueing', () => {
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  const pushDeps = (overrides: Partial<NotifierDeps> = {}) => {
+    const queued: [string, string][] = []
+    const fake = fakeDeps({
+      enqueuePush: async (user, id) => {
+        queued.push([user, id])
+      },
+      ...overrides,
+    })
+    return { ...fake, queued }
+  }
+
+  test('a stored notification with push on is queued for the browsers', async () => {
+    const { deps, queued } = pushDeps()
+    const row = await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([['alice', row!.id]])
+  })
+
+  test('one with push off is not queued', async () => {
+    const { deps, queued } = pushDeps({ getPreference: async () => ({ in_app: true, push: false }) })
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('a deduplicated raise stores nothing and queues nothing', async () => {
+    const { deps, queued } = pushDeps({ insert: async () => null })
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('the raise neither waits for the queue nor fails with it', async () => {
+    const { deps, errors } = fakeDeps({
+      enqueuePush: async () => {
+        throw new Error('queue down')
+      },
+    })
+    const row = await createNotifier(deps).raise('alice', input)
+    expect(row).not.toBeNull()
+    await settle()
+    expect(errors).toEqual([new Error('queue down')])
+
+    const hanging = fakeDeps({ enqueuePush: () => new Promise<void>(() => {}) })
+    await expect(createNotifier(hanging.deps).raise('alice', input)).resolves.not.toBeNull()
+  })
+
+  test('without a queue nothing is attempted', async () => {
+    const { deps, errors } = fakeDeps()
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(errors).toEqual([])
+  })
+
+  test('a revision of an unread push notification is queued again', async () => {
+    const { deps, queued } = pushDeps()
+    const row = await createNotifier(deps).revise('alice', 'k', { title: 'Shared' })
+    await settle()
+    expect(queued).toEqual([['alice', row!.id]])
+  })
+
+  test('a revision of a read notification is not queued', async () => {
+    const { deps, queued } = pushDeps({
+      revise: async () => ({
+        ...record({ in_app: true, push: true, title: 'x', type: 'admin_signup' }),
+        read_at: NOW,
+      }),
+    })
+    await createNotifier(deps).revise('alice', 'k', { title: 'Shared' })
+    await settle()
+    expect(queued).toEqual([])
+  })
+
+  test('each row revised by reviseOpen is queued', async () => {
+    const rows = ['a', 'b'].map((id) => ({
+      ...record({ in_app: true, push: true, title: 'x', type: 'autoshare_pending' }),
+      id,
+    }))
+    const { deps, queued } = pushDeps({ reviseOpen: async () => rows })
+    await createNotifier(deps).reviseOpen('alice', ['k1', 'k2'], { actions: [] })
+    await settle()
+    expect(queued).toEqual([
+      ['alice', 'a'],
+      ['alice', 'b'],
+    ])
+  })
+})
+
+describe('createNotifier live ping', () => {
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  const pingDeps = (overrides: Partial<NotifierDeps> = {}) => {
+    const pinged: string[] = []
+    const fake = fakeDeps({ ping: (user) => void pinged.push(user), ...overrides })
+    return { ...fake, pinged }
+  }
+
+  test('a stored notification pings, whatever its push switch', async () => {
+    const { deps, pinged } = pingDeps({ getPreference: async () => ({ in_app: true, push: false }) })
+    await createNotifier(deps).raise('alice', input)
+    await settle()
+    expect(pinged).toEqual(['alice'])
+  })
+
+  test('a raise that stores nothing does not ping', async () => {
+    const off = pingDeps({ getPreference: async () => ({ in_app: false, push: false }) })
+    await createNotifier(off.deps).raise('alice', input)
+    const deduplicated = pingDeps({ insert: async () => null })
+    await createNotifier(deduplicated.deps).raise('alice', input)
+    await settle()
+    expect(off.pinged).toEqual([])
+    expect(deduplicated.pinged).toEqual([])
+  })
+
+  test('a revision pings, and one that found no row does not', async () => {
+    const found = pingDeps()
+    await createNotifier(found.deps).revise('alice', 'k', { title: 'Shared' })
+    const missing = pingDeps({ revise: async () => null })
+    await createNotifier(missing.deps).revise('alice', 'k', { title: 'Shared' })
+    await settle()
+    expect(found.pinged).toEqual(['alice'])
+    expect(missing.pinged).toEqual([])
+  })
+
+  test('reviseOpen pings once when it revised rows and not when it revised none', async () => {
+    const row = record({ in_app: true, push: true, title: 'x', type: 'autoshare_pending' })
+    const some = pingDeps({ reviseOpen: async () => [row, { ...row, id: 'b' }] })
+    await createNotifier(some.deps).reviseOpen('alice', ['k1', 'k2'], { actions: [] })
+    const none = pingDeps()
+    await createNotifier(none.deps).reviseOpen('alice', ['k1'], { actions: [] })
+    await settle()
+    expect(some.pinged).toEqual(['alice'])
+    expect(none.pinged).toEqual([])
+  })
+
+  test('a throwing or rejecting ping neither fails nor delays the raise', async () => {
+    const throwing = fakeDeps({
+      ping: () => {
+        throw new Error('ping threw')
+      },
+    })
+    await expect(createNotifier(throwing.deps).raise('alice', input)).resolves.not.toBeNull()
+    const rejecting = fakeDeps({ ping: async () => Promise.reject(new Error('ping rejected')) })
+    await expect(createNotifier(rejecting.deps).raise('alice', input)).resolves.not.toBeNull()
+    const hanging = fakeDeps({ ping: () => new Promise<void>(() => {}) })
+    await expect(createNotifier(hanging.deps).raise('alice', input)).resolves.not.toBeNull()
+    await settle()
+    expect(throwing.errors).toEqual([new Error('ping threw')])
+    expect(rejecting.errors).toEqual([new Error('ping rejected')])
+  })
+})
+
+describe('withNotificationPing', () => {
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  const row = record({ in_app: true, push: true, title: 'x', type: 'admin_signup' })
+  const baseStore = (overrides: Partial<NotificationStore> = {}): NotificationStore => ({
+    countUnread: async () => 0,
+    get: async () => row,
+    list: async () => [],
+    listPreferences: async () => [],
+    markAllRead: async () => 2,
+    markRead: async () => ({ ...row, read_at: NOW }),
+    revise: async () => row,
+    upsertPreference: async () => ({ in_app: true, push: true, type: 'admin_signup', updated_at: NOW }),
+    ...overrides,
+  })
+  const wrap = (overrides: Partial<NotificationStore> = {}) => {
+    const pinged: string[] = []
+    const errors: unknown[] = []
+    const store = withNotificationPing(
+      baseStore(overrides),
+      (user) => void pinged.push(user),
+      (_message, error) => errors.push(error),
+    )
+    return { errors, pinged, store }
+  }
+
+  test('mark read, mark all read and a revision (a run action) ping', async () => {
+    const { pinged, store } = wrap()
+    await store.markRead('alice', row.id)
+    await store.markAllRead('alice')
+    await store.revise('alice', row.id, { actions: [], mark_read: true })
+    await settle()
+    expect(pinged).toEqual(['alice', 'alice', 'alice'])
+  })
+
+  test('a write that changed nothing does not ping', async () => {
+    const { pinged, store } = wrap({
+      markAllRead: async () => 0,
+      markRead: async () => null,
+      revise: async () => null,
+    })
+    await store.markRead('alice', row.id)
+    await store.markAllRead('alice')
+    await store.revise('alice', row.id, { title: 'y' })
+    await settle()
+    expect(pinged).toEqual([])
+  })
+
+  test('reads do not ping and a failing ping does not fail the write', async () => {
+    const pinged: string[] = []
+    const errors: unknown[] = []
+    const store = withNotificationPing(
+      baseStore(),
+      async (user) => {
+        pinged.push(user)
+        throw new Error('ping failed')
+      },
+      (_message, error) => errors.push(error),
+    )
+    await store.get('alice', row.id)
+    await store.countUnread('alice')
+    await expect(store.markAllRead('alice')).resolves.toBe(2)
+    await settle()
+    expect(pinged).toEqual(['alice'])
+    expect(errors).toEqual([new Error('ping failed')])
+  })
+})
+
 describe('serializeNotification', () => {
   test('includes the actions', () => {
     const row = record({
@@ -263,6 +485,8 @@ describe('listNotificationTypeSettings', () => {
       'autoshare_pending',
       'garmin_key_expiring',
       'reminder',
+      'check_in_due',
+      'important_date',
       'admin_signup',
     ])
   })
@@ -286,6 +510,11 @@ describe('listNotificationTypeSettings', () => {
       admin_only: false,
       group: 'reminders',
       group_label: 'Reminders',
+    })
+    expect(settings.find((setting) => setting.type === 'important_date')).toMatchObject({
+      admin_only: false,
+      group: 'reminders',
+      label: 'Important dates',
     })
   })
 })

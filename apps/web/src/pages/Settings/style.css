@@ -669,3 +669,51 @@
   width: 1.1rem;
   height: 1.1rem;
 }
+
+.push-settings {
+  margin-bottom: 1.25rem;
+}
+
+.push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.push-test-result {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.push-browsers-title {
+  margin: 1rem 0 0;
+  font-size: 0.95rem;
+}
+
+.push-browsers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.push-browsers li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.push-browser-name {
+  font-weight: 500;
+}
+
+.push-browser-meta {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}

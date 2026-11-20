@@ -1,8 +1,10 @@
+import { DELETED_NOTE_RETENTION_DAYS, DELETED_PERSON_RETENTION_DAYS } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   type AuditLogPruneDeps,
   DEDUCTION_RULE_RUN_RETENTION_DAYS,
+  DELETED_CHECK_IN_RETENTION_DAYS,
   pruneAllAuditLogs,
   SYNCED_OUTBOUND_SYNC_RETENTION_DAYS,
 } from './audit-log-prune-queue.ts'
@@ -12,6 +14,9 @@ const deps = (overrides: Partial<AuditLogPruneDeps>): AuditLogPruneDeps => ({
   listUsers: async () => ['alice', 'bob'],
   prune: async () => 0,
   pruneDeductionRuleRuns: async () => 0,
+  pruneDeletedNotes: async () => 0,
+  pruneDeletedCheckIns: async () => 0,
+  pruneDeletedPeople: async () => 0,
   pruneSyncedOutboundSync: async () => 0,
   pruneUsageBefore: async () => 0,
   ...overrides,
@@ -50,6 +55,36 @@ describe('pruneAllAuditLogs', () => {
     ])
   })
 
+  test('removes for good every user’s comments deleted more than 30 days ago', async () => {
+    const pruneDeletedNotes = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedNotes }))
+    expect(DELETED_NOTE_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedNotes.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
+  test('purges every user’s check-ins and forms deleted over 30 days ago', async () => {
+    const pruneDeletedCheckIns = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedCheckIns }))
+    expect(DELETED_CHECK_IN_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedCheckIns.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
+  test('removes for good every user’s people deleted more than 30 days ago', async () => {
+    const pruneDeletedPeople = vi.fn(async () => 0)
+    await pruneAllAuditLogs(deps({ pruneDeletedPeople }))
+    expect(DELETED_PERSON_RETENTION_DAYS).toBe(30)
+    expect(pruneDeletedPeople.mock.calls).toEqual([
+      ['alice', 30],
+      ['bob', 30],
+    ])
+  })
+
   test("one user's failure does not stop the rest", async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const prune = vi.fn(async (user: string) => {
@@ -67,6 +102,8 @@ describe('pruneAllAuditLogs', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const pruneDeductionRuleRuns = vi.fn(async () => 0)
     const pruneSyncedOutboundSync = vi.fn(async () => 0)
+    const pruneDeletedNotes = vi.fn(async () => 0)
+    const pruneDeletedPeople = vi.fn(async () => 0)
     const pruned = await pruneAllAuditLogs(
       deps({
         listUsers: async () => ['alice'],
@@ -74,12 +111,16 @@ describe('pruneAllAuditLogs', () => {
           throw new Error('boom')
         },
         pruneDeductionRuleRuns,
+        pruneDeletedNotes,
+        pruneDeletedPeople,
         pruneSyncedOutboundSync,
       }),
     )
     expect(pruned).toBe(0)
     expect(pruneDeductionRuleRuns).toHaveBeenCalledOnce()
     expect(pruneSyncedOutboundSync).toHaveBeenCalledOnce()
+    expect(pruneDeletedNotes).toHaveBeenCalledOnce()
+    expect(pruneDeletedPeople).toHaveBeenCalledOnce()
     consoleError.mockRestore()
   })
 

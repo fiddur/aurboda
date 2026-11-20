@@ -269,6 +269,13 @@ describe('selector encoding', () => {
     expect(encodeSelector({ kind: 'activity', pattern: 'a:b' })).toBe('activity:a:b')
   })
 
+  test('a people selector round-trips with and without a person', () => {
+    const anna = { kind: 'people' as const, person_id: '7a0c1a62-3b5e-4d8f-9c1e-2f4a6b8d0e12' }
+    expect(decodeSelector(encodeSelector(anna))).toEqual(anna)
+    expect(decodeSelector('people:')).toEqual({ kind: 'people' })
+    expect(decodeSelector('people:not-a-uuid')).toBeNull()
+  })
+
   test('rejects unknown kinds, bad nutrients and missing separators', () => {
     expect(decodeSelector('planet:mars')).toBeNull()
     expect(decodeSelector('nutrition:sugar')).toBeNull()
@@ -286,5 +293,14 @@ describe('isExploreRunnable', () => {
       isExploreRunnable({ ...DEFAULT_EXPLORE_STATE, mode: 'continuous', outcomeValue: 'headache', trigger }),
     ).toBe(false)
     expect(isExploreRunnable(FULL.explore)).toBe(true)
+  })
+
+  test('the time with anyone needs no value', () => {
+    const state = {
+      ...DEFAULT_EXPLORE_STATE,
+      mode: 'continuous' as const,
+      trigger: { kind: 'people' as const },
+    }
+    expect(isExploreRunnable({ ...state, outcome: { kind: 'metric', metric: 'sleep_score' } })).toBe(true)
   })
 })

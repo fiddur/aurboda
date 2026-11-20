@@ -39,6 +39,7 @@ import {
   listPublicFeedPostsPage,
 } from '../../db/feed.ts'
 import { listNotifications } from '../../db/notifications.ts'
+import { addActivityPeople, insertPerson } from '../../db/people.ts'
 import { getProfileAvatarVersion, upsertProfileAvatar } from '../../db/profile-avatar.ts'
 import { upsertUserSettings } from '../../db/settings.ts'
 import { listTimelineEntries, upsertTimelineEntry } from '../../db/timeline.ts'
@@ -539,6 +540,48 @@ describe('Feed federation actor + WebFinger', () => {
       `<a href="${ORIGIN}/u/${user}?tag=${tag}" class="mention hashtag" rel="tag">#<span>${text}</span></a>`
     expect(content).toContain(`Easy ${link('zone2', 'Zone2')} run`)
     expect(content).toContain(`<p>${link('aurboda', 'aurboda')}</p>`)
+  })
+
+  test('an activity Note mentions only the people switched on, by account, and nothing else about anyone', async () => {
+    const user = getTestUser()
+    const activityId = await insertExercise(user)
+    const mentioned = await insertPerson(user, {
+      actor_cache: { actor_handle: '@anna@friends.example', actor_icon: null, actor_name: 'Anna A' },
+      actor_uri: 'https://friends.example/users/anna',
+      name: 'Anna Private',
+    })
+    const unmentioned = await insertPerson(user, { name: 'Bo Secret' })
+    await addActivityPeople(user, activityId, [mentioned.id, unmentioned.id])
+    const post = await sharePost(user, activityId, {
+      mentions: [{ actor_uri: 'https://friends.example/users/anna', handle: '@anna@friends.example' }],
+      visibility: 'followers',
+    })
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const activity = {
+      activity_type: 'exercise',
+      end_time: new Date('2026-07-01T07:11:00Z'),
+      start_time: new Date('2026-07-01T06:30:00Z'),
+      title: 'Morning run',
+    }
+    const create = await buildFeedCreate(ctx, user, post, activity, `${ORIGIN}/api`)
+    const note = await create.getObject()
+    expect(note).toBeInstanceOf(Note)
+    if (!(note instanceof Note)) return
+    const mentions: string[] = []
+    for await (const tag of note.getTags()) {
+      if (tag instanceof Mention) mentions.push(`${tag.name?.toString()} ${tag.href?.href}`)
+    }
+    expect(mentions).toEqual(['@anna@friends.example https://friends.example/users/anna'])
+    expect(note.ccIds.map((u) => u.href)).toContain('https://friends.example/users/anna')
+    expect(create.ccIds.map((u) => u.href)).toContain('https://friends.example/users/anna')
+    expect(note.content?.toString()).toContain(
+      '<p>with <span class="h-card"><a href="https://friends.example/users/anna" class="u-url mention">@anna@friends.example</a></span></p>',
+    )
+
+    const wire = JSON.stringify(await create.toJsonLd({ format: 'compact' }))
+    for (const secret of ['Anna Private', 'Bo Secret', mentioned.id, unmentioned.id]) {
+      expect(wire).not.toContain(secret)
+    }
   })
 
   test('the quant extension survives the transformers Fedify applies before sending (#1040)', async () => {
@@ -1334,6 +1377,34 @@ describe('Feed federation actor + WebFinger', () => {
         await ingestNoteForRecipient(user, note as Note, followee!, async () => null, ORIGIN)
         expect(await listTimelineEntries(user, 10)).toHaveLength(1)
         expect(await notificationsOf(user)).toEqual([])
+      })
+
+      test('two followed tags carding one Note before the fold raise one new-post', async () => {
+        const user = getTestUser()
+        const note = await topLevelPost(9).getObject()
+        const author = {
+          actor_uri: ALICE,
+          avatar_url: null,
+          display_name: 'Alice',
+          handle: '@alice@mastodon.example',
+        }
+        await Promise.all(
+          ['running', 'trail'].map((tag) =>
+            ingestNoteForRecipient(user, note as Note, author, async () => null, ORIGIN, {
+              boost: {
+                actor_uri: `https://tags.example/user/${tag}`,
+                announce_uri: `https://tags.example/user/${tag}/announces/1`,
+                display_name: `#${tag}`,
+                handle: `@${tag}@tags.example`,
+                published_at: new Date('2026-07-02T10:00:00Z'),
+                tag,
+              },
+              notify: { source: { notify_on_post: true, tag } },
+            }),
+          ),
+        )
+        expect(await listTimelineEntries(user, 10)).toHaveLength(2)
+        expect((await notificationsOf(user)).map((n) => n.type)).toEqual(['feed_post'])
       })
     })
 

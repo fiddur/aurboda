@@ -24,6 +24,7 @@ vi.mock('../../db', () => ({
   getEffectiveActivitiesInRange: vi.fn(),
   getMealFlagsInRange: vi.fn(),
   getMealLogCompletedInRange: vi.fn(),
+  getPeopleForActivities: vi.fn(),
   getProductivity: vi.fn(),
   listSensitivityFlags: vi.fn(),
 }))
@@ -617,6 +618,70 @@ describe('getActivityImpact slicing', () => {
     ])
   })
 
+  describe('people', () => {
+    const ANNA = '11111111-1111-4111-8111-111111111111'
+    const BO = '22222222-2222-4222-8222-222222222222'
+    const A1 = 'aaaaaaaa-0000-4000-8000-000000000001'
+    const A2 = 'aaaaaaaa-0000-4000-8000-000000000002'
+    const A3 = 'aaaaaaaa-0000-4000-8000-000000000003'
+    const withId = (id: string, act: MergedActivity): MergedActivity => ({ ...act, id })
+
+    beforeEach(() => {
+      vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
+        withId(A1, yoga(day(10), 30)),
+        withId(A2, yoga(day(12), 30)),
+        withId(A3, yoga(day(14), 30)),
+      ])
+      vi.mocked(db.getPeopleForActivities).mockResolvedValue(
+        new Map([
+          [
+            A1,
+            [
+              { id: ANNA, name: 'Anna' },
+              { id: BO, name: 'Bo' },
+            ],
+          ],
+          [A2, [{ id: ANNA, name: 'Anna' }]],
+        ]),
+      )
+    })
+
+    test('a breakdown has a group per person, a session in each of its people, and no one last', async () => {
+      const result = await impact({ breakdown: 'people' })
+      expect(result.breakdown?.label).toBe('With')
+      expect(result.breakdown?.groups.map((g) => [g.key, g.label, g.occurrences])).toEqual([
+        [ANNA, 'Anna', 2],
+        [BO, 'Bo', 1],
+        ['(none)', 'No one', 1],
+      ])
+    })
+
+    test('a filter keeps the sessions with that person', async () => {
+      const result = await impact({ filters: [{ dimension: 'people', keys: [BO] }] })
+      expect(result.occurrences).toBe(1)
+      const alone = await impact({ filters: [{ dimension: 'people', keys: ['(none)'] }] })
+      expect(alone.occurrences).toBe(1)
+    })
+
+    test('listed with include_dimensions only when a session has a person', async () => {
+      const listed = await impact({ includeDimensions: true })
+      expect(listed.dimensions?.find((d) => d.dimension === 'people')?.groups.map((g) => g.key)).toEqual([
+        ANNA,
+        BO,
+        '(none)',
+      ])
+
+      vi.mocked(db.getPeopleForActivities).mockResolvedValue(new Map())
+      const none = await impact({ includeDimensions: true })
+      expect(none.dimensions?.some((d) => d.dimension === 'people')).toBe(false)
+    })
+
+    test('people are not read unless the dimension is asked for', async () => {
+      await impact({ breakdown: 'duration' })
+      expect(db.getPeopleForActivities).not.toHaveBeenCalled()
+    })
+  })
+
   test('time of day uses the given timezone, else the user setting', async () => {
     vi.mocked(db.getEffectiveActivitiesInRange).mockResolvedValue([
       yoga(new Date('2024-01-15T05:30:00Z'), 20),
@@ -772,8 +837,8 @@ describe('getActivityImpact slicing', () => {
 })
 
 describe('listedDimensions', () => {
-  test('type only for activities and tags, year for every kind', () => {
-    const all = ['duration', 'time_of_day', 'sleep', 'type', 'year']
+  test('type and people only for activities and tags, year for every kind', () => {
+    const all = ['duration', 'time_of_day', 'sleep', 'type', 'year', 'people']
     expect(listedDimensions('activity_type', undefined)).toEqual(all)
     expect(listedDimensions('tag', undefined)).toEqual(all)
     for (const kind of ['location', 'productivity_category', 'productivity_app'] as const) {

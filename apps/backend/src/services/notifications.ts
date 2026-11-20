@@ -14,6 +14,7 @@ import {
 
 import {
   countUnreadNotifications,
+  emitLiveNotify,
   getNotificationById,
   getNotificationPreference,
   insertNotification,
@@ -50,6 +51,22 @@ export interface RaiseNotificationInput {
   actions?: NotificationAction[]
 }
 
+export type NotificationPing = (user: string) => void | Promise<void>
+
+type LogError = (message: string, error: unknown) => void
+
+const defaultLogError: LogError = (message, error) => console.error(message, error)
+
+/** A ping never fails or delays its caller: a throw or a rejection is only logged. */
+const firePing =
+  (ping: NotificationPing | undefined, logError: LogError) =>
+  (user: string): void => {
+    if (ping == null) return
+    void Promise.resolve()
+      .then(() => ping(user))
+      .catch((error: unknown) => logError(`⚠️ Failed to ping ${user}'s live notifications:`, error))
+  }
+
 export interface NotifierDeps {
   getPreference: (
     user: string,
@@ -67,6 +84,10 @@ export interface NotifierDeps {
     dedupeKeys: string[],
     patch: NotificationRevisionPatch,
   ) => Promise<NotificationRecord[]>
+  /** Queues a stored push notification for the user's browsers; absent where there is no job queue. */
+  enqueuePush?: (user: string, notificationId: string) => Promise<void>
+  /** Tells the user's open tabs that their notifications changed; fire-and-forget. */
+  ping?: NotificationPing
   now?: () => Date
   logError?: (message: string, error: unknown) => void
 }
@@ -110,7 +131,18 @@ export const validateRevision = (patch: NotificationRevisionPatch): void => {
 
 export const createNotifier = (deps: NotifierDeps): Notifier => {
   const now = deps.now ?? (() => new Date())
-  const logError = deps.logError ?? ((message, error) => console.error(message, error))
+  const logError = deps.logError ?? defaultLogError
+  const ping = firePing(deps.ping, logError)
+
+  const queuePush = (user: string, row: NotificationRecord | null): void => {
+    const enqueuePush = deps.enqueuePush
+    if (enqueuePush == null || row == null || !row.push || row.read_at != null) return
+    void Promise.resolve()
+      .then(() => enqueuePush(user, row.id))
+      .catch((error: unknown) =>
+        logError(`⚠️ Failed to queue push of notification ${row.id} for ${user}:`, error),
+      )
+  }
 
   const raise = async (user: string, input: RaiseNotificationInput): Promise<NotificationRecord | null> => {
     validateInput(input)
@@ -131,6 +163,8 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
       actions: input.actions ?? [],
     })
     if (row) {
+      ping(user)
+      queuePush(user, row)
       const at = now().getTime()
       await deps.prune(
         user,
@@ -155,7 +189,10 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     patch: NotificationRevisionPatch,
   ): Promise<NotificationRecord | null> => {
     validateRevision(patch)
-    return deps.revise(user, { dedupe_key: dedupeKey }, patch)
+    const row = await deps.revise(user, { dedupe_key: dedupeKey }, patch)
+    if (row) ping(user)
+    queuePush(user, row)
+    return row
   }
 
   const reviseBestEffort = async (
@@ -176,14 +213,28 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
     patch: NotificationRevisionPatch,
   ): Promise<NotificationRecord[]> => {
     validateRevision(patch)
-    return deps.reviseOpen(user, dedupeKeys, patch)
+    const rows = await deps.reviseOpen(user, dedupeKeys, patch)
+    if (rows.length > 0) ping(user)
+    for (const row of rows) queuePush(user, row)
+    return rows
   }
 
   return { raise, raiseBestEffort, revise, reviseBestEffort, reviseOpen }
 }
 
+let pushEnqueuer: NotifierDeps['enqueuePush'] | null = null
+
+/** Set once the job queue is up; until then, and without one, nothing is pushed to browsers. */
+export const setNotificationPushEnqueuer = (enqueue: NotifierDeps['enqueuePush'] | null): void => {
+  pushEnqueuer = enqueue
+}
+
 export const notifier: Notifier = createNotifier({
+  enqueuePush: async (user, notificationId) => {
+    await pushEnqueuer?.(user, notificationId)
+  },
   getPreference: (user, type) => getNotificationPreference(user, type),
+  ping: (user) => emitLiveNotify(user, 'notification'),
   insert: (user, input) => insertNotification(user, input),
   prune: (user, readBefore, anyBefore) => pruneNotifications(user, readBefore, anyBefore),
   revise: (user, target, patch) => reviseNotification(user, target, patch),
@@ -305,17 +356,47 @@ export interface NotificationStore {
   ) => Promise<NotificationPreferenceRecord>
 }
 
-/** Resolved at call time, so importing this module never touches the db module's bindings. */
-export const notificationStore: NotificationStore = {
-  countUnread: (user) => countUnreadNotifications(user),
-  get: (user, id) => getNotificationById(user, id),
-  list: (user, options) => listNotifications(user, options),
-  listPreferences: (user) => listNotificationPreferences(user),
-  markAllRead: (user) => markAllNotificationsRead(user),
-  markRead: (user, id) => markNotificationRead(user, id),
-  revise: (user, id, patch) => reviseNotification(user, { id }, patch),
-  upsertPreference: (user, type, patch) => upsertNotificationPreference(user, type, patch),
+/** Pings the user's open tabs after every write that changed a notification, so a second tab's badge follows. */
+export const withNotificationPing = (
+  store: NotificationStore,
+  ping: NotificationPing,
+  logError: LogError = defaultLogError,
+): NotificationStore => {
+  const fire = firePing(ping, logError)
+  return {
+    ...store,
+    markAllRead: async (user) => {
+      const updated = await store.markAllRead(user)
+      if (updated > 0) fire(user)
+      return updated
+    },
+    markRead: async (user, id) => {
+      const record = await store.markRead(user, id)
+      if (record) fire(user)
+      return record
+    },
+    revise: async (user, id, patch) => {
+      const record = await store.revise(user, id, patch)
+      if (record) fire(user)
+      return record
+    },
+  }
 }
+
+/** Resolved at call time, so importing this module never touches the db module's bindings. */
+export const notificationStore: NotificationStore = withNotificationPing(
+  {
+    countUnread: (user) => countUnreadNotifications(user),
+    get: (user, id) => getNotificationById(user, id),
+    list: (user, options) => listNotifications(user, options),
+    listPreferences: (user) => listNotificationPreferences(user),
+    markAllRead: (user) => markAllNotificationsRead(user),
+    markRead: (user, id) => markNotificationRead(user, id),
+    revise: (user, id, patch) => reviseNotification(user, { id }, patch),
+    upsertPreference: (user, type, patch) => upsertNotificationPreference(user, type, patch),
+  },
+  (user) => emitLiveNotify(user, 'notification'),
+)
 
 export type NotificationsPage = Required<
   Pick<NotificationsResponse, 'next_cursor' | 'notifications' | 'unread_count'>

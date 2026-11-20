@@ -55,6 +55,23 @@ import {
   wellKnownQuantpubSchema,
 } from './schemas/challenges.ts'
 import {
+  addCheckInFormBodySchema,
+  checkInAdherenceQuerySchema,
+  checkInAdherenceResponseSchema,
+  checkInFormResponseSchema,
+  checkInFormsQuerySchema,
+  checkInFormsResponseSchema,
+  checkInResponseSchema,
+  checkInsQuerySchema,
+  checkInsResponseSchema,
+  checkInTemplatesResponseSchema,
+  dueQuerySchema,
+  dueResponseSchema,
+  submitCheckInBodySchema,
+  updateCheckInBodySchema,
+  updateCheckInFormBodySchema,
+} from './schemas/check-ins.ts'
+import {
   baseResponseSchemaMeta,
   iso8601DateTimeSchema,
   metricTypeSchema,
@@ -136,11 +153,50 @@ import {
   muscleRecoveryResponseSchema,
 } from './schemas/muscle-recovery.ts'
 import {
+  deleteNoteAttachmentQuerySchema,
+  deleteNoteAttachmentResponseSchema,
+  MAX_ATTACHMENTS_PER_NOTE,
+  NOTE_ATTACHMENT_MAX_BYTES,
+  NOTE_ATTACHMENTS_ACCOUNT_BYTES,
+  NOTE_IMAGE_MAX_EDGE,
+  noteAttachmentContentQuerySchema,
+  noteAttachmentResponseSchema,
+  noteAttachmentsQuerySchema,
+  noteAttachmentsResponseSchema,
+} from './schemas/note-attachments.ts'
+import {
+  addNoteTemplateBodySchema,
+  deleteNoteTemplateQuerySchema,
+  deleteNoteTemplateResponseSchema,
+  noteTemplateResponseSchema,
+  noteTemplatesQuerySchema,
+  noteTemplatesResponseSchema,
+  updateNoteTemplateBodySchema,
+} from './schemas/note-templates.ts'
+import {
+  addNoteBodySchema,
+  deleteNoteQuerySchema,
+  deleteNoteResponseSchema,
+  noteConflictResponseSchema,
+  noteResponseSchema,
+  noteRevisionsResponseSchema,
+  notesResponseSchema,
+  notesSearchQuerySchema,
+  notesSearchResponseSchema,
+  updateNoteBodySchema,
+} from './schemas/notes.ts'
+import {
+  addPushSubscriptionBodySchema,
   markAllNotificationsReadResponseSchema,
   notificationResponseSchema,
   notificationsQuerySchema,
   notificationsResponseSchema,
   notificationTypesResponseSchema,
+  pushConfigResponseSchema,
+  pushSubscriptionResponseSchema,
+  pushSubscriptionsQuerySchema,
+  pushSubscriptionsResponseSchema,
+  sendTestPushResponseSchema,
   setNotificationPreferenceBodySchema,
   setNotificationPreferenceResponseSchema,
 } from './schemas/notifications.ts'
@@ -168,6 +224,21 @@ import {
   outboundSyncAckResponseSchema,
   outboundSyncResponseSchema,
 } from './schemas/outbound-sync.ts'
+import {
+  addPersonBodySchema,
+  addPersonDateBodySchema,
+  deletePersonQuerySchema,
+  importantDatesQuerySchema,
+  importantDatesResponseSchema,
+  peopleQuerySchema,
+  peopleResponseSchema,
+  personDateResponseSchema,
+  personDatesResponseSchema,
+  personDetailResponseSchema,
+  personResponseSchema,
+  updatePersonBodySchema,
+  updatePersonDateBodySchema,
+} from './schemas/people.ts'
 import { periodSummaryResponseSchema } from './schemas/period-summary.ts'
 import {
   accountPlanResponseSchema,
@@ -2211,6 +2282,99 @@ const openApiDocument = createDocument({
         tags: ['Notifications'],
       },
     },
+    '/notifications/push/config': {
+      get: {
+        description:
+          'Whether this server offers browser push (Web Push), and the VAPID public key to subscribe with. `enabled` is false when the web address is not HTTPS; `localhost` counts as allowed for development.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushConfigResponseSchema } },
+            description: 'The push configuration',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the browser push configuration',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/subscriptions': {
+      get: {
+        description:
+          "The browsers subscribed to this user's push notifications, oldest first. The keys are never returned. Give the SHA-256 of this browser's own endpoint as `endpoint_hash` to have its subscription marked `current`.",
+        requestParams: { query: pushSubscriptionsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushSubscriptionsResponseSchema } },
+            description: 'The subscribed browsers',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List push subscriptions',
+        tags: ['Notifications'],
+      },
+      post: {
+        description:
+          'Subscribe a browser: the body is its `PushSubscription` JSON. Subscribing the same endpoint again updates it. The endpoint must be an HTTPS URL on a public address. A user keeps at most 20 subscriptions; past that the one that has gone longest without a push is dropped.',
+        requestBody: { content: { 'application/json': { schema: addPushSubscriptionBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: pushSubscriptionResponseSchema } },
+            description: 'The stored subscription',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or the endpoint is not an HTTPS URL on a public address',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'This server does not offer browser push',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Subscribe a browser to push',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/subscriptions/{id}': {
+      delete: {
+        description: 'Remove a subscribed browser. It gets no more pushes from this server.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Subscription ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Subscription not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Remove a push subscription',
+        tags: ['Notifications'],
+      },
+    },
+    '/notifications/push/test': {
+      post: {
+        description:
+          'Send "Aurboda can reach this browser" to every subscribed browser at once. It is not stored as a notification. Answers how many browsers accepted it.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sendTestPushResponseSchema } },
+            description: 'How many browsers were reached',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'This server does not offer browser push',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Send a test push',
+        tags: ['Notifications'],
+      },
+    },
     '/notifications/read-all': {
       post: {
         description: 'Mark every unread notification read.',
@@ -2318,6 +2482,721 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/notes': {
+      post: {
+        description:
+          'Add a comment: on an entity, a reply, about a moment (`time`) or for a day (`day`, with `date`). Optional `title` (not on a reply) and `tags`; #hashtags in the content are tags too. Only `time` and `day` entries may have empty content.',
+        requestBody: { content: { 'application/json': { schema: addNoteBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The new comment',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/deleted': {
+      get: {
+        description:
+          'The deleted comments that can still be restored, newest deletion first: deleted thread roots with the replies deleted with them, and deleted replies of live roots. Each has `deleted_at` and `purge_at`.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notesResponseSchema } },
+            description: 'The deleted comments',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List deleted comments',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/search': {
+      get: {
+        description:
+          'Search and list comment thread roots, newest first, replies nested. Without filters it lists the free-standing entries (`time` and `day`), which is what the journal reads.',
+        requestParams: { query: notesSearchQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: notesSearchResponseSchema } },
+            description: 'A page of thread roots',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Search comments',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}': {
+      get: {
+        description:
+          'One live comment: a thread root with its replies (oldest first) and, for a journal entry, its attachments; a reply on its own.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The comment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a comment',
+        tags: ['Notes'],
+      },
+      delete: {
+        description:
+          'Delete a comment and, on a thread root, its replies. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: deleteNoteQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a comment',
+        tags: ['Notes'],
+      },
+      patch: {
+        description:
+          "Change a comment's content, title or tags, and on a free-standing comment its anchor: times on a `time` entry, `date` on a `day` one (a date turns a `time` entry into a `day` one, a start_time the other way). With `expected_updated_at`, a comment changed since is a 409 carrying it as it now is. The replaced text is kept as a revision.",
+        requestBody: { content: { 'application/json': { schema: updateNoteBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The comment after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: noteConflictResponseSchema } },
+            description: 'Changed since expected_updated_at; nothing was written',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/restore': {
+      post: {
+        description:
+          'Restore a deleted comment, with the replies deleted with it. A reply whose root is deleted is a 409. A comment that is not deleted is answered as it is.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteResponseSchema } },
+            description: 'The restored comment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Restore the comment it replies to first',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a comment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/revisions': {
+      get: {
+        description: "A comment's earlier texts (content and title), newest first.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteRevisionsResponseSchema } },
+            description: 'The revisions',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Comment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List comment revisions',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments': {
+      get: {
+        description:
+          "A journal entry's live pictures and recordings in page order, or with `deleted=true` its deleted ones that can still be restored, with `deleted_at` and `purge_at`.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: noteAttachmentsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteAttachmentsResponseSchema } },
+            description: 'The attachments',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Entry not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List entry attachments',
+        tags: ['Notes'],
+      },
+      post: {
+        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account.`,
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              schema: z.object({
+                file: z.string().meta({ description: 'The picture or recording', format: 'binary' }),
+              }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: noteAttachmentResponseSchema } },
+            description: 'The stored attachment',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, not a picture or recording Aurboda keeps, or not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Entry not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments/{attachment_id}': {
+      delete: {
+        description:
+          'Delete an attachment. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+          query: deleteNoteAttachmentQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteAttachmentResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete an entry attachment',
+        tags: ['Notes'],
+      },
+      get: {
+        description:
+          "The attachment's bytes, with its stored type, to its owner only. `max_edge` downscales a picture (WebP). A deleted attachment, or one on a deleted entry, is a 404. Cached privately for a year: an attachment's bytes never change.",
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+          query: noteAttachmentContentQuerySchema,
+        },
+        responses: {
+          200: {
+            content: {
+              'audio/*': { schema: z.string().meta({ format: 'binary' }) },
+              'image/webp': { schema: z.string().meta({ format: 'binary' }) },
+            },
+            description: 'The picture or recording',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid max_edge',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/attachments/{attachment_id}/restore': {
+      post: {
+        description: `Restore a deleted attachment. A 409 when the entry already holds ${MAX_ATTACHMENTS_PER_NOTE}.`,
+        requestParams: {
+          path: z.object({
+            attachment_id: z.string().uuid().meta({ description: 'Attachment ID' }),
+            id: z.string().uuid().meta({ description: 'Note ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteAttachmentResponseSchema } },
+            description: 'The restored attachment',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Attachment not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry holds as many attachments as it may',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore an entry attachment',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates': {
+      get: {
+        description:
+          'The journal entry templates by name, or with `deleted=true` the deleted ones that can still be restored, with `deleted_at` and `purge_at`.',
+        requestParams: { query: noteTemplatesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplatesResponseSchema } },
+            description: 'The templates',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List entry templates',
+        tags: ['Notes'],
+      },
+      post: {
+        description: 'Add a journal entry template: a name and the markdown text a new entry starts from.',
+        requestBody: { content: { 'application/json': { schema: addNoteTemplateBodySchema } } },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The new template',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add an entry template',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates/{id}': {
+      delete: {
+        description:
+          'Delete a template. It can be restored for 30 days; `purge=true` removes it for good at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+          query: deleteNoteTemplateQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteNoteTemplateResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete an entry template',
+        tags: ['Notes'],
+      },
+      patch: {
+        description: "Change a template's name or text.",
+        requestBody: { content: { 'application/json': { schema: updateNoteTemplateBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The template after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update an entry template',
+        tags: ['Notes'],
+      },
+    },
+    '/note-templates/{id}/restore': {
+      post: {
+        description: 'Restore a deleted template. A template that is not deleted is answered as it is.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Template ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTemplateResponseSchema } },
+            description: 'The restored template',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Template not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore an entry template',
+        tags: ['Notes'],
+      },
+    },
+
+    '/check-in-forms': {
+      get: {
+        description:
+          "The user's check-in forms with their questions, score, schedule and current version; `deleted=true` lists the deleted ones, restorable for 30 days.",
+        requestParams: { query: checkInFormsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormsResponseSchema } },
+            description: 'The forms',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-in forms',
+        tags: ['Check-ins'],
+      },
+      post: {
+        description:
+          'Create a check-in form, from `name` and `questions` or by copying a `template` (the other fields override its own). An answer to a question with `logs_to` is logged as a metric point; a metric name that does not exist yet becomes a custom metric on first use.',
+        requestBody: { content: { 'application/json': { schema: addCheckInFormBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The new form',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, unknown template, or a metric that cannot take check-in points',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-forms/{id}': {
+      delete: {
+        description:
+          'Delete a check-in form: it stops asking and its check-ins stay readable. Restorable for 30 days, then purged with its check-ins.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The deleted form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a check-in form',
+        tags: ['Check-ins'],
+      },
+      get: {
+        description: 'One check-in form, deleted or not.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a check-in form',
+        tags: ['Check-ins'],
+      },
+      patch: {
+        description:
+          'Change a check-in form. `questions` replaces them all; a change to a question other than its place, or to the score, makes a new version. A removed question key cannot come back with another type. A new or changed schedule starts with its next slot.',
+        requestBody: { content: { 'application/json': { schema: updateCheckInFormBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The form after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-forms/{id}/adherence': {
+      get: {
+        description:
+          "How a form was kept up from `from` to `to` (local days, at most 366, default the last 30): its slots counted `done`, `skipped`, `missed` and `upcoming` (today's still open), per day and in total, read against the form's current schedule; and per question how many answered check-ins answered it with something other than 0 or no.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+          query: checkInAdherenceQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInAdherenceResponseSchema } },
+            description: 'The adherence',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid dates, or a window longer than 366 days',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get check-in adherence',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-forms/{id}/restore': {
+      post: {
+        description: 'Restore a deleted check-in form; its schedule starts again with its next slot.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Check-in form ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInFormResponseSchema } },
+            description: 'The restored form',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No deleted check-in form with that ID',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a check-in form',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-in-templates': {
+      get: {
+        description:
+          'Built-in check-in forms to copy with `template` on POST /check-in-forms, each with its source and licence.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInTemplatesResponseSchema } },
+            description: 'The templates',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-in templates',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins': {
+      get: {
+        description:
+          'Check-ins newest first, each with its form name and the questions of the version it answered. `entity_type` and `entity_id` list those tied to an activity.',
+        requestParams: { query: checkInsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInsResponseSchema } },
+            description: 'The check-ins',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List check-ins',
+        tags: ['Check-ins'],
+      },
+      post: {
+        description:
+          "Save a check-in against the form's current version. Answers to questions with `logs_to` are logged as metric points or activities at `answered_at` with data source `check_in`; 0, no, or no answer logs nothing. `use_defaults` saves a routine's preset answers. `status: skipped` records the slot `scheduled_for` as skipped; answering a skipped slot later replaces the skip. The due notification of a slot it does or skips is marked read and its actions cleared.",
+        requestBody: { content: { 'application/json': { schema: submitCheckInBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The check-in',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Invalid body or answers, `use_defaults` on a form that is not a routine, a skip of no slot of the form, or an entity that is not a live activity',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in form not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A skip of a slot already done or skipped',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Submit a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins/{id}': {
+      delete: {
+        description:
+          'Delete a check-in, the metric points it logged and the activities it logged. Restorable for 30 days.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The deleted check-in',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a check-in',
+        tags: ['Check-ins'],
+      },
+      patch: {
+        description:
+          'Change a check-in. Answers are read against the version it answered; changing them or the time replaces exactly the metric points and activities it logged. A skipped check-in takes no answers.',
+        requestBody: { content: { 'application/json': { schema: updateCheckInBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The check-in after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or answers',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/check-ins/{id}/restore': {
+      post: {
+        description:
+          'Restore a deleted check-in; the metric points it logged are written again and its activities restored.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Check-in ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: checkInResponseSchema } },
+            description: 'The restored check-in',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Check-in not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a check-in',
+        tags: ['Check-ins'],
+      },
+    },
+    '/due': {
+      get: {
+        description:
+          "The slots of the user's scheduled check-in forms on a day, each `upcoming`, `due`, `done`, `skipped` or `missed`.",
+        requestParams: { query: dueQuerySchema },
+        responses: {
+          200: { content: { 'application/json': { schema: dueResponseSchema } }, description: 'The slots' },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid date',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List due check-ins',
+        tags: ['Check-ins'],
+      },
+    },
+
     '/reminders': {
       get: {
         description:
@@ -2395,6 +3274,251 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Update a reminder',
         tags: ['Reminders'],
+      },
+    },
+
+    '/people': {
+      get: {
+        description:
+          "The user's private profiles of people, by name, each with the fediverse account read at query time when it has a handle. `archived=true` includes archived people; `deleted=true` lists the deleted ones that can still be restored instead, with `deleted_at` and `purge_at`.",
+        requestParams: { query: peopleQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: peopleResponseSchema } },
+            description: 'The people',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List people',
+        tags: ['People'],
+      },
+      post: {
+        description:
+          'Add a private profile of someone. A `handle` (`@name@server`) is resolved the way a follow resolves one and stored as the actor URI; at most one live profile per actor.',
+        requestBody: { content: { 'application/json': { schema: addPersonBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The new person',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a handle that does not resolve',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another person already has this fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a person',
+        tags: ['People'],
+      },
+    },
+    '/people/dates': {
+      get: {
+        description:
+          "Every occurrence between `from` and `to` (at most 400 days apart; default today to 60 days on, in the user's time zone) of the dates and birthdays of the live, non-archived people, by date. 29 February falls on 28 February in other years.",
+        requestParams: { query: importantDatesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: importantDatesResponseSchema } },
+            description: 'The occurrences',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid or too long a window',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List important dates',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}': {
+      delete: {
+        description:
+          'Soft-delete a person: they, their dates, notes and activity links go out of sight and can be restored for 30 days, after which they are removed for good. `purge=true` removes it all at once.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }),
+          query: deletePersonQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a person',
+        tags: ['People'],
+      },
+      get: {
+        description: 'A person with their dates and the 20 latest activities they were with.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDetailResponseSchema } },
+            description: 'The person',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a person',
+        tags: ['People'],
+      },
+      patch: {
+        description: 'Change a person; only the given fields. `handle: null` clears the fediverse account.',
+        requestBody: { content: { 'application/json': { schema: updatePersonBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The person after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a handle that does not resolve',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another person already has this fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a person',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}/restore': {
+      post: {
+        description:
+          'Bring back a deleted person with their dates, notes and activity links. A live person is answered as they are.',
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personResponseSchema } },
+            description: 'The restored person',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Another live person has the same fediverse account',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Restore a person',
+        tags: ['People'],
+      },
+    },
+    // No '/people/{id}/posts' here: its entries are timeline entries, whose structured payload the
+    // Kotlin generator cannot express (as the feed's own routes, which are not listed either).
+    '/people/{id}/dates': {
+      get: {
+        description: "The person's yearly dates, by month and day.",
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDatesResponseSchema } },
+            description: 'The dates',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a person's dates",
+        tags: ['People'],
+      },
+      post: {
+        description:
+          'A yearly date; `notify_days_before` raises an `important_date` notification that many days ahead of each occurrence, from 08:00 local.',
+        requestBody: { content: { 'application/json': { schema: addPersonDateBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDateResponseSchema } },
+            description: 'The new date',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add a date to a person',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}/dates/{date_id}': {
+      delete: {
+        description: 'Delete a date for good.',
+        requestParams: {
+          path: z.object({
+            date_id: z.string().uuid().meta({ description: 'Date ID' }),
+            id: z.string().uuid().meta({ description: 'Person ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person or date not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Delete a person's date",
+        tags: ['People'],
+      },
+      patch: {
+        description:
+          'Change a date; only the given fields; `year` and `notify_days_before` take null to clear.',
+        requestBody: { content: { 'application/json': { schema: updatePersonDateBodySchema } } },
+        requestParams: {
+          path: z.object({
+            date_id: z.string().uuid().meta({ description: 'Date ID' }),
+            id: z.string().uuid().meta({ description: 'Person ID' }),
+          }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personDateResponseSchema } },
+            description: 'The date after the change',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or not a real date',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person or date not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Update a person's date",
+        tags: ['People'],
       },
     },
 
@@ -3698,9 +4822,18 @@ const openApiDocument = createDocument({
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },
     { description: 'Named and detected locations', name: 'Locations' },
+    { description: 'Comments on anything, and journal entries', name: 'Notes' },
     { description: 'Notifications: the bell, read state and per-type switches', name: 'Notifications' },
     { description: 'RescueTime productivity data', name: 'Productivity' },
+    {
+      description: 'Check-in forms, their answers logged as metrics, and their schedules',
+      name: 'Check-ins',
+    },
     { description: 'Recurring reminders delivered as notifications', name: 'Reminders' },
+    {
+      description: 'Private profiles of people, their important dates and who an activity was with',
+      name: 'People',
+    },
     { description: 'User settings and preferences', name: 'Settings' },
     {
       description: 'Data synchronization with external services',

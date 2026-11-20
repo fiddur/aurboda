@@ -10,6 +10,7 @@ vi.mock('../../db/index.ts', () => ({
   getActivityTypeDefinitions: vi.fn(),
   getDistinctMetrics: vi.fn(),
   getScreentimeCategories: vi.fn(),
+  listPeopleWithActivities: vi.fn(),
   listSensitivityFlags: vi.fn(),
 }))
 
@@ -23,6 +24,9 @@ beforeEach(() => {
   vi.mocked(db.getScreentimeCategories).mockResolvedValue([
     { name: ['Work', 'Programming'] },
   ] as unknown as db.ScreentimeCategory[])
+  vi.mocked(db.listPeopleWithActivities).mockResolvedValue([
+    { id: '11111111-1111-4111-8111-111111111111', name: 'Anna' },
+  ])
   vi.mocked(db.listSensitivityFlags).mockResolvedValue([
     { id: 'flag-1', name: 'gluten' },
   ] as unknown as db.SensitivityFlag[])
@@ -40,6 +44,10 @@ describe('getCorrelationSelectors', () => {
         { label: 'weight', value: 'weight' },
       ],
       nutrients: nutrientKeySchema.options.map((n) => ({ label: n, value: n })),
+      people: [
+        { label: 'Time with people', value: '' },
+        { label: 'Anna', value: '11111111-1111-4111-8111-111111111111' },
+      ],
       productivity_categories: [{ label: 'Work > Programming', value: 'Work > Programming' }],
       sensitivities: [{ label: 'gluten', value: 'flag-1' }],
       tags: [{ label: 'Sauna', value: 'sauna' }],

@@ -14,6 +14,7 @@ import type { StravaDetailedActivity, StravaStreamsResponse } from './types.ts'
 
 import { buildTrack } from '../../services/tracks.ts'
 import { activityTrackSources, gpsPrecedenceSpan } from '../gps-precedence.ts'
+import { stravaIdOf } from './ids.ts'
 import { mapStravaSportType } from './sport-type-map.ts'
 
 // `locations` gets ~1 point per minute; the activity track keeps every sample.
@@ -54,7 +55,8 @@ export const processStravaActivity = async (
   streams: StravaStreamsResponse | null,
   deps: StravaProcessDeps,
 ): Promise<StravaProcessResult | null> => {
-  const externalId = `strava-activity-${activity.id}`
+  const stravaActivityId = stravaIdOf(activity)
+  const externalId = `strava-activity-${stravaActivityId}`
   const startTime = new Date(activity.start_date)
   const endTime = new Date(startTime.getTime() + activity.elapsed_time * 1000)
   const mappedType = mapStravaSportType(activity.sport_type)
@@ -76,7 +78,7 @@ export const processStravaActivity = async (
       max_hr: activity.max_heartrate,
       max_speed: activity.max_speed,
       moving_time: activity.moving_time,
-      strava_activity_id: activity.id,
+      strava_activity_id: stravaActivityId,
       suffer_score: activity.suffer_score,
     },
     end_time: endTime,

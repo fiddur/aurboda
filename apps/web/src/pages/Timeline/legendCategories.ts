@@ -21,6 +21,7 @@ export type LegendCategory =
   | 'metrics'
   | 'location'
   | 'comments'
+  | 'important_dates'
   // Activity sub-toggles (curated)
   | 'sleep_rest' // replaces sleep+nap+rest
   | 'meditation'
@@ -65,6 +66,7 @@ const STATIC_CATEGORY_MATCHERS: Record<
   calendar: (item) => item.column === 'Activity' && item.color === tagSourceColors.calendar,
   calories: () => false, // metrics sub-toggles handled at draw level
   comments: (item) => item.column === 'Comments',
+  important_dates: () => false, // all-day markers, filtered where they are built
   exercise: (item) => item.column === 'Activity' && item.activity_type === 'exercise',
   hr: () => false,
   hrv: () => false,

@@ -408,30 +408,51 @@ CREATE INDEX idx_lab_results_category ON lab_results (test_category, test_date D
 
 #### `notes` - Comments on Anything
 
-Free-text comments with a polymorphic reference. One table carries all three
+Free-text comments with a polymorphic reference. One table carries all four
 shapes, and `(entity_type, entity_id)` is what distinguishes them. See
-[Comments](features/comments.md) for the feature-level description.
+[Comments](features/comments.md) for the feature-level description and
+[Journal](features/journal.md) for the entries built on it.
 
 ```sql
 CREATE TABLE notes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'note' | 'time'
-    entity_id       TEXT,                  -- NULL only for entity_type = 'time'
-    content         TEXT NOT NULL,
+    entity_type     VARCHAR(50) NOT NULL,  -- 'activity' | 'productivity' | 'metric' | 'report' | 'meal' | 'person' | 'note' | 'time' | 'day'
+    entity_id       TEXT,                  -- NULL only for entity_type = 'time' or 'day'
+    content         TEXT NOT NULL,         -- may be '' only on 'time' and 'day' (enforced by the API)
     source          VARCHAR(50),           -- NULL for user-typed; set for synced comments ('health_connect', 'oura', …)
     start_time      TIMESTAMPTZ,
     end_time        TIMESTAMPTZ,
+    date            DATE,                  -- the calendar date of a 'day' note, and of its replies
+    title           TEXT,
+    tags            TEXT[] NOT NULL DEFAULT '{}',  -- the tags set explicitly
+    hashtags        TEXT[] NOT NULL DEFAULT '{}',  -- the #hashtags of the content, recomputed at every content write
+    deleted_at      TIMESTAMPTZ,           -- soft deletion; purged 30 days later
+    search          TSVECTOR GENERATED ALWAYS AS
+                      (to_tsvector('simple', coalesce(title, '') || ' ' || content)) STORED,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT notes_shape_check CHECK (
-        (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL)
-        OR (entity_type <> 'time' AND entity_id IS NOT NULL)
+        (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL AND date IS NULL)
+        OR (entity_type = 'day' AND entity_id IS NULL AND start_time IS NULL AND end_time IS NULL
+            AND date IS NOT NULL)
+        OR (entity_type NOT IN ('time', 'day') AND entity_id IS NOT NULL
+            AND (date IS NULL OR entity_type = 'note'))
     )
 );
+
+-- GIN on search and on (tags || hashtags); (date) WHERE date IS NOT NULL; (deleted_at) WHERE deleted_at IS NOT NULL
+
+CREATE TABLE note_revisions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    title           TEXT,
+    saved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);  -- index (note_id, saved_at DESC)
 ```
 
-**The three shapes:**
+**The four shapes:**
 
 - **On an entity** -- `entity_type` names a real entity and `entity_id` points at
   it (a UUID, or for metrics the composite key `<iso_time>|<metric>|<source>`).
@@ -440,19 +461,94 @@ CREATE TABLE notes (
   editable directly.
 - **On a moment** -- `entity_type = 'time'`, `entity_id IS NULL`. `start_time` is
   required and `end_time` optional; both are user input and editable.
+- **On a day** -- `entity_type = 'day'`, `entity_id IS NULL`, no times, `date`
+  required. A date, not an instant: it does not move with the timezone. A `time`
+  note and a `day` note can be switched into each other.
 - **A reply** -- `entity_type = 'note'`, `entity_id` is the root comment's id. It
-  inherits the root's times, so the whole thread sits at one point in time, while
-  its own `created_at` records when it was written. Threads are exactly one level
-  deep: replying to a reply re-anchors to that reply's root.
+  inherits the root's times (and `date`), so the whole thread sits at one point in
+  time, while its own `created_at` records when it was written. Threads are exactly
+  one level deep: replying to a reply re-anchors to that reply's root.
 
 Replies are never top-level -- `getNotesForTimeRange` and the Health Connect
-notes join both filter `entity_type <> 'note'`. Deleting a thread root deletes
-its replies (done explicitly; there is no FK).
+notes join both filter `entity_type <> 'note'`.
+
+**Soft deletion.** Deleting a comment sets `deleted_at` (on a root, also on its
+live replies, with the same timestamp, so a restore can tell them from a reply
+deleted on its own before). Every read filters `deleted_at IS NULL`; the system's
+own timing cache (`updateNoteTimesForEntity`, `reanchorNotes`) keeps deleted rows in
+step so a restore finds them right. The daily prune pass removes rows deleted more
+than 30 days ago, and the replies of the roots it removes; a purge removes them at
+once. The system's own hard deletes -- a meal or report removed for good
+(`deleteNotesForEntitiesIn`), `replaceUserNotes`, a synced comment cleared upstream
+-- remove soft-deleted rows too. The account export (`pg_dump`) carries
+soft-deleted rows as they are. Revisions cascade with their note.
+
+**Revisions.** An update that changes `content` or `title` first copies the old
+ones into `note_revisions`, in the same transaction as the write and the
+`expected_updated_at` check (`SELECT … FOR UPDATE`), unless the newest revision is
+less than 10 minutes old; only the latest 50 per note are kept.
+
+#### `note_attachments` - Pictures and Recordings on Journal Entries
+
+```sql
+CREATE TABLE note_attachments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,         -- 'image' | 'audio'
+    mime            TEXT NOT NULL,         -- image/webp, or the recording's container
+    bytes           BYTEA NOT NULL,
+    size            INTEGER NOT NULL,      -- stored bytes
+    width           INTEGER,               -- pictures only
+    height          INTEGER,
+    position        INTEGER NOT NULL,      -- page order: one more than the note's highest
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+);  -- index (note_id, position)
+```
+
+Only on `time` and `day` thread roots. The bytes live in the user's own database so
+the account export (`pg_dump`) and its restore carry them; every query except the one
+serving a file names its columns and leaves `bytes` out. An attachment is only read
+through its live note, so a soft-deleted note hides them and a purged one takes them
+along (`ON DELETE CASCADE`). A deleted attachment counts towards the account's 2 GB
+until the daily prune removes it, 30 days after its deletion, in the same pass as the
+notes (`pruneDeletedNotes`).
+
+#### `note_templates` - Journal Entry Templates
+
+```sql
+CREATE TABLE note_templates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT NOT NULL,
+    content         TEXT NOT NULL,         -- markdown
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at      TIMESTAMPTZ
+);
+```
+
+Deleting is recoverable for 30 days, pruned in the same pass as the notes.
 
 `getNotesForTimeRange` also leaves out a comment whose parent is soft-deleted
 (`activities`/`productivity` with `deleted_at` set) or missing (no row in
 `activities`, `productivity`, `meals` or `reports`), by a primary-key lookup per
-comment. Deleting a meal deletes its comments in the same transaction.
+comment; search does the same. It returns the `day` notes on the window's local
+dates as well. Deleting a meal deletes its comments in the same transaction.
+
+#### `people`, `person_dates` and `activity_people` - Private Profiles
+
+A [person](features/people.md) is a private profile of someone in the owner's life. It is
+never federated or shared.
+
+- `people`: `name`, `relationship`, `birth_year`/`birth_month`/`birth_day` (the year may be
+  null), `birthday_notify_days_before`, `pronouns`, `archived`, `deleted_at` (soft delete,
+  purged after 30 days by the prune pass), and the fediverse account as `actor_uri` with a
+  small presentation cache (`actor_handle`, `actor_name`, `actor_icon`, `actor_cached_at`).
+  A partial unique index allows one live profile per `actor_uri`.
+- `person_dates`: a person's other dates (`label`, `kind`, `month`, `day`, optional
+  `year`, optional `notify_days_before`), deleted with the person.
+- `activity_people`: `(activity_id, person_id)` links saying who an activity was with,
+  deleted with either side. Names are resolved when read, never copied.
 
 #### `oauth_tokens` - API Credentials
 

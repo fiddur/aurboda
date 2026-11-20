@@ -54,6 +54,96 @@ export const systemTables: Record<string, string> = {
       WHERE entity_type <> 'note'
   `,
 
+  // Journal entries: titles, tags (explicit and #hashtags from the content), `day` notes pinned
+  // to a date, recoverable deletion and full-text search. 'simple': entries are in any language.
+  // Only the first 100 000 characters are indexed: a tsvector holds at most 1 MB, and a longer
+  // text would otherwise fail the write that saves it.
+  notes_journal_columns: `
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS title TEXT;
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS hashtags TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS date DATE;
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS search TSVECTOR
+      GENERATED ALWAYS AS (to_tsvector('simple', left(coalesce(title, '') || ' ' || content, 100000))) STORED
+  `,
+
+  // The same constraint name as before, so an older build starting against this database finds
+  // it and leaves it alone. Replaced only while its definition does not know the `day` shape.
+  // A reply carries its root's `date` as it carries its root's times.
+  notes_shape_check_day: `
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'notes_shape_check' AND pg_get_constraintdef(oid) LIKE '%''day''%'
+      ) THEN
+        ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_shape_check;
+        ALTER TABLE notes ADD CONSTRAINT notes_shape_check CHECK (
+          (entity_type = 'time' AND entity_id IS NULL AND start_time IS NOT NULL AND date IS NULL)
+          OR (entity_type = 'day' AND entity_id IS NULL AND start_time IS NULL AND end_time IS NULL
+              AND date IS NOT NULL)
+          OR (entity_type NOT IN ('time', 'day') AND entity_id IS NOT NULL
+              AND (date IS NULL OR entity_type = 'note'))
+        );
+      END IF;
+    END $$;
+  `,
+
+  notes_journal_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_notes_date ON notes (date) WHERE date IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_notes_search ON notes USING GIN (search);
+    CREATE INDEX IF NOT EXISTS idx_notes_all_tags ON notes USING GIN ((tags || hashtags));
+    CREATE INDEX IF NOT EXISTS idx_notes_deleted ON notes (deleted_at) WHERE deleted_at IS NOT NULL
+  `,
+
+  note_revisions: `
+    CREATE TABLE IF NOT EXISTS note_revisions (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      content         TEXT NOT NULL,
+      title           TEXT,
+      saved_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
+  note_revisions_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_note_revisions_note ON note_revisions (note_id, saved_at DESC)
+  `,
+
+  // Pictures and recordings on journal entries. The bytes live here so the account export
+  // (a pg_dump) and its restore carry them; every read but the one serving a file names its
+  // columns and leaves `bytes` out.
+  note_attachments: `
+    CREATE TABLE IF NOT EXISTS note_attachments (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      kind            TEXT NOT NULL,
+      mime            TEXT NOT NULL,
+      bytes           BYTEA NOT NULL,
+      size            INTEGER NOT NULL,
+      width           INTEGER,
+      height          INTEGER,
+      position        INTEGER NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ
+    )
+  `,
+
+  note_attachments_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_note_attachments_note ON note_attachments (note_id, position)
+  `,
+
+  note_templates: `
+    CREATE TABLE IF NOT EXISTS note_templates (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ
+    )
+  `,
+
   // OAuth tokens for third-party APIs
   oauth_tokens: `
     CREATE TABLE IF NOT EXISTS oauth_tokens (

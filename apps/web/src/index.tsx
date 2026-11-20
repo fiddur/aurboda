@@ -10,6 +10,9 @@ import { Header } from './components/Header.jsx'
 import { PlanBanner } from './components/PlanBanner.jsx'
 import { Sidebar } from './components/Sidebar.jsx'
 import { useBrowserTimezoneDefault } from './components/useBrowserTimezoneDefault.js'
+import { useLiveNotifications } from './components/useLiveNotifications.js'
+import { useNotificationReadParam } from './components/useNotificationReadParam.js'
+import { usePushReconcile } from './components/usePushReconcile.js'
 import { isEmbedded } from './embed.js'
 import { lazyPage } from './lazyPage.js'
 import { NotFound } from './pages/_404.jsx'
@@ -32,6 +35,9 @@ const Challenges = lazyPage(() => import('./pages/Challenges/index.jsx'), 'Chall
 const ChallengeJoin = lazyPage(() => import('./pages/Challenges/Join.jsx'), 'ChallengeJoin')
 const JoinedChallenge = lazyPage(() => import('./pages/Challenges/JoinedChallenge.jsx'), 'JoinedChallenge')
 const Chart = lazyPage(() => import('./pages/Chart/index.jsx'), 'Chart')
+const CheckIns = lazyPage(() => import('./pages/CheckIns/index.jsx'), 'CheckIns')
+const CheckInEditor = lazyPage(() => import('./pages/CheckIns/Editor.jsx'), 'CheckInEditor')
+const CheckInFill = lazyPage(() => import('./pages/CheckIns/FillIn.jsx'), 'CheckInFill')
 const Correlations = lazyPage(() => import('./pages/Correlations/index.jsx'), 'Correlations')
 const Dashboards = lazyPage(() => import('./pages/Dashboards/index.jsx'), 'Dashboards')
 const Data = lazyPage(() => import('./pages/Data/index.jsx'), 'Data')
@@ -76,6 +82,7 @@ const FoodItems = lazyPage(() => import('./pages/FoodItems/index.jsx'), 'FoodIte
 const Goals = lazyPage(() => import('./pages/Goals/index.jsx'), 'Goals')
 const Help = lazyPage(() => import('./pages/Help/index.jsx'), 'Help')
 const Home = lazyPage(() => import('./pages/Home/index.jsx'), 'Home')
+const Journal = lazyPage(() => import('./pages/Journal/index.jsx'), 'Journal')
 const Login = lazyPage(() => import('./pages/Login/index.jsx'), 'Login')
 const LoginOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'LoginOidc')
 const SignupOidc = lazyPage(() => import('./pages/OidcSignIn/index.jsx'), 'SignupOidc')
@@ -91,6 +98,7 @@ const Notifications = lazyPage(() => import('./pages/Notifications/index.jsx'), 
 const Reminders = lazyPage(() => import('./pages/Reminders/index.jsx'), 'Reminders')
 const OfficialFeed = lazyPage(() => import('./pages/OfficialFeed/index.jsx'), 'OfficialFeed')
 const PublicTag = lazyPage(() => import('./pages/PublicTag/index.jsx'), 'PublicTag')
+const People = lazyPage(() => import('./pages/People/index.jsx'), 'People')
 const Places = lazyPage(() => import('./pages/Places/index.jsx'), 'Places')
 const RoutesPage = lazyPage(() => import('./pages/Routes/index.jsx'), 'Routes')
 const RouteDetailPage = lazyPage(() => import('./pages/Routes/RouteDetail.jsx'), 'RouteDetail')
@@ -135,6 +143,9 @@ function AppShell() {
   // Shown in the native app's WebView too: Android users would otherwise only see the 402s.
   const showPlanBanner = shouldShowPlanBanner(path, isLoggedIn)
   useBrowserTimezoneDefault()
+  useNotificationReadParam()
+  usePushReconcile()
+  useLiveNotifications()
 
   return (
     <>
@@ -224,6 +235,14 @@ function AppShell() {
             <Route path="/settings" component={Settings} />
             <Route path="/notifications" component={Notifications} />
             <Route path="/reminders" component={Reminders} />
+            <Route path="/check-ins/new" component={CheckInEditor} />
+            <Route path="/check-ins/:id/edit" component={CheckInEditor} />
+            <Route path="/check-ins/:id" component={CheckInFill} />
+            <Route path="/check-ins" component={CheckIns} />
+            <Route path="/journal" component={Journal} />
+            <Route path="/journal/:id" component={Journal} />
+            <Route path="/people" component={People} />
+            <Route path="/people/:id" component={People} />
             <Route path="/audit-log" component={AuditLog} />
             <Route path="/admin" component={AdminSettings} />
             <Route path="/admin/users" component={AdminUsers} />

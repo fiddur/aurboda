@@ -1,38 +1,31 @@
-/**
- * Subscribe to live home-timeline updates: opens the SSE stream and calls `onPing`
- * whenever the server signals new posts. If the stream can't be opened or drops
- * (proxy buffering, network blip), it falls back to polling on an interval — so the
- * "N new posts" pill still works without a live connection.
- */
 import { useEffect, useRef } from 'preact/hooks'
 
-import { openTimelineStream } from '../../state/api'
+import { subscribeLiveEvents } from '../../state/live-events'
 
 const POLL_MS = 30_000
 
+/** Calls `onPing` when the timeline gains posts: live over the shared stream, by polling while it is down. */
 export const useTimelineLive = (onPing: () => void): void => {
-  // Keep the latest callback in a ref so re-renders don't re-open the stream.
   const cb = useRef(onPing)
   cb.current = onPing
 
   useEffect(() => {
-    let stopped = false
     let poll: ReturnType<typeof setInterval> | null = null
-
-    const startPolling = () => {
-      if (stopped || poll) return
-      poll = setInterval(() => cb.current(), POLL_MS)
-    }
-
-    const close = openTimelineStream(
-      () => cb.current(),
-      () => startPolling(),
-    )
-
-    return () => {
-      stopped = true
-      close()
+    const stopPolling = () => {
       if (poll) clearInterval(poll)
+      poll = null
+    }
+    const unsubscribe = subscribeLiveEvents(
+      'timeline',
+      () => cb.current(),
+      (down) => {
+        if (!down) return stopPolling()
+        poll ??= setInterval(() => cb.current(), POLL_MS)
+      },
+    )
+    return () => {
+      unsubscribe()
+      stopPolling()
     }
   }, [])
 }

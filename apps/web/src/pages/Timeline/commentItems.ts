@@ -43,7 +43,8 @@ export const commentLabel = (content: string, maxLength = COMMENT_LABEL_MAX): st
 /**
  * Thread roots → Timeline chart items. Every root with a `start_time` gets a
  * bubble, whether it hangs off an activity or off a bare moment; replies never
- * do — they ride along inside their root's tooltip count and panel.
+ * do — they ride along inside their root's tooltip count and panel. A `day`
+ * entry has no `start_time` and gets none.
  */
 export const buildCommentItems = (notes: Note[]): ChartItem[] =>
   notes.flatMap((note) => {
@@ -107,14 +108,16 @@ export const buildCommentGroupItem = (items: ChartItem[]): ChartItem => {
 
 const ENTITY_HREFS: Record<EntityType, ((id: string) => string) | undefined> = {
   activity: (id) => `/detail/activity/${id}`,
+  day: undefined,
   meal: (id) => `/meals/${id}`,
   metric: (id) => `/detail/metric/${id}`,
   note: undefined,
+  person: (id) => `/people/${id}`,
   productivity: (id) => `/detail/productivity/${id}`,
   report: (id) => `/reports/${id}`,
   time: undefined,
 }
 
-/** The page of the thing a comment hangs off, or undefined when it has none (a moment, a reply). */
+/** The page of the thing a comment hangs off, or undefined when it has none (a moment, a day, a reply). */
 export const entityHref = (entityType: EntityType, entityId: string): string | undefined =>
   ENTITY_HREFS[entityType]?.(encodeURIComponent(entityId))

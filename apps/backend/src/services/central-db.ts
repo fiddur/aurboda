@@ -83,6 +83,7 @@ import {
   CREATE_USER_USAGE_DAILY_TABLE,
   type UserUsageApi,
 } from './central-user-usage.ts'
+import { createWebPushKeysApi, type WebPushKeysApi } from './central-web-push.ts'
 
 export type SignupMode = 'open' | 'invite_only' | 'closed'
 
@@ -142,7 +143,7 @@ export interface OuraWebhookSubscription {
 }
 
 export interface StravaAthleteMapping {
-  strava_athlete_id: number
+  strava_athlete_id: string
   username: string
   created_at: Date
   updated_at: Date
@@ -195,7 +196,8 @@ export interface CentralDb
     RelaysApi,
     SharedNutrientRecommendationsApi,
     UserAccountsApi,
-    UserUsageApi {
+    UserUsageApi,
+    WebPushKeysApi {
   /** Creates the tables; resolves true when this call seeded `signup_mode`, i.e. on a fresh install. */
   initializeCentralDb: (initialSignupMode?: SignupMode) => Promise<boolean>
   getServerSetting: <K extends keyof ServerSettings>(key: K) => Promise<ServerSettings[K] | null>
@@ -223,9 +225,9 @@ export interface CentralDb
   getOuraWebhookSubscriptions: () => Promise<OuraWebhookSubscription[]>
   deleteOuraWebhookSubscription: (ouraSubscriptionId: string) => Promise<boolean>
   deleteAllOuraWebhookSubscriptions: () => Promise<number>
-  upsertStravaAthleteMapping: (stravaAthleteId: number, username: string) => Promise<void>
-  getUsernameByStravaAthleteId: (stravaAthleteId: number) => Promise<string | null>
-  deleteStravaAthleteMapping: (stravaAthleteId: number) => Promise<boolean>
+  upsertStravaAthleteMapping: (stravaAthleteId: string, username: string) => Promise<void>
+  getUsernameByStravaAthleteId: (stravaAthleteId: string) => Promise<string | null>
+  deleteStravaAthleteMapping: (stravaAthleteId: string) => Promise<boolean>
   deleteStravaAthleteMappingByUsername: (username: string) => Promise<boolean>
   /**
    * Map a Garmin user id to an Aurboda user, dropping any other mapping of that user.
@@ -301,7 +303,7 @@ const ensureDatabase = async (): Promise<boolean> => {
   }
 }
 
-const CREATE_SERVER_SETTINGS_TABLE = `
+export const CREATE_SERVER_SETTINGS_TABLE = `
   CREATE TABLE IF NOT EXISTS server_settings (
     key VARCHAR(100) PRIMARY KEY,
     value JSONB NOT NULL,
@@ -598,6 +600,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
     ...createSharedNutrientRecommendationsApi(getClient),
     ...createUserAccountsApi(getClient),
     ...createUserUsageApi(getClient),
+    ...createWebPushKeysApi(getClient),
 
     isAdmin: async (username: string): Promise<boolean> => {
       const client = await getClient()
@@ -678,7 +681,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       )
     },
 
-    upsertStravaAthleteMapping: async (stravaAthleteId: number, username: string): Promise<void> => {
+    upsertStravaAthleteMapping: async (stravaAthleteId: string, username: string): Promise<void> => {
       const client = await getClient()
       await client.query(
         `INSERT INTO strava_athlete_mappings (strava_athlete_id, username, updated_at)
@@ -688,7 +691,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       )
     },
 
-    getUsernameByStravaAthleteId: async (stravaAthleteId: number): Promise<string | null> => {
+    getUsernameByStravaAthleteId: async (stravaAthleteId: string): Promise<string | null> => {
       const client = await getClient()
       const result = await client.query(
         'SELECT username FROM strava_athlete_mappings WHERE strava_athlete_id = $1',
@@ -698,7 +701,7 @@ export const createCentralDb = (deps: CentralDbDeps): CentralDb => {
       return result.rows[0].username
     },
 
-    deleteStravaAthleteMapping: async (stravaAthleteId: number): Promise<boolean> => {
+    deleteStravaAthleteMapping: async (stravaAthleteId: string): Promise<boolean> => {
       const client = await getClient()
       const result = await client.query('DELETE FROM strava_athlete_mappings WHERE strava_athlete_id = $1', [
         stravaAthleteId,

@@ -243,19 +243,35 @@ private fun effectivePort(scheme: String, port: Int): Int = when {
     else -> -1
 }
 
+/** The app permission each capture resource a page may ask for needs; anything else is never granted. */
+internal val CAPTURE_PERMISSIONS: Map<String, String> = mapOf(
+    PermissionRequest.RESOURCE_VIDEO_CAPTURE to Manifest.permission.CAMERA,
+    PermissionRequest.RESOURCE_AUDIO_CAPTURE to Manifest.permission.RECORD_AUDIO,
+)
+
+/** The capture resources among [resources] that can be granted, each with the app permission it needs. */
+internal fun captureResources(resources: Array<String>): Map<String, String> =
+    resources.mapNotNull { resource -> CAPTURE_PERMISSIONS[resource]?.let { resource to it } }.toMap()
+
 /**
- * Lets the embedded page on [baseUrl]'s origin use the camera (barcode scanning).
- * Only video capture is ever granted, and only to that origin; the app's camera
- * permission is asked for on first use. A request still pending when the screen
- * leaves, or superseded by a newer one, is denied.
+ * Lets the embedded page on [baseUrl]'s origin use the camera (barcode scanning) and the microphone
+ * (journal recordings). Only video and audio capture are ever granted, and only to that origin; the
+ * app's camera or microphone permission is asked for on first use. A request still pending when the
+ * screen leaves, or superseded by a newer one, is denied.
  */
 @Composable
 fun rememberWebCameraPermission(baseUrl: String): WebCameraPermission {
     val context = LocalContext.current
     val pending = remember { AtomicReference<PermissionRequest?>(null) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    fun allowed(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    fun settle(request: PermissionRequest) {
+        val granted = captureResources(request.resources).filterValues { allowed(it) }.keys
+        if (granted.isEmpty()) request.deny() else request.grant(granted.toTypedArray())
+    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         val request = pending.getAndSet(null) ?: return@rememberLauncherForActivityResult
-        if (granted) request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) else request.deny()
+        settle(request)
     }
     DisposableEffect(Unit) {
         onDispose { pending.getAndSet(null)?.deny() }
@@ -263,16 +279,15 @@ fun rememberWebCameraPermission(baseUrl: String): WebCameraPermission {
     return remember(launcher, baseUrl) {
         WebCameraPermission(
             onRequest = { request ->
-                val wantsCamera = PermissionRequest.RESOURCE_VIDEO_CAPTURE in request.resources
-                val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                    PackageManager.PERMISSION_GRANTED
+                val wanted = captureResources(request.resources)
+                val missing = wanted.values.filterNot { allowed(it) }.distinct()
                 when {
-                    !wantsCamera || !isSameOrigin(request.origin, baseUrl) -> request.deny()
-                    hasCamera -> request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                    wanted.isEmpty() || !isSameOrigin(request.origin, baseUrl) -> request.deny()
+                    missing.isEmpty() -> settle(request)
                     else -> {
                         pending.getAndSet(request)?.deny()
                         try {
-                            launcher.launch(Manifest.permission.CAMERA)
+                            launcher.launch(missing.toTypedArray())
                         } catch (e: ActivityNotFoundException) {
                             pending.getAndSet(null)?.deny()
                         }

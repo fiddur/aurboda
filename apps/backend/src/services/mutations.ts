@@ -15,6 +15,8 @@ import type { ActivityNotifier } from './deduction-queue.ts'
 import { blendGroupData, mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
+  addActivityPeople,
+  setActivityPeople,
   checkActivityConflict,
   deleteActivity as dbDeleteActivity,
   fetchCategoryMap,
@@ -44,6 +46,7 @@ import {
   isValidMetric,
   metricToHealthConnectType,
 } from '../schema.ts'
+import { activityPeopleError } from './activity-people.ts'
 import {
   catalogVariantHint,
   getCatalogActivityType,
@@ -86,6 +89,9 @@ export interface AddActivityInput {
   data?: Record<string, unknown>
   external_id?: string
   merge_span?: number
+  source?: DataSource
+  /** IDs of live people; added to the activity's people. */
+  people?: string[]
 }
 
 export interface AddActivityResult {
@@ -137,6 +143,8 @@ export interface UpdateActivityInput {
    * to `[id]` (single-target case).
    */
   override_target_ids?: string[]
+  /** Replaces the activity's people; [] clears them. */
+  people?: string[]
 }
 
 export interface UpdateActivityResult {
@@ -349,6 +357,18 @@ const resolveWriteTarget = async (user: string, activityType: string): Promise<W
   return entry && { adopt: true, schema: entry.data_schema }
 }
 
+/**
+ * The data schema an activity of `activityType` is written against, without adopting a catalogue
+ * type; undefined when there is no such type for the user nor in the catalogue.
+ */
+export const activityWriteSchema = async (
+  user: string,
+  activityType: string,
+): Promise<{ schema: DataSchemaDefinition | undefined } | undefined> => {
+  const target = await resolveWriteTarget(user, activityType)
+  return target && { schema: target.schema }
+}
+
 const adoptWriteTarget = async (user: string, activityType: string, target: WriteTarget): Promise<boolean> =>
   !target.adopt || ensureActivityType(user, activityType)
 
@@ -377,6 +397,8 @@ export async function addActivity(
   input: AddActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<AddActivityResult> {
+  const peopleError = await activityPeopleError(user, input.people)
+  if (peopleError) return { error: peopleError, success: false }
   const writeTarget = await resolveWriteTarget(user, input.activity_type)
   if (!writeTarget) return { error: unknownActivityTypeError(input.activity_type), success: false }
 
@@ -409,6 +431,7 @@ export async function addActivity(
     if (existing?.id) {
       const newEndTime = input.end_time ?? input.start_time
       await dbUpdateActivity(user, existing.id, { end_time: newEndTime })
+      if (input.people?.length) await addActivityPeople(user, existing.id, input.people)
       await storeItemValueMappings(user, mappings)
       await markWorkoutHoursDirty(user, [existing])
 
@@ -429,8 +452,9 @@ export async function addActivity(
     activity_type: input.activity_type,
     data,
     end_time: input.end_time,
+    ...(input.external_id ? { external_id: input.external_id } : {}),
     id: randomUUID(),
-    source: 'aurboda',
+    source: input.source ?? 'aurboda',
     start_time: input.start_time,
     title: input.title,
   })
@@ -442,6 +466,7 @@ export async function addActivity(
     }
   }
   await storeItemValueMappings(user, mappings)
+  if (input.people?.length) await addActivityPeople(user, id, input.people)
 
   // Persist user-typed notes as a row in the notes table. Source is left
   // NULL so it joins the "user-authored" set used by replaceUserNotes and
@@ -455,7 +480,11 @@ export async function addActivity(
 
   // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
   try {
-    if (isHealthConnectSyncableActivity(input.activity_type) && !isInProgress(data)) {
+    if (
+      (input.source ?? 'aurboda') === 'aurboda' &&
+      isHealthConnectSyncableActivity(input.activity_type) &&
+      !isInProgress(data)
+    ) {
       const hcRecordType =
         activityTypeToHealthConnectType[input.activity_type as keyof typeof activityTypeToHealthConnectType]
       if (hcRecordType) {
@@ -569,6 +598,15 @@ const mergedTargets = async (
   return { merged, missing: targetIds.filter((tid) => !covered.has(tid)) }
 }
 
+/** A people-only edit links the people without writing the activity, so it never creates an override. */
+const changesOnlyPeople = (input: UpdateActivityInput): boolean =>
+  input.activity_type === undefined &&
+  input.start_time === undefined &&
+  input.end_time === undefined &&
+  input.title === undefined &&
+  input.notes === undefined &&
+  input.data === undefined
+
 /**
  * For activities owned by aurboda (source='aurboda'), the row is updated in
  * place. For synced activities (garmin, health_connect, strava, oura, …), the
@@ -598,6 +636,26 @@ export async function updateActivity(
   const existingOverride = isSyncedTarget ? await getOverrideForActivity(user, target.id!) : null
   const editRow = existingOverride ?? target
   const createsOverride = isSyncedTarget && !existingOverride
+
+  const peopleError = await activityPeopleError(user, input.people)
+  if (peopleError) return { error: peopleError, id, success: false }
+  if (input.people !== undefined && changesOnlyPeople(input)) {
+    const groupIds = [target.id!, ...(existingOverride?.override_target_ids ?? [])]
+    await setActivityPeople(
+      user,
+      editRow.id!,
+      input.people,
+      groupIds.filter((rowId) => rowId !== editRow.id),
+    )
+    return {
+      activity_type: editRow.activity_type,
+      end_time: editRow.end_time?.toISOString(),
+      id: editRow.id,
+      start_time: editRow.start_time.toISOString(),
+      success: true,
+      title: editRow.title,
+    }
+  }
 
   // Multi-target (#735): the caller may pass `override_target_ids` from a
   // merged-view edit so the new override claims all the merged source rows
@@ -742,6 +800,15 @@ export async function updateActivity(
     }
   }
   await storeItemValueMappings(user, keyed.data.mappings)
+  if (input.people !== undefined) {
+    const groupIds = [target.id!, ...(updated.override_target_ids ?? [])]
+    await setActivityPeople(
+      user,
+      updated.id!,
+      input.people,
+      groupIds.filter((rowId) => rowId !== updated.id),
+    )
+  }
 
   // Route a body-level `notes` update into the notes table. Replace semantics:
   // wipe existing user-authored notes (source IS NULL) on this row, then insert
@@ -1003,5 +1070,25 @@ export { deleteProductivity, restoreActivity, restoreProductivity } from './rest
 export type { RestoreResult } from './restore.ts'
 
 // Re-export notes functions for backward compatibility
-export { addNote, deleteNoteById, getNotesForEntity, getNotesInRange, updateNote } from './notes.ts'
-export type { AddNoteInput, NoteData, NoteReplyData, NoteResult, UpdateNoteInput } from './notes.ts'
+export {
+  addNote,
+  deleteNoteById,
+  getNoteForUser,
+  getNoteRevisionsById,
+  getNotesForEntity,
+  getNotesInRange,
+  listDeletedNotes,
+  restoreNoteById,
+  searchNotesForUser,
+  updateNote,
+} from './notes.ts'
+export type {
+  AddNoteInput,
+  NoteData,
+  NoteReplyData,
+  NoteResult,
+  NoteRevisionData,
+  NotesSearchInput,
+  NotesSearchResult,
+  UpdateNoteInput,
+} from './notes.ts'

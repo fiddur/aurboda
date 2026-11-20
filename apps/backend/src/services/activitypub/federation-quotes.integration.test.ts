@@ -277,6 +277,22 @@ describe('Quote posts (FEP-044f)', () => {
       expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
     })
 
+    test('still drops the approvals when an earlier step fails, and the failure surfaces', async () => {
+      const user = getTestUser()
+      const post = await ownPost(user)
+      const { ctx } = inboxCtx(user)
+      await handleInboundQuoteRequest(ctx, quoteRequest(noteUrl(user, post.id)))
+      const failing = {
+        deleteCopy: async () => {
+          throw new Error('copy delete failed')
+        },
+      }
+      await expect(handleInboundDelete(ctx, del(ALICE, ALICE), ORIGIN, undefined, failing)).rejects.toThrow(
+        'copy delete failed',
+      )
+      expect(await listFeedQuoteAuthorizations(user, post.id)).toHaveLength(0)
+    })
+
     test('of another actor leaves an actor’s approvals alone', async () => {
       const user = getTestUser()
       const post = await ownPost(user)

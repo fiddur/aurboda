@@ -191,7 +191,14 @@ export const createChallengesRouter = (
     authMiddleware,
     validateQuery(challengeThreadQuerySchema),
     async (req, res) => {
-      const result = await readChallengeThread(thread, req.user!, req.query.challenge_url, req.query.cursor)
+      const user = req.user!
+      const result = await readChallengeThread(
+        thread,
+        user,
+        req.query.challenge_url,
+        req.query.cursor,
+        await isAdmin(user),
+      )
       if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
       const { ok: _ok, ...view } = result
       res.setHeader('Cache-Control', 'no-store')

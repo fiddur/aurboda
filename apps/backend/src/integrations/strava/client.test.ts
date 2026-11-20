@@ -9,7 +9,7 @@ import {
   signOAuthState,
   verifyOAuthState,
 } from '../../services/signed-oauth-state.ts'
-import { stravaClient } from './client.ts'
+import { stravaClient, stravaResponseTransform } from './client.ts'
 
 vi.mock('axios')
 vi.mock('../../db/index.ts', () => ({
@@ -174,12 +174,16 @@ describe('stravaClient OAuth state', () => {
     expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({ ok: true })
 
     expect(initializeSchema).toHaveBeenCalledWith('alice')
-    expect(mockedAxios.post).toHaveBeenCalledWith('https://www.strava.com/oauth/token', {
-      client_id: 'client-id',
-      client_secret: 'client-secret',
-      code: 'the-code',
-      grant_type: 'authorization_code',
-    })
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      'https://www.strava.com/oauth/token',
+      {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        code: 'the-code',
+        grant_type: 'authorization_code',
+      },
+      { transformResponse: stravaResponseTransform },
+    )
     expect(upsertOAuthToken).toHaveBeenCalledWith('alice', {
       access_token: 'access',
       expires_at: new Date(1_795_000_000 * 1000),
@@ -187,7 +191,69 @@ describe('stravaClient OAuth state', () => {
       refresh_token: 'refresh',
       scopes: ['activity:read_all', 'profile:read_all', 'read'],
     })
-    expect(onUserAuthenticated).toHaveBeenCalledWith(4242, 'alice')
+    expect(onUserAuthenticated).toHaveBeenCalledWith('4242', 'alice')
+  })
+
+  test.each([
+    [
+      'prefers id_str over a rounded id',
+      { id: 9007199254740992, id_str: '9007199254740993' },
+      '9007199254740993',
+    ],
+    [
+      'passes a losslessly parsed string id through exactly',
+      { id: '9223372036854775807' },
+      '9223372036854775807',
+    ],
+  ])('complete %s for the athlete mapping', async (_, athlete, expected) => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', athlete, expires_at: 1_795_000_000, refresh_token: 'refresh' },
+    })
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({ ok: true })
+    expect(onUserAuthenticated).toHaveBeenCalledWith(expected, 'alice')
+  })
+
+  test.each([
+    ['no athlete', undefined],
+    ['an athlete with no usable id', { id: 9007199254740992 }],
+  ])('complete answers auth_failed for %s, storing no token', async (_, athlete) => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', athlete, expires_at: 1_795_000_000, refresh_token: 'refresh' },
+    })
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+    expect(upsertOAuthToken).not.toHaveBeenCalled()
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+    expect(auditWarn).toHaveBeenCalledWith(
+      'alice',
+      'auth',
+      'Strava OAuth connection failed',
+      expect.anything(),
+    )
+  })
+
+  test('complete stores the token with no athlete when nothing links the athlete', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'access', expires_at: 1_795_000_000, refresh_token: 'refresh' },
+    })
+    const unlinked = stravaClient(
+      async () => ({ clientId: 'client-id', clientSecret: 'client-secret' }),
+      'https://example.com/api',
+      { auditWarn, now: () => now },
+    )
+
+    expect(await unlinked.complete('alice', 'the-code', stateFor('alice'))).toEqual({ ok: true })
+    expect(upsertOAuthToken).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ access_token: 'access' }),
+    )
   })
 
   test('complete answers auth_failed when the exchange fails, storing nothing and auditing no secret', async () => {
@@ -210,5 +276,73 @@ describe('stravaClient OAuth state', () => {
     const audited = JSON.stringify(auditWarn.mock.calls)
     expect(audited).not.toContain('the-code')
     expect(audited).not.toContain('client-secret')
+  })
+})
+
+describe('stravaResponseTransform', () => {
+  test('keeps an id above 2^53 exact', () => {
+    expect(stravaResponseTransform('{"id":9007199254740993,"athlete":{"id":42}}')).toEqual({
+      athlete: { id: 42 },
+      id: '9007199254740993',
+    })
+  })
+
+  test('returns a body that is not JSON as it is', () => {
+    expect(stravaResponseTransform('<html>Bad Gateway</html>')).toBe('<html>Bad Gateway</html>')
+  })
+
+  test('passes an empty string and non-strings through', () => {
+    expect(stravaResponseTransform('')).toBe('')
+    const parsed = { id: 1 }
+    expect(stravaResponseTransform(parsed)).toBe(parsed)
+  })
+})
+
+describe('stravaClient requests', () => {
+  const client = stravaClient(
+    async () => ({ clientId: 'client-id', clientSecret: 'client-secret' }),
+    'https://example.com/api',
+  )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedAxios.get = vi.fn().mockResolvedValue({ data: {}, headers: {} })
+  })
+
+  test('getActivity parses the response losslessly and puts the exact id in the path', async () => {
+    await client.getActivity('token', '9007199254740993')
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://www.strava.com/api/v3/activities/9007199254740993',
+      expect.objectContaining({ transformResponse: stravaResponseTransform }),
+    )
+  })
+
+  test('listActivities parses the response losslessly', async () => {
+    await client.listActivities('token', {})
+
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      'https://www.strava.com/api/v3/athlete/activities?per_page=200',
+      expect.objectContaining({ transformResponse: stravaResponseTransform }),
+    )
+  })
+
+  test('the token refresh parses the response losslessly', async () => {
+    vi.mocked(getOAuthToken).mockResolvedValue({
+      access_token: 'old',
+      expires_at: new Date('2000-01-01T00:00:00Z'),
+      provider: 'strava',
+      refresh_token: 'refresh',
+    } as Awaited<ReturnType<typeof getOAuthToken>>)
+    mockedAxios.post = vi.fn().mockResolvedValue({
+      data: { access_token: 'new', expires_at: 1_795_000_000, refresh_token: 'refresh2' },
+    })
+
+    expect(await client.getAccessToken('alice')).toBe('new')
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      'https://www.strava.com/oauth/token',
+      expect.objectContaining({ grant_type: 'refresh_token' }),
+      { transformResponse: stravaResponseTransform },
+    )
   })
 })

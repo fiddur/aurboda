@@ -14,10 +14,12 @@ export const NotesSection = ({
   entityType,
   entityId,
   allEntityIds,
+  title = 'Comments',
 }: {
   entityType: EntityType
   entityId: string
   allEntityIds?: string[]
+  title?: string
 }) => {
   const queryClient = useQueryClient()
 
@@ -67,7 +69,7 @@ export const NotesSection = ({
 
   return (
     <div class="notes-section">
-      <h3>Comments</h3>
+      <h3>{title}</h3>
 
       <CommentThread
         comments={commentsQuery.data ?? []}

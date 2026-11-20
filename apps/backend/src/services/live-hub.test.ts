@@ -1,18 +1,17 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { createTimelineHub, type TimelineHubDeps } from './timeline-hub.ts'
+import { createLiveHub, type LiveEventKind, type LiveHubDeps } from './live-hub.ts'
 
-/**
- * A fake PG-notify layer: records opens/emits and lets the test fire a ping by
- * invoking the stored `onNotify`, so the hub's fan-out + per-user refcounting can
- * be exercised without a database.
- */
 const fakeDeps = () => {
-  const opened: { user: string; onNotify: () => void; teardown: ReturnType<typeof vi.fn> }[] = []
-  const emits: string[] = []
-  const deps: TimelineHubDeps = {
-    emit: async (user) => {
-      emits.push(user)
+  const opened: {
+    user: string
+    onNotify: (kind: LiveEventKind) => void
+    teardown: ReturnType<typeof vi.fn>
+  }[] = []
+  const emits: [string, LiveEventKind][] = []
+  const deps: LiveHubDeps = {
+    emit: async (user, kind) => {
+      emits.push([user, kind])
     },
     openChannel: async (user, onNotify) => {
       const teardown = vi.fn(async () => {})
@@ -23,10 +22,10 @@ const fakeDeps = () => {
   return { deps, emits, opened }
 }
 
-describe('createTimelineHub', () => {
+describe('createLiveHub', () => {
   test('opens one channel per user and fans a ping out to all its listeners', async () => {
     const { deps, opened } = fakeDeps()
-    const hub = createTimelineHub(deps)
+    const hub = createLiveHub(deps)
     const a = vi.fn()
     const b = vi.fn()
 
@@ -37,14 +36,14 @@ describe('createTimelineHub', () => {
     expect(opened).toHaveLength(1)
     expect(opened[0].user).toBe('alice')
 
-    opened[0].onNotify()
-    expect(a).toHaveBeenCalledTimes(1)
-    expect(b).toHaveBeenCalledTimes(1)
+    opened[0].onNotify('timeline')
+    expect(a).toHaveBeenCalledWith('timeline')
+    expect(b).toHaveBeenCalledWith('timeline')
   })
 
   test('isolates users — a ping for one does not reach another', async () => {
     const { deps, opened } = fakeDeps()
-    const hub = createTimelineHub(deps)
+    const hub = createLiveHub(deps)
     const alice = vi.fn()
     const bob = vi.fn()
 
@@ -53,14 +52,14 @@ describe('createTimelineHub', () => {
     expect(opened).toHaveLength(2)
     expect(opened[0].user).toBe('alice')
 
-    opened[0].onNotify()
+    opened[0].onNotify('timeline')
     expect(alice).toHaveBeenCalledTimes(1)
     expect(bob).not.toHaveBeenCalled()
   })
 
   test('tears the channel down only when the last listener unsubscribes', async () => {
     const { deps, opened } = fakeDeps()
-    const hub = createTimelineHub(deps)
+    const hub = createLiveHub(deps)
     const a = vi.fn()
     const b = vi.fn()
 
@@ -71,7 +70,7 @@ describe('createTimelineHub', () => {
     await offA()
     expect(teardown).not.toHaveBeenCalled()
     // A remaining listener still receives pings.
-    opened[0].onNotify()
+    opened[0].onNotify('timeline')
     expect(b).toHaveBeenCalledTimes(1)
 
     await offB()
@@ -80,7 +79,7 @@ describe('createTimelineHub', () => {
 
   test('re-opens a fresh channel after all listeners have left', async () => {
     const { deps, opened } = fakeDeps()
-    const hub = createTimelineHub(deps)
+    const hub = createLiveHub(deps)
 
     const off = await hub.subscribe('alice', vi.fn())
     await off()
@@ -89,17 +88,37 @@ describe('createTimelineHub', () => {
     expect(opened).toHaveLength(2)
   })
 
-  test('notify emits a ping for the user', async () => {
+  test('notify emits a ping of the given kind for the user', async () => {
     const { deps, emits } = fakeDeps()
-    const hub = createTimelineHub(deps)
-    await hub.notify('alice')
-    expect(emits).toEqual(['alice'])
+    const hub = createLiveHub(deps)
+    await hub.notify('alice', 'timeline')
+    await hub.notify('alice', 'notification')
+    expect(emits).toEqual([
+      ['alice', 'timeline'],
+      ['alice', 'notification'],
+    ])
+  })
+
+  test('each listener gets the kind of every ping on the shared channel', async () => {
+    const { deps, opened } = fakeDeps()
+    const hub = createLiveHub(deps)
+    const a = vi.fn()
+    const b = vi.fn()
+    await hub.subscribe('alice', a)
+    await hub.subscribe('alice', b)
+
+    opened[0].onNotify('timeline')
+    opened[0].onNotify('notification')
+
+    expect(opened).toHaveLength(1)
+    expect(a.mock.calls).toEqual([['timeline'], ['notification']])
+    expect(b.mock.calls).toEqual([['timeline'], ['notification']])
   })
 
   test('a failed channel open surfaces to the subscriber and frees the slot for retry', async () => {
     const opened: string[] = []
     let failNext = true
-    const deps: TimelineHubDeps = {
+    const deps: LiveHubDeps = {
       emit: async () => {},
       openChannel: async (user) => {
         opened.push(user)
@@ -110,7 +129,7 @@ describe('createTimelineHub', () => {
         return async () => {}
       },
     }
-    const hub = createTimelineHub(deps)
+    const hub = createLiveHub(deps)
 
     await expect(hub.subscribe('alice', vi.fn())).rejects.toThrow('LISTEN failed')
     // The slot was freed, so a retry opens a fresh channel instead of reusing the broken one.

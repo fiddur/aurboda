@@ -32,6 +32,7 @@ import type { ReactionActions } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
 import type { FollowActions } from '../services/following.ts'
 import type { InvitationAuth } from '../services/invitation.ts'
+import type { LiveHub } from '../services/live-hub.ts'
 import type { NamedLocationsChanged } from '../services/locations.ts'
 import type { LoginMethodCounter } from '../services/login-methods.ts'
 import type { RunNotificationAction } from '../services/notification-actions.ts'
@@ -44,8 +45,8 @@ import type { SyncProvider } from '../services/queries/index.ts'
 import type { TokenBucketLimiter } from '../services/rate-limit.ts'
 import type { RelayActions } from '../services/relays.ts'
 import type { HrSettingsChanged, ProfileChanged } from '../services/settings.ts'
-import type { TimelineHub } from '../services/timeline-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
+import type { WebPush } from '../services/web-push.ts'
 import type { WebAuthnService } from '../services/webauthn.ts'
 import type { AnyMiddleware } from '../typed-router.ts'
 
@@ -74,9 +75,11 @@ import { createChallengeDataRouter } from '../routes/challenge-data-router.ts'
 import { createChallengeQuantpubRouter } from '../routes/challenge-quantpub-router.ts'
 import { createChallengesRouter } from '../routes/challenges-router.ts'
 import { createChartDataRouter } from '../routes/chart-data-router.ts'
+import { createCheckInsRouter } from '../routes/check-ins-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
+import { createEventsRouter } from '../routes/events-router.ts'
 import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
 import { createExportRouter } from '../routes/export-router.ts'
 import { createFeedFollowedTagsRouter } from '../routes/feed-followed-tags-router.ts'
@@ -95,12 +98,15 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
 import { createMetricCatalogRouter } from '../routes/metric-catalog-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
+import { createNoteAttachmentsRouter } from '../routes/note-attachments-router.ts'
+import { createNoteTemplatesRouter } from '../routes/note-templates-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
 import { createOEmbedRouter } from '../routes/oembed-router.ts'
 import { createOgImageRouter } from '../routes/og-image-router.ts'
 import { createOidcRouter } from '../routes/oidc-router.ts'
+import { createPeopleRouter } from '../routes/people-router.ts'
 import { createProductivityRouter } from '../routes/productivity-router.ts'
 import { createProfileRouter } from '../routes/profile-router.ts'
 import { createPublicAvatarRouter } from '../routes/public-avatar-router.ts'
@@ -151,6 +157,7 @@ import { resolveExerciseTrendSeries } from '../services/feed-structured-exercise
 import { resolveFeedActivity } from '../services/feed.ts'
 import { readOfficialFeedSetting } from '../services/official-feed.ts'
 import { createOgImageRenderer } from '../services/og-image.ts'
+import { defaultPeopleDeps } from '../services/people.ts'
 import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-chart.ts'
 import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
@@ -209,7 +216,8 @@ interface RestRoutesDeps {
   postUpdateResender: PostUpdateResender
   /** Outbound like ⭐ / boost 🔄 toggles for the home timeline. */
   reactionActions: ReactionActions
-  timelineHub: TimelineHub
+  /** Fans a user's live timeline and notification pings out to their open event streams. */
+  liveHub: LiveHub
   retroEnrichTimeline: RetroEnrichTrigger
   /** Fire-and-forget: federate an `Update{Person}` after an avatar or display-name change. */
   onProfileChanged: ProfileChanged
@@ -219,6 +227,8 @@ interface RestRoutesDeps {
   skipAutoshare: SkipAutoshare
   /** Runs a notification's action server-side. */
   runNotificationAction: RunNotificationAction
+  /** Browser push: the VAPID key, the subscriptions and the test push. */
+  webPush: WebPush
   /** Fire-and-forget: recompute activity features after HR zones, birth date or maf_hr change. */
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
@@ -274,6 +284,7 @@ export const mountRestRouters = ({
   autosharePreviewDeps,
   skipAutoshare,
   runNotificationAction,
+  webPush,
   dataExport,
   feedDeliver,
   threadFederation,
@@ -290,7 +301,7 @@ export const mountRestRouters = ({
   onHrSettingsChanged,
   onNamedLocationsChanged,
   retroEnrichTimeline,
-  timelineHub,
+  liveHub,
   ouraWebhookManager,
   auth,
   webAuthn,
@@ -302,15 +313,21 @@ export const mountRestRouters = ({
   httpd.use(createMetricsRouter(authMiddleware, syncProvider))
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
+  httpd.use('/events', createEventsRouter(authMiddleware, liveHub))
   httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use('/notes', createNoteAttachmentsRouter(authMiddleware))
+  httpd.use('/note-templates', createNoteTemplatesRouter(authMiddleware))
   httpd.use(
     '/notifications',
     createNotificationsRouter(authMiddleware, {
       isAdmin: centralDb.isAdmin,
       runAction: runNotificationAction,
+      webPush,
     }),
   )
   httpd.use('/reminders', createRemindersRouter(authMiddleware))
+  httpd.use(createCheckInsRouter(authMiddleware))
+  httpd.use('/people', createPeopleRouter(authMiddleware, defaultPeopleDeps(followActions.resolve)))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))
   httpd.use('/food-items', createFoodItemsRouter(authMiddleware, centralDb))
@@ -380,7 +397,7 @@ export const mountRestRouters = ({
     createFeedRouter(
       authMiddleware,
       feedDeliver,
-      timelineHub,
+      liveHub,
       apiBaseUrl,
       retroEnrichTimeline,
       webHost,

@@ -209,7 +209,7 @@ const selectorIncomplete = (s: CorrelationSelector): boolean =>
       ? false
       : s.kind === 'sensitivity'
         ? !s.flag.trim()
-        : !s.pattern.trim()
+        : s.kind === 'people' || !s.pattern.trim()
 
 export interface ArticleEditorState {
   title: string

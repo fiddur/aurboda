@@ -1042,6 +1042,28 @@ describe('resolveDashboardData: day_overview', () => {
     ])
   })
 
+  test('never shows a visitor who an activity was with', async () => {
+    vi.mocked(queryMetricsBucketed).mockResolvedValue({
+      bucket: '5m',
+      buckets: [],
+      end: now.toISOString(),
+      start: now.toISOString(),
+    } as Awaited<ReturnType<typeof queryMetricsBucketed>>)
+    vi.mocked(queryActivities).mockResolvedValue([
+      {
+        activity_type: 'running',
+        people: [{ id: '11111111-1111-4111-8111-111111111111', name: 'Secret Friend' }],
+        start_time: '2026-03-15T07:00:00.000Z',
+      },
+    ] as Awaited<ReturnType<typeof queryActivities>>)
+
+    const data = await resolveDashboardData('alice', board(dayWidget({ visible_to_visitors: true })), { now })
+
+    expect(data['day']).toMatchObject({ data: { activities: [{ label: 'Running' }] } })
+    expect(JSON.stringify(data)).not.toContain('Secret Friend')
+    expect(vi.mocked(queryActivities).mock.calls[0]).toHaveLength(4)
+  })
+
   test('is null in a period', async () => {
     const data = await resolveDashboardData('alice', board(dayWidget({ visible_to_visitors: true })), {
       window: { end: new Date('2026-03-01T00:00:00Z'), start: new Date('2026-02-01T00:00:00Z') },

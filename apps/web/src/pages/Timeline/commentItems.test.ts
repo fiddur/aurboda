@@ -56,6 +56,14 @@ describe('buildCommentItems', () => {
     expect(buildCommentItems([])).toEqual([])
   })
 
+  it('skips a day entry, which has a date and no start_time', () => {
+    const day = note({ date: '2026-09-13', entity_type: 'day', id: '22222222-2222-2222-2222-222222222222' })
+    delete day.start_time
+    expect(buildCommentItems([day, note()]).map((item) => item.comment_id)).toEqual([
+      '11111111-1111-1111-1111-111111111111',
+    ])
+  })
+
   it('maps a thread root anchored to a moment', () => {
     const [item] = buildCommentItems([note()])
     expect(item?.column).toBe('Comments')
@@ -147,9 +155,11 @@ describe('buildCommentGroupItem', () => {
 describe('entityHref', () => {
   const expected: Record<EntityType, string | undefined> = {
     activity: '/detail/activity/x%2Fy',
+    day: undefined,
     meal: '/meals/x%2Fy',
     metric: '/detail/metric/x%2Fy',
     note: undefined,
+    person: '/people/x%2Fy',
     productivity: '/detail/productivity/x%2Fy',
     report: '/reports/x%2Fy',
     time: undefined,

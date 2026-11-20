@@ -167,6 +167,7 @@ export const dataSourceSchema = z
     'owntracks',
     'strava',
     'calendar',
+    'check_in',
     'manual',
     'lastfm',
     'lastfm-auto',

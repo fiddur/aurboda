@@ -1,5 +1,6 @@
 import {
   type ActivityImpactMatch,
+  type ActivityPerson,
   type ActivityImpactType,
   type ActivityTypeDefinition,
   DEFAULT_IMPACT_DURATION_BUCKETS,
@@ -10,6 +11,7 @@ import {
   type ImpactFilter,
   type ImpactGroup,
   IMPACT_FIXED_DIMENSIONS,
+  IMPACT_NO_VALUE_KEY,
   MAX_IMPACT_DIMENSION_GROUPS,
   MAX_IMPACT_GROUPS,
   type WindowEffect,
@@ -30,6 +32,7 @@ import {
   getProductivity,
   listSensitivityFlags,
 } from '../../db/index.ts'
+import { activityRowIds, peopleOfActivities } from '../activity-people.ts'
 import {
   flaggedExclusion,
   loadFlaggedWindows,
@@ -166,6 +169,7 @@ const findOccurrences = async (
   ancestors: TypeAncestors,
   activities?: MergedActivity[],
   meals?: MealOccurrences,
+  people?: Map<MergedActivity, ActivityPerson[]>,
 ): Promise<Occurrence[]> => {
   if (activityType === 'meal_sensitivity') return meals?.flagged ?? []
   const exact = match === 'exact'
@@ -197,6 +201,7 @@ const findOccurrences = async (
   return allActivities.filter(matches).map((act) => ({
     ...activityInterval(act),
     ...(activityType === 'activity_type' ? { data: act.data } : {}),
+    ...(people?.has(act) ? { people: people.get(act) } : {}),
     type: act.activity_type,
   }))
 }
@@ -213,15 +218,17 @@ export const listedDimensions = (
 ): string[] => {
   const meal = activityType === 'meal_sensitivity'
   const fixed = IMPACT_FIXED_DIMENSIONS.filter(
-    (d) => !(meal && d === 'duration') && (d !== 'type' || isActivityKind(activityType)),
+    (d) => !(meal && d === 'duration') && ((d !== 'type' && d !== 'people') || isActivityKind(activityType)),
   )
   return meal ? fixed : [...fixed, ...categoricalFieldDimensions(definition)]
 }
 
 const SPLIT_ONLY_WHEN_SEVERAL = new Set(['type', 'year'])
 
-const worthListing = (listing: DimensionListing): boolean =>
-  !SPLIT_ONLY_WHEN_SEVERAL.has(listing.dimension) || listing.groups.length > 1
+const worthListing = (listing: DimensionListing): boolean => {
+  if (listing.dimension === 'people') return listing.groups.some((g) => g.key !== IMPACT_NO_VALUE_KEY)
+  return !SPLIT_ONLY_WHEN_SEVERAL.has(listing.dimension) || listing.groups.length > 1
+}
 
 interface SliceSources {
   /** Activities starting in the analysed period, when the analysis reads activities. */
@@ -230,6 +237,8 @@ interface SliceSources {
   definition?: ActivityTypeDefinition
   listed: string[]
   meals?: MealSource
+  /** Who each analysed activity was with, when the people dimension is asked for. */
+  people?: Map<MergedActivity, ActivityPerson[]>
   sleeps: Interval[]
   typeLabels: Map<string, string>
   tz: string
@@ -283,10 +292,20 @@ const loadSliceSources = async (
     definition,
     listed: listedDimensions(activityType, definition),
     meals,
+    people:
+      activities && wantsDimension(slicing, 'people') ? await peopleByActivity(user, activities) : undefined,
     sleeps,
     typeLabels: new Map(definitions.map((d) => [d.name, d.display_name])),
     tz,
   }
+}
+
+const peopleByActivity = async (
+  user: string,
+  activities: MergedActivity[],
+): Promise<Map<MergedActivity, ActivityPerson[]>> => {
+  const people = await peopleOfActivities(user, activities, activityRowIds)
+  return new Map(activities.flatMap((act, i) => (people[i] ? [[act, people[i]] as const] : [])))
 }
 
 interface Analysis {
@@ -465,6 +484,7 @@ export async function getActivityImpact(
       sources.ancestors,
       sources.activities,
       sources.meals,
+      sources.people,
     ),
     (o) => o.start,
     flagged,

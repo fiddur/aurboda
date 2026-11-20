@@ -24,6 +24,8 @@ export interface CommentThreadProps {
   onEditTimes?: (id: string, start: Date, end?: Date) => void
   onDelete: (id: string) => void
   pending?: boolean
+  /** Show only each root's replies and the reply box: the root itself is edited elsewhere (the journal editor). */
+  repliesOnly?: boolean
 }
 
 const formatWhen = (value: string | undefined): string =>
@@ -236,27 +238,33 @@ const ThreadRoot = ({
   onEditTimes,
   onDelete,
   pending,
+  repliesOnly,
 }: {
   root: Note
-} & Pick<CommentThreadProps, 'onAddReply' | 'onEdit' | 'onEditTimes' | 'onDelete' | 'pending'>) => {
+} & Pick<
+  CommentThreadProps,
+  'onAddReply' | 'onEdit' | 'onEditTimes' | 'onDelete' | 'pending' | 'repliesOnly'
+>) => {
   const replies = root.replies ?? []
 
   return (
     <div class="comment-thread-root">
-      <CommentEntry
-        entryClass="comment-item"
-        id={root.id}
-        content={root.content}
-        createdAt={root.created_at}
-        source={root.source}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        pending={pending}
-      >
-        {onEditTimes && root.entity_type === 'time' && (
-          <CommentTimes root={root} onEditTimes={onEditTimes} pending={pending} />
-        )}
-      </CommentEntry>
+      {!repliesOnly && (
+        <CommentEntry
+          entryClass="comment-item"
+          id={root.id}
+          content={root.content}
+          createdAt={root.created_at}
+          source={root.source}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          pending={pending}
+        >
+          {onEditTimes && root.entity_type === 'time' && (
+            <CommentTimes root={root} onEditTimes={onEditTimes} pending={pending} />
+          )}
+        </CommentEntry>
+      )}
 
       {replies.length > 0 && (
         <div class="comment-replies">
@@ -295,6 +303,7 @@ export const CommentThread = ({
   onEditTimes,
   onDelete,
   pending,
+  repliesOnly,
 }: CommentThreadProps) => {
   const [draft, setDraft] = useState('')
 
@@ -323,6 +332,7 @@ export const CommentThread = ({
               onEditTimes={onEditTimes}
               onDelete={onDelete}
               pending={pending}
+              repliesOnly={repliesOnly}
             />
           ))}
         </div>

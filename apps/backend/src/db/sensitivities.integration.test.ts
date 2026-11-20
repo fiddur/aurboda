@@ -9,6 +9,7 @@ import {
   getFoodItemSensitivityFlagIds,
   getFoodItemSensitivityNamesBatch,
   getSensitivityFlagByName,
+  getSensitivityFlagsVersion,
   insertSensitivityFlag,
   listSensitivityFlags,
   mergeFoodItemSensitivities,
@@ -77,6 +78,27 @@ describe('Sensitivity flags integration', () => {
       await deleteSensitivityFlag(user, flag.id)
       // ON DELETE CASCADE on the FK side: assignments are gone.
       expect(await getFoodItemSensitivityFlagIds(user, food.id)).toEqual([])
+    })
+
+    test('getSensitivityFlagsVersion changes on insert, rename and delete, and only then', async () => {
+      const user = getTestUser()
+      const empty = await getSensitivityFlagsVersion(user)
+      expect(await getSensitivityFlagsVersion(user)).toBe(empty)
+
+      const flag = await insertSensitivityFlag(user, { name: 'dairy' })
+      const added = await getSensitivityFlagsVersion(user)
+      expect(added).not.toBe(empty)
+      expect(await getSensitivityFlagsVersion(user)).toBe(added)
+
+      await updateSensitivityFlag(user, flag.id, { name: 'lactose' })
+      const renamed = await getSensitivityFlagsVersion(user)
+      expect(renamed).not.toBe(added)
+      expect(await getSensitivityFlagsVersion(user)).toBe(renamed)
+
+      await deleteSensitivityFlag(user, flag.id)
+      const deleted = await getSensitivityFlagsVersion(user)
+      expect(deleted).not.toBe(renamed)
+      expect(await getSensitivityFlagsVersion(user)).toBe(deleted)
     })
   })
 

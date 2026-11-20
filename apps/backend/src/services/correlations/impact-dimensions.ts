@@ -1,10 +1,11 @@
 /**
  * Dimensions an activity's sessions can be broken down and filtered by: their length, their local
- * start time, sleep in the window around them, their activity type, their local start year, and a
- * data field of the activity type. Sessions and their windows are formed first, over every
+ * start time, sleep in the window around them, their activity type, their local start year, the
+ * people they were with, and a data field of the activity type. Sessions and their windows are formed first, over every
  * occurrence; a dimension then only selects among them.
  */
 import {
+  type ActivityPerson,
   type ActivityTypeDefinition,
   IMPACT_NO_VALUE_KEY,
   type ImpactFilter,
@@ -20,6 +21,7 @@ const MINUTE_MS = 60_000
 export interface Occurrence extends Interval {
   data?: Record<string, unknown>
   type?: string
+  people?: ActivityPerson[]
 }
 
 export interface DimensionGroup {
@@ -223,6 +225,26 @@ const classifyYear = (ctx: ClassifyContext): Classification => {
   return { dimension: 'year', groups, keys, label: 'Year' }
 }
 
+const classifyPeople = (ctx: ClassifyContext): Classification => {
+  const labels = new Map<string, string>()
+  const keys = ctx.members.map((members) => {
+    const ids = new Set<string>()
+    for (const person of members.flatMap((member) => member.people ?? [])) {
+      ids.add(person.id)
+      labels.set(person.id, person.name)
+    }
+    return ids.size > 0 ? [...ids] : [IMPACT_NO_VALUE_KEY]
+  })
+  if (keys.some((k) => k[0] === IMPACT_NO_VALUE_KEY)) labels.set(IMPACT_NO_VALUE_KEY, 'No one')
+  const groups = [...labels].map(([key, label]) => ({ key, label }))
+  return {
+    dimension: 'people',
+    groups: orderFieldGroups(groups, countKeys(keys, allIndices(keys.length))),
+    keys,
+    label: 'With',
+  }
+}
+
 export const classify = (dimension: string, ctx: ClassifyContext): Classification => {
   if (dimension === 'duration') {
     return classifyBuckets(
@@ -246,6 +268,7 @@ export const classify = (dimension: string, ctx: ClassifyContext): Classificatio
   }
   if (dimension === 'type') return classifyType(ctx)
   if (dimension === 'year') return classifyYear(ctx)
+  if (dimension === 'people') return classifyPeople(ctx)
   const path = impactFieldPath(dimension)
   if (path === null) throw new Error(`Not an impact dimension: ${dimension}`)
   return classifyField(dimension, path, ctx)
@@ -285,7 +308,7 @@ export const breakdownGroups = (
   max: number,
 ): { groups: GroupSelection[]; omitted: number } => {
   const counts = groupCounts(c, selected)
-  const byCount = c.dimension === 'type' || impactFieldPath(c.dimension) !== null
+  const byCount = c.dimension === 'type' || c.dimension === 'people' || impactFieldPath(c.dimension) !== null
   const ordered = byCount ? orderFieldGroups(c.groups, counts) : c.groups
   const nonEmpty = ordered.filter((g) => (counts.get(g.key) ?? 0) > 0)
   const kept = capGroups(nonEmpty, max)

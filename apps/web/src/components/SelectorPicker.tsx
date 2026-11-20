@@ -16,6 +16,7 @@ const KIND_LABELS: Partial<Record<CorrelationSelector['kind'], string>> = {
   activity: 'activity / tag',
   productivity_app: 'productivity app',
   productivity_category: 'productivity category',
+  people: 'time with people',
   sensitivity: 'meal sensitivity',
 }
 
@@ -53,6 +54,61 @@ function SensitivityFlagSelect({
   )
 }
 
+type PatternSelector = Extract<CorrelationSelector, { pattern: string }>
+
+const isPatternSelector = (selector: CorrelationSelector): selector is PatternSelector =>
+  'pattern' in selector
+
+const selectorForKind = (
+  kind: CorrelationSelector['kind'],
+  selectors: CorrelationSelectorsData | undefined,
+): CorrelationSelector => {
+  switch (kind) {
+    case 'metric':
+      return { kind: 'metric', metric: '' }
+    case 'nutrition':
+      return { kind: 'nutrition', nutrient: 'carbs' }
+    case 'productivity_category':
+    case 'productivity_app':
+      return { kind, pattern: '' }
+    case 'sensitivity':
+      return { flag: selectors?.sensitivities[0]?.value ?? '', kind: 'sensitivity' }
+    case 'people':
+      return { kind: 'people' }
+    default:
+      return { kind: 'activity', pattern: '' }
+  }
+}
+
+function PeopleSelect({
+  personId,
+  selectors,
+  onChange,
+}: {
+  personId: string | undefined
+  selectors: CorrelationSelectorsData | undefined
+  onChange: (s: CorrelationSelector) => void
+}) {
+  const options = selectors?.people.length ? selectors.people : [{ label: 'Time with people', value: '' }]
+  return (
+    <select
+      aria-label="With whom"
+      value={personId ?? ''}
+      onChange={(e) => {
+        const picked = (e.target as HTMLSelectElement).value
+        onChange(picked ? { kind: 'people', person_id: picked } : { kind: 'people' })
+      }}
+    >
+      {options.map((o) => (
+        <option value={o.value}>{o.value === '' ? 'with anyone' : o.label}</option>
+      ))}
+      {personId && !options.some((o) => o.value === personId) && (
+        <option value={personId}>a person no longer listed</option>
+      )}
+    </select>
+  )
+}
+
 export function SelectorPicker({
   value,
   onChange,
@@ -64,23 +120,7 @@ export function SelectorPicker({
   selectors: CorrelationSelectorsData | undefined
   allowedKinds: CorrelationSelector['kind'][]
 }) {
-  const setKind = (kind: CorrelationSelector['kind']) => {
-    switch (kind) {
-      case 'metric':
-        return onChange({ kind: 'metric', metric: '' })
-      case 'nutrition':
-        return onChange({ kind: 'nutrition', nutrient: 'carbs' })
-      case 'activity':
-        return onChange({ kind: 'activity', pattern: '' })
-      case 'productivity_category':
-      case 'productivity_app':
-        return onChange({ kind, pattern: '' })
-      case 'sensitivity':
-        return onChange({ flag: selectors?.sensitivities[0]?.value ?? '', kind: 'sensitivity' })
-      default:
-        return onChange({ kind: 'activity', pattern: '' })
-    }
-  }
+  const setKind = (kind: CorrelationSelector['kind']) => onChange(selectorForKind(kind, selectors))
 
   return (
     <div class="selector-picker">
@@ -126,10 +166,11 @@ export function SelectorPicker({
         <SensitivityFlagSelect flag={value.flag} selectors={selectors} onChange={onChange} />
       )}
 
-      {(value.kind === 'tag' ||
-        value.kind === 'activity' ||
-        value.kind === 'productivity_category' ||
-        value.kind === 'productivity_app') && (
+      {value.kind === 'people' && (
+        <PeopleSelect personId={value.person_id} selectors={selectors} onChange={onChange} />
+      )}
+
+      {isPatternSelector(value) && (
         <>
           <input
             list={`selector-pattern-options-${value.kind}`}

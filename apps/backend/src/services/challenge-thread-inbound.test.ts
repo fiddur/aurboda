@@ -127,6 +127,7 @@ const fakeDeps = (world: World = {}) => {
   const entries = new Map(Object.entries(world.entries ?? {}))
   const notified: { user: string; input: RaiseNotificationInput }[] = []
   const deleted: string[] = []
+  const signals: string[][] = []
   let presented = 0
   const deps: InboundThreadDeps = {
     countByActorSince: async () => world.recent ?? 0,
@@ -150,6 +151,9 @@ const fakeDeps = (world: World = {}) => {
       notified.push({ input, user })
     },
     now: () => NOW,
+    signal: (host, kind, object, target, recipients) => {
+      signals.push([host, kind, object, target, ...recipients])
+    },
     upsert: async (host, input) => {
       const key = `${host}:${input.object_uri}`
       const existing = entries.get(key)
@@ -170,6 +174,7 @@ const fakeDeps = (world: World = {}) => {
       return { avatar_url: null, display_name: 'Carol', handle: '@carol@remote.example' }
     },
     presentedCount: () => presented,
+    signals,
   }
 }
 
@@ -311,6 +316,31 @@ describe('admitInboundThreadNote', () => {
       url: CAROL_NOTE,
     })
     expect(fake.notified.map((n) => n.user).sort()).toEqual(['alice', 'bob'])
+  })
+
+  test('an entry from the fediverse is signalled (Add) to the verified members on other servers', async () => {
+    const OLA = 'https://home.example/users/ola'
+    const verifiedOla = member({
+      actor: OLA,
+      actor_verified_at: new Date(),
+      id: 'm3',
+      kind: 'remote',
+      local_user: null,
+    })
+    const fake = fakeDeps({ members: [member({ local_user: 'bob' }), verifiedOla] })
+    await admit(fake, note())
+    expect(fake.signals).toEqual([['alice', 'add', CAROL_NOTE, CHALLENGE_URI, OLA]])
+  })
+
+  test('a comment a verified member pushed is not signalled, nor is a refused Note', async () => {
+    const OLA = 'https://home.example/users/ola'
+    const verified = (actor: string, id: string) =>
+      member({ actor, actor_verified_at: new Date(), id, kind: 'remote', local_user: null })
+    const fake = fakeDeps({ members: [verified(CAROL, 'm2'), verified(OLA, 'm3')] })
+    await admit(fake, note())
+    expect(fake.entries.size).toBe(1)
+    await admit(fake, note({ attribution: 'https://remote.example/users/dave' }))
+    expect(fake.signals).toEqual([])
   })
 
   test('a Note without id or published, or without a reply target, is none', async () => {

@@ -75,6 +75,18 @@ describe('selectorAxisLabel', () => {
     )
   })
 
+  it('names a people selector by the person', () => {
+    const withPeople = {
+      people: [
+        { label: 'Time with people', value: '' },
+        { label: 'Anna', value: 'p1' },
+      ],
+    }
+    expect(selectorAxisLabel({ kind: 'people', person_id: 'p1' }, withPeople)).toBe('Time with Anna (min)')
+    expect(selectorAxisLabel({ kind: 'people' }, withPeople)).toBe('Time with people (min)')
+    expect(selectorAxisLabel({ kind: 'people', person_id: 'p2' }, undefined)).toBe('Time with a person (min)')
+  })
+
   it('leaves other kinds as describeSelectorAxis labels them', () => {
     expect(selectorAxisLabel({ kind: 'nutrition', nutrient: 'carbs' }, selectors)).toBe('carbs (g)')
   })

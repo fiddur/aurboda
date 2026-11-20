@@ -18,6 +18,18 @@ export const NAV_LINKS_PRIMARY = [
     description: 'Your day, week or month on one scrolling line.',
   },
   {
+    href: '/journal',
+    label: 'Journal',
+    icon: '📓',
+    description: 'Dated entries in your own words, with pictures and voice notes.',
+  },
+  {
+    href: '/people',
+    label: 'People',
+    icon: '👥',
+    description: 'The people in your life, their birthdays and the dates that matter. Private.',
+  },
+  {
     href: '/data',
     label: 'Data',
     icon: '📊',
@@ -34,6 +46,12 @@ export const NAV_LINKS_PRIMARY = [
     label: 'Reports',
     icon: '📝',
     description: 'Lab results and other values you enter by hand.',
+  },
+  {
+    href: '/check-ins',
+    label: 'Check-ins',
+    icon: '📋',
+    description: 'Short forms you fill in, like a morning check-in, logged as metrics.',
   },
   { href: '/add', label: '+ Add', icon: '➕', description: 'Add an activity, a metric or a note.' },
   { href: '/chart', label: 'Chart', icon: '📈', description: 'Draw any of your data over time.' },

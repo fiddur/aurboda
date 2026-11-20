@@ -382,6 +382,7 @@ export interface AdmitDeps {
     input: ChallengeThreadEntryInput,
   ) => Promise<{ entry: ChallengeThreadEntryRecord; inserted: boolean } | null>
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
+  signal?: ThreadSignal
 }
 
 export type AdmitResult =
@@ -509,8 +510,8 @@ const visibleReplies = (
 }
 
 /**
- * Nest each page's replies (oldest first) under their top-level entry; `in_reply_to_id` resolved
- * within the group. Pure.
+ * Nest each page's replies (oldest first) under their top-level entry, at most
+ * `MAX_REPLIES_PER_ENTRY` of those the viewer sees; `in_reply_to_id` resolved within the group. Pure.
  */
 export const assembleThread = (
   tops: readonly ChallengeThreadEntryRecord[],
@@ -522,7 +523,7 @@ export const assembleThread = (
     const group = visibleReplies(
       replies.filter((reply) => reply.root_entry_id === top.id),
       includeHidden,
-    )
+    ).slice(0, MAX_REPLIES_PER_ENTRY)
     const idByUri = new Map([top, ...group].map((record) => [record.object_uri, record.id]))
     return {
       ...serializeThreadReply(top, null, ownOf(top)),
@@ -590,12 +591,13 @@ const loadOwn = async (
   return own
 }
 
-/** One page of a thread as `viewer` (null: signed out) may see it. */
+/** One page of a thread as `viewer` (null: signed out) may see it; an admin sees hidden entries as the host does. */
 export const getChallengeThread = async (
   deps: ThreadReadDeps,
   hosted: HostedChallenge,
   viewer: string | null,
   cursor?: string,
+  isAdmin = false,
 ): Promise<ChallengeThreadView> => {
   const { challenge, host } = hosted
   const members = await deps.listMembers(host, challenge.id)
@@ -603,7 +605,8 @@ export const getChallengeThread = async (
   const audiences = readableAudiences(role, challenge)
   const viewerInfo = viewerOf(role, challenge, viewer != null)
   if (audiences.length === 0) return { entries: [], next_cursor: null, total: 0, viewer: viewerInfo }
-  const visibility: ThreadVisibility = { audiences, include_hidden: role === 'host' }
+  const seesHidden = role === 'host' || (isAdmin && viewer != null)
+  const visibility: ThreadVisibility = { audiences, include_hidden: seesHidden }
   const decoded = decodeKeysetCursor(cursor)
   const [rows, total] = await Promise.all([
     deps.listTopLevel(
@@ -622,11 +625,11 @@ export const getChallengeThread = async (
     host,
     page.map((row) => row.id),
     { audiences, include_hidden: true },
-    MAX_REPLIES_PER_ENTRY,
+    seesHidden ? MAX_REPLIES_PER_ENTRY : MAX_THREAD_ENTRIES,
   )
   const own = await loadOwn(deps, viewer, [...page, ...replies])
   return {
-    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null, role === 'host'),
+    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null, seesHidden),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     total,
     viewer: viewerInfo,
@@ -643,6 +646,20 @@ export type ThreadPush = (
   user: string,
   post: FeedPostRecord,
   change: ThreadPushChange,
+  recipients: string[],
+) => void
+
+export type ThreadSignalKind = 'add' | 'remove'
+
+/**
+ * The host telling the members on other servers about an entry no push carried: `remove` when it
+ * was hidden, `add` when it was unhidden or taken in from elsewhere; fire and forget.
+ */
+export type ThreadSignal = (
+  host: string,
+  kind: ThreadSignalKind,
+  entryObjectUri: string,
+  challengeObjectUri: string,
   recipients: string[],
 ) => void
 
@@ -672,13 +689,14 @@ export const readChallengeThread = async (
   viewer: string,
   challengeUrl: string,
   cursor?: string,
+  isAdmin = false,
 ): Promise<({ ok: true } & ChallengeThreadView) | ThreadFailure> => {
   if (deps.remote != null && isOtherServerChallengeUrl(deps.webHost, challengeUrl)) {
     return deps.remote.read(viewer, challengeUrl, cursor)
   }
   const resolved = await resolveHostedChallenge(deps.webHost, challengeUrl, deps.loadChallenge)
   if (!resolved.ok) return resolved
-  return { ok: true, ...(await getChallengeThread(deps, resolved, viewer, cursor)) }
+  return { ok: true, ...(await getChallengeThread(deps, resolved, viewer, cursor, isAdmin)) }
 }
 
 export interface ThreadPostDeps {
@@ -726,6 +744,7 @@ export interface ChallengeThreadDepsOptions {
   deliver?: Pick<FeedDeliver, 'createdReply'>
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
   push?: ThreadPush
+  signal?: ThreadSignal
 }
 
 export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): ChallengeThreadDeps => ({
@@ -747,6 +766,7 @@ export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): Cha
   push: opts.push,
   resolveTags: (user, message) => resolvePostTags(user, { reply: true, texts: [message] }),
   setHidden: setEntryHiddenInDb,
+  signal: opts.signal,
   upsert: upsertChallengeThreadEntry,
   webHost: opts.webHost,
 })
@@ -772,6 +792,44 @@ const pushToVerifiedMembers = async (
   if (deps.push == null) return
   const recipients = verifiedRemoteActors(await deps.listMembers(hosted.host, hosted.challenge.id))
   if (recipients.length > 0) deps.push(user, post, change, recipients)
+}
+
+/** Send `signal` to the verified members on other servers; a failure is logged, never the caller's. */
+export const signalVerifiedMembers = (
+  deps: Pick<AdmitDeps, 'signal' | 'webHost'>,
+  hosted: { host: string; challenge: Pick<ChallengeRecord, 'slug'> },
+  members: readonly ChallengeMemberRecord[],
+  kind: ThreadSignalKind,
+  entryObjectUri: string,
+): void => {
+  if (deps.signal == null) return
+  const recipients = verifiedRemoteActors(members)
+  if (recipients.length === 0) return
+  try {
+    deps.signal(
+      hosted.host,
+      kind,
+      entryObjectUri,
+      buildChallengeObjectUrl(deps.webHost, hosted.host, hosted.challenge.slug),
+      recipients,
+    )
+  } catch (error) {
+    console.warn(`⚠️ challenge thread ${kind} signal failed for ${entryObjectUri}:`, error)
+  }
+}
+
+const signalAfterLoadingMembers = async (
+  deps: Pick<AdmitDeps, 'listMembers' | 'signal' | 'webHost'>,
+  hosted: HostedChallenge,
+  kind: ThreadSignalKind,
+  entryObjectUri: string,
+): Promise<void> => {
+  if (deps.signal == null) return
+  const members = await deps.listMembers(hosted.host, hosted.challenge.id).catch((error: unknown) => {
+    console.warn(`⚠️ challenge thread ${kind} signal failed for ${entryObjectUri}:`, error)
+    return []
+  })
+  signalVerifiedMembers(deps, hosted, members, kind, entryObjectUri)
 }
 
 const entryVisibleTo = async (
@@ -931,6 +989,7 @@ export const setChallengeThreadEntryHidden = async (
   }
   const entry = await deps.setHidden(resolved.host, resolved.challenge.id, entryId, hidden)
   if (entry == null) return failure(404, 'Thread entry not found')
+  await signalAfterLoadingMembers(deps, resolved, hidden ? 'remove' : 'add', entry.object_uri)
   const parentId =
     entry.root_entry_id == null || entry.in_reply_to_uri == null
       ? null
@@ -995,7 +1054,8 @@ const hostedChallengeOf = async (
 /**
  * Bring a post's thread entry in step with the post, after it was created or edited: a comment is
  * re-rendered (its audience kept), a share enters only with a note while public or unlisted and
- * leaves otherwise, the result enters as is. A post in no hosted thread is left alone.
+ * leaves otherwise, the result enters as is. A post in no hosted thread is left alone. A share or
+ * the result taken in is signalled (`add`) to the members on other servers, which no push tells.
  */
 export const syncThreadEntryForPost = async (
   deps: ChallengeThreadDeps,
@@ -1017,12 +1077,16 @@ export const syncThreadEntryForPost = async (
     if (existing == null) return null
     audience = existing.audience
   }
-  return admitThreadEntry(
+  const result = await admitThreadEntry(
     deps,
     hosted.host,
     hosted.challenge,
     await postCandidate(deps, user, post, kind, audience),
   )
+  if (result.admitted && kind !== 'comment') {
+    await signalAfterLoadingMembers(deps, hosted, 'add', result.entry.object_uri)
+  }
+  return result
 }
 
 /** Take a deleted post's entry (and, for a top-level one, its replies) out of its thread. */

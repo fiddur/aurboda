@@ -22,6 +22,7 @@ import { auditWarn } from '../../services/audit-log.ts'
 import { handOverOAuthCallback, type OAuthCompletion } from '../../services/oauth-completion.ts'
 import { signOAuthState, verifyOAuthState } from '../../services/signed-oauth-state.ts'
 import { redactSecret } from '../garmin/client.ts'
+import { parseStravaJson, stravaIdOf } from './ids.ts'
 import { parseRateLimitHeaders } from './types.ts'
 
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize'
@@ -31,7 +32,7 @@ const STRAVA_API_BASE = 'https://www.strava.com/api/v3'
 const STRAVA_SCOPES = 'activity:read_all,profile:read_all,read'
 
 export interface StravaClientOptions {
-  onUserAuthenticated?: (stravaAthleteId: number, username: string) => Promise<void>
+  onUserAuthenticated?: (stravaAthleteId: string, username: string) => Promise<void>
   now?: () => Date
   auditWarn?: typeof auditWarn
 }
@@ -41,6 +42,16 @@ export type StravaCredentialGetter = () => Promise<{ clientId: string; clientSec
 export interface StravaApiResponse<T> {
   data: T
   rateLimit: StravaRateLimitInfo
+}
+
+/** Parses Strava JSON without rounding 64-bit ids; a body that is not JSON passes through as axios's default does. */
+export const stravaResponseTransform = (data: unknown): unknown => {
+  if (typeof data !== 'string' || data === '') return data
+  try {
+    return parseStravaJson(data)
+  } catch {
+    return data
+  }
 }
 
 export const stravaClient = (
@@ -63,6 +74,7 @@ export const stravaClient = (
   const apiGet = async <T>(path: string, token: string): Promise<StravaApiResponse<T>> => {
     const response: AxiosResponse<T> = await axios.get(`${STRAVA_API_BASE}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
+      transformResponse: stravaResponseTransform,
     })
     return {
       data: response.data,
@@ -80,12 +92,16 @@ export const stravaClient = (
     }
 
     const { clientId, clientSecret } = await getCredentials()
-    const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'refresh_token',
-      refresh_token: token.refresh_token,
-    })
+    const response = await axios.post<StravaTokenResponse>(
+      STRAVA_TOKEN_URL,
+      {
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: token.refresh_token,
+      },
+      { transformResponse: stravaResponseTransform },
+    )
 
     const { access_token, refresh_token, expires_at } = response.data
 
@@ -133,14 +149,22 @@ export const stravaClient = (
       }
 
       try {
-        const response = await axios.post<StravaTokenResponse>(STRAVA_TOKEN_URL, {
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          grant_type: 'authorization_code',
-        })
+        const response = await axios.post<StravaTokenResponse>(
+          STRAVA_TOKEN_URL,
+          {
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            grant_type: 'authorization_code',
+          },
+          { transformResponse: stravaResponseTransform },
+        )
 
         const { access_token, refresh_token, expires_at, athlete } = response.data
+        const onUserAuthenticated = options?.onUserAuthenticated
+        // Before the token is stored, so a sign-in that cannot be linked leaves no grant behind.
+        if (onUserAuthenticated && !athlete) throw new Error('Strava token response has no athlete')
+        const athleteId = onUserAuthenticated && athlete ? stravaIdOf(athlete) : null
 
         await upsertOAuthToken(user, {
           access_token,
@@ -150,8 +174,8 @@ export const stravaClient = (
           scopes: STRAVA_SCOPES.split(','),
         })
 
-        if (options?.onUserAuthenticated && athlete?.id) {
-          await options.onUserAuthenticated(athlete.id, user)
+        if (onUserAuthenticated && athleteId !== null) {
+          await onUserAuthenticated(athleteId, user)
         }
 
         return { ok: true }
@@ -175,13 +199,13 @@ export const stravaClient = (
       await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
     },
 
-    async getActivity(token: string, activityId: number): Promise<StravaApiResponse<StravaDetailedActivity>> {
+    async getActivity(token: string, activityId: string): Promise<StravaApiResponse<StravaDetailedActivity>> {
       return apiGet(`/activities/${activityId}`, token)
     },
 
     async getActivityStreams(
       token: string,
-      activityId: number,
+      activityId: string,
     ): Promise<StravaApiResponse<StravaStreamsResponse>> {
       return apiGet(
         `/activities/${activityId}/streams?keys=heartrate,latlng,altitude,time,distance,velocity_smooth,cadence,watts,temp&key_by_type=true`,

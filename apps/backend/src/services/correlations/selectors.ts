@@ -1,6 +1,6 @@
 /**
  * A Selector describes any data dimension (tag/activity, metric, nutrition,
- * productivity) and resolves to a uniform shape: discrete event days (for the
+ * productivity, sensitivity, time with people) and resolves to a uniform shape: discrete event days (for the
  * event-outcome engine), a daily value series (for continuous correlation), and
  * the set of days where the dimension's status is known (the denominator).
  *
@@ -8,7 +8,7 @@
  * align regardless of process/DB timezone (matching getDailyNutrientTotals).
  */
 
-import type { NutrientKey } from '../../db/index.ts'
+import type { NutrientKey, TimeInterval } from '../../db/index.ts'
 
 import {
   getEffectiveActivitiesInRange,
@@ -18,6 +18,7 @@ import {
   getNutritionCompleteDaysInRange,
   getProductivity,
   getTimeSeries,
+  listActivityIntervalsWithPeople,
 } from '../../db/index.ts'
 import { sampleMean } from '../time-weighted-mean.ts'
 
@@ -69,7 +70,16 @@ export interface SensitivitySelector {
   threshold?: ThresholdSpec
 }
 
+export interface PeopleSelector {
+  kind: 'people'
+  /** Absent: time with anyone. */
+  person_id?: string
+  /** Threshold for event mode on the daily minutes (default: value > 0). */
+  threshold?: ThresholdSpec
+}
+
 export type Selector =
+  | PeopleSelector
   | TagSelector
   | ActivitySelector
   | MetricSelector
@@ -259,6 +269,57 @@ const resolveSensitivity = async (
   return { ...fromDailyValues(daily, [...daily.keys()], selector.threshold), completeDays: completed }
 }
 
+/**
+ * Minutes per UTC day covered by `intervals`, overlapping time counted once, inside the days of
+ * [start, end]. Days without any time are absent.
+ */
+export const unionMinutesPerDay = (
+  intervals: TimeInterval[],
+  start: Date,
+  end: Date,
+): Map<string, number> => {
+  const lower = Date.parse(`${toUtcDay(start)}T00:00:00Z`)
+  const upper = Date.parse(`${toUtcDay(end)}T00:00:00Z`) + MS_PER_DAY
+  const clipped = intervals
+    .map((i) => [Math.max(i.start_time.getTime(), lower), Math.min(i.end_time.getTime(), upper)] as const)
+    .filter(([from, to]) => to > from)
+    .toSorted((a, b) => a[0] - b[0])
+
+  const merged: [number, number][] = []
+  for (const [from, to] of clipped) {
+    const last = merged.at(-1)
+    if (last && from <= last[1]) last[1] = Math.max(last[1], to)
+    else merged.push([from, to])
+  }
+
+  const daily = new Map<string, number>()
+  for (const [from, to] of merged) {
+    let cur = from
+    while (cur < to) {
+      const dayEnd = Math.min(to, Math.floor(cur / MS_PER_DAY) * MS_PER_DAY + MS_PER_DAY)
+      const day = toUtcDay(new Date(cur))
+      daily.set(day, (daily.get(day) ?? 0) + (dayEnd - cur) / 60_000)
+      cur = dayEnd
+    }
+  }
+  return daily
+}
+
+/** Minutes per day with people (or one person); absence of company is a known 0, so every day is known. */
+const resolvePeople = async (
+  user: string,
+  selector: PeopleSelector,
+  start: Date,
+  end: Date,
+): Promise<ResolvedSeries> => {
+  const intervals = await listActivityIntervalsWithPeople(user, start, end, selector.person_id)
+  return fromDailyValues(
+    unionMinutesPerDay(intervals, start, end),
+    enumerateDays(start, end),
+    selector.threshold,
+  )
+}
+
 /** Productivity minutes per day for a matching category or app. */
 const resolveProductivity = async (
   user: string,
@@ -302,5 +363,7 @@ export const resolveSelector = (
       return resolveProductivity(user, selector, start, end)
     case 'sensitivity':
       return resolveSensitivity(user, selector, start, end)
+    case 'people':
+      return resolvePeople(user, selector, start, end)
   }
 }

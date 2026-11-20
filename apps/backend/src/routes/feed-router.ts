@@ -52,7 +52,7 @@ import type { Activity, FeedPostRecord, FeedQuoteAuthorizationRecord } from '../
 import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
-import type { TimelineHub } from '../services/timeline-hub.ts'
+import type { LiveHub } from '../services/live-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
@@ -115,6 +115,7 @@ import {
   previewActivityShare,
   serializeFeedPost,
 } from '../services/feed.ts'
+import { resolveEditedPostMentions, resolvePostMentions } from '../services/post-mentions.ts'
 import {
   activityKindTag,
   articleTexts,
@@ -130,6 +131,7 @@ import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
 import { validateBody, validateQuery } from '../validation.ts'
+import { LIVE_UNAVAILABLE, serveLiveStream } from './events-router.ts'
 
 /**
  * Fire-and-forget federation delivery hooks for the feed-post lifecycle,
@@ -178,7 +180,7 @@ const reactionResponse = (result: ReactionResult): { status: number; body: Timel
 export const createFeedRouter = (
   authMiddleware: AnyMiddleware,
   deliver?: FeedDeliver,
-  hub?: TimelineHub,
+  hub?: LiveHub,
   apiBaseUrl?: string,
   retroEnrichTimeline?: RetroEnrichTrigger,
   /** Canonical web origin, to build a shared challenge's public URL (#994). */
@@ -212,53 +214,13 @@ export const createFeedRouter = (
     },
   )
 
-  // Live home-timeline updates over Server-Sent Events. Each ping (`event: new`)
-  // means "a new post arrived — refetch the newest page"; the payload is empty so
-  // no post content crosses the wire. The client falls back to polling if this
-  // stream can't be opened or drops. Registered before `/:postId`-style routes.
+  // The live stream moved to `/events/stream`; this alias serves web bundles from
+  // before that and can go after the next release. Registered before `/:postId`-style routes.
   router.get<Record<string, never>, BaseResponse>('/timeline/stream', authMiddleware, async (req, res) => {
-    const user = req.user!
-    if (!hub) return res.status(503).json({ error: 'Live updates unavailable', success: false })
-
-    // `X-Accel-Buffering: no` tells nginx not to buffer the stream (SSE needs
-    // each event flushed immediately, not held back for a full response body).
-    res.writeHead(200, {
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      'Content-Type': 'text/event-stream',
-      'X-Accel-Buffering': 'no',
-    })
-    const write = (chunk: string) => {
-      if (res.writableEnded) return
-      try {
-        res.write(chunk)
-      } catch {
-        /* client vanished mid-write */
-      }
-    }
-    write(': connected\n\n')
-
-    // Comment heartbeats keep the connection from being reaped as idle.
-    const heartbeat = setInterval(() => write(': ping\n\n'), 25_000)
-    let unsubscribe: (() => Promise<void>) | null = null
-    let closed = false
-    const cleanup = async () => {
-      if (closed) return
-      closed = true
-      clearInterval(heartbeat)
-      if (unsubscribe) await unsubscribe().catch(() => {})
-    }
-    req.on('close', () => void cleanup())
-
-    try {
-      unsubscribe = await hub.subscribe(user, () => write('event: new\ndata: {}\n\n'))
-      // The client may have disconnected while the channel was opening.
-      if (closed) await unsubscribe().catch(() => {})
-    } catch {
-      // Couldn't open the live channel — end the stream so the client polls instead.
-      await cleanup()
-      if (!res.writableEnded) res.end()
-    }
+    if (!hub) return res.status(503).json(LIVE_UNAVAILABLE)
+    await serveLiveStream(req, res, req.user!, hub, (kind) =>
+      kind === 'timeline' ? 'event: new\ndata: {}\n\n' : null,
+    )
   })
 
   router.get<Record<string, never>, TimelineResponse, unknown, TimelineQuery>(
@@ -515,6 +477,8 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const mentioned = await resolvePostMentions(user, activity, req.body.mention_people ?? [])
+      if (!mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const message = normalizeFeedMessage(req.body.message) ?? null
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
@@ -522,6 +486,7 @@ export const createFeedRouter = (
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        mentions: mentioned.mentions,
         message,
         series_metrics: req.body.series_metrics,
         tags: await resolvePostTags(user, {
@@ -553,12 +518,15 @@ export const createFeedRouter = (
       if (!activity) {
         return res.status(404).json({ error: 'Activity not found', success: false })
       }
+      const mentioned = await resolvePostMentions(user, activity, req.body.mention_people ?? [])
+      if (!mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const preview = await previewActivityShare(
         user,
         activity,
         {
           include_exercises: req.body.include_exercises,
           included_metrics: req.body.included_metrics,
+          mentions: mentioned.mentions,
           ...(req.body.message === undefined ? {} : { message: req.body.message }),
           ...(req.body.tags === undefined ? {} : { tags: req.body.tags }),
         },
@@ -812,6 +780,11 @@ export const createFeedRouter = (
       if (threadVisibilityLocked(existing, req.body.visibility)) {
         return res.status(400).json({ error: THREAD_VISIBILITY_LOCKED_MESSAGE, success: false })
       }
+      const mentioned =
+        req.body.mention_people === undefined
+          ? undefined
+          : await resolveEditedPostMentions(user, existing.activity_id, req.body.mention_people)
+      if (mentioned && !mentioned.ok) return res.status(400).json({ error: mentioned.error, success: false })
       const retag = await loadEditedPostTags(user, req.params.postId, { message, tags: req.body.tags })
       if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
@@ -819,6 +792,7 @@ export const createFeedRouter = (
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
+        mentions: mentioned?.mentions,
         message,
         series_metrics: req.body.series_metrics,
         tags: retag.tags,

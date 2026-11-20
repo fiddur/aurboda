@@ -10,10 +10,12 @@ import { createHash } from 'node:crypto'
 
 import { activitiesTables } from './schema/activities.ts'
 import { activityFeaturesTables } from './schema/activity-features.ts'
+import { checkInsTables } from './schema/check-ins.ts'
 import { locationsTables } from './schema/locations.ts'
 import { mealsTables } from './schema/meals.ts'
 import { metricsTables } from './schema/metrics.ts'
 import { notificationsTables } from './schema/notifications.ts'
+import { peopleTables } from './schema/people.ts'
 import { productivityTables } from './schema/productivity.ts'
 import { remindersTables } from './schema/reminders.ts'
 import { reportsTables } from './schema/reports.ts'
@@ -55,10 +57,12 @@ export const SCHEMA_VERSION = 1
 export const createTableStatements: Record<string, string> = {
   ...activitiesTables,
   ...activityFeaturesTables,
+  ...checkInsTables,
   ...locationsTables,
   ...mealsTables,
   ...metricsTables,
   ...notificationsTables,
+  ...peopleTables,
   ...productivityTables,
   ...remindersTables,
   ...reportsTables,
@@ -171,6 +175,14 @@ export const tableCreationOrder = [
   'notes_entity_nullable',
   'notes_shape_check',
   'notes_indexes',
+  'notes_journal_columns',
+  'notes_shape_check_day',
+  'notes_journal_indexes',
+  'note_revisions',
+  'note_revisions_indexes',
+  'note_attachments',
+  'note_attachments_indexes',
+  'note_templates',
   'shared_dashboards',
   'shared_dashboards_indexes',
   'shared_dashboards_private_column',
@@ -207,6 +219,7 @@ export const tableCreationOrder = [
   'feed_posts_tags_column',
   'feed_posts_dashboard_column',
   'feed_posts_challenge_uri_column',
+  'feed_posts_mentions_column',
   'article_drafts',
   'autoshare_rules',
   'autoshare_rules_data_filters',
@@ -264,7 +277,18 @@ export const tableCreationOrder = [
   'notifications_actions',
   'notifications_indexes',
   'notification_preferences',
+  'push_subscriptions',
   'reminders',
+  'check_in_forms',
+  'check_in_form_versions',
+  'check_ins',
+  'check_ins_indexes',
+  'people',
+  'people_indexes',
+  'person_dates',
+  'person_dates_indexes',
+  'activity_people',
+  'activity_people_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience
@@ -282,7 +306,7 @@ export {
  * data fixes that are not expressed in `createTableStatements`. DDL changes are
  * picked up automatically by the fingerprint below.
  */
-export const MIGRATION_REVISION = 8
+export const MIGRATION_REVISION = 9
 
 /**
  * Hash the inputs a migration is derived from. Split out from

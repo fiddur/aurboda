@@ -12,6 +12,38 @@ database, and other people see only what you publish, piece by piece:
 Your public profile at `/u/<username>` shows your username and avatar, and lists only what you
 have made public.
 
+## Mentioning people in an activity share
+
+The [people](./people.md) an activity was with are private and never in a share of it, with one
+exception you switch on for each share: a **mention**. `mention_people` (person IDs, at most 10)
+on `POST /feed/activities/{id}/share`, `POST /feed/activities/{id}/preview` and
+`PATCH /feed/{postId}` (MCP `share_activity`, `preview_activity_share`, `update_feed_post`) names
+the people to mention. It is off every time: it defaults to `[]`, a share dialog starts with it
+off, and an [auto-share rule](./auto-share-rules.md) never mentions anyone (a rule takes no
+`mention_people`). On an edit it replaces the set, `[]` clears it and leaving it out keeps it.
+
+Each one must be a live person linked to that activity (or to a row merged with it) and with a
+fediverse handle, or the share is a `400` saying who and why. What is published for each is their
+account and nothing else:
+
+- the post stores the account's actor URI and the handle as it was when shared (`mentions` in the
+  owner's post answer), never the person's ID or name;
+- the federated Note carries a `Mention` tag per account, addresses each in `cc`, and reads
+  "with @anna@example.social", the handle linked to the account like any mention; the Create,
+  Update and Delete are also sent to each mentioned account's inbox, so someone who does not
+  follow you is told (a local user gets the usual "mentioned you" notification);
+- the structured payload, the images, the public page's data and the Atom feed carry nothing
+  about anyone; the post's text shows the "with" line as the Note does.
+
+The preview shows the mention as it will read.
+
+On the web, the share dialog (and the edit of a shared post) has a **Mention** group under the
+other choices: one switch "Mention @anna@example.social" per person linked to the activity who has
+a handle, and the line "A mention is public: it names them in the post and notifies them." People
+without a handle are not listed. Every switch is off whenever the dialog opens for a new share,
+whatever an earlier post of the activity did; editing a post shows whom that post mentions, and
+leaves its mentions alone unless a switch is touched.
+
 The rest of this page covers shared dashboards and exercises. A shared dashboard is published
 read-only under your own public namespace, so other people — anonymous visitors, or users on a
 different Aurboda instance — can view a curated set of charts without signing in. Its identity

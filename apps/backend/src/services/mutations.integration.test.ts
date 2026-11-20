@@ -12,7 +12,7 @@ import { query } from '../db/connection.ts'
 import { getPendingOutboundSync } from '../db/outbound-sync.ts'
 import { getUserSettings, mutateTrainingLoadSettings } from '../db/settings.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { addActivity, deleteActivity, updateActivity } from './mutations.ts'
+import { activityWriteSchema, addActivity, deleteActivity, updateActivity } from './mutations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -329,5 +329,38 @@ describe('updateActivity on a merged view (integration)', () => {
         success: false,
       })
     })
+  })
+
+  test('addActivity with a source and external ids keeps two of a type at one time apart', async () => {
+    const user = getTestUser()
+    const start = new Date('2026-11-20T07:00:00Z')
+    const add = (substance: string, externalId: string) =>
+      addActivity(user, {
+        activity_type: 'supplement',
+        data: { dose: 50, dose_unit: 'mg', substance },
+        external_id: externalId,
+        source: 'check_in',
+        start_time: start,
+      })
+    const first = await add('magnesium', 'check_in:one')
+    const second = await add('zinc', 'check_in:two')
+    expect(first.success && second.success).toBe(true)
+    expect(first.id).not.toBe(second.id)
+    const rows = await query<{ source: string; external_id: string }>(
+      user,
+      `SELECT source, external_id FROM activities WHERE activity_type = 'supplement' ORDER BY external_id`,
+    )
+    expect(rows.rows).toEqual([
+      { external_id: 'check_in:one', source: 'check_in' },
+      { external_id: 'check_in:two', source: 'check_in' },
+    ])
+  })
+
+  test('activityWriteSchema resolves a catalogue type without adopting it', async () => {
+    const user = getTestUser()
+    const target = await activityWriteSchema(user, 'medication')
+    expect(target?.schema?.fields.map((field) => field.name)).toEqual(['substance', 'dose', 'dose_unit'])
+    expect(await getActivityTypeDefinition(user, 'medication')).toBeNull()
+    expect(await activityWriteSchema(user, 'no_such_type')).toBeUndefined()
   })
 })
