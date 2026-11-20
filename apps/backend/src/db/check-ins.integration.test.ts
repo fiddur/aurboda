@@ -367,7 +367,7 @@ describe('Check-ins Integration Tests', () => {
 
     const skip = await insertCheckIn(user, {
       ...ANSWERED,
-      answered_at: slot,
+      answered_at: new Date(slot.getTime() + 60_000),
       answers: {},
       form_id: form.id,
       form_version: 1,

@@ -82,7 +82,7 @@ describe('check-in MCP tools', () => {
   test('check-ins, templates and due slots', async () => {
     const { call, json, points } = setup()
     const { form } = await json('add_check_in_form', { schedule: { times: ['08:00'] }, template: 'morning' })
-    expect((await json('list_check_in_templates')).templates).toHaveLength(2)
+    expect((await json('list_check_in_templates')).templates).toHaveLength(3)
     const { check_in } = await json('submit_check_in', { answers: { rested: 4 }, form_id: form.id })
     expect(points).toHaveLength(1)
     expect((await json('query_check_ins', {})).check_ins).toHaveLength(1)
