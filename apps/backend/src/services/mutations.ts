@@ -89,7 +89,6 @@ export interface AddActivityInput {
   data?: Record<string, unknown>
   external_id?: string
   merge_span?: number
-  /** Default `aurboda`. */
   source?: DataSource
   /** IDs of live people; added to the activity's people. */
   people?: string[]
