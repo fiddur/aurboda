@@ -568,7 +568,7 @@ export const noteConflictResponseSchema = z
   .object({
     data: noteSchema,
     error: z.string(),
-    success: z.literal(false),
+    success: z.boolean().meta({ description: 'Always false' }),
   })
   .meta({
     description:
