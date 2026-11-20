@@ -95,6 +95,11 @@ check-in remembers what it wrote in `logged` (per question key the metric and ti
 An answer that could not be logged (a custom metric's range, say) is reported in the response's
 `log_errors` and left out of `logged`.
 
+A metric holds one point per time and source, so two check-ins with the same `answered_at` that log
+to the same metric share one point: the later write replaces the earlier, and deleting or editing
+either check-in removes it for both. The pages stamp the current time, so this only happens when
+check-ins are written with a given `answered_at` (a backfill, say): give each its own time.
+
 ## Answers logged as activities
 
 `logs_to: { "activity_type": "<type>", "fields": { … }, "answer_field": "<field>" }` is allowed on
