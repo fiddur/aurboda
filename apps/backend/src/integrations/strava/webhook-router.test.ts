@@ -224,6 +224,14 @@ describe('Strava webhook router', () => {
         '{"aspect_type":"create","object_id":{},"object_type":"activity","owner_id":2}',
       ],
       [
+        'an owner_id above int64',
+        '{"aspect_type":"create","object_id":1,"object_type":"activity","owner_id":9223372036854775808}',
+      ],
+      [
+        'an athlete owner_id above int64',
+        '{"aspect_type":"delete","object_id":1,"object_type":"athlete","owner_id":9223372036854775808}',
+      ],
+      [
         'a non-numeric athlete owner_id',
         '{"aspect_type":"delete","object_id":1,"object_type":"athlete","owner_id":"abc"}',
       ],

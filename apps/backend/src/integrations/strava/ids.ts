@@ -4,7 +4,8 @@
  */
 
 const INTEGER_LITERAL = /^-?\d+$/
-const STRAVA_ID = /^[1-9]\d{0,19}$/
+const STRAVA_ID = /^[1-9]\d{0,18}$/
+const INT64_MAX = 9223372036854775807n
 
 /** Keeps an integer literal that is not a safe integer as its exact source text. */
 export const losslessIntegerReviver = (
@@ -21,10 +22,10 @@ export const losslessIntegerReviver = (
 
 export const parseStravaJson = (text: string): unknown => JSON.parse(text, losslessIntegerReviver)
 
-/** The exact decimal id, or null when the value is not a positive integer id. */
+/** The exact decimal id, or null when the value is not a positive int64. */
 export const toStravaId = (value: unknown): string | null => {
   if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? String(value) : null
-  if (typeof value === 'string') return STRAVA_ID.test(value) ? value : null
+  if (typeof value === 'string') return STRAVA_ID.test(value) && BigInt(value) <= INT64_MAX ? value : null
   return null
 }
 
