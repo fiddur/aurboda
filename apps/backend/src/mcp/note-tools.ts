@@ -61,8 +61,8 @@ export const registerNoteTools = (server: McpServer, user: string) => {
     'query_notes',
     'List every comment anchored in a time range (threads nested, replies not listed separately). Covers comments on entities, which inherit the entity\'s times, free-standing "time" comments about a moment, and "day" journal entries whose date is one of the range\'s local dates in tz. To search or page through the journal, use search_notes.',
     { ...notesQueryRangeSchema.shape, tz: tzSchema },
-    async ({ from, to, tz }) => {
-      const notes = await getNotesInRange(user, new Date(from), new Date(to), tz)
+    async ({ from, to, tz, needs_text }) => {
+      const notes = await getNotesInRange(user, new Date(from), new Date(to), tz, { needs_text })
       return tzJsonResponse({ data: notes, success: true }, tz)
     },
   )

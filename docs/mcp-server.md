@@ -200,6 +200,25 @@ comments. See [Comments](features/comments.md) for the data model and
 | `list_deleted_notes`  | The deleted comments that can still be restored, with `deleted_at` and `purge_at`                                                                                                                                                                                                                                  |
 | `list_note_revisions` | A comment's earlier texts, newest first                                                                                                                                                                                                                                                                            |
 
+Pictures and recordings on journal entries, and entry templates:
+
+| Tool                            | What it does                                                                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit |
+| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                          |
+| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                     |
+| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                     |
+| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                    |
+| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                 |
+| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                       |
+| `update_note_template`          | Change a template's name or text                                                                                                                    |
+| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                        |
+| `restore_note_template`         | Restore a deleted template                                                                                                                          |
+
+To transcribe photographed diary pages: `search_notes` with `needs_text: true`, then
+`get_note_attachment` for each page in `position` order, then `update_note` with the
+text and `expected_updated_at`. The photos stay attached.
+
 ### Notification tools
 
 The bell's notifications and per-type switches. See [Notifications](features/notifications.md).

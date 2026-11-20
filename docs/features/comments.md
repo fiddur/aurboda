@@ -183,10 +183,20 @@ reads.
 | `tz`           | The timezone local dates are read in (default: your timezone)                                                                                                                                     |
 | `limit`        | 1--200, default 50                                                                                                                                                                                |
 | `cursor`       | The `next_cursor` of the previous page                                                                                                                                                            |
+| `needs_text`   | `true`: only entries with a live picture and no text yet (the range read `GET /notes?from=&to=` takes it too)                                                                                     |
 
 The order is newest first by anchor -- a `day` comment's anchor is the start of
 its date in `tz` -- then by `created_at` and `id`. Comments with no anchor at all
 (metric comments) are never listed.
+
+## Pictures, recordings and templates
+
+A journal entry -- a `time` or `day` thread root, never a reply or a comment on an
+entity -- can carry pictures and voice recordings, and the answers for such a root
+carry them as `attachments` (in page order). Entries can also start from a
+template. Both, with their limits and their recoverable deletion, are described in
+[Journal → Pictures and recordings](./journal.md#pictures-and-recordings) and
+[Journal → Templates](./journal.md#templates).
 
 ## REST API
 

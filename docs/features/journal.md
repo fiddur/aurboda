@@ -5,9 +5,9 @@ A journal for dated entries that never loses a word. It is built on
 free-standing comment, so an entry is also a comment on that moment on the
 Timeline, and a comment written on the Timeline is also in the journal.
 
-This page describes the data model and the API as they stand. Pictures and voice
-recordings, templates, the `/journal` page and the Android screen are still to
-come ([#1801](https://github.com/fiddur/aurboda/issues/1801)).
+This page describes the data model and the API as they stand. The `/journal` page
+and the Android screen are still to come
+([#1801](https://github.com/fiddur/aurboda/issues/1801)).
 
 ## What an entry is
 
@@ -63,18 +63,84 @@ The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns th
 `day` entries of the window's dates alongside the timed ones; the daily summary
 lists the day's `day` entries under `notes`.
 
+## Pictures and recordings
+
+An entry (a `time` or `day` thread root) can carry pictures -- a photographed diary
+page, say -- and voice recordings. Upload them one file per request,
+`POST /notes/:id/attachments` with the file in the multipart field `file`, in page
+order: an attachment's `position` is one more than the entry's highest, so upload
+order is page order. Entries answer them as `attachments`, live ones in page order,
+each with `id`, `kind` (`image` or `audio`), `mime`, `size`, `width`/`height`
+(pictures), `position` and `created_at`.
+
+- **Limits**: at most 20 MB per file (`413` beyond), 30 attachments per entry, and
+  2 GB for all of an account's attachments, deleted ones counting until they are
+  removed for good (`409` for either). The constants are in
+  `@aurboda/api-spec` (`note-attachments.ts`).
+- **A picture** (PNG, JPEG, WebP or GIF, recognised by its content, not the type
+  the client claims) is turned upright from its EXIF orientation, loses all its
+  metadata (camera, GPS position), is fitted inside 3000 px -- enough to keep a
+  photographed page legible -- and is stored as WebP.
+- **A recording** is stored exactly as recorded, as WebM, Ogg, MP4/M4A, MP3 or WAV
+  -- the type its first bytes say, not the client's. Anything else is a `400`.
+- **Where the bytes live**: in `note_attachments` in your own database, so the
+  account export carries them. See
+  [Data Storage → `note_attachments`](../data-storage.md#note_attachments---pictures-and-recordings-on-journal-entries).
+- **Reading**: `GET /notes/:id/attachments/:attachment_id` serves the file to its
+  owner only, privately cached for a year (the bytes never change);
+  `?max_edge=400` or `2000` gives a picture downscaled as WebP. A deleted
+  attachment, or one on a deleted entry, is a `404`.
+- **Deleting is recoverable**: `DELETE /notes/:id/attachments/:attachment_id` hides
+  it for 30 days, `GET /notes/:id/attachments?deleted=true` lists what can come
+  back with `deleted_at` and `purge_at`, and
+  `POST /notes/:id/attachments/:attachment_id/restore` brings it back (a `409` when
+  the entry already holds 30). `?purge=true` removes it at once. Deleting the
+  entry needs nothing more: its attachments come back when it is restored, and go
+  when it is purged.
+
+### Transcribing a photographed page
+
+The server does not read pictures. An assistant does it over MCP:
+`search_notes` with `needs_text: true` lists the entries with a picture and no
+text yet; `get_note_attachment` hands it each page, in `position` order, as an
+image (JPEG, at most 2000 px); `update_note` with the transcription and
+`expected_updated_at` writes it. The photos stay attached as the original. A
+recording is listed over MCP by its metadata only: it is played in the app.
+
+`add_note_attachment` takes a file base64-encoded, at most 5 MB decoded -- in
+practice about 3 MB, since an MCP request is limited to 4 MB of JSON.
+
+## Templates
+
+A template is a `name` (1 to 120 characters, trimmed) and markdown `content` (1 to
+20 000 characters) that a new entry starts from. `GET /note-templates` lists them by
+name, `POST`, `PATCH /note-templates/:id` and `DELETE` change them. Deleting is
+recoverable for 30 days: `?deleted=true` lists the deleted ones with `purge_at`,
+`POST /note-templates/:id/restore` brings one back, and `?purge=true` on the delete
+removes it at once. Aurboda ships no templates of its own.
+
 ## API
 
-| Method   | Path                   | MCP                   |
-| -------- | ---------------------- | --------------------- |
-| `POST`   | `/notes`               | `add_note`            |
-| `PATCH`  | `/notes/:id`           | `update_note`         |
-| `DELETE` | `/notes/:id`           | `delete_note`         |
-| `POST`   | `/notes/:id/restore`   | `restore_note`        |
-| `GET`    | `/notes/deleted`       | `list_deleted_notes`  |
-| `GET`    | `/notes/:id/revisions` | `list_note_revisions` |
-| `GET`    | `/notes/search`        | `search_notes`        |
-| `GET`    | `/notes?from=&to=`     | `query_notes`         |
+| Method   | Path                                            | MCP                             |
+| -------- | ----------------------------------------------- | ------------------------------- |
+| `POST`   | `/notes`                                        | `add_note`                      |
+| `PATCH`  | `/notes/:id`                                    | `update_note`                   |
+| `DELETE` | `/notes/:id`                                    | `delete_note`                   |
+| `POST`   | `/notes/:id/restore`                            | `restore_note`                  |
+| `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
+| `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
+| `GET`    | `/notes/search`                                 | `search_notes`                  |
+| `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
+| `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
+| `GET`    | `/notes/:id/attachments/:attachment_id`         | `get_note_attachment`           |
+| `DELETE` | `/notes/:id/attachments/:attachment_id`         | `delete_note_attachment`        |
+| `POST`   | `/notes/:id/attachments/:attachment_id/restore` | `restore_note_attachment`       |
+| `GET`    | `/notes/:id/attachments?deleted=true`           | `list_deleted_note_attachments` |
+| `GET`    | `/note-templates`                               | `list_note_templates`           |
+| `POST`   | `/note-templates`                               | `add_note_template`             |
+| `PATCH`  | `/note-templates/:id`                           | `update_note_template`          |
+| `DELETE` | `/note-templates/:id`                           | `delete_note_template`          |
+| `POST`   | `/note-templates/:id/restore`                   | `restore_note_template`         |
 
 An entry for today, without a time of day:
 

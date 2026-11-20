@@ -24,6 +24,7 @@ vi.mock('../db', () => ({
   getActivityById: vi.fn(),
   getDeletedNotes: vi.fn(),
   getMealById: vi.fn(),
+  getNoteAttachmentsForNoteIds: vi.fn(async () => new Map()),
   getNoteById: vi.fn(),
   getNoteRevisions: vi.fn(),
   getNoteRoot: vi.fn(),
@@ -605,10 +606,16 @@ describe('getNotesInRange', () => {
     const to = new Date('2024-01-15T23:59:59Z')
     const result = await getNotesInRange('user', from, to)
 
-    expect(db.getNotesForTimeRange).toHaveBeenCalledWith('user', from, to, {
-      from: '2024-01-15',
-      to: '2024-01-16',
-    })
+    expect(db.getNotesForTimeRange).toHaveBeenCalledWith(
+      'user',
+      from,
+      to,
+      {
+        from: '2024-01-15',
+        to: '2024-01-16',
+      },
+      {},
+    )
     expect(db.getRepliesForRootIds).toHaveBeenCalledWith('user', [rootId])
     expect(result).toHaveLength(1)
     expect(result[0].replies?.map((r) => r.content)).toEqual(['First reply', 'Second reply'])
@@ -620,16 +627,28 @@ describe('getNotesInRange', () => {
     const to = new Date('2024-01-15T22:59:59.999Z')
 
     await getNotesInRange('user', from, to, 'Europe/Stockholm')
-    expect(db.getNotesForTimeRange).toHaveBeenCalledWith('user', from, to, {
-      from: '2024-01-15',
-      to: '2024-01-15',
-    })
+    expect(db.getNotesForTimeRange).toHaveBeenCalledWith(
+      'user',
+      from,
+      to,
+      {
+        from: '2024-01-15',
+        to: '2024-01-15',
+      },
+      {},
+    )
 
     await getNotesInRange('user', from, to, 'UTC')
-    expect(db.getNotesForTimeRange).toHaveBeenLastCalledWith('user', from, to, {
-      from: '2024-01-14',
-      to: '2024-01-15',
-    })
+    expect(db.getNotesForTimeRange).toHaveBeenLastCalledWith(
+      'user',
+      from,
+      to,
+      {
+        from: '2024-01-14',
+        to: '2024-01-15',
+      },
+      {},
+    )
   })
 
   test('skips the reply lookup when the window has no comments', async () => {
@@ -1282,5 +1301,73 @@ describe('syncNoteTimesForEntity', () => {
     await syncNoteTimesForEntity('user', 'activity', entityId, start)
 
     expect(db.updateNoteTimesForEntity).toHaveBeenCalledWith('user', 'activity', entityId, start, undefined)
+  })
+})
+
+describe('journal entry attachments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
+  })
+
+  test('an entry carries its live attachments, a comment on an entity none, in one lookup', async () => {
+    const entry = makeNote({ date: '2024-01-15', entity_id: null, entity_type: 'day' })
+    const bare = makeNote({ date: '2024-01-15', entity_id: null, entity_type: 'day' })
+    const comment = makeNote({ entity_type: 'activity', start_time: new Date('2024-01-15T10:00:00Z') })
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([entry, bare, comment])
+    vi.mocked(db.getNoteAttachmentsForNoteIds).mockResolvedValue(
+      new Map([
+        [
+          entry.id,
+          [
+            {
+              created_at: new Date('2024-01-15T12:00:00Z'),
+              height: 400,
+              id: randomUUID(),
+              kind: 'image' as const,
+              mime: 'image/webp',
+              note_id: entry.id,
+              position: 1,
+              size: 1234,
+              width: 300,
+            },
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getNotesInRange(
+      'user',
+      new Date('2024-01-15T00:00:00Z'),
+      new Date('2024-01-15T23:59:59Z'),
+      'UTC',
+    )
+
+    expect(db.getNoteAttachmentsForNoteIds).toHaveBeenCalledTimes(1)
+    expect(db.getNoteAttachmentsForNoteIds).toHaveBeenCalledWith('user', [entry.id, bare.id])
+    expect(result[0].attachments).toEqual([
+      expect.objectContaining({ kind: 'image', mime: 'image/webp', position: 1, size: 1234 }),
+    ])
+    expect(result[1].attachments).toEqual([])
+    expect(result[2].attachments).toBeUndefined()
+  })
+
+  test('needs_text reaches the range read and the search', async () => {
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([])
+    vi.mocked(db.searchNotes).mockResolvedValue({ next_cursor: null, notes: [] })
+    const from = new Date('2024-01-15T00:00:00Z')
+    const to = new Date('2024-01-15T23:59:59Z')
+
+    await getNotesInRange('user', from, to, 'UTC', { needs_text: true })
+    expect(db.getNotesForTimeRange).toHaveBeenCalledWith(
+      'user',
+      from,
+      to,
+      { from: '2024-01-15', to: '2024-01-15' },
+      { needs_text: true },
+    )
+
+    await searchNotesForUser('user', { needs_text: true, tz: 'UTC' })
+    expect(db.searchNotes).toHaveBeenCalledWith('user', expect.objectContaining({ needs_text: true }))
   })
 })

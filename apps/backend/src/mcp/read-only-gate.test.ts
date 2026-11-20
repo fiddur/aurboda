@@ -24,6 +24,9 @@ describe('isToolAllowedWhenReadOnly', () => {
     'list_check_in_templates',
     'query_check_ins',
     'list_due',
+    'get_note_attachment',
+    'list_deleted_note_attachments',
+    'list_note_templates',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([
@@ -47,6 +50,13 @@ describe('isToolAllowedWhenReadOnly', () => {
     'update_check_in',
     'delete_check_in',
     'restore_check_in',
+    'add_note_attachment',
+    'delete_note_attachment',
+    'restore_note_attachment',
+    'add_note_template',
+    'update_note_template',
+    'delete_note_template',
+    'restore_note_template',
   ])('refuses %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(false))
 })
 

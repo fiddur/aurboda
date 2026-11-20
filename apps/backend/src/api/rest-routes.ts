@@ -98,6 +98,8 @@ import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
 import { createMetricCatalogRouter } from '../routes/metric-catalog-router.ts'
 import { createMetricsRouter } from '../routes/metrics-router.ts'
+import { createNoteAttachmentsRouter } from '../routes/note-attachments-router.ts'
+import { createNoteTemplatesRouter } from '../routes/note-templates-router.ts'
 import { createNotesRouter } from '../routes/notes-router.ts'
 import { createNotificationsRouter } from '../routes/notifications-router.ts'
 import { createNutrientRecommendationsRouter } from '../routes/nutrient-recommendations-router.ts'
@@ -311,6 +313,8 @@ export const mountRestRouters = ({
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/events', createEventsRouter(authMiddleware, liveHub))
   httpd.use('/notes', createNotesRouter(authMiddleware))
+  httpd.use('/notes', createNoteAttachmentsRouter(authMiddleware))
+  httpd.use('/note-templates', createNoteTemplatesRouter(authMiddleware))
   httpd.use(
     '/notifications',
     createNotificationsRouter(authMiddleware, {

@@ -2292,6 +2292,7 @@ describe('MCP Server', () => {
         new Date('2024-01-15T00:00:00Z'),
         new Date('2024-01-15T23:59:59Z'),
         'UTC',
+        { needs_text: undefined },
       )
     })
 
@@ -2306,7 +2307,22 @@ describe('MCP Server', () => {
       const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
       const names = parsed.result.tools.map((t) => t.name)
 
-      for (const name of ['search_notes', 'list_note_revisions', 'restore_note', 'list_deleted_notes']) {
+      for (const name of [
+        'search_notes',
+        'list_note_revisions',
+        'restore_note',
+        'list_deleted_notes',
+        'add_note_attachment',
+        'get_note_attachment',
+        'delete_note_attachment',
+        'restore_note_attachment',
+        'list_deleted_note_attachments',
+        'list_note_templates',
+        'add_note_template',
+        'update_note_template',
+        'delete_note_template',
+        'restore_note_template',
+      ]) {
         expect(names).toContain(name)
       }
     })

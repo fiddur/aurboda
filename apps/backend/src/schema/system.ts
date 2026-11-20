@@ -110,6 +110,40 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_note_revisions_note ON note_revisions (note_id, saved_at DESC)
   `,
 
+  // Pictures and recordings on journal entries. The bytes live here so the account export
+  // (a pg_dump) and its restore carry them; every read but the one serving a file names its
+  // columns and leaves `bytes` out.
+  note_attachments: `
+    CREATE TABLE IF NOT EXISTS note_attachments (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      note_id         UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      kind            TEXT NOT NULL,
+      mime            TEXT NOT NULL,
+      bytes           BYTEA NOT NULL,
+      size            INTEGER NOT NULL,
+      width           INTEGER,
+      height          INTEGER,
+      position        INTEGER NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ
+    )
+  `,
+
+  note_attachments_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_note_attachments_note ON note_attachments (note_id, position)
+  `,
+
+  note_templates: `
+    CREATE TABLE IF NOT EXISTS note_templates (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            TEXT NOT NULL,
+      content         TEXT NOT NULL,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      deleted_at      TIMESTAMPTZ
+    )
+  `,
+
   // OAuth tokens for third-party APIs
   oauth_tokens: `
     CREATE TABLE IF NOT EXISTS oauth_tokens (

@@ -300,6 +300,29 @@ export {
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
+export {
+  getDeletedNoteAttachments,
+  getNoteAttachment,
+  getNoteAttachmentBytes,
+  getNoteAttachmentsForNoteIds,
+  getNoteAttachmentUsage,
+  insertNoteAttachment,
+  type NewNoteAttachment,
+  type NoteAttachmentRecord,
+  type NoteAttachmentUsage,
+  purgeNoteAttachment,
+  restoreNoteAttachment,
+  softDeleteNoteAttachment,
+} from './note-attachments.ts'
+export {
+  insertNoteTemplate,
+  listNoteTemplates,
+  type NoteTemplateRecord,
+  purgeNoteTemplate,
+  restoreNoteTemplate,
+  softDeleteNoteTemplate,
+  updateNoteTemplate,
+} from './note-templates.ts'
 
 export {
   createSharedDashboard,

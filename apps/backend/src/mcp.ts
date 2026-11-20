@@ -76,6 +76,8 @@ import { registerImportTools } from './mcp/import-tools.ts'
 import { registerLocationTools } from './mcp/location-tools.ts'
 import { registerMealTools } from './mcp/meal-tools.ts'
 import { registerMetricTools } from './mcp/metric-tools.ts'
+import { registerNoteAttachmentTools } from './mcp/note-attachment-tools.ts'
+import { registerNoteTemplateTools } from './mcp/note-template-tools.ts'
 import { registerNoteTools } from './mcp/note-tools.ts'
 import { registerNotificationTools } from './mcp/notification-tools.ts'
 import { registerNutrientRecommendationTools } from './mcp/nutrient-recommendation-tools.ts'
@@ -252,6 +254,8 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerTrendTools(server, user)
   registerChartTools(server, user)
   registerNoteTools(server, user)
+  registerNoteAttachmentTools(server, user, { uploadLimiter: accountUploadLimiter })
+  registerNoteTemplateTools(server, user)
   registerNotificationTools(server, user, deps.centralDb?.isAdmin ?? (async () => false), {
     runAction: deps.runNotificationAction,
     webPush: deps.webPush,

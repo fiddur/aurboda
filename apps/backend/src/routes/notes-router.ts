@@ -51,7 +51,9 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
       const user = req.user!
       const notes =
         'from' in req.query
-          ? await getNotesInRange(user, new Date(req.query.from), new Date(req.query.to), req.query.tz)
+          ? await getNotesInRange(user, new Date(req.query.from), new Date(req.query.to), req.query.tz, {
+              needs_text: req.query.needs_text,
+            })
           : await getNotesForEntity(user, req.query.entity_type, req.query.entity_id)
       res.json({ data: notes, success: true })
     },

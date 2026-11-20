@@ -74,6 +74,7 @@ describe('GET /notes', () => {
       new Date('2024-01-15T00:00:00Z'),
       new Date('2024-01-15T23:59:59Z'),
       undefined,
+      { needs_text: undefined },
     )
     expect(mutations.getNotesForEntity).not.toHaveBeenCalled()
   })
