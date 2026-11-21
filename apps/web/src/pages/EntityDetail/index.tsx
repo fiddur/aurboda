@@ -45,6 +45,7 @@ import { resolveItemIcon } from '../../utils/emojiLookup'
 import { hrZoneColors } from '../../utils/hrZones'
 import { renderMarkdown } from '../../utils/markdown'
 import { ActivityCheckIns } from '../CheckIns/ActivityCheckIns'
+import { garminConnectionFlags } from '../DataSources/garminConnection'
 import { JournalEntryRefs } from '../Journal/JournalEntryRefs'
 import { ActivityChart } from './ActivityChart'
 import { ActivityNeighborsNav } from './ActivityNeighborsNav'
@@ -74,6 +75,7 @@ import { MetricContent } from './MetricContent'
 import { MusicPlaylist } from './MusicPlaylist'
 import { NotesSection } from './NotesSection'
 import { ProductivityDetail } from './ProductivityDetail'
+import { resyncErrorText } from './resyncError'
 import { isRunType, type RunCategoryChanges, runCategories } from './runCategories'
 import { RunCategories, RunFeatures } from './RunCategoryChips'
 import { SameValueSessions } from './SameValueSessions'
@@ -589,6 +591,8 @@ const ResyncDetailButton = ({
     mutationFn: () => resyncActivityDetail(activityId),
     onSuccess,
   })
+  const settingsQuery = useQuery({ queryFn: fetchUserSettings, queryKey: ['userSettings'] })
+  const canPull = settingsQuery.data !== undefined && garminConnectionFlags(settingsQuery.data).canPull
 
   const rawGarminId = (activity.data as Record<string, unknown> | undefined)?.garmin_activity_id
   const garminId =
@@ -599,14 +603,16 @@ const ResyncDetailButton = ({
 
   return (
     <div class="entity-actions">
-      <button
-        type="button"
-        class="btn-secondary"
-        disabled={mutation.isPending}
-        onClick={() => mutation.mutate()}
-      >
-        {mutation.isPending ? 'Re-syncing...' : 'Re-sync Garmin Detail'}
-      </button>
+      {canPull && (
+        <button
+          type="button"
+          class="btn-secondary"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+        >
+          {mutation.isPending ? 'Re-syncing...' : 'Re-sync Garmin Detail'}
+        </button>
+      )}
       <a
         class="btn-secondary"
         href={garminConnectActivityUrl(garminId)}
@@ -616,11 +622,7 @@ const ResyncDetailButton = ({
         Open in Garmin Connect
       </a>
       {mutation.isSuccess && <span class="sync-result done">Synced {mutation.data.points} data points</span>}
-      {mutation.isError && (
-        <span class="sync-result error">
-          {mutation.error instanceof Error ? mutation.error.message : 'Re-sync failed'}
-        </span>
-      )}
+      {mutation.isError && <span class="sync-result error">{resyncErrorText(mutation.error)}</span>}
     </div>
   )
 }

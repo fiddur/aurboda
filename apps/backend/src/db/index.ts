@@ -65,6 +65,7 @@ export { type Queryable, type UserDb } from './pool.ts'
 
 export {
   getAllScrobbles,
+  getHealthConnectStepRecords,
   getRawRecordsByExternalIds,
   hasRawRecord,
   getScrobbles,
@@ -75,6 +76,7 @@ export {
   type QueryRawRecordsParams,
   type RawRecordRow,
   type ScrobbleRecord,
+  type StepRecord,
 } from './raw-records.ts'
 
 export {

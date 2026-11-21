@@ -175,6 +175,10 @@ export const activityComputedMetricsSchema = activitySummaryMetricsSchema
     hr_zone_secs: hrZoneSecsSchema.optional().meta({
       description: 'Time spent in each HR zone (for exercise)',
     }),
+    steps_estimated: z.boolean().optional().meta({
+      description:
+        'True when `steps` was summed from the Health Connect step records the recording app wrote during the activity, because its source gave no step count',
+    }),
   })
   .meta({ id: 'ActivityComputedMetrics' })
 
