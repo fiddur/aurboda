@@ -150,6 +150,7 @@ import { buildChartSvg } from '../services/charts/chart-svg.ts'
 import { buildImpactSvg } from '../services/charts/impact-svg.ts'
 import { buildRaceChartSvg } from '../services/charts/race-chart-svg.ts'
 import { buildScatterSvg } from '../services/charts/scatter-svg.ts'
+import { checkInDeps } from '../services/check-ins.ts'
 import { loadPublicDashboardChartWith } from '../services/dashboard-chart.ts'
 import { latestExerciseSession } from '../services/exercise-card.ts'
 import { resolveChallengeRaceByUrl, resolveStandingsChart } from '../services/feed-structured-challenge.ts'
@@ -326,7 +327,7 @@ export const mountRestRouters = ({
     }),
   )
   httpd.use('/reminders', createRemindersRouter(authMiddleware))
-  httpd.use(createCheckInsRouter(authMiddleware))
+  httpd.use(createCheckInsRouter(authMiddleware, { ...checkInDeps, activityMutated: activityNotifier }))
   httpd.use('/people', createPeopleRouter(authMiddleware, defaultPeopleDeps(followActions.resolve)))
   httpd.use('/media', createMediaRouter(authMiddleware))
   httpd.use('/meals', createMealsRouter(authMiddleware))

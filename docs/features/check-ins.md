@@ -49,15 +49,17 @@ its description, reordering the questions, or changing its schedule or `notify` 
 `POST /check-in-forms { "template": "<id>" }`; any other field given overrides the template's own.
 Each template records its source and licence.
 
-| ID                    | Form                          | What it asks                                                                                                     |
-| --------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `morning`             | Morning check-in              | How rested you feel, 1 to 5, logged to `rested`                                                                  |
-| `mood_energy`         | Mood and energy               | Mood and energy, 1 to 5 each, logged to `mood` and `energy`, and an optional note                                |
-| `morning_supplements` | Morning supplements (example) | A routine: vitamin D 50 µg and magnesium 200 mg, each logged as a `supplement` activity; change them to your own |
+| ID                    | Form                          | What it asks                                                                                                                          |
+| --------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `morning`             | Morning check-in              | How rested you feel, 1 to 5, logged to `rested`                                                                                       |
+| `mood_energy`         | Mood and energy               | Mood and energy, 1 to 5 each, logged to `mood` and `energy`, and an optional note                                                     |
+| `morning_supplements` | Morning supplements (example) | A routine: vitamin D 50 µg and magnesium 200 mg, each logged as a `supplement` activity; change them to your own                      |
+| `who_5`               | WHO-5 Well-Being Index        | Five statements about the last two weeks, each from "At no time" (0) to "All of the time" (5); the score, 0 to 100, logged to `who_5` |
 
-Only instruments whose licence allows use on a paid service are built in. A published questionnaire
-that is not (the WHO-5 Well-Being Index, which WHO publishes under a non-commercial licence) can
-still be entered as one's own form: `choice` questions with a `value` per option and a `score`.
+The WHO-5 Well-Being Index is included on the owner's decision, in WHO's wording unchanged, with
+its source (World Health Organization, 2024) and licence (CC BY-NC-SA 3.0 IGO) recorded on the
+template. Any other published questionnaire can be entered as one's own form: `choice` questions
+with a `value` per option and a `score`.
 
 Aurboda records answers and scores only: it gives no clinical interpretation or cut-offs.
 
@@ -91,6 +93,11 @@ check-in remembers what it wrote in `logged` (per question key the metric and ti
 
 - editing its answers or time replaces exactly those points,
 - deleting it removes them, and restoring it writes them again.
+
+A point of a metric that syncs to Health Connect (weight, say) is queued for the Android app's
+outbound sync, as `add_metric` does; a point a check-in removes is not deleted from Health Connect.
+When a step of an edit, delete or restore fails halfway, `logged` and `activity_ids` are written as
+they stand at that moment, so they never claim a point or activity that is gone.
 
 An answer that could not be logged (a custom metric's range, say) is reported in the response's
 `log_errors` and left out of `logged`.
@@ -127,8 +134,11 @@ remembers each in `activity_ids` (question key to activity) and answers them as 
   later restore of the check-in does not bring it back.
 
 An activity that could not be added (a dose below the field's minimum, say) is reported in
-`log_errors`. Editing such an activity on the Timeline makes an override of it, as for any synced
-source.
+`log_errors`. Editing a logged activity on the Timeline makes an override of it, as for any synced
+source; the override goes with the activity when the check-in deletes it (an edit of the answers,
+or deleting the check-in), and comes back when the check-in is restored. Adding, deleting and
+restoring these activities runs [deduction rules](deduction-rules.md) and auto-share rules over
+them, as any activity write does.
 
 ### Score
 
@@ -168,7 +178,12 @@ different from missed: a check-in with `status: skipped`, no answers, logging no
 go with it). `scheduled_for` must be a slot of the form's schedule (400 otherwise), and a slot
 already done or skipped answers 409. A skipped slot can still be answered later: a check-in for the
 same `scheduled_for` replaces the skip, which is removed. A skipped check-in takes no answers in a
-`PATCH`.
+`PATCH`; its `scheduled_for` may move only to another slot of the form that is still open (400 for
+an instant that is not a slot, 409 for a slot done or skipped), and never to `null` (400).
+
+Restoring a deleted skip whose slot another check-in has since done or skipped answers 409 and
+restores nothing. Restoring an answered check-in for a slot removes the skips of that slot, as a
+new answer does.
 
 ### Tying a check-in to an activity
 
@@ -206,6 +221,9 @@ or no left out), and it carries two [actions](notifications.md#actions):
 - **Skip** records the slot as skipped, and the notification then says "Skipped".
 
 They work under the web bell and as buttons on the Android notification, with no client change.
+Each write to a form or its check-ins (an edit of the form, a submit, an edit, delete or restore of
+a check-in, and an action's check of the slot with its save) holds a per-form lock, so two Done
+presses at once save once and the second answers that the slot is already done.
 When the slot is already done or skipped, the form was deleted, the slot is no longer in the
 schedule, or (for Done) the form changed so that it is no longer a routine, the action answers 409
 with the reason and the notification says what happened.

@@ -77,6 +77,19 @@ describe('check_in_due actions', () => {
     expect(activities.size).toBe(1)
   })
 
+  test('two Done presses at once save once; the other is a conflict', async () => {
+    const { activities, checkIns, form, handlers } = await setup()
+    const results = await Promise.all([
+      handlers.done!(USER, slotNotification(form.id)),
+      handlers.done!(USER, slotNotification(form.id)),
+      handlers.skip!(USER, slotNotification(form.id)),
+    ])
+    expect(results.map((result) => result.ok)).toEqual([true, false, false])
+    expect(results[1]).toMatchObject({ message: 'This slot is already done' })
+    expect(onlyCheckIn(checkIns)).toHaveLength(1)
+    expect(activities.size).toBe(1)
+  })
+
   test('skip records the slot as skipped', async () => {
     const { checkIns, form, handlers } = await setup()
     expect(await handlers.skip!(USER, slotNotification(form.id))).toEqual({

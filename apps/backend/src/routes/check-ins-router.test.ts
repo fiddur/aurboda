@@ -83,6 +83,7 @@ describe('check-in forms', () => {
       'morning',
       'mood_energy',
       'morning_supplements',
+      'who_5',
     ])
     const copied = await api.post('/check-in-forms').send({ template: 'mood_energy' })
     expect(copied.body.form.name).toBe('Mood and energy')

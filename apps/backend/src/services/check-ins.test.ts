@@ -435,3 +435,262 @@ describe('raiseDueCheckIns', () => {
     expect(quiet.notify).toBe(false)
   })
 })
+
+describe('the WHO-5 template', () => {
+  const who5Answers = (key: string) =>
+    Object.fromEntries(
+      ['cheerful', 'calm', 'active', 'rested', 'interested'].map((question) => [question, key]),
+    )
+
+  test('a copy validates and logs its score to who_5, 0 to 100', async () => {
+    const fake = fakeCheckInDeps()
+    const form = unwrap(await addCheckInForm(fake.deps, USER, body({ template: 'who_5' })))
+    expect(form).toMatchObject({ name: 'WHO-5 Well-Being Index', score: { factor: 4, metric: 'who_5' } })
+    const best = unwrap(
+      await submitCheckIn(fake.deps, USER, {
+        answered_at: '2026-11-20T07:00:00.000Z',
+        answers: who5Answers('all'),
+        form_id: form.id,
+      }),
+    )
+    expect(best.score).toBe(100)
+    const worst = unwrap(
+      await submitCheckIn(fake.deps, USER, {
+        answered_at: '2026-11-20T08:00:00.000Z',
+        answers: who5Answers('none'),
+        form_id: form.id,
+      }),
+    )
+    expect(worst.score).toBe(0)
+    expect(Object.keys(worst.logged)).toEqual(['_score'])
+    expect(fake.points).toEqual([
+      { metric: 'who_5', time: '2026-11-20T07:00:00.000Z', value: 100 },
+      { metric: 'who_5', time: '2026-11-20T08:00:00.000Z', value: 0 },
+    ])
+    expect(fake.customMetrics).toEqual([
+      { description: 'WHO-5 Well-Being Index', name: 'who_5', unit: 'score' },
+    ])
+  })
+})
+
+const vitaminD: CheckInQuestion = {
+  key: 'vitamin_d',
+  logs_to: { activity_type: 'supplement', answer_field: 'dose', fields: { substance: 'vitamin D' } },
+  prompt: 'Vitamin D',
+  required: false,
+  type: 'number',
+  unit: 'µg',
+}
+
+const failing = (message: string) => async (): Promise<never> => {
+  throw new Error(message)
+}
+
+describe('logged stays true to what is stored when a step throws', () => {
+  const setup = async () => {
+    const fake = fakeCheckInDeps()
+    const form = await addForm(fake.deps, { questions: [rested, vitaminD] })
+    const checkIn = unwrap(
+      await submitCheckIn(fake.deps, USER, {
+        answered_at: '2026-11-20T07:00:00.000Z',
+        answers: { rested: 4, vitamin_d: 50 },
+        form_id: form.id,
+      }),
+    )
+    const row = () => fake.checkIns.get(checkIn.id)!
+    return { ...fake, checkIn, row }
+  }
+
+  test('an edit whose points fail to write keeps neither the old points nor the old activities', async () => {
+    const { checkIn, deps, row } = await setup()
+    await expect(
+      updateCheckInById({ ...deps, writePoints: failing('points') }, USER, checkIn.id, {
+        answers: { rested: 2 },
+      }),
+    ).rejects.toThrow('points')
+    expect(row()).toMatchObject({ activity_ids: {}, logged: {} })
+  })
+
+  test('an edit whose activity fails to add keeps the points it wrote', async () => {
+    const { checkIn, deps, row } = await setup()
+    await expect(
+      updateCheckInById({ ...deps, addActivity: failing('activity') }, USER, checkIn.id, {
+        answers: { rested: 2, vitamin_d: 25 },
+      }),
+    ).rejects.toThrow('activity')
+    expect(row()).toMatchObject({
+      activity_ids: {},
+      logged: { rested: { metric: 'rested', time: '2026-11-20T07:00:00.000Z' } },
+    })
+  })
+
+  test('an edit whose old activity fails to delete keeps that activity', async () => {
+    const { checkIn, deps, row } = await setup()
+    await expect(
+      updateCheckInById({ ...deps, deleteActivity: failing('delete') }, USER, checkIn.id, {
+        answers: { rested: 2 },
+      }),
+    ).rejects.toThrow('delete')
+    expect(row().logged).toEqual({})
+    expect(row().activity_ids).toEqual({ vitamin_d: checkIn.activities.vitamin_d!.activity_id })
+  })
+
+  test('a delete whose soft delete fails leaves the check-in live with nothing logged', async () => {
+    const { checkIn, deps, points, row } = await setup()
+    await expect(
+      deleteCheckInById({ ...deps, setCheckInDeleted: failing('soft delete') }, USER, checkIn.id),
+    ).rejects.toThrow('soft delete')
+    expect(points).toEqual([])
+    expect(row()).toMatchObject({ deleted_at: null, logged: {} })
+  })
+
+  test('a restore whose activity fails to come back keeps the points it wrote again', async () => {
+    const { checkIn, deps, row } = await setup()
+    await deleteCheckInById(deps, USER, checkIn.id)
+    await expect(
+      restoreCheckInById({ ...deps, restoreActivity: failing('restore') }, USER, checkIn.id),
+    ).rejects.toThrow('restore')
+    expect(row().deleted_at).toBeNull()
+    expect(Object.keys(row().logged)).toEqual(['rested'])
+  })
+})
+
+describe('slot rules for skips', () => {
+  const SLOT = '2026-11-20T07:00:00.000Z'
+  const EVENING = '2026-11-20T19:00:00.000Z'
+
+  const setup = async () => {
+    const fake = fakeCheckInDeps({ now: new Date('2026-11-20T06:00:00Z') })
+    const form = await addForm(fake.deps, { schedule: { times: ['08:00', '20:00'] } })
+    fake.setNow(new Date('2026-11-20T21:00:00Z'))
+    const skip = (scheduledFor: string) =>
+      submitCheckIn(fake.deps, USER, {
+        answers: {},
+        form_id: form.id,
+        scheduled_for: scheduledFor,
+        status: 'skipped',
+      }).then(unwrap)
+    const answer = (scheduledFor: string) =>
+      submitCheckIn(fake.deps, USER, {
+        answers: { rested: 3 },
+        form_id: form.id,
+        scheduled_for: scheduledFor,
+      }).then(unwrap)
+    return { ...fake, answer, form, skip }
+  }
+
+  test('a skip cannot be restored onto a slot another check-in has closed since', async () => {
+    const { answer, deps, skip } = await setup()
+    const skipped = await skip(SLOT)
+    await deleteCheckInById(deps, USER, skipped.id)
+    await answer(SLOT)
+    expect(await restoreCheckInById(deps, USER, skipped.id)).toMatchObject({
+      error: 'This slot is already done',
+      ok: false,
+      status: 409,
+    })
+    expect((await queryCheckIns(deps, USER, { deleted: true, limit: 10 })).check_ins).toHaveLength(1)
+  })
+
+  test('restoring an answer to a slot removes the skips of it', async () => {
+    const { answer, checkIns, deps, skip } = await setup()
+    const answered = await answer(SLOT)
+    await deleteCheckInById(deps, USER, answered.id)
+    await skip(SLOT)
+    unwrap(await restoreCheckInById(deps, USER, answered.id))
+    expect([...checkIns.values()].map((row) => row.status)).toEqual(['answered'])
+  })
+
+  test('a skip moves only to an open slot of its form, and never off its slot', async () => {
+    const { answer, deps, skip } = await setup()
+    const skipped = await skip(SLOT)
+    expect(
+      await updateCheckInById(deps, USER, skipped.id, { scheduled_for: '2026-11-20T08:00:00.000Z' }),
+    ).toMatchObject({ error: 'scheduled_for is not a slot of this form', status: 400 })
+    expect(await updateCheckInById(deps, USER, skipped.id, { scheduled_for: null })).toMatchObject({
+      status: 400,
+    })
+    await answer(EVENING)
+    expect(await updateCheckInById(deps, USER, skipped.id, { scheduled_for: EVENING })).toMatchObject({
+      error: 'This slot is already done',
+      status: 409,
+    })
+    expect(
+      unwrap(await updateCheckInById(deps, USER, skipped.id, { scheduled_for: SLOT })).scheduled_for,
+    ).toBe(SLOT)
+  })
+
+  test('a skip moves to another open slot', async () => {
+    const { deps, skip } = await setup()
+    const skipped = await skip(SLOT)
+    expect(
+      unwrap(await updateCheckInById(deps, USER, skipped.id, { scheduled_for: EVENING })).scheduled_for,
+    ).toBe(EVENING)
+  })
+})
+
+describe('activities a check-in logs', () => {
+  const setup = async () => {
+    const fake = fakeCheckInDeps()
+    const form = await addForm(fake.deps, { questions: [rested, vitaminD] })
+    const checkIn = unwrap(
+      await submitCheckIn(fake.deps, USER, {
+        answered_at: '2026-11-20T07:00:00.000Z',
+        answers: { rested: 4, vitamin_d: 50 },
+        form_id: form.id,
+      }),
+    )
+    return { ...fake, activityId: checkIn.activities.vitamin_d!.activity_id, checkIn }
+  }
+
+  test('adding, deleting and restoring them tells deduction rules', async () => {
+    const { checkIn, deps, mutated } = await setup()
+    const at = new Date('2026-11-20T07:00:00.000Z')
+    expect(mutated).toEqual([['supplement', at, at]])
+    await deleteCheckInById(deps, USER, checkIn.id)
+    unwrap(await restoreCheckInById(deps, USER, checkIn.id))
+    expect(mutated).toEqual([
+      ['supplement', at, at],
+      ['supplement', at, at],
+      ['supplement', at, at],
+    ])
+  })
+
+  test('an override of one goes with it, and comes back on restore', async () => {
+    const fake = await setup()
+    const overrideOf = (targets: string[], id: string) =>
+      fake.activities.set(id, {
+        activity_type: 'supplement',
+        data: {},
+        deleted: false,
+        external_id: id,
+        id,
+        override_target_ids: targets,
+        start_time: new Date('2026-11-20T07:00:00.000Z'),
+      })
+    overrideOf([fake.activityId], 'override')
+    overrideOf([fake.activityId, 'someone-else'], 'shared')
+    await deleteCheckInById(fake.deps, USER, fake.checkIn.id)
+    expect(fake.activities.get('override')!.deleted).toBe(true)
+    expect(fake.activities.get('shared')!.deleted).toBe(false)
+    unwrap(await restoreCheckInById(fake.deps, USER, fake.checkIn.id))
+    expect(fake.activities.get('override')!.deleted).toBe(false)
+  })
+
+  test('an edit of the answers takes the override of the old activity with it', async () => {
+    const fake = await setup()
+    fake.activities.set('override', {
+      activity_type: 'supplement',
+      data: {},
+      deleted: false,
+      external_id: 'override',
+      id: 'override',
+      override_target_ids: [fake.activityId],
+      start_time: new Date('2026-11-20T07:00:00.000Z'),
+    })
+    unwrap(
+      await updateCheckInById(fake.deps, USER, fake.checkIn.id, { answers: { rested: 4, vitamin_d: 25 } }),
+    )
+    expect(fake.activities.get('override')!.deleted).toBe(true)
+  })
+})

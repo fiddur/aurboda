@@ -8,11 +8,9 @@ import {
   answerProblems,
   defaultProblems,
   definitionChanged,
-  isTakenAnswer,
   metricPointsFor,
   numericAnswer,
   presetAnswers,
-  presetLine,
   reusedKeyProblems,
   scoreOf,
 } from './check-in-definitions.ts'
@@ -303,25 +301,5 @@ describe('activityTargetProblems', () => {
 describe('presets', () => {
   test('presetAnswers takes the defaults', () => {
     expect(presetAnswers([supplement, fishOil, rested])).toEqual({ fish_oil: true, vitamin_d: 50 })
-  })
-
-  test('presetLine lists the items taken, with dose and unit', () => {
-    expect(presetLine([supplement, fishOil, { ...rested, default: 4 }])).toBe(
-      'Vitamin D 50 µg, Fish oil, How rested? 4',
-    )
-    expect(
-      presetLine([
-        { ...fishOil, default: false },
-        { ...supplement, default: 0 },
-      ]),
-    ).toBe('')
-  })
-
-  test('isTakenAnswer: given and not 0 or no', () => {
-    expect(isTakenAnswer(fishOil, true)).toBe(true)
-    expect(isTakenAnswer(fishOil, false)).toBe(false)
-    expect(isTakenAnswer(supplement, 0)).toBe(false)
-    expect(isTakenAnswer(supplement, undefined)).toBe(false)
-    expect(isTakenAnswer(supplement, 25)).toBe(true)
   })
 })
