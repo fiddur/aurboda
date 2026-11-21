@@ -97,6 +97,10 @@ class AppState(
     var hiddenPages by mutableStateOf<List<String>>(emptyList())
         private set
 
+    /** The More hub's sections the user opened, by id; closed until opened, and remembered. */
+    var openMenuSections by mutableStateOf(MenuSectionsStore.load(context))
+        private set
+
     val credentials: CredentialsManager.Credentials?
         get() = CredentialsManager.getCredentials(context)
 
@@ -148,6 +152,11 @@ class AppState(
 
     fun closeMoreDestination() {
         moreDestination = null
+    }
+
+    fun toggleMenuSection(id: String) {
+        openMenuSections = if (id in openMenuSections) openMenuSections - id else openMenuSections + id
+        MenuSectionsStore.save(context, openMenuSections)
     }
 
     /** A null [count] (the server could not say) leaves the badge as it is. */
