@@ -190,6 +190,16 @@ export const markSuggestionsScanned = async (user: string, activityId: string): 
   ])
 }
 
+/** Puts these activities' tracks back in the suggestion scan, as after a type change. */
+export const markSuggestionsUnscanned = async (user: string, activityIds: string[]): Promise<void> => {
+  if (activityIds.length === 0) return
+  await query(
+    user,
+    `UPDATE activity_tracks SET segments_suggested_at = NULL WHERE activity_id = ANY($1::uuid[])`,
+    [activityIds],
+  )
+}
+
 const UNSCANNED = `
   FROM activities a
   WHERE a.deleted_at IS NULL

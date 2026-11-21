@@ -328,6 +328,15 @@ const dataConflicts = (a: Activity, b: Activity): boolean => {
   )
 }
 
+const durationMs = (a: Activity): number => (a.end_time ? a.end_time.getTime() - a.start_time.getTime() : 0)
+
+/**
+ * By start, then longest first: the database orders by start alone, and a span at an instant must
+ * lead the points there or the first point closes as its own row before the span can absorb the rest.
+ */
+const byStartThenLongest = (a: Activity, b: Activity): number =>
+  a.start_time.getTime() - b.start_time.getTime() || durationMs(b) - durationMs(a)
+
 const absorbInto = (current: MergedActivity, next: Activity) => {
   if (!current.title && next.title) current.title = next.title
   if (next.data) current.data = blendData(current.data, next.data)
@@ -415,9 +424,7 @@ const mergeSettledActivities = (
   const result: MergedActivity[] = []
 
   for (const [, typeActivities] of byType) {
-    const { detached, rows: sorted } = clusterSameInstantPoints(
-      typeActivities.toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime()),
-    )
+    const { detached, rows: sorted } = clusterSameInstantPoints(typeActivities.toSorted(byStartThenLongest))
 
     let current: MergedActivity = { ...sorted[0] }
     let currentSourceIds: string[] = memberIds(sorted[0])

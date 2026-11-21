@@ -1529,7 +1529,9 @@ hashtags — a curated instance blog, e.g. everyone's `#aurboda` posts.
   merges them newest-first on `(created_at, id)` for local posts and `(published_at, id)` for
   remote ones, at microsecond precision; 20 make the page and the last one the `next_cursor`.
   Ids are UUIDs, so the key is unique across sources. A listed user whose database is missing is
-  skipped (logged once). Each entry carries `origin`: a `local` one serialises as on the
+  skipped (logged once), and so are the entries of one whose database disappears between the
+  listing and the reads that serialise them (an account deleted mid-request), in the Atom feed
+  too: the page is then shorter, the rest answered as usual. Each entry carries `origin`: a `local` one serialises as on the
   author's profile listing (structured payload included, through the same cache), plus
   `author_username`; a `remote` one as on a public tag page (`OfficialFeedRemotePost`). The
   response also carries the feed's `users`, `remote_authors` and `tags`. Unauthenticated,

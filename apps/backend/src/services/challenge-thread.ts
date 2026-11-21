@@ -707,7 +707,12 @@ export interface ThreadPostDeps {
   presentation: (user: string) => Promise<Omit<ThreadAuthor, 'actor_uri'>>
   resolveTags: (user: string, message: string) => Promise<string[]>
   loadChallenge: LoadChallenge
-  deleteEntry: (host: string, objectUri: string, actorUri: string) => Promise<unknown>
+  /** The entry deleted, or null when there was none. */
+  deleteEntry: (
+    host: string,
+    objectUri: string,
+    actorUri: string,
+  ) => Promise<ChallengeThreadEntryRecord | null>
   setHidden: (
     host: string,
     challengeId: string,
@@ -830,6 +835,19 @@ const signalAfterLoadingMembers = async (
     return []
   })
   signalVerifiedMembers(deps, hosted, members, kind, entryObjectUri)
+}
+
+/**
+ * A share or result that left the thread, unless it was hidden (already removed): no push carries
+ * it, unlike a comment's `Delete`, so the members on other servers get a `Remove`.
+ */
+const signalEntryLeft = async (
+  deps: Pick<AdmitDeps, 'listMembers' | 'signal' | 'webHost'>,
+  hosted: HostedChallenge,
+  removed: ChallengeThreadEntryRecord | null,
+): Promise<void> => {
+  if (removed == null || removed.kind === 'comment' || removed.hidden_at != null) return
+  await signalAfterLoadingMembers(deps, hosted, 'remove', removed.object_uri)
 }
 
 const entryVisibleTo = async (
@@ -1055,7 +1073,8 @@ const hostedChallengeOf = async (
  * Bring a post's thread entry in step with the post, after it was created or edited: a comment is
  * re-rendered (its audience kept), a share enters only with a note while public or unlisted and
  * leaves otherwise, the result enters as is. A post in no hosted thread is left alone. A share or
- * the result taken in is signalled (`add`) to the members on other servers, which no push tells.
+ * the result taken in is signalled (`add`) to the members on other servers, which no push tells, and
+ * a share leaving is signalled (`remove`).
  */
 export const syncThreadEntryForPost = async (
   deps: ChallengeThreadDeps,
@@ -1068,7 +1087,11 @@ export const syncThreadEntryForPost = async (
   if (hosted == null) return null
   const objectUri = `${ownObjectPrefix(deps.webHost, user)}${post.id}`
   if (kind === 'share' && !isShareEligible(post)) {
-    await deps.deleteEntry(hosted.host, objectUri, buildActorUrl(deps.webHost, user))
+    await signalEntryLeft(
+      deps,
+      hosted,
+      await deps.deleteEntry(hosted.host, objectUri, buildActorUrl(deps.webHost, user)),
+    )
     return null
   }
   let audience: ChallengeThreadAudience = post.visibility === 'participants' ? 'participants' : 'public'
@@ -1089,19 +1112,23 @@ export const syncThreadEntryForPost = async (
   return result
 }
 
-/** Take a deleted post's entry (and, for a top-level one, its replies) out of its thread. */
+/**
+ * Take a deleted post's entry (and, for a top-level one, its replies) out of its thread, signalling
+ * a share or result leaving (`remove`) to the members on other servers.
+ */
 export const removeThreadEntryForPost = async (
-  deps: Pick<ChallengeThreadDeps, 'deleteEntry' | 'loadChallenge' | 'webHost'>,
+  deps: Pick<ChallengeThreadDeps, 'deleteEntry' | 'listMembers' | 'loadChallenge' | 'signal' | 'webHost'>,
   user: string,
   post: Pick<FeedPostRecord, 'challenge_uri' | 'id'>,
 ): Promise<void> => {
   const hosted = await hostedChallengeOf(deps, post)
   if (hosted == null) return
-  await deps.deleteEntry(
+  const removed = await deps.deleteEntry(
     hosted.host,
     `${ownObjectPrefix(deps.webHost, user)}${post.id}`,
     buildActorUrl(deps.webHost, user),
   )
+  await signalEntryLeft(deps, hosted, removed)
 }
 
 /** Run a thread sync after a post changed; a failure is logged, never the edit's failure. */

@@ -155,8 +155,7 @@ export const parseRateLimitHeaders = (headers: Record<string, unknown>): StravaR
 export interface StravaSyncJobData {
   user: string
   request_type: 'list_activities' | 'fetch_activity'
-  // A number only in jobs queued before ids became strings.
-  strava_activity_id?: string | number
+  strava_activity_id?: string
   list_params?: {
     before?: number
     after?: number

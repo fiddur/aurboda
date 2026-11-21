@@ -332,6 +332,22 @@ describe('admitInboundThreadNote', () => {
     expect(fake.signals).toEqual([['alice', 'add', CAROL_NOTE, CHALLENGE_URI, OLA]])
   })
 
+  test('an Update of an entry the thread already holds sends no second Add', async () => {
+    const OLA = 'https://home.example/users/ola'
+    const verifiedOla = member({
+      actor: OLA,
+      actor_verified_at: new Date(),
+      id: 'm3',
+      kind: 'remote',
+      local_user: null,
+    })
+    const fake = fakeDeps({ members: [member({ local_user: 'bob' }), verifiedOla] })
+    await admit(fake, note())
+    await admit(fake, note({ content: '<p>edited</p>', updated: new Date('2026-11-10T11:00:00Z') }))
+    expect(fake.entries.get(`alice:${CAROL_NOTE}`)?.content).toBe('<p>edited</p>')
+    expect(fake.signals).toEqual([['alice', 'add', CAROL_NOTE, CHALLENGE_URI, OLA]])
+  })
+
   test('a comment a verified member pushed is not signalled, nor is a refused Note', async () => {
     const OLA = 'https://home.example/users/ola'
     const verified = (actor: string, id: string) =>
