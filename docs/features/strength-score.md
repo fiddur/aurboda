@@ -80,8 +80,11 @@ the history has no points; each lift's best set (by e1RM) is still given, withou
   scored on, its estimated one-rep max, the weight that would score 100 points and whether it
   counts toward the group. A lift whose best set leaves the 90 days within two weeks says so. The
   reference lifts not done are listed under each group. Without sex or a bodyweight the page says
-  what to add and still lists the best sets.
-- **Strength start page** (`/strength`): a card with the score and the groups, strongest first.
+  what to add and still lists the best sets. Beside the score cards, a **Strongest and weakest**
+  card names the highest and lowest scored groups (`Triceps 128 · Quadriceps 93`) once at least
+  two groups have a score and they differ.
+- **Strength page, Progress tab** (`/strength/progress`): the score page's content for strength
+  training, under the Strength page's tabs.
 - **Type page**: a "Strength score" section above "Sets per muscle group".
 - **Muscle group page**: the group's score as a card and its score over the period chosen on the
   page (the Back score on the Lats and Middle back pages).

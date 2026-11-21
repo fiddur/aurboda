@@ -26,6 +26,8 @@ import {
   scoreSeries,
   STRENGTH_SCORE_PERIODS,
   strengthScorePeriod,
+  strongestAndWeakest,
+  strongestAndWeakestLabel,
 } from './strengthScoreView'
 
 const local = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h)
@@ -320,5 +322,42 @@ describe('score groups', () => {
   test('points read as whole numbers or a dash', () => {
     expect(pointsLabel(104)).toBe('104')
     expect(pointsLabel(null)).toBe('–')
+  })
+})
+
+describe('strongestAndWeakest', () => {
+  test('picks the highest and lowest scored groups', () => {
+    const s = score([
+      group({ group: 'chest', name: 'Chest', score: 98 }),
+      group({ group: 'triceps', name: 'Triceps', score: 128 }),
+      group({ group: 'biceps', name: 'Biceps', score: null }),
+      group({ group: 'quadriceps', name: 'Quadriceps', score: 93 }),
+    ])
+    const result = strongestAndWeakest(s)
+    expect(result?.strongest.group).toBe('triceps')
+    expect(result?.weakest.group).toBe('quadriceps')
+    expect(result && strongestAndWeakestLabel(result)).toBe('Triceps 128 · Quadriceps 93')
+  })
+
+  test('ties go to the first group in order', () => {
+    const s = score([
+      group({ group: 'chest', name: 'Chest', score: 120 }),
+      group({ group: 'back', name: 'Back', score: 90 }),
+      group({ group: 'triceps', name: 'Triceps', score: 120 }),
+      group({ group: 'biceps', name: 'Biceps', score: 90 }),
+    ])
+    const result = strongestAndWeakest(s)
+    expect(result?.strongest.group).toBe('chest')
+    expect(result?.weakest.group).toBe('back')
+  })
+
+  test('is undefined with fewer than two scored groups or when all scores are equal', () => {
+    expect(strongestAndWeakest(score([]))).toBeUndefined()
+    expect(
+      strongestAndWeakest(score([group({ score: 100 }), group({ group: 'back', score: null })])),
+    ).toBeUndefined()
+    expect(
+      strongestAndWeakest(score([group({ score: 100 }), group({ group: 'back', score: 100 })])),
+    ).toBeUndefined()
   })
 })

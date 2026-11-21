@@ -278,9 +278,7 @@ export function Sidebar() {
     setCollapsed(next)
     try {
       localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
-    } catch {
-      // The choice then lasts for this page view only.
-    }
+    } catch {}
     setTimeout(() => window.dispatchEvent(new Event('resize')), 220)
   }
 

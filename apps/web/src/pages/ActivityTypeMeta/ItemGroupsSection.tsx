@@ -7,7 +7,7 @@ import { useState } from 'preact/hooks'
 import { fieldLabel, itemPageHref, type ListFieldDefinition } from '../../components/sessions/sessionView'
 import { deleteItemValueAliasApi, fetchActivitySessions, fetchItemValueAliases } from '../../state/api'
 import { formatMeasure } from '../../utils/measures'
-import { type ItemGroupSortKey, sortItemGroups } from './itemGroups'
+import { filterItemGroups, type ItemGroupSortKey, sortItemGroups } from './itemGroups'
 import '../../components/sessions/sessions.css'
 
 const LOOKBACK_OPTIONS = [
@@ -55,22 +55,34 @@ const ItemGroupsTable = ({
   item: DataItemFieldDefinition
 }) => {
   const [sortKey, setSortKey] = useState<ItemGroupSortKey>('recent')
+  const [filter, setFilter] = useState('')
+  const shown = sortItemGroups(filterItemGroups(groups, filter), sortKey)
 
   return (
     <>
-      <label class="sessions-control">
-        Sort
-        <select
-          value={sortKey}
-          onChange={(e) => setSortKey((e.target as HTMLSelectElement).value as ItemGroupSortKey)}
-        >
-          {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div class="sessions-controls">
+        <input
+          type="search"
+          class="item-groups-filter"
+          aria-label={`Filter by ${fieldLabel(item).toLowerCase()}`}
+          placeholder="Search"
+          value={filter}
+          onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+        />
+        <label class="sessions-control">
+          Sort
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey((e.target as HTMLSelectElement).value as ItemGroupSortKey)}
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <div class="sessions-table-wrap">
         <table class="sessions-table">
           <thead>
@@ -97,7 +109,14 @@ const ItemGroupsTable = ({
             </tr>
           </thead>
           <tbody>
-            {sortItemGroups(groups, sortKey).map((g) => (
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={7} class="session-muted">
+                  No match.
+                </td>
+              </tr>
+            )}
+            {shown.map((g) => (
               <tr key={JSON.stringify(g.value)} class={g.value === null ? 'session-group-none' : undefined}>
                 <td class="session-label">
                   {g.value === null ? (
@@ -170,11 +189,13 @@ export function ItemGroupsSection({
   path,
   list,
   item,
+  heading = `By ${fieldLabel(item).toLowerCase()}`,
 }: {
   name: string
   path: string
   list: ListFieldDefinition
   item: DataItemFieldDefinition
+  heading?: string
 }) {
   const [lookback, setLookback] = useState(90)
 
@@ -192,7 +213,7 @@ export function ItemGroupsSection({
   return (
     <section class="activity-type-meta-section">
       <div class="activity-type-meta-section-header sessions-header">
-        <h2>By {fieldLabel(item).toLowerCase()}</h2>
+        <h2>{heading}</h2>
         <select
           aria-label="Period"
           value={lookback}
