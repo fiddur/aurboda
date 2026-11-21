@@ -35,6 +35,8 @@ fun tabWebPath(tab: MainTab): String? =
         MainTab.Sync, MainTab.More -> null
     }
 
+fun mainTabForPath(path: String): MainTab? = MainTab.entries.firstOrNull { tabWebPath(it) == path }
+
 /** The bottom-bar tabs left after [hiddenPages]; Home, Sync and More always stay. */
 fun visibleMainTabs(hiddenPages: Collection<String>): List<MainTab> =
     MainTab.entries.filter { tab -> tabWebPath(tab)?.let { !isPageHidden(it, hiddenPages) } ?: true }

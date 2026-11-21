@@ -1,8 +1,6 @@
 package net.aurboda.ui.screens
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -40,17 +38,14 @@ class MoreNavigationUiTest {
             authToken = "token",
         )
 
-    private fun setContent() {
+    private fun setContent(): AppState {
+        val appState =
+            AppState(
+                context = ApplicationProvider.getApplicationContext(),
+                initialScreen = AppScreen.Main,
+                initialTab = MainTab.More,
+            )
         composeTestRule.setContent {
-            val context = LocalContext.current
-            val appState =
-                remember {
-                    AppState(
-                        context = context,
-                        initialScreen = AppScreen.Main,
-                        initialTab = MainTab.More,
-                    )
-                }
             MainScreen(
                 currentTab = appState.currentTab,
                 onTabSelected = { appState.selectTab(it) },
@@ -67,10 +62,13 @@ class MoreNavigationUiTest {
                         onServerUrlChange = {},
                         onLogout = {},
                         modifier = modifier,
+                        openSections = appState.openMenuSections,
+                        onToggleSection = { appState.toggleMenuSection(it) },
                     )
                 },
             )
         }
+        return appState
     }
 
     @Test
@@ -82,7 +80,23 @@ class MoreNavigationUiTest {
 
         composeTestRule.onNodeWithText("More").performClick()
 
+        composeTestRule.onNodeWithText("Log").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a section shows its links only while open`() {
+        val appState = setContent()
+        if ("log" in appState.openMenuSections) {
+            composeTestRule.runOnIdle { appState.toggleMenuSection("log") }
+        }
+
+        composeTestRule.onNodeWithText("Journal").assertDoesNotExist()
+
+        composeTestRule.onNodeWithText("Log").performClick()
         composeTestRule.onNodeWithText("Journal").assertIsDisplayed()
+
+        composeTestRule.onNodeWithText("Log").performClick()
+        composeTestRule.onNodeWithText("Journal").assertDoesNotExist()
     }
 
     @Test

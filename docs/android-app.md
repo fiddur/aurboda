@@ -46,28 +46,31 @@ queued metric keeps it. Both catalogues are cached, so the pickers offer them of
 successful load; after logging a type or metric not in use yet, the tab reloads the lists.
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
-hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
-corresponding web page in an embedded WebView. Its groups follow the web menu's sections: first
-**Inbox**, with **Notifications** (the web `/notifications` page, see
-[Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see
-[Reminders](features/reminders.md)); then **Log** (Journal, Meals, **Check-ins** — see
-[Check-ins](features/check-ins.md) — Reports, People), **Training** (Strength, Training load,
-Routes, Segments), **Explore** (Timeline, Data, Chart, Analyze, Goals, Places), **Sharing**
-(Dashboards, Challenges; Feed is a bottom tab), **Setup** (Data sources, Activity types, Rules,
-Settings, Audit log) and **Device & account** (Live sensors, Account & server, Help & support).
-Unlike the web menu the hub does not collapse its groups. The two native-only screens — **Live**
-sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
-Selecting an entry pushes it in place; the system back gesture returns to the
-hub (after any embedded page has exhausted its own WebView history), and so does
-tapping **More** on the bottom bar again. The pushed sub-page lives in
-`AppState.moreDestination` rather than inside `MoreScreen`, so `selectTab` can
-clear it — otherwise the hub would be unreachable from a sub-page. Keep
-`moreGroups` in sync with the web navigation (`apps/web/src/components/nav-links.ts`).
+hub (`MoreScreen.kt`, `moreMenu`) that shows the web's phone menu (☰). Its sections are not kept by
+hand: the menu is defined once, in `packages/api-spec/src/menu.ts`, and `pnpm generate` writes it as
+Kotlin (`net.aurboda.api.menu`, in `generated/kotlin/…/menu/NavMenu.kt`), which the hub is built
+from. So **Log**, **Training**, **Explore**, **Sharing** and **Setup** hold the same pages, in the
+same order, as on the web; each entry opens that web page in an embedded WebView. As on the web the
+sections open and close, closed at first, and which are open is remembered on the device
+(`MenuSectionsStore`, `AppState.openMenuSections`). An entry that is also a bottom tab — **Feed**,
+under Sharing — switches to that tab (`mainTabForPath`) instead of opening the page inside More.
+
+Around the sections sit the entries only the app has. On top are **Notifications** (the web
+`/notifications` page, see [Notifications](features/notifications.md)) and **Reminders** (the web
+`/reminders` page, see [Reminders](features/reminders.md)); at the bottom **Help & support** and
+**Settings** (in the web menu's footer), the **Audit log** (reached from Settings on the web), and
+the two native-only screens, **Live** sensors ([BLE](#live-sensors)) and **Account** (server URL,
+logout). Home and Add are bottom tabs, not hub entries. **Admin** is left out: the app does not know
+whether the user is an admin. Selecting an entry pushes it in place; the system back gesture returns
+to the hub (after any embedded page has exhausted its own WebView history), and so does tapping
+**More** on the bottom bar again. The pushed sub-page lives in `AppState.moreDestination` rather
+than inside `MoreScreen`, so `selectTab` can clear it — otherwise the hub would be unreachable from
+a sub-page. To change the menu, change `menu.ts`: the web and the app follow.
 
 Both the hub and the bottom bar follow the [pages the user hid from the menu](features/menu.md)
-(`hidden_pages` in the user settings). `visibleMoreGroups` leaves out each web entry whose path is
-hidden and any group left empty; the native Live and Account screens and the never-hidden pages
-(`MENU_ALWAYS_SHOWN`: Notifications, Settings, Help, …) always stay. The More hub's single **Data
+(`hidden_pages` in the user settings). `visibleMoreMenu` leaves out each web entry whose path is
+hidden and any section left empty; the native Live and Account screens and the never-hidden pages
+(`menuAlwaysShown`: Notifications, Settings, Help, …) always stay. The More hub's single **Data
 sources** entry is the web's Data sources overview (`/data-sources`), so it follows that switch. On
 the bottom bar each embedded tab maps to its web page (`tabWebPath`: Home `/`, Add `/add`, Feed
 `/feed`) and `visibleMainTabs` drops the hidden ones; Home, Sync and More always stay. Hiding only

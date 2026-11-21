@@ -24,6 +24,7 @@
     "generated",
     "src/openapi.ts",
     "src/generate-html.ts",
-    "src/generate-docs.ts"
+    "src/generate-docs.ts",
+    "src/generate-menu-kotlin.ts"
   ]
 }
