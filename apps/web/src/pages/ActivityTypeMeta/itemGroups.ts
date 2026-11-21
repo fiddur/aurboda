@@ -28,3 +28,10 @@ export const sortItemGroups = (
     if ((a.value === null) !== (b.value === null)) return a.value === null ? 1 : -1
     return compare(sortValue(a, key), sortValue(b, key), key !== 'name')
   })
+
+/** Groups whose value contains the query, ignoring case; the no-value group only while the query is blank. */
+export const filterItemGroups = (groups: ActivitySessionGroup[], query: string): ActivitySessionGroup[] => {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return groups
+  return groups.filter((g) => g.value !== null && String(g.value).toLowerCase().includes(needle))
+}

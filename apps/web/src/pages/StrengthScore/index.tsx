@@ -16,6 +16,8 @@ import {
   pointsLabel,
   scoreChange,
   STRENGTH_SCORE_PERIODS,
+  strongestAndWeakest,
+  strongestAndWeakestLabel,
 } from './strengthScoreView'
 import '../ActivityTypeItem/style.css'
 import './style.css'
@@ -49,6 +51,7 @@ const MissingNotice = ({ missing }: { missing: StrengthScoreMissing[] }) => {
 const ScoreCards = ({ field, name, score }: { field: string; name: string; score: Score }) => {
   const history = useStrengthScoreHistory(name, field, STRENGTH_SCORE_PERIODS[0].value)
   const change = scoreChange(history.data, CHANGE_DAYS)
+  const extremes = strongestAndWeakest(score)
   return (
     <div class="activity-type-item-cards">
       <div class="activity-type-item-card">
@@ -60,6 +63,12 @@ const ScoreCards = ({ field, name, score }: { field: string; name: string; score
         <div class="activity-type-item-card">
           <div class="activity-type-item-card-label">Last 30 days</div>
           <div class="activity-type-item-card-value">{changeLabel(change)}</div>
+        </div>
+      )}
+      {extremes && (
+        <div class="activity-type-item-card">
+          <div class="activity-type-item-card-label">Strongest and weakest</div>
+          <div class="activity-type-item-card-value">{strongestAndWeakestLabel(extremes)}</div>
         </div>
       )}
     </div>
@@ -92,6 +101,19 @@ const Body = ({ field, name, score }: { field: string; name: string; score: Scor
   )
 }
 
+export function StrengthScoreContent({ field, name }: { field: string; name: string }) {
+  const query = useStrengthScore(name, field)
+  return (
+    <>
+      {query.isLoading && <p class="loading">Loading...</p>}
+      {(query.isError || (query.isSuccess && !query.data)) && (
+        <p class="error">Failed to load the strength score</p>
+      )}
+      {query.data && <Body field={field} name={name} score={query.data} />}
+    </>
+  )
+}
+
 /** The strength score of a type: overall, over time, and per muscle group the lifts behind it. */
 export function StrengthScore() {
   const { params } = useRoute()
@@ -104,7 +126,6 @@ export function StrengthScore() {
     staleTime: FIVE_MIN,
   })
   const typeName = definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
-  const query = useStrengthScore(name, field)
 
   return (
     <div class="activity-type-item-page">
@@ -115,11 +136,7 @@ export function StrengthScore() {
         <h1>Strength score</h1>
         <p class="activity-type-item-subtitle">{typeName} · best lifts of the last 90 days</p>
       </header>
-      {query.isLoading && <p class="loading">Loading...</p>}
-      {(query.isError || (query.isSuccess && !query.data)) && (
-        <p class="error">Failed to load the strength score</p>
-      )}
-      {query.data && <Body field={field} name={name} score={query.data} />}
+      <StrengthScoreContent field={field} name={name} />
     </div>
   )
 }
