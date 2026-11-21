@@ -65,19 +65,7 @@
 }
 
 .dashboard .btn-secondary {
-  background: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.dashboard .btn-secondary:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
 }
 
 .dashboard .section-header {

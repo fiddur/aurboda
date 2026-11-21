@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import type { AccountEmailTokenIssue, AccountEmailTokenPurpose } from './central-account-email-tokens.ts'
+import type {
+  AccountEmailTokenIssue,
+  AccountEmailTokenPurpose,
+  ConsumedAccountEmailToken,
+} from './central-account-email-tokens.ts'
 import type { UserAccount } from './central-user-accounts.ts'
 import type { MailMessage } from './email-templates.ts'
 import type { SendResult } from './email.ts'
@@ -42,14 +46,22 @@ const setup = ({
   const sent: { to: string; message: MailMessage; kind: string }[] = []
 
   const centralDb = {
-    consumeAccountEmailToken: vi.fn(async (hash: string, purpose: AccountEmailTokenPurpose) => {
-      const token = tokens.find(
-        (t) => t.token_hash === hash && t.purpose === purpose && !t.used && t.expires_at.getTime() > clock,
-      )
-      if (!token) return null
-      token.used = true
-      return { email: token.email, username: token.username }
-    }),
+    consumeAccountEmailToken: vi.fn(
+      async (
+        hash: string,
+        purpose: AccountEmailTokenPurpose,
+        use?: (consumed: ConsumedAccountEmailToken) => Promise<void>,
+      ) => {
+        const token = tokens.find(
+          (t) => t.token_hash === hash && t.purpose === purpose && !t.used && t.expires_at.getTime() > clock,
+        )
+        if (!token) return null
+        const consumed = { email: token.email, username: token.username }
+        await use?.(consumed)
+        token.used = true
+        return consumed
+      },
+    ),
     getUserAccount: vi.fn(async (username: string) => rows.get(username) ?? null),
     isAdmin: vi.fn(async (username: string) => username === 'root'),
     issueAccountEmailToken: vi.fn(async (issue: AccountEmailTokenIssue) => {
@@ -288,6 +300,14 @@ describe('completeRecovery', () => {
     const { pruneAuditLog, recovery } = await requested()
     expect((await recovery.completeRecovery('not-a-token')).ok).toBe(false)
     expect(pruneAuditLog).not.toHaveBeenCalled()
+  })
+
+  test('a password that fails to save leaves the link usable', async () => {
+    const { recovery, setPassword } = await requested()
+    setPassword.mockRejectedValueOnce(new Error('role locked'))
+    await expect(recovery.completeRecovery('token-1', 'pw')).rejects.toThrow('role locked')
+    expect((await recovery.completeRecovery('token-1', 'pw')).ok).toBe(true)
+    expect((await recovery.completeRecovery('token-1', 'pw')).ok).toBe(false)
   })
 
   test('the link works once', async () => {

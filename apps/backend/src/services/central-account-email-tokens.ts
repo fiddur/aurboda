@@ -41,10 +41,13 @@ export interface AccountEmailTokensApi {
   /**
    * Marks the token used, once, while it is unexpired and of the given purpose. Resolves to whom
    * and which address it was for, or null for an unknown, used, expired or other-purpose token.
+   * `use` runs first, holding the token's row: it is marked used only when `use` succeeds, and a
+   * second consumer waits for the first and then finds it used.
    */
   consumeAccountEmailToken: (
     tokenHash: string,
     purpose: AccountEmailTokenPurpose,
+    use?: (consumed: ConsumedAccountEmailToken) => Promise<void>,
   ) => Promise<ConsumedAccountEmailToken | null>
 }
 
@@ -52,16 +55,20 @@ export const createAccountEmailTokensApi = (
   getClient: () => Promise<Queryable>,
   withTransaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
 ): AccountEmailTokensApi => ({
-  consumeAccountEmailToken: async (tokenHash, purpose) => {
-    const client = await getClient()
-    const result = await client.query<ConsumedAccountEmailToken>(
-      `UPDATE account_email_tokens SET used_at = NOW()
-       WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > NOW()
-       RETURNING username, email`,
-      [tokenHash, purpose],
-    )
-    return result.rows[0] ?? null
-  },
+  consumeAccountEmailToken: (tokenHash, purpose, use) =>
+    withTransaction(async (tx) => {
+      const result = await tx.query<ConsumedAccountEmailToken>(
+        `SELECT username, email FROM account_email_tokens
+         WHERE token_hash = $1 AND purpose = $2 AND used_at IS NULL AND expires_at > NOW()
+         FOR UPDATE`,
+        [tokenHash, purpose],
+      )
+      const consumed = result.rows[0]
+      if (!consumed) return null
+      await use?.(consumed)
+      await tx.query('UPDATE account_email_tokens SET used_at = NOW() WHERE token_hash = $1', [tokenHash])
+      return consumed
+    }),
 
   issueAccountEmailToken: (token) =>
     withTransaction(async (tx) => {

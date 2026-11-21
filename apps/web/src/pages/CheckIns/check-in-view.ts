@@ -11,14 +11,16 @@ import { format, isSameDay, subDays } from 'date-fns'
 
 import { scheduleLine } from '../Reminders/reminder-form'
 
-/** "Every day at 08:00 and 21:00", "Weekdays at 07:30, from 2026-12-01 to 2027-01-31". */
-export const checkInScheduleLine = (schedule: Schedule): string => {
+/** "Every day at 08:00 and 21:00", "Weekdays at 07:30, from Dec 1, 2026 to Jan 31, 2027". */
+export const checkInScheduleLine = (schedule: Schedule, locale?: string): string => {
+  const dates = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' })
+  const day = (date: string) => dates.format(new Date(`${date}T00:00:00Z`))
   const base = scheduleLine(schedule.times, schedule.weekdays)
   if (schedule.start_date && schedule.end_date) {
-    return `${base}, from ${schedule.start_date} to ${schedule.end_date}`
+    return `${base}, from ${day(schedule.start_date)} to ${day(schedule.end_date)}`
   }
-  if (schedule.start_date) return `${base}, from ${schedule.start_date}`
-  if (schedule.end_date) return `${base}, until ${schedule.end_date}`
+  if (schedule.start_date) return `${base}, from ${day(schedule.start_date)}`
+  if (schedule.end_date) return `${base}, until ${day(schedule.end_date)}`
   return base
 }
 

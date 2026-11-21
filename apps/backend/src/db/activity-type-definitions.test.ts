@@ -437,8 +437,15 @@ describe('activity-type-definitions db', () => {
         fields: [],
         oid: 0,
         rowCount: 4,
-        rows: [{ live: true }, { live: true }, { live: false }, { live: true }],
+        rows: [
+          { id: 'a1', live: true },
+          { id: 'a2', live: true },
+          { id: 'a3', live: false },
+          { id: 'a4', live: true },
+        ],
       })
+      // 5b. Put the moved activities' tracks back in the suggestion scan
+      .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       // 6. Reparent children of source to target
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       // 7. Update deduction rules output_activity_type
@@ -468,5 +475,9 @@ describe('activity-type-definitions db', () => {
     expect(result!.activities_reassigned).toBe(3)
     expect(result!.deduction_rules_updated).toBe(1)
     expect(result!.target.name).toBe('sauna')
+    const rescan = mockQuery.mock.calls.find(([, sql]) =>
+      String(sql).includes('segments_suggested_at = NULL'),
+    )
+    expect(rescan?.[2]).toEqual([['a1', 'a2', 'a3', 'a4']])
   })
 })

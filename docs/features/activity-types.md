@@ -53,7 +53,7 @@ by hand that become yours, as ordinary custom types, the first time you use one.
 A custom type can be merged into another type (`POST /activity-types/merge` with
 `{ source, target }`, `merge_activity_type`): every activity of the source moves to the target,
 soft-deleted ones included, the aliases are joined, deduction rules, child types and routes follow,
-and the source is deleted. The target may be a type from the
+the moved activities' tracks go back in the segment suggestion scan, and the source is deleted. The target may be a type from the
 [activity type catalogue](activity-type-catalog.md) not used yet; the merge adds it first.
 
 `set_data` gives every moved activity a field value it has no value for yet, so merging `beer` into

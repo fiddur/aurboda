@@ -75,21 +75,42 @@ describe('checkInScheduleLine', () => {
       }),
     ).toBe('Every day at 08:00 and 21:00')
     expect(
-      checkInScheduleLine({
-        day_starts_at: '04:00',
-        start_date: '2026-12-01',
-        times: ['07:30'],
-        weekdays: [1, 2, 3, 4, 5],
-      }),
-    ).toBe('Weekdays at 07:30, from 2026-12-01')
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          start_date: '2026-12-01',
+          times: ['07:30'],
+          weekdays: [1, 2, 3, 4, 5],
+        },
+        'en-US',
+      ),
+    ).toBe('Weekdays at 07:30, from Dec 1, 2026')
     expect(
-      checkInScheduleLine({
-        day_starts_at: '04:00',
-        end_date: '2027-01-31',
-        times: ['07:30'],
-        weekdays: [6, 7],
-      }),
-    ).toBe('Weekends at 07:30, until 2027-01-31')
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          end_date: '2027-01-31',
+          times: ['07:30'],
+          weekdays: [6, 7],
+        },
+        'en-US',
+      ),
+    ).toBe('Weekends at 07:30, until Jan 31, 2027')
+  })
+
+  test('formats the dates in the locale, as the calendar dates they are', () => {
+    expect(
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          end_date: '2027-01-31',
+          start_date: '2027-01-01',
+          times: ['07:30'],
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+        },
+        'en-GB',
+      ),
+    ).toBe('Every day at 07:30, from 1 Jan 2027 to 31 Jan 2027')
   })
 })
 
