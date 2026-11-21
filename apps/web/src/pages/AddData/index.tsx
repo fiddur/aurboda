@@ -77,6 +77,7 @@ const FitUpload = ({ onCreated }: FormProps) => {
           lastId = data?.id
         }
         queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+        queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
         if (files.length === 1 && lastId) {
           if (onCreated('activity', lastId)) return
         }
@@ -231,6 +232,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['dayview-activities'] })
+      queryClient.invalidateQueries({ queryKey: ['recent-activities'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeDefinitions'] })
       queryClient.invalidateQueries({ queryKey: ['activityTypeCatalog'] })
       if (onCreated('activity', result.data?.id)) return

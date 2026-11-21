@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   emptyMessage,
+  fallbackGlyph,
   recentActivitiesQuery,
   recentActivitiesTitle,
   rowFigures,
@@ -21,6 +22,10 @@ const row = (extra: Partial<RecentActivity> = {}): RecentActivity => ({
 describe('recentActivitiesTitle', () => {
   it('uses the configured title', () => {
     expect(recentActivitiesTitle({ title: 'Activities' }, false)).toBe('Activities')
+  })
+
+  it('falls back for an empty title', () => {
+    expect(recentActivitiesTitle({ title: '' }, false)).toBe('Today')
   })
 
   it('is Today for a rolling today card, else Latest activities', () => {
@@ -93,6 +98,10 @@ describe('rowWhen', () => {
     expect(rowWhen(row({ start_time: '2026-11-16T17:30:00.000Z' }), now, tz)).toBe('16 Nov 18:30')
   })
 
+  it('adds the year for another year', () => {
+    expect(rowWhen(row({ start_time: '2025-11-16T17:30:00.000Z' }), now, tz)).toBe('16 Nov 2025 18:30')
+  })
+
   it('compares calendar days in tz', () => {
     const lateNow = new Date('2026-11-21T23:30:00.000Z')
     expect(rowWhen(row({ start_time: '2026-11-21T22:30:00.000Z' }), lateNow, 'UTC')).toBe('22:30')
@@ -102,13 +111,25 @@ describe('rowWhen', () => {
 
 describe('rowFigures', () => {
   it('shows duration, distance and pace for a run', () => {
-    expect(rowFigures(row({ distance_m: 5000, duration_minutes: 25 }))).toBe('25m · 5.0 km · 5:00 /km')
+    expect(
+      rowFigures(row({ distance_m: 5000, duration_minutes: 25, end_time: '2026-11-21T18:22:29.000Z' })),
+    ).toBe('25m · 5.0 km · 5:06 /km')
+  })
+
+  it('leaves the pace out without an end', () => {
+    expect(rowFigures(row({ distance_m: 5000 }))).toBe('5.0 km')
   })
 
   it('shows speed for a ride', () => {
     expect(
       rowFigures(
-        row({ activity_type: 'cycling', distance_m: 20000, duration_minutes: 60, type_name: 'Cycling' }),
+        row({
+          activity_type: 'cycling',
+          distance_m: 20000,
+          duration_minutes: 60,
+          end_time: '2026-11-21T18:57:00.000Z',
+          type_name: 'Cycling',
+        }),
       ),
     ).toBe('1h · 20.0 km · 20.0 km/h')
   })
@@ -150,5 +171,16 @@ describe('emptyMessage', () => {
       'No activities in the last 7 days',
     )
     expect(emptyMessage({ window: 'today' }, true)).toBe('No activities in this period')
+  })
+})
+
+describe('fallbackGlyph', () => {
+  it('suggests an emoji from the type name, else the type initial', () => {
+    expect(fallbackGlyph(row({ title: 'Lunch loop' }))).toBe('🏃')
+    expect(
+      fallbackGlyph(
+        row({ activity_type: 'strength_training', title: 'Push', type_name: 'Strength Training' }),
+      ),
+    ).toBe('S')
   })
 })

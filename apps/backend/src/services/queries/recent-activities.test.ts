@@ -207,11 +207,31 @@ describe('getRecentActivities: rows', () => {
       activity('2026-11-21T08:00:00Z', { id: 'override', override_target_ids: ['g1'], source: 'aurboda' }),
       activity('2026-11-21T09:00:00Z', { id: 'synced', source: 'garmin' }),
       activity('2026-11-21T10:00:00Z', { id: 'empty-override', override_target_ids: [], source: 'aurboda' }),
+      activity('2026-11-21T11:00:00Z', {
+        data: {
+          merged_from: [
+            { id: 'g2', source: 'garmin' },
+            { id: 'm2', source: 'aurboda' },
+          ],
+        },
+        id: 'merged-synced',
+        source: 'aurboda',
+      }),
+      activity('2026-11-21T12:00:00Z', {
+        data: {
+          merged_from: [
+            { id: 'm3', source: 'aurboda' },
+            { id: 'm4', source: 'aurboda' },
+          ],
+        },
+        id: 'merged-manual',
+        source: 'aurboda',
+      }),
     ])
 
     const result = await getRecentActivities('u', { manual_only: true }, { now, tz }, d)
 
-    expect(result.activities.map((a) => a.id)).toEqual(['empty-override', 'manual'])
+    expect(result.activities.map((a) => a.id)).toEqual(['merged-manual', 'empty-override', 'manual'])
   })
 
   test('maps a row with its type, figures and duration', async () => {

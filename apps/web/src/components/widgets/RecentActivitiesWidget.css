@@ -61,14 +61,10 @@ a.recent-activities-row:focus-visible {
   flex-direction: column;
 }
 
-.recent-activities-label,
-.recent-activities-figures {
+.recent-activities-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.recent-activities-label {
   font-size: 0.9375rem;
   font-weight: 500;
   color: var(--color-text);

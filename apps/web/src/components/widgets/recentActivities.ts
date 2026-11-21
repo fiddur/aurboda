@@ -1,5 +1,6 @@
 import type { RecentActivitiesConfig, RecentActivitiesQuery, RecentActivity } from '@aurboda/api-spec'
 
+import { suggestEmoji } from '../../utils/emojiLookup'
 import {
   formatDistanceKm,
   formatHoursMinutes,
@@ -11,7 +12,7 @@ import {
 export type RecentActivitiesCardConfig = Partial<RecentActivitiesConfig>
 
 export const recentActivitiesTitle = (config: RecentActivitiesCardConfig, period: boolean): string =>
-  config.title ?? (!period && (config.window ?? 'today') === 'today' ? 'Today' : 'Latest activities')
+  config.title || (!period && (config.window ?? 'today') === 'today' ? 'Today' : 'Latest activities')
 
 export const recentActivitiesQuery = (
   config: RecentActivitiesCardConfig,
@@ -29,6 +30,10 @@ export const recentActivitiesQuery = (
 })
 
 export const rowLabel = (a: RecentActivity): string => a.title ?? a.type_name
+
+/** The badge of a type without an icon: an emoji its name suggests, else its initial. */
+export const fallbackGlyph = (a: RecentActivity): string =>
+  suggestEmoji(a.activity_type) ?? a.type_name.charAt(0).toUpperCase()
 
 const dayKeyFormatters = new Map<string, Intl.DateTimeFormat>()
 const clockFormatters = new Map<string, Intl.DateTimeFormat>()
@@ -72,13 +77,14 @@ const zonedParts = (date: Date, tz: string): Record<string, string> =>
           minute: '2-digit',
           month: 'short',
           timeZone: tz,
+          year: 'numeric',
         }),
     )
       .formatToParts(date)
       .map((part) => [part.type, part.value]),
   )
 
-/** The start in `tz`: the time today, "Yesterday" and the time, else the date and the time. */
+/** The start in `tz`: the time today, "Yesterday" and the time, else the date (with the year when it is another one) and the time. */
 export const rowWhen = (a: RecentActivity, now: Date, tz: string): string => {
   const start = new Date(a.start_time)
   const p = zonedParts(start, tz)
@@ -87,17 +93,21 @@ export const rowWhen = (a: RecentActivity, now: Date, tz: string): string => {
   const today = dayKey(now, tz)
   if (day === today) return time
   if (day === previousDayKey(today)) return `Yesterday ${time}`
-  return `${p.day} ${p.month} ${time}`
+  return today.startsWith(day.slice(0, 4))
+    ? `${p.day} ${p.month} ${time}`
+    : `${p.day} ${p.month} ${p.year} ${time}`
 }
 
 const MAX_FIGURES = 3
 
 const paceOrSpeed = (a: RecentActivity): string | undefined => {
-  if (!a.distance_m || !a.duration_minutes) return undefined
+  if (!a.distance_m || !a.end_time) return undefined
+  const seconds = (new Date(a.end_time).getTime() - new Date(a.start_time).getTime()) / 1000
+  if (seconds <= 0) return undefined
   const km = a.distance_m / 1000
   return speedDisplayFor({ pattern: a.activity_type }) === 'pace'
-    ? formatPace((a.duration_minutes * 60) / km)
-    : formatSpeed(km / (a.duration_minutes / 60))
+    ? formatPace(seconds / km)
+    : formatSpeed(km / (seconds / 3600))
 }
 
 /** The type name when the label is a title, then up to three figures the row has. */

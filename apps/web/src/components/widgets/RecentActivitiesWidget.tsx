@@ -8,6 +8,7 @@ import { browserTz } from '../../state/api/client'
 import { isEmoji, isIconPath, isUrl } from '../../utils/emojiLookup'
 import {
   emptyMessage,
+  fallbackGlyph,
   recentActivitiesQuery,
   type RecentActivitiesCardConfig,
   recentActivitiesTitle,
@@ -19,6 +20,11 @@ import './RecentActivitiesWidget.css'
 
 const DEFAULT_BADGE_COLOR = '#f59e0b'
 
+function RecentActivitiesFallback({ activity }: { activity: RecentActivity }) {
+  const glyph = fallbackGlyph(activity)
+  return <span class={isEmoji(glyph) ? 'recent-activities-emoji' : 'recent-activities-initial'}>{glyph}</span>
+}
+
 function Badge({ activity }: { activity: RecentActivity }) {
   const color = activity.color ?? DURATION_ACTIVITY_COLORS[activity.activity_type] ?? DEFAULT_BADGE_COLOR
   const { icon } = activity
@@ -28,7 +34,7 @@ function Badge({ activity }: { activity: RecentActivity }) {
     ) : icon && (isUrl(icon) || isIconPath(icon)) ? (
       <img src={icon} alt="" width={18} height={18} />
     ) : (
-      <span class="recent-activities-initial">{rowLabel(activity).charAt(0).toUpperCase()}</span>
+      <RecentActivitiesFallback activity={activity} />
     )
   return (
     <span class="recent-activities-badge" style={{ background: color }} aria-hidden="true">

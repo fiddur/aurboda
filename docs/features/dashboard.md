@@ -280,14 +280,16 @@ optional `visible_to_visitors` (default false).
 - **Merged once.** A cross-source duplicate shows once, as on the Timeline; its link goes to the
   merged activity (`merged:<id>`).
 - **Manual only.** `manual_only: true` (the editor's **Only activities logged by hand**) keeps only
-  activities logged in Aurboda itself; an edit of a synced activity (an override) does not count.
+  activities logged in Aurboda itself, an uploaded FIT file included; an edit of a synced activity
+  (an override) and a merge that includes a synced activity do not count.
 - **Period dashboards.** The card applies to a period: it lists the latest `limit` activities inside
   the shown period and ignores `window` and `lookback_days` (the editor hides both there).
 - **Visitors.** Like the day overview, visitors of a shared dashboard see the card only when you turn
   on **Show to visitors**, with the warning that they then see each listed activity's name, start
   time and duration, and its distance, sets, average heart rate and calories where it has them. A
-  visitor's rows carry no activity id and do not link. Your own reads of a dashboard's data always
-  answer the card, with the ids.
+  visitor's rows carry no activity id and do not link. With the switch on, sharing a period of the
+  dashboard to your feed carries the same rows in the post. Your own reads of a dashboard's data
+  always answer the card, with the ids.
 - **API.** The card reads `GET /activities/recent` (query `limit`, `window`, `lookback_days`,
   `types` and `exclude_types` comma-separated, `manual_only`, `tz`: the timezone "today" is cut in,
   your setting when absent); MCP: `get_recent_activities`. On a period dashboard, and for visitors,

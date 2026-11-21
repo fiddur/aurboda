@@ -58,9 +58,18 @@ const rangeOf = (filter: RecentActivitiesFilter, options: RecentActivitiesOption
   return { end: now, start: new Date(now.getTime() - (filter.lookback_days ?? 30) * DAY_MS) }
 }
 
-/** Hand-logged in Aurboda: an override of a synced activity is an edit, not a logged activity. */
+const mergedFromSynced = (a: MergedActivity): boolean => {
+  const sources = a.data?.merged_from
+  return (
+    Array.isArray(sources) && sources.some((s) => (s as { source?: unknown } | null)?.source !== 'aurboda')
+  )
+}
+
+/** Hand-logged in Aurboda: an override of a synced activity, or a merge of synced ones, is an edit. */
 const isManual = (a: MergedActivity): boolean =>
-  a.source === 'aurboda' && !(a.override_target_ids && a.override_target_ids.length > 0)
+  a.source === 'aurboda' &&
+  !(a.override_target_ids && a.override_target_ids.length > 0) &&
+  !mergedFromSynced(a)
 
 const positiveNumber = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
