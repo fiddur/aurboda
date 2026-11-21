@@ -42,6 +42,12 @@ class MoreScreenTest {
         assertEquals("/notifications", (moreGroups.first().items.first().destination as MoreDestination.Web).path)
     }
 
+    @Test
+    fun `strength is in the Training group`() {
+        val training = moreGroups.single { it.header == "Training" }
+        assertTrue(training.items.any { (it.destination as? MoreDestination.Web)?.path == "/strength" })
+    }
+
     private fun visiblePaths(hiddenPages: List<String>) =
         visibleMoreGroups(moreGroups, hiddenPages).flatMap { it.items }
             .mapNotNull { (it.destination as? MoreDestination.Web)?.path }

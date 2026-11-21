@@ -1,6 +1,6 @@
 import type { AddReminderBody, Reminder, UpdateReminderBody } from '@aurboda/api-spec'
 
-import { NAV_LINKS_PRIMARY, NAV_LINKS_SECONDARY, SHARING_LINKS } from '../../components/nav-links'
+import { MENU_PAGE_LINKS } from '../../components/nav-links'
 
 export const WEEKDAYS = [
   { day: 1, short: 'Mon' },
@@ -26,11 +26,10 @@ export interface PageOption {
   label: string
 }
 
-export const PAGE_OPTIONS: PageOption[] = [
-  ...NAV_LINKS_PRIMARY,
-  ...SHARING_LINKS,
-  ...NAV_LINKS_SECONDARY,
-].map((link) => ({ href: link.href, label: link.label.replace(/^\+\s*/, '') }))
+export const PAGE_OPTIONS: PageOption[] = MENU_PAGE_LINKS.map((link) => ({
+  href: link.href,
+  label: link.label,
+}))
 
 const sameDays = (a: readonly number[], b: readonly number[]): boolean =>
   a.length === b.length && a.every((day, i) => day === b[i])

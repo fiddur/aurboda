@@ -1,8 +1,8 @@
 # Strength session logging
 
 The pages under `/strength` log a strength training session, either live in the gym (one set at a
-time) or after the fact (quick entry such as "3 × 8 at 60"). They work in the browser and embedded
-in the Android app (the Add tab's **Log a strength session** opens `/strength` in the More tab's web
+time) or after the fact (quick entry such as "3 × 8 at 60"). They work in the browser (**Training → Strength** in the menu) and embedded
+in the Android app (More → Training → Strength, and the Add tab's **Log a strength session** opens `/strength` in the More tab's web
 view). They write the built-in `strength_training` type's `sets` list (see
 [Activity types](activity-types.md#data-schema-and-categorical-fields)); the generic add and edit forms with the sets
 table stay for corrections.

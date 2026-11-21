@@ -47,12 +47,15 @@ successful load; after logging a type or metric not in use yet, the tab reloads 
 
 There are far more web pages than fit on a bottom bar, so the **More** tab is a
 hub (`MoreScreen.kt`, `moreGroups`): a grouped list where each entry opens the
-corresponding web page in an embedded WebView (Timeline, Data, Chart, Training load, Journal, People, Meals,
-Reports, Settings, Data sources, Help & support, …). Its first group, **Inbox**, holds
-**Notifications** (the web `/notifications` page, see
+corresponding web page in an embedded WebView. Its groups follow the web menu's sections: first
+**Inbox**, with **Notifications** (the web `/notifications` page, see
 [Notifications](features/notifications.md)) and **Reminders** (the web `/reminders` page, see
-[Reminders](features/reminders.md)); its **Log** group holds Meals, Reports and **Check-ins** (the
-web `/check-ins` page, see [Check-ins](features/check-ins.md)). The two native-only screens — **Live**
+[Reminders](features/reminders.md)); then **Log** (Journal, Meals, **Check-ins** — see
+[Check-ins](features/check-ins.md) — Reports, People), **Training** (Strength, Training load,
+Routes, Segments), **Explore** (Timeline, Data, Chart, Analyze, Goals, Places), **Sharing**
+(Dashboards, Challenges; Feed is a bottom tab), **Setup** (Data sources, Activity types, Rules,
+Settings, Audit log) and **Device & account** (Live sensors, Account & server, Help & support).
+Unlike the web menu the hub does not collapse its groups. The two native-only screens — **Live**
 sensors ([BLE](#live-sensors)) and **Account** (server URL, logout) — also live in the hub.
 Selecting an entry pushes it in place; the system back gesture returns to the
 hub (after any embedded page has exhausted its own WebView history), and so does
