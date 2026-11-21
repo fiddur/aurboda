@@ -1,3 +1,5 @@
+import type { PostMention } from '@aurboda/api-spec'
+
 import type { FeedPostRecord } from '../db/index.ts'
 import type { FeedDeliver } from '../routes/feed-router.ts'
 
@@ -29,8 +31,8 @@ export const withoutParticipantsDelivery = (deliver: FeedDeliver): FeedDeliver =
   deleted: (user, post, stamps) => {
     if (deliverable(post)) deliver.deleted(user, post, stamps)
   },
-  updated: (user, post) => {
-    if (deliverable(post)) deliver.updated(user, post)
+  updated: (user, post, droppedMentions) => {
+    if (deliverable(post)) deliver.updated(user, post, droppedMentions)
   },
   updatedArticle: (user, post) => {
     if (deliverable(post)) deliver.updatedArticle(user, post)
@@ -49,14 +51,26 @@ export const withoutParticipantsDelivery = (deliver: FeedDeliver): FeedDeliver =
   },
 })
 
+/** The accounts `before` mentioned that `after` no longer does. */
+export const droppedMentions = (
+  before: Pick<FeedPostRecord, 'mentions'>,
+  after: Pick<FeedPostRecord, 'mentions'>,
+): PostMention[] => {
+  const kept = new Set((after.mentions ?? []).map((m) => m.actor_uri))
+  return (before.mentions ?? []).filter((m) => !kept.has(m.actor_uri))
+}
+
 /**
  * Federate an edit as an `Update` through the hook for the post's kind: a post with no linked
- * activity must go through its own kind's path, where the generic `updated` would no-op.
+ * activity must go through its own kind's path, where the generic `updated` would no-op. An
+ * account the edit stopped mentioning (`previous` is the post before it) is sent the `Update`
+ * too, since its server otherwise keeps showing the mention.
  */
 export const deliverFeedPostEdit = (
   deliver: FeedDeliver | undefined,
   user: string,
   record: FeedPostRecord,
+  previous?: Pick<FeedPostRecord, 'mentions'>,
 ): void => {
   if (deliver == null) return
   if (record.kind === 'article') deliver.updatedArticle(user, record)
@@ -64,5 +78,9 @@ export const deliverFeedPostEdit = (
   else if (record.kind === 'exercise') deliver.updatedExercise(user, record)
   else if (record.kind === 'dashboard') deliver.updatedDashboard(user, record)
   else if (record.kind === 'reply') deliver.updatedReply(user, record)
-  else deliver.updated(user, record)
+  else {
+    const dropped = previous ? droppedMentions(previous, record) : []
+    if (dropped.length > 0) deliver.updated(user, record, dropped)
+    else deliver.updated(user, record)
+  }
 }

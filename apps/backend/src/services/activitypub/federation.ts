@@ -83,7 +83,7 @@ import {
   upsertTimelineEntry,
 } from '../../db/index.ts'
 import { UUID_RE } from '../../utils.ts'
-import { articleFlagNames } from '../article.ts'
+import { articleSelectorNames } from '../article.ts'
 import {
   admitInboundThreadNote,
   createInboundThreadDeps,
@@ -1415,8 +1415,8 @@ export const createFeedFederation = (
       // other). An article's Note is built from its stored content — no activity.
       const article = toDeliverableArticle(post)
       if (article != null) {
-        const flagNames = await articleFlagNames(identifier, article.article.blocks)
-        return buildArticleNote(ctx, identifier, article, apiBaseUrl, flagNames)
+        const selectorNames = await articleSelectorNames(identifier, article.article.blocks)
+        return buildArticleNote(ctx, identifier, article, apiBaseUrl, selectorNames)
       }
       const challenge = toDeliverableChallenge(post)
       if (challenge != null) return buildChallengeNote(ctx, identifier, challenge)
@@ -1510,8 +1510,8 @@ export const createFeedFederation = (
             // resolved activity.
             const article = toDeliverableArticle(post)
             if (article != null) {
-              const flagNames = await articleFlagNames(identifier, article.article.blocks)
-              return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl, flagNames)
+              const selectorNames = await articleSelectorNames(identifier, article.article.blocks)
+              return buildArticleNoteCreate(ctx, identifier, article, apiBaseUrl, selectorNames)
             }
             const challenge = toDeliverableChallenge(post)
             if (challenge != null) return buildChallengeNoteCreate(ctx, identifier, challenge)

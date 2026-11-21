@@ -33,7 +33,7 @@ import {
 } from './article-block-data.ts'
 import { articleBlockMisses, forgetArticleBlockMisses } from './article-block-misses.ts'
 import {
-  type ArticleFlagNames,
+  type ArticleSelectorNames,
   articleBlockImageUrl,
   articleBlockLabel,
   isZeroDurationBucket,
@@ -168,7 +168,7 @@ export const buildArticleMarkdown = (
   updatedAt: Date,
   article: ArticleContent,
   renderableBlocks?: ReadonlySet<number>,
-  flagNames: ArticleFlagNames = {},
+  selectorNames: ArticleSelectorNames = {},
 ): string => {
   const sections = [`# ${inlineText(article.title)}`]
   article.blocks.forEach((block, index) => {
@@ -176,7 +176,7 @@ export const buildArticleMarkdown = (
       sections.push(block.markdown)
       return
     }
-    const label = inlineText(articleBlockLabel(block, flagNames))
+    const label = inlineText(articleBlockLabel(block, selectorNames))
     const drawable = renderableBlocks === undefined || renderableBlocks.has(index)
     if (block.type === 'challenge') {
       const lines: string[] = []

@@ -51,7 +51,7 @@ import type { FeedPostRecord, FeedQuoteAuthorizationRecord } from '../../db/inde
 import type { ThreadSignal, ThreadSignalKind } from '../challenge-thread.ts'
 
 import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } from '../../db/index.ts'
-import { type ArticleFlagNames, articleBlockFigureUrl, articleFlagNames } from '../article.ts'
+import { type ArticleSelectorNames, articleBlockFigureUrl, articleSelectorNames } from '../article.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
 import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
@@ -434,16 +434,21 @@ export const deliverFeedPost = async (
   })
 }
 
+/**
+ * `droppedMentions` are the accounts an edit stopped mentioning: they get the `Update` too, so
+ * their copy of the post loses the mention.
+ */
 export const deliverFeedUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverablePost,
   activity: DeliverableActivity,
+  droppedMentions: readonly PostMention[] = [],
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const update = await buildFeedUpdate(ctx, user, post, activity, deps.apiBaseUrl)
   await fanOut(deps, ctx, user, update, {
-    mentions: postMentionRecipients(post),
+    mentions: [...postMentionRecipients(post), ...postMentionRecipients({ mentions: droppedMentions })],
     relayActivity: relayEdit(ctx, user, post, update),
   })
 }
@@ -593,7 +598,7 @@ export const buildArticleNote = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
-  flagNames: ArticleFlagNames = {},
+  selectorNames: ArticleSelectorNames = {},
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -610,7 +615,7 @@ export const buildArticleNote = (
         post.updated_at,
         index,
       ),
-    flagNames,
+    selectorNames,
   )
   return new Note({
     attachments: figures.map(articleFigureImage),
@@ -634,7 +639,7 @@ export const buildArticleNoteCreate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
-  flagNames: ArticleFlagNames = {},
+  selectorNames: ArticleSelectorNames = {},
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -642,7 +647,7 @@ export const buildArticleNoteCreate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#create`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, selectorNames),
     published: dateToTemporalInstant(post.created_at),
     tos: to,
   })
@@ -654,7 +659,7 @@ export const buildArticleNoteUpdate = (
   user: string,
   post: DeliverableArticle,
   apiBaseUrl: string,
-  flagNames: ArticleFlagNames = {},
+  selectorNames: ArticleSelectorNames = {},
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
   const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
@@ -662,7 +667,7 @@ export const buildArticleNoteUpdate = (
     actor: ctx.getActorUri(user),
     ccs: cc,
     id: new URL(`${noteId.href}#update-${post.updated_at.getTime()}`),
-    object: buildArticleNote(ctx, user, post, apiBaseUrl, flagNames),
+    object: buildArticleNote(ctx, user, post, apiBaseUrl, selectorNames),
     tos: to,
   })
 }
@@ -673,8 +678,8 @@ export const deliverFeedArticlePost = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const flagNames = await articleFlagNames(user, post.article.blocks)
-  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl, flagNames)
+  const selectorNames = await articleSelectorNames(user, post.article.blocks)
+  const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl, selectorNames)
   await fanOut(deps, ctx, user, create, { relayActivity: relayCreate(post, create) })
 }
 
@@ -684,8 +689,8 @@ export const deliverFeedArticleUpdate = async (
   post: DeliverableArticle,
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
-  const flagNames = await articleFlagNames(user, post.article.blocks)
-  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl, flagNames)
+  const selectorNames = await articleSelectorNames(user, post.article.blocks)
+  const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl, selectorNames)
   await fanOut(deps, ctx, user, update, { relayActivity: relayEdit(ctx, user, post, update) })
 }
 

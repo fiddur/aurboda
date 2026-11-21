@@ -1,9 +1,10 @@
-import type { ArticleBlock, ArticleContent, ArticleDraftBlock } from '@aurboda/api-spec'
+import type { ArticleBlock, ArticleContent, ArticleDraftBlock, CorrelationSelector } from '@aurboda/api-spec'
 
 import {
   articleBlockSchema,
   articleBlockWindow,
   articleDraftBlockSchema,
+  articlePersonIds,
   articleSensitivityFlagIds,
   articleSharingWarnings,
   resolvedImpactActivityLabel,
@@ -14,7 +15,7 @@ import {
   articleBlockFigureUrl,
   articleBlockImageUrl,
   articleBlockLabel,
-  articleFlagNames,
+  articleSelectorNames,
   buildArticleContent,
   checkArticleChallenges,
   isZeroDurationBucket,
@@ -215,7 +216,9 @@ describe('impact blocks', () => {
 
   test('labels a meal sensitivity impact by the flag name, generically when the flag is gone', () => {
     const block = { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' } as const
-    expect(articleBlockLabel(block, { 'gluten-id': 'gluten' })).toBe('Impact of meals with gluten')
+    expect(articleBlockLabel(block, { flag_names: { 'gluten-id': 'gluten' } })).toBe(
+      'Impact of meals with gluten',
+    )
     expect(articleBlockLabel(block)).toBe('Impact of meals with a sensitivity flag')
   })
 
@@ -518,26 +521,30 @@ describe('sensitivity flags in article blocks', () => {
   })
 
   test('labels a sensitivity selector by the flag name, generically when the flag is gone', () => {
-    expect(articleBlockLabel(sensitivityCorr, { 'gluten-id': 'gluten' })).toBe(
+    expect(articleBlockLabel(sensitivityCorr, { flag_names: { 'gluten-id': 'gluten' } })).toBe(
       'Meals with gluten (count) vs hrv',
     )
     expect(articleBlockLabel(sensitivityCorr)).toBe('Meals with a sensitivity flag (count) vs hrv')
   })
 
-  test('articleFlagNames names the flags the blocks use and skips the lookup without one', async () => {
-    const list = vi.fn(async () => [
+  test('articleSelectorNames names the flags the blocks use and skips the lookup without one', async () => {
+    const flags = vi.fn(async () => [
       { id: 'gluten-id', name: 'gluten' },
       { id: 'dairy-id', name: 'dairy' },
     ])
-    expect(await articleFlagNames('alice', [sensitivityCorr], list)).toEqual({ 'gluten-id': 'gluten' })
-    expect(list).toHaveBeenCalledWith('alice')
-    list.mockClear()
-    expect(await articleFlagNames('alice', [corrBlock()], list)).toEqual({})
-    expect(list).not.toHaveBeenCalled()
+    const people = vi.fn(async () => [])
+    expect(await articleSelectorNames('alice', [sensitivityCorr], { flags, people })).toEqual({
+      flag_names: { 'gluten-id': 'gluten' },
+    })
+    expect(flags).toHaveBeenCalledWith('alice')
+    expect(people).not.toHaveBeenCalled()
+    flags.mockClear()
+    expect(await articleSelectorNames('alice', [corrBlock()], { flags, people })).toEqual({})
+    expect(flags).not.toHaveBeenCalled()
   })
 
-  test('articleFlagNames leaves out a flag that no longer exists', async () => {
-    expect(await articleFlagNames('alice', [sensitivityCorr], async () => [])).toEqual({})
+  test('articleSelectorNames leaves out a flag that no longer exists', async () => {
+    expect(await articleSelectorNames('alice', [sensitivityCorr], { flags: async () => [] })).toEqual({})
   })
 })
 
@@ -569,7 +576,9 @@ describe('articleSensitivityFlagIds and articleSharingWarnings', () => {
   })
 
   test('warns once per flag in a block, by name, generically without one', () => {
-    expect(articleSharingWarnings(blocks, { 'dairy-id': 'dairy', 'gluten-id': 'gluten' })).toEqual([
+    expect(
+      articleSharingWarnings(blocks, { flag_names: { 'dairy-id': 'dairy', 'gluten-id': 'gluten' } }),
+    ).toEqual([
       {
         block: 1,
         message:
@@ -599,20 +608,103 @@ describe('articleSensitivityFlagIds and articleSharingWarnings', () => {
 })
 
 describe('people selectors in articles', () => {
-  const block = (trigger: unknown) => ({
+  const ANNA = '11111111-1111-4111-8111-111111111111'
+  const BO = '22222222-2222-4222-8222-222222222222'
+  const block = (trigger: CorrelationSelector): Extract<ArticleBlock, { type: 'correlation' }> => ({
     outcome: { kind: 'metric', metric: 'sleep_score' },
     trigger,
     type: 'correlation',
   })
 
-  test('a correlation block refuses a people selector, published or drafted', () => {
+  test('a correlation block takes a people selector, published or drafted, with or without a person', () => {
     for (const trigger of [
       { kind: 'people' },
-      { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' },
-    ]) {
-      expect(articleBlockSchema.safeParse(block(trigger)).success).toBe(false)
-      expect(articleDraftBlockSchema.safeParse(block(trigger)).success).toBe(false)
+      { kind: 'people', person_id: ANNA },
+    ] satisfies CorrelationSelector[]) {
+      expect(articleBlockSchema.safeParse(block(trigger)).success).toBe(true)
+      expect(articleDraftBlockSchema.safeParse(block(trigger)).success).toBe(true)
     }
-    expect(articleBlockSchema.safeParse(block({ kind: 'activity', pattern: 'run' })).success).toBe(true)
+  })
+
+  test('a people selector is complete enough to publish', () => {
+    expect(buildArticleContent(content({ blocks: [block({ kind: 'people' })] })).ok).toBe(true)
+  })
+
+  test('labels a people selector by the person name, generically when the person is gone', () => {
+    const one = block({ kind: 'people', person_id: ANNA })
+    expect(articleBlockLabel(one, { person_names: { [ANNA]: 'Anna' } })).toBe(
+      'Time with Anna (min) vs sleep_score (score)',
+    )
+    expect(articleBlockLabel(one)).toBe('Time with a person (min) vs sleep_score (score)')
+    expect(articleBlockLabel(block({ kind: 'people' }))).toBe('Time with people (min) vs sleep_score (score)')
+  })
+
+  test('articleSelectorNames names only the people the blocks name, archived ones included', async () => {
+    const people = vi.fn(async () => [
+      { id: ANNA, name: 'Anna' },
+      { id: BO, name: 'Bo' },
+    ])
+    const flags = vi.fn(async () => [])
+    expect(
+      await articleSelectorNames('alice', [block({ kind: 'people', person_id: ANNA })], { flags, people }),
+    ).toEqual({ person_names: { [ANNA]: 'Anna' } })
+    expect(people).toHaveBeenCalledWith('alice')
+    expect(flags).not.toHaveBeenCalled()
+    people.mockClear()
+    expect(await articleSelectorNames('alice', [block({ kind: 'people' })], { flags, people })).toEqual({})
+    expect(people).not.toHaveBeenCalled()
+  })
+
+  test('articleSelectorNames leaves out a deleted or unknown person', async () => {
+    expect(
+      await articleSelectorNames('alice', [block({ kind: 'people', person_id: ANNA })], {
+        people: async () => [],
+      }),
+    ).toEqual({})
+  })
+
+  test('lists each person once, in block order', () => {
+    expect(
+      articlePersonIds([
+        {
+          outcome: { kind: 'people', person_id: ANNA },
+          trigger: { kind: 'people', person_id: ANNA },
+          type: 'correlation',
+        },
+        block({ kind: 'people' }),
+        block({ kind: 'people', person_id: BO }),
+      ]),
+    ).toEqual([ANNA, BO])
+  })
+
+  test('warns once per named person, by name, as "a person" when gone, and not for the time with anyone', () => {
+    expect(
+      articleSharingWarnings(
+        [
+          block({ kind: 'people', person_id: ANNA }),
+          block({ kind: 'people' }),
+          {
+            outcome: { kind: 'people', person_id: BO },
+            trigger: { flag: 'gluten-id', kind: 'sensitivity' },
+            type: 'correlation',
+          },
+        ],
+        { flag_names: { 'gluten-id': 'gluten' }, person_names: { [ANNA]: 'Anna' } },
+      ),
+    ).toEqual([
+      {
+        block: 0,
+        message: 'Readers see Anna by name, and how much time you spent with them on each day of the window.',
+      },
+      {
+        block: 2,
+        message:
+          'Readers see your meal sensitivity "gluten" by name, and how many meals carried it on each day of the window.',
+      },
+      {
+        block: 2,
+        message: 'Readers see how much time you spent with a person on each day of the window.',
+      },
+    ])
   })
 })

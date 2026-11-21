@@ -261,6 +261,10 @@ export const feedStructuredArticleCorrelationBlockSchema = z
     outcome: selectorSchema.meta({ description: 'Outcome dimension' }),
     pearson: z.number().nullable().meta({ description: 'Pearson correlation (-1..1)' }),
     pearson_p: z.number().nullable().meta({ description: 'Two-sided p-value for the Pearson correlation' }),
+    person_names: z.record(z.string(), z.string()).optional().meta({
+      description:
+        "Names of the people its selectors name, by person id; absent when neither names a person (or the person is deleted). Only the article's own people.",
+    }),
     series: z.array(alignedPointSchema).meta({ description: 'Aligned daily scatter points' }),
     spearman: z.number().nullable().meta({ description: 'Spearman rank correlation (-1..1)' }),
     start: iso8601DateTimeSchema.meta({ description: "Block's locked window start (ISO 8601)" }),

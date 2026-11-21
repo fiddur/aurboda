@@ -8,11 +8,17 @@
  * `describeSelectorAxis`) — a purpose-built, compact in-card render rather than
  * the full Correlations-explorer visualisation.
  */
-import type { ContinuousCorrelationData, CorrelationSelector } from '@aurboda/api-spec'
+import type { ContinuousCorrelationData, CorrelationSelector, SelectorNames } from '@aurboda/api-spec'
 
+import { selectorName } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchContinuousCorrelation, fetchCorrelationSelectors } from '../../state/api'
+import {
+  fetchContinuousCorrelation,
+  fetchCorrelationSelectors,
+  fetchPeople,
+  PEOPLE_KEY,
+} from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { describeSelectorAxis, linearRegression } from '../Correlations/exploreCharts'
 
@@ -44,10 +50,12 @@ export interface CorrelationScatterData {
   outcome: CorrelationSelector
   /** Sensitivity flag names by id, for a `sensitivity` selector's axis. */
   flag_names?: Record<string, string>
+  /** Person names by id, for a one-person `people` selector's axis. */
+  person_names?: Record<string, string>
 }
 
-const axisLabel = (selector: CorrelationSelector, flagNames: Record<string, string> | undefined): string =>
-  describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames?.[selector.flag] : undefined)
+const axisLabel = (selector: CorrelationSelector, names: SelectorNames): string =>
+  describeSelectorAxis(selector, selectorName(selector, names))
 
 /** The scatter itself: points + OLS regression line + r/ρ/n/p annotation + axes. */
 export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }) => {
@@ -68,8 +76,8 @@ export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }
   const headline = gc?.trigger_is_binary
     ? `Δ(present−absent)=${fmt(gc.difference)} · d=${fmt(gc.cohens_d)} · n=${data.n} · p=${fmtP(gc.welch?.p_value)}`
     : `r=${fmt(data.pearson)} · ρ=${fmt(data.spearman)} · n=${data.n} · p=${fmtP(data.pearson_p)}`
-  const triggerLabel = axisLabel(data.trigger, data.flag_names)
-  const outcomeLabel = axisLabel(data.outcome, data.flag_names)
+  const triggerLabel = axisLabel(data.trigger, data)
+  const outcomeLabel = axisLabel(data.outcome, data)
   const label = `Scatter of ${triggerLabel} versus ${outcomeLabel}; ${headline}`
 
   return (
@@ -116,6 +124,9 @@ export const CorrelationScatterSvg = ({ data }: { data: CorrelationScatterData }
  */
 const toDay = (iso: string): string => iso.slice(0, 10)
 
+const namesPerson = (selector: CorrelationSelector): boolean =>
+  selector.kind === 'people' && !!selector.person_id
+
 export const ArticleCorrelationBlock = ({
   trigger,
   outcome,
@@ -149,6 +160,14 @@ export const ArticleCorrelationBlock = ({
     staleTime: 5 * 60 * 1000,
   })
   const flagNames = Object.fromEntries((selectors?.sensitivities ?? []).map((s) => [s.value, s.label]))
+  const { data: people } = useQuery({
+    enabled: namesPerson(trigger) || namesPerson(outcome),
+    queryFn: () => fetchPeople({ archived: true }),
+    queryKey: [...PEOPLE_KEY, { archived: true }],
+    select: (response) => response.people ?? [],
+    staleTime: 60_000,
+  })
+  const personNames = Object.fromEntries((people ?? []).map((p) => [p.id, p.name]))
 
   return (
     <figure class="article-chart">
@@ -159,7 +178,7 @@ export const ArticleCorrelationBlock = ({
       ) : !data || data.n < 3 ? (
         <p class="article-chart-note">Not enough overlapping data in this window.</p>
       ) : (
-        <CorrelationScatterSvg data={{ ...data, flag_names: flagNames }} />
+        <CorrelationScatterSvg data={{ ...data, flag_names: flagNames, person_names: personNames }} />
       )}
       {caption && <figcaption class="article-chart-caption">{caption}</figcaption>}
     </figure>

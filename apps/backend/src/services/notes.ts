@@ -676,12 +676,16 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
   }
 }
 
-/** All comments on an entity, each with its own thread nested under `replies`. */
+/**
+ * All comments on an entity, each with its own thread nested under `replies`. A deleted person has
+ * none, as an unknown entity has none; restoring the person brings them back.
+ */
 export async function getNotesForEntity(
   user: string,
   entityType: EntityType,
   entityId: string,
 ): Promise<NoteData[]> {
+  if (entityType === 'person' && (!UUID_RE.test(entityId) || !(await getPerson(user, entityId)))) return []
   const notes = await dbGetNotesForEntity(user, entityType, entityId)
   return withReplies(user, notes)
 }

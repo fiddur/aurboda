@@ -400,7 +400,7 @@ describe('addNote — time comments and replies', () => {
     expect(db.insertNote).not.toHaveBeenCalled()
   })
 
-  test.each(['activity', 'productivity', 'report', 'meal', 'note'] as const)(
+  test.each(['activity', 'productivity', 'report', 'meal', 'note', 'person'] as const)(
     'rejects a non-UUID entity_id for entity_type %s',
     async (entityType) => {
       const result = await addNote('user', {
@@ -413,6 +413,7 @@ describe('addNote — time comments and replies', () => {
       expect(result.error).toBe(`entity_id must be a UUID when entity_type is '${entityType}'`)
       expect(db.insertNote).not.toHaveBeenCalled()
       expect(db.getNoteRoot).not.toHaveBeenCalled()
+      expect(db.getPerson).not.toHaveBeenCalled()
     },
   )
 
@@ -1402,6 +1403,28 @@ describe('getNotesForEntity', () => {
     vi.mocked(db.getNotesForEntity).mockResolvedValue([])
     const result = await getNotesForEntity('user', 'activity', randomUUID())
     expect(result).toEqual([])
+  })
+
+  test('reads the notes about a live person', async () => {
+    const personId = randomUUID()
+    vi.mocked(db.getPerson).mockResolvedValue({ id: personId } as db.PersonRecord)
+    vi.mocked(db.getNotesForEntity).mockResolvedValue([
+      makeNote({ entity_id: personId, entity_type: 'person' }),
+    ])
+    expect(await getNotesForEntity('user', 'person', personId)).toHaveLength(1)
+    expect(db.getPerson).toHaveBeenCalledWith('user', personId)
+  })
+
+  test('a deleted or unknown person has no notes, which stay stored', async () => {
+    vi.mocked(db.getPerson).mockResolvedValue(null)
+    expect(await getNotesForEntity('user', 'person', randomUUID())).toEqual([])
+    expect(db.getNotesForEntity).not.toHaveBeenCalled()
+  })
+
+  test('a malformed person id has no notes and is never looked up', async () => {
+    expect(await getNotesForEntity('user', 'person', 'not-a-uuid')).toEqual([])
+    expect(db.getPerson).not.toHaveBeenCalled()
+    expect(db.getNotesForEntity).not.toHaveBeenCalled()
   })
 })
 
