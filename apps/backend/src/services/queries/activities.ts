@@ -86,12 +86,15 @@ interface EnrichmentContext {
   commentsMap: Map<string, CommentSummary[]>
 }
 
+/** The id the activity detail page takes: `merged:<id>` for a merged row. */
+export const activityResultId = (a: { id?: string; source_ids?: string[] }): string | undefined =>
+  a.source_ids ? `merged:${a.id}` : a.id
+
 function enrichActivity(
   a: Awaited<ReturnType<typeof getActivities>>[number],
   ctx: EnrichmentContext,
   hrZoneSecs: HrZoneSecs | undefined,
 ): ActivityResult {
-  const isMerged = 'source_ids' in a && Boolean(a.source_ids)
   // For merged rows, collect comments anchored to the winner and to any
   // sibling source row that was folded in, deduping by note id.
   const commentLookupIds = a.id ? [a.id, ...(a.source_ids ?? [])] : []
@@ -104,7 +107,7 @@ function enrichActivity(
       : undefined,
     end_time: a.end_time?.toISOString(),
     hr_zone_secs: hrZoneSecs,
-    id: isMerged ? `merged:${a.id}` : a.id,
+    id: activityResultId(a),
     override_target_ids: a.override_target_ids,
     source: a.source,
     start_time: a.start_time.toISOString(),

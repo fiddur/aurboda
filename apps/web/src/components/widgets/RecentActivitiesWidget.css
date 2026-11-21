@@ -1,0 +1,100 @@
+.recent-activities-note {
+  margin: -0.5rem 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.recent-activities-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 0.25rem 1.5rem;
+}
+
+.recent-activities-list li {
+  min-width: 0;
+}
+
+.recent-activities-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.25rem;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.recent-activities-row:hover,
+a.recent-activities-row:focus-visible {
+  background: var(--color-accent-soft);
+}
+
+.recent-activities-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.recent-activities-emoji {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.recent-activities-initial {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.recent-activities-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.recent-activities-label,
+.recent-activities-figures {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-activities-label {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.recent-activities-figures {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.recent-activities-when {
+  flex: none;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.recent-activities-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+}
+
+.recent-activities-log {
+  font-size: 0.875rem;
+  color: var(--color-accent);
+}

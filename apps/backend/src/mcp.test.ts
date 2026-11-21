@@ -27,6 +27,7 @@ vi.mock('./services/queries/index', async () => ({
   getDailySummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   getPlacesSummary: vi.fn(),
+  getRecentActivities: vi.fn(),
   getTopApps: vi.fn(),
   getTopMedia: vi.fn(),
   parseActivityId: (raw: string) => ({
@@ -1170,6 +1171,7 @@ describe('MCP Server', () => {
         'testuser',
         defaultDashboardConfig,
         '2026-10',
+        'owner',
       )
     })
 
@@ -1240,6 +1242,40 @@ describe('MCP Server', () => {
         end: '2026-10-31T23:59:59Z',
         start: '2026-10-01T00:00:00Z',
       })
+    })
+
+    test('get_recent_activities maps its arguments onto the service', async () => {
+      vi.mocked(queries.getRecentActivities).mockResolvedValue({
+        activities: [
+          {
+            activity_type: 'running',
+            id: 'a1',
+            start_time: '2026-11-21T07:00:00.000Z',
+            type_name: 'Running',
+          },
+        ],
+        tz: 'Europe/Stockholm',
+      })
+
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_recent_activities',
+        {
+          exclude_types: ['walking'],
+          manual_only: true,
+          types: ['exercise'],
+          tz: 'Europe/Stockholm',
+          window: 'latest',
+        },
+      )
+
+      expect(JSON.parse(response.text).data.activities).toHaveLength(1)
+      expect(queries.getRecentActivities).toHaveBeenCalledWith(
+        'testuser',
+        { exclude_types: ['walking'], limit: 5, manual_only: true, types: ['exercise'], window: 'latest' },
+        { tz: 'Europe/Stockholm' },
+      )
     })
 
     test('query_top_media, query_top_apps and get_places_summary map their arguments onto the services', async () => {

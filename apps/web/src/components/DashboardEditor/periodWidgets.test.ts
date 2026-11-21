@@ -17,6 +17,7 @@ describe('offeredWidgetTypes', () => {
   it('hides last night, goal progress and sleep debt on a period dashboard', () => {
     expect(offeredWidgetTypes(templates, true)).toEqual([{ type: 'metric_card' }])
     expect(appliesToPeriod('activity_summary')).toBe(true)
+    expect(appliesToPeriod('recent_activities')).toBe(true)
   })
 
   it('offers the day overview on every rolling dashboard, not on a period dashboard', () => {

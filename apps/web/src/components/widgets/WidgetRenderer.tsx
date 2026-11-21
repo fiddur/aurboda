@@ -12,6 +12,7 @@ import { LastSleepWidget } from './LastSleepWidget'
 import { MetricCardWidget } from './MetricCardWidget'
 import { PlacesCardWidget } from './PlacesCardWidget'
 import { QuickLinkWidget } from './QuickLinkWidget'
+import { RecentActivitiesWidget } from './RecentActivitiesWidget'
 import { RecordCardWidget } from './RecordCardWidget'
 import { SleepDebtWidget } from './SleepDebtWidget'
 import { SparklineCardWidget } from './SparklineCardWidget'
@@ -30,6 +31,9 @@ interface WidgetRendererProps {
 export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId }: WidgetRendererProps) {
   const origin =
     boardId && sectionId ? { board_id: boardId, section_id: sectionId, widget_id: widget.id } : undefined
+
+  const ownerOnlyNote = (visibleToVisitors: boolean | undefined) =>
+    boardId && boardId !== 'home' && visibleToVisitors !== true ? 'Only you see this card' : undefined
 
   // eslint-disable-next-line complexity -- one arm per widget type
   const renderWidget = () => {
@@ -68,13 +72,13 @@ export function WidgetRenderer({ widget, isEditing, onRemove, boardId, sectionId
         return <PlacesCardWidget config={widget.config} />
       case 'day_overview':
         return (
-          <DayOverviewWidget
+          <DayOverviewWidget config={widget.config} note={ownerOnlyNote(widget.config.visible_to_visitors)} />
+        )
+      case 'recent_activities':
+        return (
+          <RecentActivitiesWidget
             config={widget.config}
-            note={
-              boardId && boardId !== 'home' && widget.config.visible_to_visitors !== true
-                ? 'Only you see this card'
-                : undefined
-            }
+            note={ownerOnlyNote(widget.config.visible_to_visitors)}
           />
         )
       default:
