@@ -4,6 +4,7 @@ import { extractHashtags, normalizeTag } from '@aurboda/api-spec'
 import { format } from 'date-fns'
 
 import { fromDatetimeLocal, toDatetimeLocal } from '../../components/CommentThread/datetimeLocal'
+import { linksToInput, type RelatedLink, sameLinks } from './related'
 
 /** What the editor holds. `start`/`end` are datetime-local values; `date` is YYYY-MM-DD. */
 export interface EntryForm {
@@ -16,6 +17,8 @@ export interface EntryForm {
   date: string
   start: string
   end: string
+  /** The people and activities the entry is related to, with the labels their chips show. */
+  related: RelatedLink[]
 }
 
 export const emptyEntryForm = (now: Date = new Date(), content = ''): EntryForm => ({
@@ -23,6 +26,7 @@ export const emptyEntryForm = (now: Date = new Date(), content = ''): EntryForm 
   content,
   date: format(now, 'yyyy-MM-dd'),
   end: '',
+  related: [],
   start: toDatetimeLocal(now),
   tags: [],
   title: '',
@@ -38,6 +42,7 @@ export const formFromNote = (note: Note): EntryForm => {
     content: note.content,
     date,
     end: note.end_time ? toDatetimeLocal(note.end_time) : '',
+    related: note.related ?? [],
     start: start || `${date}T12:00`,
     tags: (note.tags ?? []).filter((tag) => !hashtags.has(tag)),
     title: note.title ?? '',
@@ -92,13 +97,20 @@ const anchorFields = (form: EntryForm) =>
 export const formToCreateBody = (form: EntryForm): AddNoteBody => ({
   content: form.content,
   entity_type: form.allDay ? 'day' : 'time',
+  ...(form.related.length > 0 ? { related: linksToInput(form.related) } : {}),
   tags: form.tags,
   title: form.title.trim() || null,
   ...anchorFields(form),
 })
 
-export const formToUpdateBody = (form: EntryForm, expectedUpdatedAt: string | undefined): UpdateNoteBody => ({
+/** `related` is sent only when the links differ from `savedRelated`, the ones the server last confirmed. */
+export const formToUpdateBody = (
+  form: EntryForm,
+  expectedUpdatedAt: string | undefined,
+  savedRelated: readonly RelatedLink[] = [],
+): UpdateNoteBody => ({
   content: form.content,
+  ...(sameLinks(form.related, savedRelated) ? {} : { related: linksToInput(form.related) }),
   tags: form.tags,
   title: form.title.trim() || null,
   ...(form.allDay
@@ -116,5 +128,10 @@ export const sameEntry = (a: EntryForm, b: EntryForm): boolean =>
   a.title.trim() === b.title.trim() &&
   a.content === b.content &&
   a.tags.join(',') === b.tags.join(',') &&
+  sameLinks(a.related, b.related) &&
   a.allDay === b.allDay &&
   (a.allDay ? a.date === b.date : a.start === b.start && a.end === b.end)
+
+/** The local day the entry is on, for picking that day's activities. */
+export const entryDay = (form: Pick<EntryForm, 'allDay' | 'date' | 'start'>): string =>
+  form.allDay ? form.date : form.start.slice(0, 10)

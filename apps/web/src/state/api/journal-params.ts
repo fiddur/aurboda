@@ -10,6 +10,8 @@ export interface JournalQuery {
   on_this_day?: string
   needs_text?: boolean
   include_comments?: boolean
+  /** Only entries related to this person or activity. */
+  related?: { type: 'person' | 'activity'; id: string }
   cursor?: string
   limit?: number
   tz?: string
@@ -27,6 +29,10 @@ export const journalSearchParams = (query: JournalQuery): Record<string, string>
   if (query.on_this_day) params.on_this_day = query.on_this_day
   if (query.needs_text) params.needs_text = 'true'
   if (query.include_comments) params.entity_types = ['time', 'day', ...JOURNAL_COMMENT_TYPES].join(',')
+  if (query.related) {
+    params.related_type = query.related.type
+    params.related_id = query.related.id
+  }
   if (query.cursor) params.cursor = query.cursor
   if (query.limit) params.limit = String(query.limit)
   if (query.tz) params.tz = query.tz

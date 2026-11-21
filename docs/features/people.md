@@ -146,6 +146,16 @@ merged view is with everyone its sources were with. Merging activities gives the
 union of the links; a soft-deleted activity keeps its links and gets them back when restored.
 `GET /people/{id}` lists the 20 latest live activities the person was with.
 
+## Journal entries
+
+A journal entry (or any thread root) can be related to a person without being a note about them:
+`related` on `POST /notes` and `PATCH /notes/:id` (see [Journal → Related](journal.md#related)).
+`GET /people/{id}` (MCP `get_person`) carries `journal_entries`: the related live entries newest
+first, at most 50, each with `id`, `title`, `entity_type`, `date` or `start_time`, and an
+`excerpt` of its first line. `GET /notes/search?related_type=person&related_id=…` lists them all.
+A link to a deleted person is hidden until the person is restored, and removed when the person is
+purged.
+
 ## Notes about a person
 
 A comment can be about a person: `entity_type: person` with the person's ID (see
@@ -160,7 +170,7 @@ any unknown entity; the notes stay stored, and restoring the person brings them 
 | ------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
 | `GET /people`                         | `list_people`          | The people by name; `archived=true` includes archived, `deleted=true` lists deleted |
 | `POST /people`                        | `add_person`           | Add a person                                                                        |
-| `GET /people/{id}`                    | `get_person`           | The person with `dates` and `recent_activities`                                     |
+| `GET /people/{id}`                    | `get_person`           | The person with `dates`, `recent_activities` and `journal_entries`                  |
 | `PATCH /people/{id}`                  | `update_person`        | Change the given fields                                                             |
 | `DELETE /people/{id}`                 | `delete_person`        | Delete, restorable for 30 days; `purge` removes it for good                         |
 | `POST /people/{id}/restore`           | `restore_person`       | Restore a deleted person                                                            |

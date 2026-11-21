@@ -301,6 +301,17 @@ export {
   upsertSyncedNote,
 } from './notes.ts'
 export {
+  copyActivityNoteLinksIn,
+  deleteNoteLinksOfTarget,
+  getNoteLinksForNoteIds,
+  listLiveLinkTargetIds,
+  listNotesRelatedTo,
+  type NoteLinkInput,
+  type NoteLinkRecord,
+  type RelatedNoteRecord,
+  replaceNoteLinks,
+} from './note-links.ts'
+export {
   getDeletedNoteAttachments,
   getNoteAttachment,
   getNoteAttachmentBytes,

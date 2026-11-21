@@ -117,6 +117,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'report_entries',
     'reports',
     'meals',
+    'note_links',
     'note_attachments',
     'note_templates',
     'note_revisions',

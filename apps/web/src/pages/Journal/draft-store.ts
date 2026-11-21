@@ -1,6 +1,7 @@
 import type { EntryForm } from './entry-form'
 
 import { sameEntry } from './entry-form'
+import { isRelatedLink } from './related'
 
 /** The part of `Storage` the drafts use, so tests can hand in a plain map. */
 export type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
@@ -28,7 +29,8 @@ const isForm = (value: unknown): value is EntryForm => {
     typeof form.allDay === 'boolean' &&
     typeof form.date === 'string' &&
     typeof form.start === 'string' &&
-    typeof form.end === 'string'
+    typeof form.end === 'string' &&
+    (form.related === undefined || (Array.isArray(form.related) && form.related.every(isRelatedLink)))
   )
 }
 
@@ -47,7 +49,7 @@ export const loadDraft = (storage: DraftStorage | undefined, key: string): Entry
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as Partial<EntryDraft>
     if (parsed.key !== key || typeof parsed.edited_at !== 'number' || !isForm(parsed.form)) return undefined
-    return { edited_at: parsed.edited_at, form: parsed.form, key }
+    return { edited_at: parsed.edited_at, form: { ...parsed.form, related: parsed.form.related ?? [] }, key }
   }, undefined)
 
 export const saveDraft = (storage: DraftStorage | undefined, draft: EntryDraft): void =>

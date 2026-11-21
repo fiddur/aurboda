@@ -108,12 +108,55 @@ material too: search includes them when `entity_types` names them.
 
 See [Comments](./comments.md) for the exact rules.
 
+## Related
+
+An entry can be **related to** any number of people (see [People](./people.md)) and
+activities without being a comment on any of them: today's entry mentions a partner,
+another is about last night's sleep. A link is made explicitly, never by reading the
+text; removing a name from the text does not remove the link, and a link can exist with
+nothing about it in the text.
+
+- **Model.** `note_links` holds `note_id`, `entity_type` (`person` or `activity`),
+  `entity_id` and `created_at`, one row per note and target. Only a thread root carries
+  links (a `day` or `time` entry, or a comment on something); a reply is refused with a
+  `400`. Targets are referenced by id and their labels resolved when read, so a renamed
+  person or a retyped activity stays right.
+- **Making one.** `related` on `POST /notes` and `PATCH /notes/:id` (MCP `add_note`,
+  `update_note`) is the full list of `{ entity_type, entity_id }`, at most 30,
+  duplicates collapsed: it replaces the links when present, `[]` removes them all, and
+  leaving it out leaves them. An unknown, malformed or deleted target is a `400` naming
+  it (`Unknown person: <id>`, `Unknown activity: <id>`). A change of links follows the
+  same `expected_updated_at` check as the text (a stale one is the usual `409`); it bumps
+  `updated_at` but keeps no text revision.
+- **Where it shows.** Every thread root in an answer carries `related`: each target's
+  `entity_type`, `entity_id` and a `label` -- the person's name, or the activity's title
+  (else its type's name) with its local date, "Evening walk, 2026-11-20". `GET /people/:id`
+  (MCP `get_person`) and the activity detail (`GET /activities/:id`,
+  `GET /activities/:id/full`, MCP `get_activity_detail`) carry `journal_entries`: the
+  related entries newest first, at most 50, each with `id`, `title`, `entity_type`,
+  `date` or `start_time`, and `excerpt` (the first non-empty line, at most 200
+  characters). A merged activity lists the entries related to any of its source rows,
+  and merging activities relates their entries to the merged one. On the Timeline
+  nothing changes: an entry stays where its own time puts it.
+- **The filter.** `GET /notes/search` takes `related_type` (`person` or `activity`) with
+  `related_id`, both or neither, and combines them with every other filter. An activity
+  is matched by the id given.
+- **Deleted targets.** A link to a soft-deleted person or activity is hidden while its
+  target is deleted and back on restore; it goes when the target is removed for good.
+  Replacing an entry's links only touches the visible ones, so a hidden link survives
+  an edit and comes back with its target.
+  A deleted entry's links are out of sight with it and come back with it.
+- **Privacy.** As the rest of People: links never leave your account. A note is never
+  shared, and nothing about its links goes into an activity's share, the feed or
+  anything federated.
+
 ## Finding entries
 
 `GET /notes/search` (MCP `search_notes`) is the journal's one read: newest first,
 paged with `next_cursor`, free-standing entries by default. It takes full-text `q`
 (title and content, the last word as a prefix, a reply's match returns its root),
-`tags` (all of them), `from`/`to` local dates, and `on_this_day` -- entries from the
+`tags` (all of them), `from`/`to` local dates, `related_type`/`related_id` (see
+[Related](#related)), and `on_this_day` -- entries from the
 same month and day in earlier years, 29 February included on a non-leap 28
 February. A `day` entry sorts at the start of its date in your timezone. The
 full-text index covers the first 100 000 characters of an entry. See

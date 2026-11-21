@@ -6,6 +6,8 @@ import type { EntityType, Note, NoteRevision } from './types.ts'
 import { UUID_RE } from '../utils.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { buildDynamicUpdate } from './dynamic-update.ts'
+import { type NoteLinkInput, relatedToCondition, replaceNoteLinks } from './note-links.ts'
+import { PARENT_IS_LIVE, parentIdColumn } from './note-sql.ts'
 import { mapNoteRow } from './row-mappers.ts'
 
 const NOTE_COLUMNS = `id, entity_type, entity_id, content, source, start_time, end_time,
@@ -17,19 +19,21 @@ export interface NoteExtras {
   tags?: string[]
   hashtags?: string[]
   date?: string | null
+  /** The people and activities the new note is related to, written in the same transaction. */
+  related?: NoteLinkInput[]
 }
 
-export const insertNote = async (
-  user: string,
+const insertNoteIn = async (
+  db: Queryable | string,
   entityType: EntityType,
   entityId: string | null,
   content: string,
-  startTime?: Date,
-  endTime?: Date,
-  extras: NoteExtras = {},
+  startTime: Date | undefined,
+  endTime: Date | undefined,
+  extras: NoteExtras,
 ): Promise<Note> => {
   const result = await query(
-    user,
+    db,
     `INSERT INTO notes (entity_type, entity_id, content, start_time, end_time, title, tags, hashtags, "date")
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING ${NOTE_COLUMNS}`,
@@ -47,6 +51,26 @@ export const insertNote = async (
   )
 
   return mapNoteRow(result.rows[0])
+}
+
+export const insertNote = async (
+  user: string,
+  entityType: EntityType,
+  entityId: string | null,
+  content: string,
+  startTime?: Date,
+  endTime?: Date,
+  extras: NoteExtras = {},
+): Promise<Note> => {
+  const related = extras.related
+  if (related === undefined) {
+    return insertNoteIn(user, entityType, entityId, content, startTime, endTime, extras)
+  }
+  return withUserTransaction(user, async (tx) => {
+    const note = await insertNoteIn(tx, entityType, entityId, content, startTime, endTime, extras)
+    await replaceNoteLinks(tx, note.id, related)
+    return note
+  })
 }
 
 /** A soft-deleted note is as good as absent, except to restore and purge, which ask for it. */
@@ -91,6 +115,8 @@ export interface NoteFieldUpdates {
   title?: string | null
   tags?: string[]
   hashtags?: string[]
+  /** Replaces the note's links; no column of its own, so it keeps no revision. */
+  related?: NoteLinkInput[]
 }
 
 export interface NoteRevisionPolicy {
@@ -163,7 +189,7 @@ const isStale = (
  * Update a live note in one transaction: the row is locked, `expected_updated_at` (when given)
  * is compared with the stored `updated_at` to the millisecond, the previous text is kept as a
  * revision when the content or title changes, and when the anchor moves its replies move with it.
- * `updated_at` is always bumped.
+ * `updated_at` is always bumped, also when only the links change.
  */
 export const updateNoteGuarded = async (
   user: string,
@@ -199,6 +225,7 @@ export const updateNoteGuarded = async (
     })
     const result = await query(tx, update!.sql, update!.params)
     const note = mapNoteRow(result.rows[0])
+    if (fields.related !== undefined) await replaceNoteLinks(tx, note.id, fields.related)
 
     const anchorMoved =
       fields.start_time !== undefined || fields.end_time !== undefined || fields.date !== undefined
@@ -297,28 +324,10 @@ export const getNotesByEntityIds = async (
 export const getRepliesForRootIds = async (user: string, rootIds: string[]): Promise<Map<string, Note[]>> =>
   getNotesByEntityIds(user, 'note', rootIds)
 
-/**
- * Whether a root note's parent is live, for the alias `n` with a `parent_id` column (the uuid of
- * `entity_id` when it is one). A comment whose parent is soft-deleted (it reappears on restore) or
- * gone altogether would draw a Timeline bubble linking to something that 404s. The parent lookup is
- * a primary-key probe per row.
- */
-const PARENT_IS_LIVE = `CASE n.entity_type
-       WHEN 'activity' THEN EXISTS (SELECT 1 FROM activities a WHERE a.id = n.parent_id AND a.deleted_at IS NULL)
-       WHEN 'productivity' THEN EXISTS (SELECT 1 FROM productivity p WHERE p.id = n.parent_id AND p.deleted_at IS NULL)
-       WHEN 'meal' THEN EXISTS (SELECT 1 FROM meals m WHERE m.id = n.parent_id)
-       WHEN 'report' THEN EXISTS (SELECT 1 FROM reports r WHERE r.id = n.parent_id)
-       ELSE TRUE
-     END`
-
 /** An entry still to be written up: a live picture on it and no text yet. For the alias `n`. */
 const NEEDS_TEXT = `(n.content ~ '^\\s*$' AND EXISTS (
        SELECT 1 FROM note_attachments a
         WHERE a.note_id = n.id AND a.kind = 'image' AND a.deleted_at IS NULL))`
-
-/** The CASE guards the uuid cast, since Postgres does not short-circuit a WHERE. */
-const parentIdColumn = (uuidParam: string): string =>
-  `CASE WHEN n.entity_id ~* ${uuidParam} THEN n.entity_id::uuid END AS parent_id`
 
 /** Local calendar dates, inclusive: the `day` notes the range read returns besides the timed ones. */
 export interface LocalDateRange {
@@ -384,6 +393,8 @@ export interface NotesSearchParams {
   cursor?: NotesSearchCursor
   /** Only entries with a live picture and no text. */
   needs_text?: boolean
+  /** Only entries with a visible link to this person or activity. */
+  related?: NoteLinkInput
 }
 
 export interface NotesSearchPage {
@@ -426,6 +437,9 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
     conditions.push(`(n.tags || n.hashtags) @> ${param(params.tags)}::text[]`)
   }
   if (params.needs_text) conditions.push(NEEDS_TEXT)
+  if (params.related) {
+    conditions.push(relatedToCondition(param(params.related.entity_type), param(params.related.entity_id)))
+  }
   if (params.from) conditions.push(`${localDay} >= ${param(params.from)}::date`)
   if (params.to) conditions.push(`${localDay} <= ${param(params.to)}::date`)
   if (params.on_this_day) {

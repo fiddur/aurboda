@@ -8,6 +8,13 @@ describe('journalSearchParams', () => {
     expect(journalSearchParams({ q: '  ', tags: [] })).toEqual({})
   })
 
+  test('sends a related filter as related_type and related_id', () => {
+    expect(journalSearchParams({ related: { id: 'p1', type: 'person' } })).toEqual({
+      related_id: 'p1',
+      related_type: 'person',
+    })
+  })
+
   test('maps the journal filters to the search API', () => {
     expect(
       journalSearchParams({

@@ -22,6 +22,7 @@ vi.mock('../../db', () => ({
   getMeals: vi.fn(),
   getNonSleepActivitiesMerged: vi.fn(),
   getNoteAttachmentsForNoteIds: vi.fn().mockResolvedValue(new Map()),
+  getNoteLinksForNoteIds: vi.fn().mockResolvedValue(new Map()),
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),

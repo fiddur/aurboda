@@ -1,3 +1,4 @@
+import { NOTE_REPLY_RELATED_ERROR, NOTES_SEARCH_RELATED_PAIR_ERROR } from '@aurboda/api-spec'
 import { randomUUID } from 'node:crypto'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -11,7 +12,9 @@ import {
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
+  journalExcerpt,
   listDeletedNotes,
+  listJournalEntryRefs,
   onThisDayFilter,
   restoreNoteById,
   searchNotesForUser,
@@ -27,6 +30,7 @@ vi.mock('../db', () => ({
   getMealById: vi.fn(),
   getNoteAttachmentsForNoteIds: vi.fn(async () => new Map()),
   getNoteById: vi.fn(),
+  getNoteLinksForNoteIds: vi.fn(async () => new Map()),
   getNoteRevisions: vi.fn(),
   getNoteRoot: vi.fn(),
   getNotesForEntity: vi.fn(),
@@ -36,6 +40,8 @@ vi.mock('../db', () => ({
   getReportById: vi.fn(),
   getRepliesForRootIds: vi.fn(async () => new Map()),
   insertNote: vi.fn(),
+  listLiveLinkTargetIds: vi.fn(async () => []),
+  listNotesRelatedTo: vi.fn(async () => []),
   restoreNote: vi.fn(),
   searchNotes: vi.fn(),
   softDeleteNote: vi.fn(),
@@ -1522,5 +1528,234 @@ describe('journal entry attachments', () => {
 
     await searchNotesForUser('user', { needs_text: true, tz: 'UTC' })
     expect(db.searchNotes).toHaveBeenCalledWith('user', expect.objectContaining({ needs_text: true }))
+  })
+})
+
+describe('related people and activities', () => {
+  const ANNA = randomUUID()
+  const WALK = randomUUID()
+  const annaLink = { entity_id: ANNA, entity_type: 'person' as const }
+  const walkLink = { entity_id: WALK, entity_type: 'activity' as const }
+  const annaRecord = { entity_id: ANNA, entity_type: 'person' as const, name: 'Anna', start_time: null }
+  const walkRecord = {
+    entity_id: WALK,
+    entity_type: 'activity' as const,
+    name: 'Evening walk',
+    start_time: new Date('2026-11-20T23:30:00Z'),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
+    vi.mocked(db.getNoteLinksForNoteIds).mockResolvedValue(new Map())
+    vi.mocked(db.listLiveLinkTargetIds).mockImplementation(async (_user, type) =>
+      type === 'person' ? [ANNA] : [WALK],
+    )
+  })
+
+  test('a new entry writes its links with it and answers them labelled, an activity with its local date', async () => {
+    const note = makeNote({ date: '2026-11-20', entity_id: null, entity_type: 'day' })
+    vi.mocked(db.insertNote).mockResolvedValue(note)
+    vi.mocked(db.getNoteLinksForNoteIds).mockResolvedValue(new Map([[note.id, [annaRecord, walkRecord]]]))
+
+    const result = await addNote('user', {
+      content: '',
+      date: '2026-11-20',
+      entity_type: 'day',
+      related: [annaLink, walkLink],
+    })
+
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledTimes(2)
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledWith('user', 'person', [ANNA])
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledWith('user', 'activity', [WALK])
+    expect(vi.mocked(db.insertNote).mock.calls[0]![6]).toMatchObject({ related: [annaLink, walkLink] })
+    expect(result.data?.related).toEqual([
+      { entity_id: ANNA, entity_type: 'person', label: 'Anna' },
+      { entity_id: WALK, entity_type: 'activity', label: 'Evening walk, 2026-11-21' },
+    ])
+  })
+
+  test('without related a new entry answers an empty list and writes no links', async () => {
+    const note = makeNote({ date: '2026-11-20', entity_id: null, entity_type: 'day' })
+    vi.mocked(db.insertNote).mockResolvedValue(note)
+
+    const result = await addNote('user', { content: '', date: '2026-11-20', entity_type: 'day' })
+
+    expect(vi.mocked(db.insertNote).mock.calls[0]![6]).not.toHaveProperty('related')
+    expect(db.listLiveLinkTargetIds).not.toHaveBeenCalled()
+    expect(result.data?.related).toEqual([])
+  })
+
+  test('an unknown or deleted target is refused, naming it, and nothing is written', async () => {
+    const missing = randomUUID()
+    const result = await addNote('user', {
+      content: 'x',
+      entity_type: 'time',
+      related: [annaLink, { entity_id: missing, entity_type: 'activity' }],
+      start_time: '2026-11-20T10:00:00Z',
+    })
+
+    expect(result).toMatchObject({
+      error: `Unknown activity: ${missing}`,
+      errorCode: 'invalid',
+      success: false,
+    })
+    expect(db.insertNote).not.toHaveBeenCalled()
+
+    const person = await addNote('user', {
+      content: 'x',
+      entity_type: 'time',
+      related: [{ entity_id: missing, entity_type: 'person' }],
+      start_time: '2026-11-20T10:00:00Z',
+    })
+    expect(person.error).toBe(`Unknown person: ${missing}`)
+  })
+
+  test('a reply cannot be related, on create or update', async () => {
+    const created = await addNote('user', {
+      content: 'Reply',
+      entity_id: randomUUID(),
+      entity_type: 'note',
+      related: [annaLink],
+    })
+    expect(created).toMatchObject({ error: NOTE_REPLY_RELATED_ERROR, errorCode: 'invalid' })
+
+    const reply = makeNote({ entity_type: 'note' })
+    vi.mocked(db.getNoteById).mockResolvedValue(reply)
+    const updatedReply = await updateNote('user', reply.id, { related: [] })
+    expect(updatedReply).toMatchObject({ error: NOTE_REPLY_RELATED_ERROR, errorCode: 'invalid' })
+    expect(db.updateNoteGuarded).not.toHaveBeenCalled()
+  })
+
+  test('an update passes the full list, [] to remove them all, and absent to leave them', async () => {
+    const note = makeNote({
+      entity_id: null,
+      entity_type: 'time',
+      start_time: new Date('2026-11-20T10:00:00Z'),
+    })
+    vi.mocked(db.getNoteById).mockResolvedValue(note)
+    vi.mocked(db.updateNoteGuarded).mockResolvedValue({ note, status: 'updated' })
+
+    await updateNote('user', note.id, { related: [annaLink] })
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[0]![2]).toEqual({ related: [annaLink] })
+
+    await updateNote('user', note.id, { related: [] })
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[1]![2]).toEqual({ related: [] })
+
+    await updateNote('user', note.id, { content: 'Text only' })
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[2]![2].related).toBeUndefined()
+  })
+
+  test('a links-only change follows expected_updated_at: a stale one is a conflict', async () => {
+    const note = makeNote({
+      entity_id: null,
+      entity_type: 'time',
+      start_time: new Date('2026-11-20T10:00:00Z'),
+    })
+    vi.mocked(db.getNoteById).mockResolvedValue(note)
+    vi.mocked(db.updateNoteGuarded).mockResolvedValue({ note, status: 'conflict' })
+
+    const result = await updateNote('user', note.id, {
+      expected_updated_at: '2026-11-20T09:00:00.000Z',
+      related: [annaLink],
+    })
+
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls[0]![3]).toMatchObject({
+      expected_updated_at: new Date('2026-11-20T09:00:00.000Z'),
+    })
+    expect(result).toMatchObject({ data: { related: [] }, errorCode: 'conflict', success: false })
+  })
+
+  test('an unknown target on update is refused before anything is written', async () => {
+    const note = makeNote({
+      entity_id: null,
+      entity_type: 'time',
+      start_time: new Date('2026-11-20T10:00:00Z'),
+    })
+    vi.mocked(db.getNoteById).mockResolvedValue(note)
+    const missing = randomUUID()
+
+    const result = await updateNote('user', note.id, {
+      related: [{ entity_id: missing, entity_type: 'person' }],
+    })
+
+    expect(result).toMatchObject({ error: `Unknown person: ${missing}`, errorCode: 'invalid' })
+    expect(db.updateNoteGuarded).not.toHaveBeenCalled()
+  })
+
+  test('reads carry the links of the roots in one lookup, none for a reply', async () => {
+    const entry = makeNote({ date: '2026-11-20', entity_id: null, entity_type: 'day' })
+    const comment = makeNote({ entity_type: 'activity', start_time: new Date('2026-11-20T10:00:00Z') })
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([entry, comment])
+    vi.mocked(db.getNoteLinksForNoteIds).mockResolvedValue(new Map([[entry.id, [annaRecord]]]))
+
+    const result = await getNotesInRange(
+      'user',
+      new Date('2026-11-20T00:00:00Z'),
+      new Date('2026-11-20T23:59:59Z'),
+      'UTC',
+    )
+
+    expect(db.getNoteLinksForNoteIds).toHaveBeenCalledTimes(1)
+    expect(db.getNoteLinksForNoteIds).toHaveBeenCalledWith('user', [entry.id, comment.id])
+    expect(result[0].related).toEqual([{ entity_id: ANNA, entity_type: 'person', label: 'Anna' }])
+    expect(result[1].related).toEqual([])
+    expect(result[0].replies?.every((r) => !('related' in r))).toBe(true)
+  })
+
+  test('search passes the related filter; one without the other is refused', async () => {
+    vi.mocked(db.searchNotes).mockResolvedValue({ next_cursor: null, notes: [] })
+
+    await searchNotesForUser('user', { related_id: ANNA, related_type: 'person', tz: 'UTC' })
+    expect(db.searchNotes).toHaveBeenCalledWith(
+      'user',
+      expect.objectContaining({ related: { entity_id: ANNA, entity_type: 'person' } }),
+    )
+
+    expect(await searchNotesForUser('user', { related_type: 'person' })).toEqual({
+      error: NOTES_SEARCH_RELATED_PAIR_ERROR,
+      errorCode: 'invalid',
+      success: false,
+    })
+    expect(await searchNotesForUser('user', { related_id: ANNA })).toMatchObject({ success: false })
+  })
+
+  test('listJournalEntryRefs lists the related notes with an excerpt of their first line', async () => {
+    const id = randomUUID()
+    vi.mocked(db.listNotesRelatedTo).mockResolvedValue([
+      {
+        content: `\n  \n  ${'x'.repeat(250)}\nSecond line`,
+        date: '2026-11-20',
+        entity_type: 'day',
+        id,
+        start_time: null,
+        title: 'Saturday',
+      },
+    ])
+
+    const refs = await listJournalEntryRefs('user', 'activity', [WALK, ANNA])
+
+    expect(db.listNotesRelatedTo).toHaveBeenCalledWith(
+      'user',
+      'activity',
+      [WALK, ANNA],
+      50,
+      'Europe/Stockholm',
+    )
+    expect(refs).toEqual([
+      {
+        date: '2026-11-20',
+        entity_type: 'day',
+        excerpt: 'x'.repeat(200),
+        id,
+        start_time: undefined,
+        title: 'Saturday',
+      },
+    ])
+  })
+
+  test('journalExcerpt is the first non-empty line, trimmed', () => {
+    expect(journalExcerpt('')).toBe('')
+    expect(journalExcerpt('\n\n  Hello  \nWorld')).toBe('Hello')
   })
 })

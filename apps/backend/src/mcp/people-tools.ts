@@ -54,7 +54,7 @@ export const registerPeopleTools = (server: McpServer, user: string, deps: Peopl
 
   server.tool(
     'get_person',
-    'One person by ID with their dates and the latest activities they were with. Their notes are read with get_notes (entity_type person).',
+    'One person by ID with their dates, the latest activities they were with and the journal entries related to them (journal_entries, newest first). Their notes are read with get_notes (entity_type person).',
     { id: personId },
     async ({ id }) => {
       const person = await getPersonDetail(deps, user, id)

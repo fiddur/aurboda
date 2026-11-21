@@ -113,4 +113,25 @@ describe('draftStorageFor', () => {
   test('keeps no drafts without an account', () => {
     expect(draftStorageFor(memory(), undefined)).toBeUndefined()
   })
+
+  test('a draft keeps its links across a reload, and an older draft without them reads as none', () => {
+    const storage = memory()
+    const anna = {
+      entity_id: '00000000-0000-4000-8000-00000000000a',
+      entity_type: 'person' as const,
+      label: 'Anna',
+    }
+    saveDraft(storage, { edited_at: 1, form: { ...form, related: [anna] }, key: 'e1' })
+    expect(loadDraft(storage, 'e1')?.form.related).toEqual([anna])
+
+    const { related: _dropped, ...older } = form
+    storage.setItem('aurboda.journal.draft.e2', JSON.stringify({ edited_at: 1, form: older, key: 'e2' }))
+    expect(loadDraft(storage, 'e2')?.form.related).toEqual([])
+
+    storage.setItem(
+      'aurboda.journal.draft.e3',
+      JSON.stringify({ edited_at: 1, form: { ...form, related: [{ entity_id: 1 }] }, key: 'e3' }),
+    )
+    expect(loadDraft(storage, 'e3')).toBeUndefined()
+  })
 })

@@ -1,4 +1,4 @@
-import type { TimelineEntry } from '@aurboda/api-spec'
+import type { JournalEntryRef, TimelineEntry } from '@aurboda/api-spec'
 
 import type { PersonDateRecord, PersonRecord } from '../db/index.ts'
 import type { Activity } from '../db/types.ts'
@@ -43,6 +43,7 @@ export interface FakePeople {
   timeline: Awaited<ReturnType<PeopleDeps['actorPresentations']>>['timeline']
   activities: Map<string, Activity[]>
   posts: Map<string, TimelineEntry[]>
+  journalEntries: Map<string, JournalEntryRef[]>
 }
 
 /** An in-memory PeopleDeps; `actors` maps a handle to what it resolves to. */
@@ -54,6 +55,7 @@ export const fakePeopleDeps = (
     actors: new Map(),
     dates: new Map(),
     following: [],
+    journalEntries: new Map(),
     people: new Map(),
     posts: new Map(),
     raised: [],
@@ -149,6 +151,7 @@ export const fakePeopleDeps = (
         ]),
     listDates: async (_user, personId) => [...fake.dates.values()].filter((d) => d.person_id === personId),
     listDeleted: async () => [...fake.people.values()].filter((p) => p.deleted_at),
+    listJournalEntries: async (_user, personId) => fake.journalEntries.get(personId) ?? [],
     listPosts: async (_user, uri, limit) => (fake.posts.get(uri) ?? []).slice(0, limit),
     listRecentActivities: async (_user, personId, limit) =>
       (fake.activities.get(personId) ?? []).slice(0, limit),

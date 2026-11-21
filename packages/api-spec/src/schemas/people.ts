@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { activitySchema } from './activities.ts'
 import { baseResponseSchema, dateOnlySchema, iso8601DateTimeSchema, queryBooleanSchema } from './common.ts'
 import { timelineEntrySchema } from './feed.ts'
+import { journalEntryRefsSchema } from './notes.ts'
 
 export const PERSON_NAME_MAX = 120
 export const PERSON_RELATIONSHIP_MAX = 60
@@ -186,6 +187,7 @@ export type PersonDate = z.infer<typeof personDateSchema>
 export const personDetailSchema = personSchema
   .extend({
     dates: z.array(personDateSchema).meta({ description: "The person's dates, by month and day" }),
+    journal_entries: journalEntryRefsSchema.optional(),
     recent_activities: z.array(activitySchema).meta({
       description: `The ${PERSON_RECENT_ACTIVITIES_LIMIT} latest activities the person was with, newest first`,
     }),

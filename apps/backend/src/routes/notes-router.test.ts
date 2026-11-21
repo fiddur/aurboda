@@ -384,6 +384,114 @@ describe('POST /notes', () => {
   })
 })
 
+describe('related on POST and PATCH /notes and the search filter', () => {
+  const PERSON_ID = '3d0124e7-d161-4855-a54f-fa8bdb45c4f4'
+  const related = [{ entity_id: PERSON_ID, entity_type: 'person' }]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('POST passes related to the service', async () => {
+    vi.mocked(mutations.addNote).mockResolvedValue({ data: noteData, success: true })
+
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ content: '', date: '2024-01-20', entity_type: 'day', related })
+
+    expect(res.status).toBe(200)
+    expect(mutations.addNote).toHaveBeenCalledWith('tester', expect.objectContaining({ related }))
+  })
+
+  test('PATCH takes related alone, [] included', async () => {
+    vi.mocked(mutations.updateNote).mockResolvedValue({ data: noteData, success: true })
+
+    for (const list of [related, []]) {
+      const res = await supertest(buildApp()).patch(`/${NOTE_ID}`).send({ related: list })
+      expect(res.status).toBe(200)
+    }
+    expect(vi.mocked(mutations.updateNote).mock.calls.map((call) => call[2])).toEqual([
+      { related },
+      { related: [] },
+    ])
+  })
+
+  test.each([
+    ['related on a reply', { content: 'x', entity_id: NOTE_ID, entity_type: 'note', related }],
+    [
+      'a malformed id',
+      {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        related: [{ entity_id: 'x', entity_type: 'person' }],
+      },
+    ],
+    [
+      'an unknown kind',
+      {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        related: [{ entity_id: PERSON_ID, entity_type: 'meal' }],
+      },
+    ],
+    [
+      'more than 30',
+      {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        related: Array.from({ length: 31 }, () => related[0]),
+      },
+    ],
+  ])('POST 400s on %s', async (_label, body) => {
+    const res = await supertest(buildApp()).post('/').send(body)
+
+    expect(res.status).toBe(400)
+    expect(mutations.addNote).not.toHaveBeenCalled()
+  })
+
+  test('POST answers the service refusing an unknown target with a 400', async () => {
+    vi.mocked(mutations.addNote).mockResolvedValue({
+      error: `Unknown person: ${PERSON_ID}`,
+      errorCode: 'invalid',
+      success: false,
+    })
+
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ content: '', date: '2024-01-20', entity_type: 'day', related })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe(`Unknown person: ${PERSON_ID}`)
+  })
+
+  test('GET /search passes related_type and related_id, and 400s on one without the other', async () => {
+    vi.mocked(mutations.searchNotesForUser).mockResolvedValue({ data: [], next_cursor: null, success: true })
+
+    const ok = await supertest(buildApp())
+      .get('/search')
+      .query({ related_id: PERSON_ID, related_type: 'person' })
+    expect(ok.status).toBe(200)
+    expect(mutations.searchNotesForUser).toHaveBeenCalledWith('tester', {
+      related_id: PERSON_ID,
+      related_type: 'person',
+    })
+
+    vi.clearAllMocks()
+    for (const query of [
+      { related_type: 'person' },
+      { related_id: PERSON_ID },
+      { related_id: 'x', related_type: 'person' },
+    ]) {
+      const res = await supertest(buildApp()).get('/search').query(query)
+      expect(res.status).toBe(400)
+    }
+    expect(mutations.searchNotesForUser).not.toHaveBeenCalled()
+  })
+})
+
 describe('PATCH /notes/:id', () => {
   beforeEach(() => {
     vi.clearAllMocks()

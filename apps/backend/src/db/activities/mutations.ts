@@ -7,6 +7,7 @@ import { normalizeItemValue } from '../../services/activity-measures.ts'
 import { UUID_RE } from '../../utils.ts'
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
+import { copyActivityNoteLinksIn } from '../note-links.ts'
 import { reanchorNotes } from '../notes.ts'
 import { copyActivityPeopleIn } from '../people.ts'
 import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
@@ -72,6 +73,7 @@ export const insertMergedActivity = async (
     const others = sourceIds.filter((sourceId) => sourceId !== id)
     await reanchorNotes(tx, 'activity', others, id)
     await copyActivityPeopleIn(tx, others, id)
+    await copyActivityNoteLinksIn(tx, others, id)
     return id
   })
 

@@ -70,3 +70,70 @@ describe('notes about a person', () => {
     expect(unknown.body.error).toBe('Person not found')
   })
 })
+
+describe('notes related to people and activities', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('related is written, answered, replaced, filtered on and refused for an unknown target', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const request = supertest(buildApp(user))
+
+    const added = await request.post('/notes').send({
+      content: 'Dinner',
+      date: '2026-11-20',
+      entity_type: 'day',
+      related: [{ entity_id: anna.id, entity_type: 'person' }],
+    })
+    expect(added.status).toBe(200)
+    expect(added.body.data.related).toEqual([{ entity_id: anna.id, entity_type: 'person', label: 'Anna' }])
+    const id = added.body.data.id as string
+
+    const unknown = await request.patch(`/notes/${id}`).send({
+      related: [{ entity_id: '99999999-9999-4999-8999-999999999999', entity_type: 'activity' }],
+    })
+    expect(unknown.status).toBe(400)
+    expect(unknown.body.error).toBe('Unknown activity: 99999999-9999-4999-8999-999999999999')
+
+    const replaced = await request.patch(`/notes/${id}`).send({
+      expected_updated_at: added.body.data.updated_at,
+      related: [{ entity_id: bo.id, entity_type: 'person' }],
+    })
+    expect(replaced.status).toBe(200)
+    expect(replaced.body.data.related.map((r: { label: string }) => r.label)).toEqual(['Bo'])
+    expect(replaced.body.data.content).toBe('Dinner')
+
+    const stale = await request.patch(`/notes/${id}`).send({
+      expected_updated_at: added.body.data.updated_at,
+      related: [],
+    })
+    expect(stale.status).toBe(409)
+
+    const revisions = await request.get(`/notes/${id}/revisions`)
+    expect(revisions.body.data).toEqual([])
+
+    const search = (personId: string) =>
+      request.get('/notes/search').query({ related_id: personId, related_type: 'person' })
+    expect((await search(bo.id)).body.data.map((n: { id: string }) => n.id)).toEqual([id])
+    expect((await search(anna.id)).body.data).toEqual([])
+
+    const reply = await request.post('/notes').send({
+      content: 'Reply',
+      entity_id: id,
+      entity_type: 'note',
+      related: [{ entity_id: bo.id, entity_type: 'person' }],
+    })
+    expect(reply.status).toBe(400)
+  })
+})

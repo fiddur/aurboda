@@ -22,6 +22,12 @@ interface MarkdownEditorProps {
   /** Called when the text area loses focus. */
   onBlur?: () => void
   ariaLabel?: string
+  /** Given the text area, for a caller that reads or moves the cursor. */
+  textareaRef?: { current: HTMLTextAreaElement | null }
+  /** Runs before the text area's own key handling; `preventDefault` stops it. */
+  onKeyDown?: (e: KeyboardEvent) => void
+  /** The cursor may have moved without the text changing (a click, an arrow key). */
+  onCaret?: () => void
 }
 
 const PictureIcon = () => (
@@ -83,9 +89,13 @@ export const MarkdownEditor = ({
   attachHint,
   onBlur,
   ariaLabel,
+  textareaRef,
+  onKeyDown,
+  onCaret,
 }: MarkdownEditorProps) => {
   const [tab, setTab] = useState<'write' | 'preview'>('write')
-  const textarea = useRef<HTMLTextAreaElement>(null)
+  const ownTextarea = useRef<HTMLTextAreaElement>(null)
+  const textarea = textareaRef ?? ownTextarea
   const pictures = useImageUpload({
     cursor: () => textarea.current?.selectionStart,
     onChange,
@@ -133,6 +143,9 @@ export const MarkdownEditor = ({
             placeholder={placeholder ?? 'Write a note (markdown supported)…'}
             rows={rows}
             onBlur={onBlur}
+            onKeyDown={onKeyDown}
+            onKeyUp={onCaret}
+            onClick={onCaret}
             aria-label={ariaLabel}
             {...picking.handlers}
           />

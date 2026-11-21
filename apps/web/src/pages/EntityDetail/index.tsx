@@ -45,6 +45,7 @@ import { resolveItemIcon } from '../../utils/emojiLookup'
 import { hrZoneColors } from '../../utils/hrZones'
 import { renderMarkdown } from '../../utils/markdown'
 import { ActivityCheckIns } from '../CheckIns/ActivityCheckIns'
+import { JournalEntryRefs } from '../Journal/JournalEntryRefs'
 import { ActivityChart } from './ActivityChart'
 import { ActivityNeighborsNav } from './ActivityNeighborsNav'
 import {
@@ -943,6 +944,13 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
       )}
       {!activity.deleted_at && !isEditing && <ActivityCheckIns activityId={rawEntityId} />}
       <NotesSection entityType="activity" entityId={rawEntityId} allEntityIds={allEntityIds} />
+      {(activity.journal_entries ?? []).length > 0 && (
+        <JournalEntryRefs
+          title="Mentioned in the journal"
+          entries={activity.journal_entries ?? []}
+          filter={{ id: rawEntityId.replace(/^merged:/, ''), type: 'activity' }}
+        />
+      )}
     </>
   )
 }
