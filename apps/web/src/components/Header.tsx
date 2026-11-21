@@ -10,6 +10,7 @@ import {
   NAV_TOP_LINKS,
   type NavSection,
   pageTitleForPath,
+  SETTINGS_LINK,
   visibleLinks,
   visibleSections,
 } from './nav-links'
@@ -103,9 +104,13 @@ function DrawerMenu(props: { url: string; onNavigate: () => void }) {
         <DrawerIcon>{HELP_LINK.icon}</DrawerIcon>
         {HELP_LINK.label}
       </a>
-      <a href="/settings" class={isLinkActive('/settings', url) ? 'active' : undefined} onClick={onNavigate}>
-        <DrawerIcon>⚙</DrawerIcon>
-        Settings
+      <a
+        href={SETTINGS_LINK.href}
+        class={isLinkActive(SETTINGS_LINK.href, url) ? 'active' : undefined}
+        onClick={onNavigate}
+      >
+        <DrawerIcon>{SETTINGS_LINK.icon}</DrawerIcon>
+        {SETTINGS_LINK.label}
         <span class="drawer-user">{auth.value.user}</span>
       </a>
       <a href="#" onClick={handleLogout} class="logout-link">

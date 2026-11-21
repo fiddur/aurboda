@@ -12,11 +12,13 @@ Several sections can be open at once, and which are open is remembered in the br
 (`menu-open-sections` in local storage), shared by the sidebar and the phone menu; at first they are
 all closed. Opening a page opens its section by itself, and you can still close it by hand. A closed
 section that holds the current page is marked, so you can see where you are. With the sidebar
-collapsed, each section is one icon that opens its links in a panel beside it. The sections are
-`NAV_SECTIONS` in `apps/web/src/components/nav-links.ts`; the Android app's More tab uses the same
-groups (see [the Android app](../android-app.md#navigation)). The app's Setup group also lists Settings
-and the Audit log: on the web Settings is in the menu's footer and the audit log is reached from
-Settings.
+collapsed, each section is one icon that opens its links in a panel beside it. The menu is defined once, in
+`packages/api-spec/src/menu.ts` (`NAV_TOP_LINKS`, `NAV_SECTIONS` and the footer and app-only
+links): the web menus read it, and `pnpm generate` writes it as Kotlin for the Android app's More
+tab, which shows the same sections with the same pages, Admin left out (see
+[the Android app](../android-app.md#navigation)). The app adds its own entries around them:
+Notifications and Reminders on top, and Help & support, Settings, the Audit log and its native
+screens at the bottom.
 
 ## Choosing which pages show
 
@@ -40,12 +42,12 @@ can hide the rest, and someone who uses everything keeps it all. Every switch sa
 Home (`/`), Settings (`/settings`), Help & support (`/help`), Notifications (`/notifications`) and
 the admin pages (`/admin` and everything under it) always show, whatever the list says, and get no
 switch. So do the app's native screens: Live sensors, Account & server, and the Sync and More tabs.
-The list is `MENU_ALWAYS_SHOWN` in `apps/web/src/components/nav-links.ts`, with its twin in the
-app's `ui/screens/MoreScreen.kt`.
+The list is `MENU_ALWAYS_SHOWN` in `packages/api-spec/src/menu.ts`, which the app reads as
+`menuAlwaysShown`.
 
 ### Which pages get a switch
 
-The switches come from the same lists the menus are built from (`nav-links.ts`), so a new menu page
+The switches come from the same lists the menus are built from (`menu.ts`), so a new menu page
 gets a switch, and its one-line `description`, with no extra registry. They are grouped as the
 menus show them: **Main** (Add), then **Log**, **Training**, **Explore**, **Sharing** and **Setup**,
 plus **Only in the Android app** for the pages that only the app's More tab lists (Reminders and the
