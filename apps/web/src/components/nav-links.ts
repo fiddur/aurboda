@@ -1,122 +1,182 @@
-// Primary nav (top of the sidebar), the Sharing group, then the secondary nav.
-// The three sharing surfaces (feed, dashboards, challenges) are grouped
-// under one collapsible "Sharing" section (see Sidebar/Header) instead of being
-// three flat siblings, so "Share" stops being an ambiguous top-level label.
+export interface NavLink {
+  href: string
+  label: string
+  icon?: string
+  description?: string
+  adminOnly?: boolean
+}
 
-export const NAV_LINKS_PRIMARY = [
+export type NavSectionId = 'log' | 'training' | 'explore' | 'sharing' | 'setup'
+
+export interface NavSection {
+  id: NavSectionId
+  label: string
+  icon: string
+  links: NavLink[]
+}
+
+export const NAV_TOP_LINKS: NavLink[] = [
   { href: '/', label: 'Home', icon: '🏠' },
-  {
-    href: '/goals',
-    label: 'Goals',
-    icon: '🎯',
-    description: 'Targets for sleep, steps and more, and how you are doing.',
-  },
-  {
-    href: '/timeline',
-    label: 'Timeline',
-    icon: '📅',
-    description: 'Your day, week or month on one scrolling line.',
-  },
-  {
-    href: '/journal',
-    label: 'Journal',
-    icon: '📓',
-    description: 'Dated entries in your own words, with pictures and voice notes.',
-  },
-  {
-    href: '/people',
-    label: 'People',
-    icon: '👥',
-    description: 'The people in your life, their birthdays and the dates that matter. Private.',
-  },
-  {
-    href: '/data',
-    label: 'Data',
-    icon: '📊',
-    description: 'Every metric and activity you have, to browse and edit.',
-  },
-  {
-    href: '/meals',
-    label: 'Meals',
-    icon: '🍽',
-    description: 'Log what you eat and see calories and nutrients.',
-  },
-  {
-    href: '/reports',
-    label: 'Reports',
-    icon: '📝',
-    description: 'Lab results and other values you enter by hand.',
-  },
-  {
-    href: '/check-ins',
-    label: 'Check-ins',
-    icon: '📋',
-    description: 'Short forms you fill in, like a morning check-in, logged as metrics.',
-  },
-  { href: '/add', label: '+ Add', icon: '➕', description: 'Add an activity, a metric or a note.' },
-  { href: '/chart', label: 'Chart', icon: '📈', description: 'Draw any of your data over time.' },
+  { href: '/add', label: 'Add', icon: '➕', description: 'Add an activity, a metric or a note.' },
 ]
 
-export const SHARING_LINKS = [
-  { href: '/feed', label: 'Feed', icon: '📣', description: 'Posts from you and the people you follow.' },
+export const NAV_SECTIONS: NavSection[] = [
   {
-    href: '/dashboards',
-    label: 'Dashboards',
-    icon: '🔆',
-    description: 'Public pages that show chosen parts of your data.',
+    id: 'log',
+    label: 'Log',
+    icon: '✏️',
+    links: [
+      {
+        href: '/journal',
+        label: 'Journal',
+        description: 'Dated entries in your own words, with pictures and voice notes.',
+      },
+      { href: '/meals', label: 'Meals', description: 'Log what you eat and see calories and nutrients.' },
+      {
+        href: '/check-ins',
+        label: 'Check-ins',
+        description: 'Short forms you fill in, like a morning check-in, logged as metrics.',
+      },
+      { href: '/reports', label: 'Reports', description: 'Lab results and other values you enter by hand.' },
+      {
+        href: '/people',
+        label: 'People',
+        description: 'The people in your life, their birthdays and the dates that matter. Private.',
+      },
+    ],
   },
   {
-    href: '/challenges',
-    label: 'Challenges',
-    icon: '🏆',
-    description: 'Compete with friends, here or on other servers.',
+    id: 'training',
+    label: 'Training',
+    icon: '🏋️',
+    links: [
+      {
+        href: '/strength',
+        label: 'Strength',
+        description: 'Start or log a strength session, and see your strength score and muscle recovery.',
+      },
+      {
+        href: '/training-load',
+        label: 'Training load',
+        description: 'Fitness, fatigue and form from your workouts.',
+      },
+      { href: '/routes', label: 'Routes', description: 'The ways you run, walk or ride again and again.' },
+      { href: '/segments', label: 'Segments', description: 'Stretches of road with your best times.' },
+    ],
+  },
+  {
+    id: 'explore',
+    label: 'Explore',
+    icon: '🧭',
+    links: [
+      { href: '/timeline', label: 'Timeline', description: 'Your day, week or month on one scrolling line.' },
+      {
+        href: '/data',
+        label: 'Data',
+        description: 'Every metric and activity you have, to browse and edit.',
+      },
+      { href: '/chart', label: 'Chart', description: 'Draw any of your data over time.' },
+      {
+        href: '/correlations',
+        label: 'Analyze',
+        description: 'Find out what goes together, like exercise and sleep.',
+      },
+      {
+        href: '/goals',
+        label: 'Goals',
+        description: 'Targets for sleep, steps and more, and how you are doing.',
+      },
+      {
+        href: '/places',
+        label: 'Places',
+        description: 'A map of where you have been, and your named places.',
+      },
+    ],
+  },
+  {
+    id: 'sharing',
+    label: 'Sharing',
+    icon: '🌐',
+    links: [
+      { href: '/feed', label: 'Feed', description: 'Posts from you and the people you follow.' },
+      {
+        href: '/dashboards',
+        label: 'Dashboards',
+        description: 'Public pages that show chosen parts of your data.',
+      },
+      {
+        href: '/challenges',
+        label: 'Challenges',
+        description: 'Compete with friends, here or on other servers.',
+      },
+    ],
+  },
+  {
+    id: 'setup',
+    label: 'Setup',
+    icon: '🛠️',
+    links: [
+      {
+        href: '/data-sources',
+        label: 'Data sources',
+        description: 'Every source at a glance, and how to connect one.',
+      },
+      {
+        href: '/activity-types',
+        label: 'Activity types',
+        description: 'The kinds of activity you log, with their icons and fields.',
+      },
+      {
+        href: '/deduction-rules',
+        label: 'Rules',
+        description: 'Create activities from your data automatically.',
+      },
+      { href: '/admin', label: 'Admin', description: 'Server settings and users.', adminOnly: true },
+    ],
   },
 ]
 
-export const SHARING_PATHS = SHARING_LINKS.map((l) => l.href)
-
-export const isSharingActive = (url: string): boolean =>
-  SHARING_PATHS.some((p) => url === p || url.startsWith(`${p}/`))
-
-export const NAV_LINKS_SECONDARY = [
-  {
-    href: '/correlations',
-    label: 'Analyze',
-    icon: '🔬',
-    description: 'Find out what goes together, like exercise and sleep.',
-  },
-  {
-    href: '/training-load',
-    label: 'Training load',
-    icon: '💪',
-    description: 'Fitness, fatigue and form from your workouts.',
-  },
-  {
-    href: '/places',
-    label: 'Places',
-    icon: '📍',
-    description: 'A map of where you have been, and your named places.',
-  },
-  {
-    href: '/routes',
-    label: 'Routes',
-    icon: '🗺',
-    description: 'The ways you run, walk or ride again and again.',
-  },
-  { href: '/segments', label: 'Segments', icon: '⏱', description: 'Stretches of road with your best times.' },
-  {
-    href: '/activity-types',
-    label: 'Types',
-    icon: '🏷',
-    description: 'The kinds of activity you log, with their icons and fields.',
-  },
-  {
-    href: '/deduction-rules',
-    label: 'Rules',
-    icon: '🔗',
-    description: 'Create activities from your data automatically.',
-  },
+export const MENU_PAGE_LINKS: NavLink[] = [
+  ...NAV_TOP_LINKS,
+  ...NAV_SECTIONS.flatMap((s) => s.links.filter((l) => !l.adminOnly)),
 ]
+
+export const menuPath = (url: string): string => url.split(/[?#]/)[0].replace(/(.)\/+$/, '$1') || '/'
+
+export const isLinkActive = (href: string, url: string): boolean => {
+  const path = menuPath(url).replace(/^\/shared-dashboards(?=\/|$)/, '/dashboards')
+  return path === href || (href !== '/' && path.startsWith(`${href}/`))
+}
+
+export const sectionForUrl = (url: string): NavSectionId | undefined =>
+  NAV_SECTIONS.find((s) => s.links.some((l) => isLinkActive(l.href, url)))?.id
+
+export const visibleSections = (hidden: readonly string[], isAdmin: boolean): NavSection[] =>
+  NAV_SECTIONS.map((s) => ({
+    ...s,
+    links: visibleLinks(s.links, hidden).filter((l) => isAdmin || !l.adminOnly),
+  })).filter((s) => s.links.length > 0)
+
+const SECTION_IDS = NAV_SECTIONS.map((s) => s.id)
+
+const isSectionId = (value: unknown): value is NavSectionId =>
+  typeof value === 'string' && (SECTION_IDS as string[]).includes(value)
+
+export const parseOpenSections = (raw: string | null): NavSectionId[] => {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? [...new Set(parsed.filter(isSectionId))] : []
+  } catch {
+    return []
+  }
+}
+
+export const withSectionOpen = (open: readonly NavSectionId[], id: NavSectionId): NavSectionId[] =>
+  open.includes(id) ? [...open] : [...open, id]
+
+export const toggleSection = (open: readonly NavSectionId[], id: NavSectionId): NavSectionId[] =>
+  open.includes(id) ? open.filter((s) => s !== id) : [...open, id]
 
 export const DATA_SOURCE_LINKS = [
   {
@@ -212,21 +272,15 @@ export interface MenuSwitchGroup {
   switches: MenuSwitch[]
 }
 
-const toSwitches = (links: readonly ({ label: string; description?: string } & MenuLink)[]): MenuSwitch[] =>
+const toSwitches = (links: readonly NavLink[]): MenuSwitch[] =>
   links
-    .filter((link) => !isAlwaysShown(linkPath(link)))
-    .map((link) => ({
-      description: link.description ?? '',
-      label: link.label.replace(/^\+\s*/, ''),
-      path: linkPath(link),
-    }))
+    .filter((link) => !isAlwaysShown(link.href))
+    .map((link) => ({ description: link.description ?? '', label: link.label, path: link.href }))
 
 /** The pages the Settings → Menu section offers a switch for, grouped as the menus show them. */
 export const menuSwitches = (): MenuSwitchGroup[] => [
-  { id: 'main', label: 'Main', switches: toSwitches(NAV_LINKS_PRIMARY) },
-  { id: 'sharing', label: 'Sharing', switches: toSwitches(SHARING_LINKS) },
-  { id: 'more', label: 'More', switches: toSwitches(NAV_LINKS_SECONDARY) },
-  { id: 'data-sources', label: 'Data sources', switches: toSwitches(DATA_SOURCE_LINKS) },
+  { id: 'main', label: 'Main', switches: toSwitches(NAV_TOP_LINKS) },
+  ...NAV_SECTIONS.map((s) => ({ id: s.id, label: s.label, switches: toSwitches(s.links) })),
   { id: 'app', label: 'Only in the Android app', switches: toSwitches(APP_ONLY_LINKS) },
 ]
 
@@ -236,32 +290,31 @@ export const toggleHiddenPage = (hidden: readonly string[], path: string, show: 
 
 const OTHER_PAGE_TITLES = [
   { href: '/shared-dashboards', label: 'Dashboards' },
-  { href: '/data-sources', label: 'Data Sources' },
   { href: '/settings', label: 'Settings' },
   { href: '/notifications', label: 'Notifications' },
-  { href: '/strength', label: 'Strength session' },
+  { href: '/strength/live', label: 'Strength session' },
+  { href: '/strength/log', label: 'Strength session' },
+  { href: '/strength/session', label: 'Strength session' },
   { href: '/strength/plan', label: 'Strength plan' },
   HELP_LINK,
-  { href: '/admin', label: 'Admin' },
   { href: '/login', label: 'Login' },
   { href: '/signup', label: 'Sign up' },
 ]
 
 const PAGE_TITLES: { href: string; title: string }[] = [
-  ...NAV_LINKS_PRIMARY,
-  ...SHARING_LINKS,
-  ...NAV_LINKS_SECONDARY,
+  ...NAV_TOP_LINKS,
+  ...NAV_SECTIONS.flatMap((s) => s.links),
   ...DATA_SOURCE_LINKS.filter((l) => l.path !== '/data-sources').map((l) => ({
     href: l.path,
     label: l.label,
   })),
   ...APP_ONLY_LINKS,
   ...OTHER_PAGE_TITLES,
-].map((l) => ({ href: l.href, title: l.label.replace(/^\+\s*/, '') }))
+].map((l) => ({ href: l.href, title: l.label }))
 
 /** The current page's name for the narrow top bar: the nav label of the route or its parent section. */
 export const pageTitleForPath = (url: string): string => {
-  const path = url.split(/[?#]/)[0].replace(/(.)\/+$/, '$1') || '/'
+  const path = menuPath(url)
   const exact = PAGE_TITLES.find((p) => p.href === path)
   if (exact) return exact.title
   const section = PAGE_TITLES.filter((p) => p.href !== '/' && path.startsWith(`${p.href}/`)).sort(

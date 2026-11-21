@@ -254,7 +254,7 @@ logged and soft-deletes its activities; restoring it brings both back. `deleted=
 
 ## Pages
 
-**Check-ins** is in the main menu (and can be hidden there, see [the menu](menu.md)); in the
+**Check-ins** is under **Log** in the menu (and can be hidden there, see [the menu](menu.md)); in the
 [Android app](../android-app.md) it is More → Log → Check-ins, the same page embedded.
 
 - **`/check-ins`**: **As needed** on top, one large button per routine without a schedule, named by

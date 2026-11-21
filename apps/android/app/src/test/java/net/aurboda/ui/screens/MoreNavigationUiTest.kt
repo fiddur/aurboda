@@ -82,7 +82,7 @@ class MoreNavigationUiTest {
 
         composeTestRule.onNodeWithText("More").performClick()
 
-        composeTestRule.onNodeWithText("Timeline").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Journal").assertIsDisplayed()
     }
 
     @Test
