@@ -2,7 +2,7 @@
 
 Aurboda aggregates health, productivity, and location data from multiple sources. Each data source has its own setup requirements and sync mechanisms.
 
-You connect sources from **Data Sources** in the web app's sidebar, one page per source with its own setup steps; the Android app adds Health Connect and Bluetooth heart rate sensors. Connect whatever you already use, one is enough to start. The table below links each source's own page, which covers what is synced, the setup and how the sync works.
+You connect sources from **Setup → Data sources** in the web app's menu, one page per source with its own setup steps; the Android app adds Health Connect and Bluetooth heart rate sensors. Connect whatever you already use, one is enough to start. The table below links each source's own page, which covers what is synced, the setup and how the sync works.
 
 ## Overview
 

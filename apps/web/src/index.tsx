@@ -128,6 +128,9 @@ const Strength = lazyPage(() => import('./pages/Strength/index.jsx'), 'Strength'
 const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthLog')
 const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
 const StrengthPlanEditor = lazyPage(() => import('./pages/Strength/PlanEditor.jsx'), 'StrengthPlanEditor')
+const StrengthProgress = lazyPage(() => import('./pages/Strength/Progress.jsx'), 'StrengthProgress')
+const StrengthExercises = lazyPage(() => import('./pages/Strength/Exercises.jsx'), 'StrengthExercises')
+const StrengthMuscles = lazyPage(() => import('./pages/Strength/Muscles.jsx'), 'StrengthMuscles')
 const Terms = lazyPage(() => import('./pages/Terms/index.jsx'), 'Terms')
 const Timeline = lazyPage(() => import('./pages/Timeline/index.jsx'), 'Timeline')
 const TrainingLoad = lazyPage(() => import('./pages/TrainingLoad/index.jsx'), 'TrainingLoad')
@@ -203,6 +206,9 @@ function AppShell() {
             <Route path="/strength/log" component={StrengthLog} />
             <Route path="/strength/plan/new" component={StrengthPlanEditor} />
             <Route path="/strength/plan/:id" component={StrengthPlanEditor} />
+            <Route path="/strength/progress" component={StrengthProgress} />
+            <Route path="/strength/exercises" component={StrengthExercises} />
+            <Route path="/strength/muscles" component={StrengthMuscles} />
             <Route path="/strength" component={Strength} />
             <Route path="/sleep" component={Sleep} />
             <Route path="/training-load" component={TrainingLoad} />

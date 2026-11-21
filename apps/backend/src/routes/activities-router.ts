@@ -30,6 +30,7 @@ import {
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 
+import type { ResyncDetailResult } from '../integrations/garmin/sync.ts'
 import type { ActivitySpan } from '../integrations/gps-precedence.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
@@ -210,7 +211,7 @@ export const createActivitiesRouter = (
     garminActivityId: number,
     activitySpan: ActivitySpan | null,
     activityStart: Date,
-  ) => Promise<number>,
+  ) => Promise<ResyncDetailResult>,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -727,14 +728,38 @@ export const createActivitiesRouter = (
       // Span of the row that supplied the Garmin id — for a merged activity that
       // is the Garmin source, not the merge wrapper. Null without an end_time,
       // so the track's own range is used rather than a start-only span.
-      const points = await resyncActivityDetail(
+      const result = await resyncActivityDetail(
         user,
         garminSourceId,
         garminActivityId,
         garminSource.end_time ? { end: garminSource.end_time, start: garminSource.start_time } : null,
         garminSource.start_time,
       )
-      res.json({ points, success: true })
+      switch (result.status) {
+        case 'synced':
+          res.json({ points: result.points, success: true })
+          return
+        case 'no_connection':
+          res.status(409).json({
+            points: 0,
+            success: false,
+            error:
+              'Re-syncing needs the Garmin Connect login or a Personal API key that Garmin accepts. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
+          })
+          return
+        case 'no_file':
+          res
+            .status(404)
+            .json({ points: 0, success: false, error: 'Garmin has no activity file for this activity.' })
+          return
+        case 'failed':
+          res.status(502).json({
+            points: 0,
+            success: false,
+            error: 'Garmin did not return the activity. The audit log has the reason.',
+          })
+          return
+      }
     },
   )
 

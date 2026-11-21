@@ -1,58 +1,286 @@
 import { useLocation } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
 import { auth, ensureStatusLoaded, logout, signupMode } from '../state/auth'
 import {
-  DATA_SOURCE_LINKS,
   HELP_LINK,
-  isSharingActive,
-  NAV_LINKS_PRIMARY,
-  NAV_LINKS_SECONDARY,
-  SHARING_LINKS,
+  isLinkActive,
+  NAV_TOP_LINKS,
+  type NavSection,
+  type NavSectionId,
   visibleLinks,
+  visibleSections,
 } from './nav-links'
 import { NotificationBellDropdown } from './NotificationBell'
 import { useHiddenPages } from './useHiddenPages'
+import { useOpenSections } from './useOpenSections'
 import './Sidebar.css'
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
+const FLYOUT_LEFT = 60
+const FLYOUT_MARGIN = 8
 
-// eslint-disable-next-line complexity -- navigation component with many conditional branches
+interface Flyout {
+  id: NavSectionId
+  top: number
+}
+
+const readCollapsed = (): boolean => {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const sectionActive = (section: NavSection, url: string): boolean =>
+  section.links.some((l) => isLinkActive(l.href, url))
+
+function SidebarLink(props: {
+  href: string
+  label: string
+  icon?: string
+  active: boolean
+  collapsed: boolean
+  onClick?: (e: Event) => void
+}) {
+  return (
+    <a
+      href={props.href}
+      class={`sidebar-link${props.active ? ' active' : ''}`}
+      title={props.collapsed ? props.label : undefined}
+      onClick={props.onClick}
+    >
+      {props.icon && <span class="sidebar-icon">{props.icon}</span>}
+      <span class="sidebar-label">{props.label}</span>
+    </a>
+  )
+}
+
+function ExpandedSection(props: { section: NavSection; url: string; open: boolean; onToggle: () => void }) {
+  const { section, url, open } = props
+  const containerId = `sidebar-section-${section.id}`
+  return (
+    <>
+      <button
+        class={`sidebar-section-btn${!open && sectionActive(section, url) ? ' active' : ''}`}
+        onClick={props.onToggle}
+        type="button"
+        aria-expanded={open}
+        aria-controls={containerId}
+      >
+        <span class="sidebar-icon">{section.icon}</span>
+        <span class="sidebar-label">{section.label}</span>
+        <span class="sidebar-section-arrow">{open ? '▴' : '▾'}</span>
+      </button>
+      <div class="sidebar-sub-links" id={containerId} hidden={!open}>
+        {section.links.map((link) => (
+          <SidebarLink
+            key={link.href}
+            href={link.href}
+            label={link.label}
+            active={isLinkActive(link.href, url)}
+            collapsed={false}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+function SectionFlyout(props: { section: NavSection; top: number; url: string; onClose: () => void }) {
+  const { section, url } = props
+  const ref = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const maxTop = window.innerHeight - el.offsetHeight - FLYOUT_MARGIN
+    el.style.top = `${Math.max(FLYOUT_MARGIN, Math.min(props.top, maxTop))}px`
+  }, [props.top, section.id])
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null
+      if (ref.current?.contains(target) || target?.closest('[data-flyout-trigger]')) return
+      props.onClose()
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [props.onClose])
+
+  return (
+    <div
+      ref={ref}
+      id="sidebar-flyout"
+      class="sidebar-flyout"
+      style={{ left: `${FLYOUT_LEFT}px`, top: `${props.top}px` }}
+    >
+      <div class="sidebar-flyout-title">{section.label}</div>
+      {section.links.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          class={`sidebar-flyout-link${isLinkActive(link.href, url) ? ' active' : ''}`}
+          onClick={props.onClose}
+        >
+          {link.label}
+        </a>
+      ))}
+    </div>
+  )
+}
+
+function CollapsedSections(props: { sections: NavSection[]; url: string }) {
+  const { sections, url } = props
+  const [flyout, setFlyout] = useState<Flyout | null>(null)
+  const close = useRef(() => setFlyout(null)).current
+
+  useEffect(close, [url])
+
+  const toggle = (id: NavSectionId) => (e: MouseEvent) => {
+    const top = (e.currentTarget as HTMLElement).getBoundingClientRect().top
+    setFlyout((current) => (current?.id === id ? null : { id, top }))
+  }
+
+  const shown = flyout && sections.find((s) => s.id === flyout.id)
+
+  return (
+    <>
+      {sections.map((section) => (
+        <button
+          key={section.id}
+          class={`sidebar-section-btn${sectionActive(section, url) ? ' active' : ''}`}
+          onClick={toggle(section.id)}
+          title={section.label}
+          type="button"
+          data-flyout-trigger
+          aria-expanded={flyout?.id === section.id}
+          aria-controls={flyout?.id === section.id ? 'sidebar-flyout' : undefined}
+        >
+          <span class="sidebar-icon">{section.icon}</span>
+          <span class="sidebar-label">{section.label}</span>
+        </button>
+      ))}
+      {shown && <SectionFlyout section={shown} top={flyout.top} url={url} onClose={close} />}
+    </>
+  )
+}
+
+function LoggedInNav(props: { url: string; collapsed: boolean }) {
+  const { url, collapsed } = props
+  const hidden = useHiddenPages()
+  const sections = visibleSections(hidden, !!auth.value.is_admin)
+  const { open, toggle } = useOpenSections(url)
+
+  return (
+    <>
+      {visibleLinks(NAV_TOP_LINKS, hidden).map((link) => (
+        <SidebarLink
+          key={link.href}
+          href={link.href}
+          label={link.label}
+          icon={link.icon}
+          active={isLinkActive(link.href, url)}
+          collapsed={collapsed}
+        />
+      ))}
+      {collapsed ? (
+        <CollapsedSections sections={sections} url={url} />
+      ) : (
+        sections.map((section) => (
+          <ExpandedSection
+            key={section.id}
+            section={section}
+            url={url}
+            open={open.includes(section.id)}
+            onToggle={() => toggle(section.id)}
+          />
+        ))
+      )}
+    </>
+  )
+}
+
+function LoggedOutNav(props: { url: string; collapsed: boolean }) {
+  const { url, collapsed } = props
+  return (
+    <>
+      <SidebarLink href="/login" label="Login" icon="🔑" active={url === '/login'} collapsed={collapsed} />
+      {signupMode.value === 'open' && (
+        <SidebarLink
+          href="/signup"
+          label="Sign up"
+          icon="✨"
+          active={url === '/signup'}
+          collapsed={collapsed}
+        />
+      )}
+    </>
+  )
+}
+
+function SidebarFooter(props: { url: string; collapsed: boolean }) {
+  const { url, collapsed } = props
+  const handleLogout = (e: Event) => {
+    e.preventDefault()
+    logout()
+  }
+  return (
+    <div class="sidebar-footer">
+      <SidebarLink
+        href={HELP_LINK.href}
+        label={HELP_LINK.label}
+        icon={HELP_LINK.icon}
+        active={isLinkActive(HELP_LINK.href, url)}
+        collapsed={collapsed}
+      />
+      <a
+        href="/settings"
+        class={`sidebar-link${isLinkActive('/settings', url) ? ' active' : ''}`}
+        title={collapsed ? `Settings (${auth.value.user})` : undefined}
+      >
+        <span class="sidebar-icon">⚙</span>
+        <span class="sidebar-label">Settings</span>
+        <span class="sidebar-user">{auth.value.user}</span>
+      </a>
+      <SidebarLink
+        href="#"
+        label="Log out"
+        icon="🚪"
+        active={false}
+        collapsed={collapsed}
+        onClick={handleLogout}
+      />
+    </div>
+  )
+}
+
 export function Sidebar() {
   const { url } = useLocation()
   const isLoggedIn = auth.value.token
-  const isAdmin = auth.value.is_admin
-  const canSignup = signupMode.value === 'open'
-  const hidden = useHiddenPages()
-  const primaryLinks = visibleLinks(NAV_LINKS_PRIMARY, hidden)
-  const sharingLinks = visibleLinks(SHARING_LINKS, hidden)
-  const secondaryLinks = visibleLinks(NAV_LINKS_SECONDARY, hidden)
-  const dataSourceLinks = visibleLinks(DATA_SOURCE_LINKS, hidden)
 
   useEffect(() => {
     if (!isLoggedIn) ensureStatusLoaded()
   }, [isLoggedIn])
 
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
-  const [dsExpanded, setDsExpanded] = useState(() => url.startsWith('/data-sources'))
-  // Sharing group is open by default so its surfaces stay one click away.
-  const [sharingExpanded, setSharingExpanded] = useState(true)
+  const [collapsed, setCollapsed] = useState(readCollapsed)
 
   const toggleCollapsed = () => {
     const next = !collapsed
     setCollapsed(next)
-    localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
-    // Notify charts/maps that layout changed
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0')
+    } catch {}
     setTimeout(() => window.dispatchEvent(new Event('resize')), 220)
   }
-
-  const handleLogout = (e: Event) => {
-    e.preventDefault()
-    logout()
-  }
-
-  const isDataSourcesActive = url.startsWith('/data-sources')
-  const sharingActive = isSharingActive(url)
 
   return (
     <aside class={`sidebar${collapsed ? ' collapsed' : ''}`}>
@@ -73,174 +301,13 @@ export function Sidebar() {
 
       <nav class="sidebar-nav">
         {isLoggedIn ? (
-          <>
-            {primaryLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                class={`sidebar-link${url === link.href ? ' active' : ''}`}
-                title={collapsed ? link.label : undefined}
-              >
-                <span class="sidebar-icon">{link.icon}</span>
-                <span class="sidebar-label">{link.label}</span>
-              </a>
-            ))}
-
-            {sharingLinks.length === 0 ? null : collapsed ? (
-              sharingLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  class={`sidebar-link${url === link.href ? ' active' : ''}`}
-                  title={link.label}
-                >
-                  <span class="sidebar-icon">{link.icon}</span>
-                  <span class="sidebar-label">{link.label}</span>
-                </a>
-              ))
-            ) : (
-              <>
-                <button
-                  class={`sidebar-section-btn${sharingActive ? ' active' : ''}`}
-                  onClick={() => setSharingExpanded((v) => !v)}
-                  type="button"
-                >
-                  <span class="sidebar-icon">🌐</span>
-                  <span class="sidebar-label">Sharing</span>
-                  <span class="sidebar-section-arrow">{sharingExpanded ? '▴' : '▾'}</span>
-                </button>
-                {sharingExpanded && (
-                  <div class="sidebar-sub-links">
-                    {sharingLinks.map((link) => (
-                      <a
-                        key={link.href}
-                        href={link.href}
-                        class={`sidebar-link${url === link.href ? ' active' : ''}`}
-                      >
-                        <span class="sidebar-icon">{link.icon}</span>
-                        <span class="sidebar-label">{link.label}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {secondaryLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                class={`sidebar-link${url === link.href ? ' active' : ''}`}
-                title={collapsed ? link.label : undefined}
-              >
-                <span class="sidebar-icon">{link.icon}</span>
-                <span class="sidebar-label">{link.label}</span>
-              </a>
-            ))}
-
-            {dataSourceLinks.length === 0 ? null : collapsed ? (
-              <a
-                href={dataSourceLinks[0]?.path}
-                class={`sidebar-link${isDataSourcesActive ? ' active' : ''}`}
-                title="Data Sources"
-              >
-                <span class="sidebar-icon">📡</span>
-                <span class="sidebar-label">Data Sources</span>
-              </a>
-            ) : (
-              <>
-                <button
-                  class={`sidebar-section-btn${isDataSourcesActive ? ' active' : ''}`}
-                  onClick={() => setDsExpanded((v) => !v)}
-                  type="button"
-                >
-                  <span class="sidebar-icon">📡</span>
-                  <span class="sidebar-label">Data Sources</span>
-                  <span class="sidebar-section-arrow">{dsExpanded ? '▴' : '▾'}</span>
-                </button>
-                {dsExpanded && (
-                  <div class="sidebar-sub-links">
-                    {dataSourceLinks.map((link) => (
-                      <a
-                        key={link.path}
-                        href={link.path}
-                        class={`sidebar-link${url === link.path ? ' active' : ''}`}
-                      >
-                        <span class="sidebar-label">{link.label}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {isAdmin && (
-              <a
-                href="/admin"
-                class={`sidebar-link${url === '/admin' ? ' active' : ''}`}
-                title={collapsed ? 'Admin' : undefined}
-              >
-                <span class="sidebar-icon">⚙️</span>
-                <span class="sidebar-label">Admin</span>
-              </a>
-            )}
-          </>
+          <LoggedInNav url={url} collapsed={collapsed} />
         ) : (
-          <>
-            <a
-              href="/login"
-              class={`sidebar-link${url === '/login' ? ' active' : ''}`}
-              title={collapsed ? 'Login' : undefined}
-            >
-              <span class="sidebar-icon">🔑</span>
-              <span class="sidebar-label">Login</span>
-            </a>
-            {canSignup && (
-              <a
-                href="/signup"
-                class={`sidebar-link${url === '/signup' ? ' active' : ''}`}
-                title={collapsed ? 'Sign up' : undefined}
-              >
-                <span class="sidebar-icon">✨</span>
-                <span class="sidebar-label">Sign up</span>
-              </a>
-            )}
-          </>
+          <LoggedOutNav url={url} collapsed={collapsed} />
         )}
       </nav>
 
-      {isLoggedIn && (
-        <div class="sidebar-footer">
-          <a
-            href={HELP_LINK.href}
-            class={`sidebar-link${url === HELP_LINK.href ? ' active' : ''}`}
-            title={collapsed ? HELP_LINK.label : undefined}
-          >
-            <span class="sidebar-icon">{HELP_LINK.icon}</span>
-            <span class="sidebar-label">{HELP_LINK.label}</span>
-          </a>
-          <a
-            href="/settings"
-            class={`sidebar-link${url === '/settings' ? ' active' : ''}`}
-            title={collapsed ? 'Settings' : undefined}
-          >
-            <span class="sidebar-icon">⚙</span>
-            <span class="sidebar-label">Settings</span>
-          </a>
-          <a
-            href="/settings"
-            class={`sidebar-link${url === '/settings' ? ' active' : ''}`}
-            title={collapsed ? auth.value.user : undefined}
-          >
-            <span class="sidebar-icon">👤</span>
-            <span class="sidebar-label">{auth.value.user}</span>
-          </a>
-          <a href="#" class="sidebar-link" onClick={handleLogout}>
-            <span class="sidebar-icon">🚪</span>
-            <span class="sidebar-label">Logout</span>
-          </a>
-        </div>
-      )}
+      {isLoggedIn && <SidebarFooter url={url} collapsed={collapsed} />}
     </aside>
   )
 }

@@ -2,8 +2,8 @@
 
 Your watch and ring record sleep and workouts, but not the coffee at four, the painkiller, the
 headache or the sauna. In Aurboda you log those yourself, as activities of types you make up: add a
-type once (**Types** in the sidebar, then **+ Add Type**, where matching
-built-in types are offered too), then log it from **+ Add** in the sidebar
+type once (**Setup → Activity types** in the sidebar, then **+ Add Type**, where matching
+built-in types are offered too), then log it from **Add** in the sidebar
 or by right-clicking (or long-pressing) a moment on the [timeline](./timeline.md). What you log is
 private unless you share it, shows on the timeline next to everything else, and can be compared
 with your sleep, heart rate and training on the [Analyze page](./correlations.md).
@@ -428,7 +428,7 @@ unmatched names. A **Last trained** column says when each group last got sets ("
 bar chart, one bar per group per week, opens under the list on **Show weekly chart**. An activity's
 exercises section ends with a **Sets per muscle group** block of its own, set apart from the last
 exercise, that lists the session's sets per group; its heading links to this section of the type
-page. The Strength page links to it too.
+page. The Strength page's Muscles tab (`/strength/muscles`) shows the same section.
 
 The [strength score](strength-score.md) builds on the same catalogue matching: per reference lift
 the best estimated one-rep max of the last 90 days against a reference by sex and bodyweight,

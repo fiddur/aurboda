@@ -56,10 +56,9 @@ import {
   getPublicSharedDashboardBySlug,
   getTimeSeries,
   listUserNames,
-  markActivityDetailSynced,
 } from '../db/index.ts'
 import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
-import { processActivityDetail } from '../integrations/garmin/process.ts'
+import { resyncActivityDetail } from '../integrations/garmin/sync.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
 import { createAccountRouter } from '../routes/account-router.ts'
@@ -343,18 +342,13 @@ export const mountRestRouters = ({
       authMiddleware,
       syncProvider,
       activityNotifier,
-      async (user, activityId, garminActivityId, activitySpan, activityStart) => {
-        const detail = await garmin.getActivityDetail(user, garminActivityId)
-        const points = await processActivityDetail(user, detail, {
-          activityId,
-          activitySpan,
-          activityStart,
-          onTrackWritten,
-        })
-        await markActivityDetailSynced(user, activityId)
-        onActivityDetailSynced(user, activityId)
-        return points
-      },
+      (user, activityId, garminActivityId, activitySpan, activityStart) =>
+        resyncActivityDetail(
+          user,
+          garmin,
+          { activityId, activitySpan, activityStart, garminActivityId },
+          { onDetailSynced: onActivityDetailSynced, onTrackWritten },
+        ),
     ),
   )
   httpd.use('/productivity', createProductivityRouter(authMiddleware, syncProvider))

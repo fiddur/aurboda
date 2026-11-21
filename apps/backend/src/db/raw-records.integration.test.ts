@@ -4,6 +4,7 @@ import { createUsageRecorder, installUsageRecorder, type UsageRow } from '../ser
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { query } from './connection.ts'
 import {
+  getHealthConnectStepRecords,
   getRawRecordsByExternalIds,
   getScrobbles,
   hasRawRecord,
@@ -444,6 +445,89 @@ describe('Raw Records Integration Tests', () => {
         { channel: 'oura', count: 2, items: 3, kind: 'ingest' },
         { channel: 'garmin', count: 1, items: 1, kind: 'ingest' },
       ])
+    })
+  })
+
+  describe('getHealthConnectStepRecords', () => {
+    const GARMIN = 'com.garmin.android.apps.connectmobile'
+    const start = new Date('2026-11-10T10:00:00Z')
+    const end = new Date('2026-11-10T11:00:00Z')
+
+    const stepRecord = (
+      id: string,
+      from: string,
+      to: string,
+      count: unknown,
+      origin = GARMIN,
+      lastModifiedTime = '2026-11-10T12:00:00Z',
+    ) => ({
+      data: { count, endTime: to, metadata: { dataOrigin: origin, lastModifiedTime }, startTime: from },
+      external_id: id,
+      record_type: 'StepsRecord',
+      recorded_at: new Date(from),
+      source: 'health_connect' as const,
+    })
+
+    test('returns the origin’s records in the window, with the look-back, in order', async () => {
+      const user = getTestUser()
+      await insertRawRecords(user, [
+        stepRecord('inside', '2026-11-10T10:30:00Z', '2026-11-10T10:31:00Z', 120),
+        stepRecord('straddles', '2026-11-10T09:59:00Z', '2026-11-10T10:01:00Z', 80),
+        stepRecord('before-ends-early', '2026-11-10T09:10:00Z', '2026-11-10T09:11:00Z', 50),
+        stepRecord('too-early', '2026-11-10T08:30:00Z', '2026-11-10T08:31:00Z', 40),
+        stepRecord('at-end', '2026-11-10T11:00:00Z', '2026-11-10T11:01:00Z', 30),
+        stepRecord(
+          'phone',
+          '2026-11-10T10:30:00Z',
+          '2026-11-10T10:31:00Z',
+          99,
+          'com.google.android.apps.fitness',
+        ),
+        {
+          data: { count: 10, metadata: { dataOrigin: GARMIN } },
+          external_id: 'other-type',
+          record_type: 'DistanceRecord',
+          recorded_at: new Date('2026-11-10T10:30:00Z'),
+          source: 'health_connect' as const,
+        },
+      ])
+
+      const records = await getHealthConnectStepRecords(user, GARMIN, start, end)
+
+      expect(records).toEqual([
+        {
+          count: 50,
+          end: new Date('2026-11-10T09:11:00Z'),
+          modified: new Date('2026-11-10T12:00:00Z'),
+          start: new Date('2026-11-10T09:10:00Z'),
+        },
+        {
+          count: 80,
+          end: new Date('2026-11-10T10:01:00Z'),
+          modified: new Date('2026-11-10T12:00:00Z'),
+          start: new Date('2026-11-10T09:59:00Z'),
+        },
+        {
+          count: 120,
+          end: new Date('2026-11-10T10:31:00Z'),
+          modified: new Date('2026-11-10T12:00:00Z'),
+          start: new Date('2026-11-10T10:30:00Z'),
+        },
+      ])
+    })
+
+    test('skips rows whose times or count do not parse', async () => {
+      const user = getTestUser()
+      await insertRawRecords(user, [
+        stepRecord('good', '2026-11-10T10:10:00Z', '2026-11-10T10:11:00Z', 60),
+        stepRecord('bad-count', '2026-11-10T10:20:00Z', '2026-11-10T10:21:00Z', 'many'),
+        stepRecord('no-count', '2026-11-10T10:25:00Z', '2026-11-10T10:26:00Z', null),
+        stepRecord('bad-end', '2026-11-10T10:30:00Z', 'later', 70),
+      ])
+
+      const records = await getHealthConnectStepRecords(user, GARMIN, start, end)
+
+      expect(records.map((r) => r.count)).toEqual([60])
     })
   })
 })

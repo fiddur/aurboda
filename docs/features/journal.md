@@ -5,7 +5,7 @@ A journal for dated entries that never loses a word. It is built on
 free-standing comment, so an entry is also a comment on that moment on the
 Timeline, and a comment written on the Timeline is also in the journal.
 
-Open it from the menu (**Journal**, after Timeline) on the web, or **More → Journal**
+Open it from the menu (**Log → Journal**) on the web, or **More → Journal**
 in the Android app, which embeds the same page.
 
 ## The journal page

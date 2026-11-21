@@ -25,7 +25,7 @@ name and the time you spent with them (with a warning, never a refusal; see
 
 ## On the web
 
-**People** (`/people`, in the main menu and the app's More → Log) lists everyone by name with
+**People** (`/people`, under **Log** in the menu and the app's More → Log) lists everyone by name with
 their relationship, their next date and, with a handle, their avatar. **Upcoming dates** on top
 are the next 60 days ("Anna's birthday", "Tuesday 3 December · in 12 days · turns 40"), each
 opening the person. A filter box shows once there are more than ten people, **Show archived**

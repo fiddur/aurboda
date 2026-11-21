@@ -1,15 +1,26 @@
 # Strength session logging
 
 The pages under `/strength` log a strength training session, either live in the gym (one set at a
-time) or after the fact (quick entry such as "3 × 8 at 60"). They work in the browser and embedded
-in the Android app (the Add tab's **Log a strength session** opens `/strength` in the More tab's web
+time) or after the fact (quick entry such as "3 × 8 at 60"). They work in the browser (**Training → Strength** in the menu) and embedded
+in the Android app (More → Training → Strength, and the Add tab's **Log a strength session** opens `/strength` in the More tab's web
 view). They write the built-in `strength_training` type's `sets` list (see
 [Activity types](activity-types.md#data-schema-and-categorical-fields)); the generic add and edit forms with the sets
 table stay for corrections.
 
+The Strength page has four tabs, each at its own address, under the heading **Strength**:
+
+| Tab       | Address               | What it shows                                                                                              |
+| --------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Train     | `/strength`           | Start: an unfinished session, start now, log a past session, planned workouts, repeat a session            |
+| Progress  | `/strength/progress`  | The [strength score](strength-score.md) of `sets.exercise`: cards, the score over time, each group's lifts |
+| Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time             |
+| Muscles   | `/strength/muscles`   | [Muscle recovery](muscle-recovery.md) of every group, and sets per muscle group                            |
+
+The tabs are plain links, so each can be bookmarked and the back button steps between them; on a
+phone the tab bar scrolls sideways. The session, log and plan pages below have no tab bar.
+
 | Page                   | What it is                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------- |
-| `/strength`            | Start: an unfinished session, start now, log a past session, repeat a session     |
 | `/strength/live`       | A live session that has no logged set yet (nothing is saved)                      |
 | `/strength/log`        | A past session being entered, not saved yet                                       |
 | `/strength/session/ID` | A saved session: live while in progress, edit form otherwise, read-only if synced |

@@ -1,41 +1,127 @@
+import type { ComponentChildren } from 'preact'
+
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useState } from 'preact/hooks'
 
 import { auth, ensureStatusLoaded, logout, signupMode } from '../state/auth'
 import {
-  DATA_SOURCE_LINKS,
   HELP_LINK,
-  isSharingActive,
-  NAV_LINKS_PRIMARY,
-  NAV_LINKS_SECONDARY,
+  isLinkActive,
+  NAV_TOP_LINKS,
+  type NavSection,
   pageTitleForPath,
-  SHARING_LINKS,
   visibleLinks,
+  visibleSections,
 } from './nav-links'
 import { NotificationBellLink } from './NotificationBell'
 import { useHiddenPages } from './useHiddenPages'
+import { useOpenSections } from './useOpenSections'
 
-// eslint-disable-next-line complexity -- navigation component with many branches
-export function Header() {
-  const { url } = useLocation()
-  const isLoggedIn = auth.value.token
-  const isAdmin = auth.value.is_admin
-  const canSignup = signupMode.value === 'open'
+const DrawerIcon = (props: { children: ComponentChildren }) => (
+  <span class="drawer-icon">{props.children}</span>
+)
+
+function DrawerSection(props: {
+  section: NavSection
+  url: string
+  open: boolean
+  onToggle: () => void
+  onNavigate: () => void
+}) {
+  const { section, url, open } = props
+  const containerId = `drawer-section-${section.id}`
+  const holdsActive = section.links.some((l) => isLinkActive(l.href, url))
+  return (
+    <>
+      <button
+        class={`drawer-section-toggle${!open && holdsActive ? ' active' : ''}`}
+        onClick={props.onToggle}
+        type="button"
+        aria-expanded={open}
+        aria-controls={containerId}
+      >
+        <DrawerIcon>{section.icon}</DrawerIcon>
+        {section.label}
+        <span class="dropdown-arrow">{open ? '▴' : '▾'}</span>
+      </button>
+      <div class="drawer-sub-links" id={containerId} hidden={!open}>
+        {section.links.map((link) => (
+          <a
+            key={link.href}
+            href={link.href}
+            class={`drawer-sub-link${isLinkActive(link.href, url) ? ' active' : ''}`}
+            onClick={props.onNavigate}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function DrawerMenu(props: { url: string; onNavigate: () => void }) {
+  const { url, onNavigate } = props
   const hidden = useHiddenPages()
-  const sharingLinks = visibleLinks(SHARING_LINKS, hidden)
-  const dataSourceLinks = visibleLinks(DATA_SOURCE_LINKS, hidden)
-
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [dsExpandedInDrawer, setDsExpandedInDrawer] = useState(false)
-  const [sharingExpandedInDrawer, setSharingExpandedInDrawer] = useState(true)
-
-  const isDataSourcesActive = url.startsWith('/data-sources')
-  const sharingActive = isSharingActive(url)
+  const sections = visibleSections(hidden, !!auth.value.is_admin)
+  const { open, toggle } = useOpenSections(url)
 
   const handleLogout = (e: Event) => {
     e.preventDefault()
     logout()
   }
+
+  return (
+    <>
+      {visibleLinks(NAV_TOP_LINKS, hidden).map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          class={isLinkActive(link.href, url) ? 'active' : undefined}
+          onClick={onNavigate}
+        >
+          <DrawerIcon>{link.icon}</DrawerIcon>
+          {link.label}
+        </a>
+      ))}
+      {sections.map((section) => (
+        <DrawerSection
+          key={section.id}
+          section={section}
+          url={url}
+          open={open.includes(section.id)}
+          onToggle={() => toggle(section.id)}
+          onNavigate={onNavigate}
+        />
+      ))}
+      <div class="drawer-spacer" />
+      <a
+        href={HELP_LINK.href}
+        class={isLinkActive(HELP_LINK.href, url) ? 'active' : undefined}
+        onClick={onNavigate}
+      >
+        <DrawerIcon>{HELP_LINK.icon}</DrawerIcon>
+        {HELP_LINK.label}
+      </a>
+      <a href="/settings" class={isLinkActive('/settings', url) ? 'active' : undefined} onClick={onNavigate}>
+        <DrawerIcon>⚙</DrawerIcon>
+        Settings
+        <span class="drawer-user">{auth.value.user}</span>
+      </a>
+      <a href="#" onClick={handleLogout} class="logout-link">
+        <DrawerIcon>🚪</DrawerIcon>
+        Log out
+      </a>
+    </>
+  )
+}
+
+export function Header() {
+  const { url } = useLocation()
+  const isLoggedIn = auth.value.token
+  const canSignup = signupMode.value === 'open'
+
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const toggleDrawer = useCallback(() => setDrawerOpen((v) => !v), [])
   const closeDrawer = useCallback(() => setDrawerOpen(false), [])
@@ -92,96 +178,7 @@ export function Header() {
           </button>
         </div>
         {isLoggedIn ? (
-          <>
-            <a href="/" class={url === '/' ? 'active' : undefined} onClick={closeDrawer}>
-              Home
-            </a>
-            {visibleLinks(NAV_LINKS_PRIMARY, hidden)
-              .filter((l) => l.href !== '/')
-              .map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  class={url === link.href ? 'active' : undefined}
-                  onClick={closeDrawer}
-                >
-                  {link.label}
-                </a>
-              ))}
-            {sharingLinks.length > 0 && (
-              <button
-                class={`drawer-section-toggle${sharingActive ? ' active' : ''}`}
-                onClick={() => setSharingExpandedInDrawer((v) => !v)}
-                type="button"
-              >
-                Sharing <span class="dropdown-arrow">{sharingExpandedInDrawer ? '▴' : '▾'}</span>
-              </button>
-            )}
-            {sharingExpandedInDrawer &&
-              sharingLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  class={`drawer-sub-link${url === link.href ? ' active' : ''}`}
-                  onClick={closeDrawer}
-                >
-                  {link.label}
-                </a>
-              ))}
-            {visibleLinks(NAV_LINKS_SECONDARY, hidden).map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                class={url === link.href ? 'active' : undefined}
-                onClick={closeDrawer}
-              >
-                {link.label}
-              </a>
-            ))}
-            {dataSourceLinks.length > 0 && (
-              <button
-                class={`drawer-section-toggle${isDataSourcesActive ? ' active' : ''}`}
-                onClick={() => setDsExpandedInDrawer((v) => !v)}
-                type="button"
-              >
-                Data Sources <span class="dropdown-arrow">{dsExpandedInDrawer ? '\u25B4' : '\u25BE'}</span>
-              </button>
-            )}
-            {dsExpandedInDrawer &&
-              dataSourceLinks.map((link) => (
-                <a
-                  key={link.path}
-                  href={link.path}
-                  class={`drawer-sub-link${url === link.path ? ' active' : ''}`}
-                  onClick={closeDrawer}
-                >
-                  {link.label}
-                </a>
-              ))}
-            {isAdmin && (
-              <a href="/admin" class={url === '/admin' ? 'active' : undefined} onClick={closeDrawer}>
-                Admin
-              </a>
-            )}
-            <div class="drawer-spacer" />
-            <a
-              href={HELP_LINK.href}
-              class={url === HELP_LINK.href ? 'active' : undefined}
-              onClick={closeDrawer}
-            >
-              {HELP_LINK.label}
-            </a>
-            <a
-              href="/settings"
-              class={url === '/settings' ? 'active user-link' : 'user-link'}
-              onClick={closeDrawer}
-            >
-              {auth.value.user}
-            </a>
-            <a href="#" onClick={handleLogout} class="logout-link">
-              Logout
-            </a>
-          </>
+          <DrawerMenu url={url} onNavigate={closeDrawer} />
         ) : (
           <>
             <a href="/login" class={url === '/login' ? 'active' : undefined} onClick={closeDrawer}>

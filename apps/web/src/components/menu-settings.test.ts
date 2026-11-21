@@ -20,6 +20,24 @@ describe('menuSettingsView', () => {
     expect(view.hiddenCount).toBe(4)
   })
 
+  test('groups the switches by menu section', () => {
+    const view = menuSettingsView(['/strength'])
+    expect(view.groups.map((g) => g.id)).toEqual([
+      'main',
+      'log',
+      'training',
+      'explore',
+      'sharing',
+      'setup',
+      'app',
+    ])
+    expect(view.groups.find((g) => g.id === 'training')?.switches[0]).toMatchObject({
+      path: '/strength',
+      shown: false,
+    })
+    expect(switchFor(view, '/admin')).toBeUndefined()
+  })
+
   test('does not count unknown or protected paths', () => {
     const view = menuSettingsView(['/no-such-page', '/settings', '/'])
     expect(view.hiddenCount).toBe(0)

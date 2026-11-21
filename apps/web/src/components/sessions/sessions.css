@@ -28,6 +28,19 @@
   background: #fff;
 }
 
+.item-groups-filter {
+  flex: 1 1 10rem;
+  max-width: 16rem;
+  margin-bottom: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #374151;
+  background: #fff;
+}
+
 .sessions-scatter-link {
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
@@ -271,7 +284,8 @@
     color: #9ca3af;
   }
 
-  .sessions-control select {
+  .sessions-control select,
+  .item-groups-filter {
     background: #111827;
     border-color: #4b5563;
     color: #e5e7eb;

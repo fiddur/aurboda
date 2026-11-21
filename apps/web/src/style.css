@@ -182,7 +182,27 @@ header.app-header {
   color: var(--color-chrome-text);
   padding: 0.75rem 1rem;
   text-decoration: none;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.drawer-icon {
+  width: 1.5rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.drawer-user {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--color-chrome-text) 80%, var(--color-chrome));
 }
 
 .nav-drawer a.active {
@@ -206,7 +226,8 @@ header.app-header {
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
 }
 
 .drawer-section-toggle:hover {
@@ -223,10 +244,17 @@ header.app-header {
   margin-left: 0.125rem;
 }
 
+.drawer-section-toggle .dropdown-arrow {
+  margin-left: auto;
+}
+
+.drawer-sub-links[hidden] {
+  display: none;
+}
+
 .drawer-sub-link {
-  padding-left: 2rem !important;
+  padding-left: 3.25rem !important;
   font-size: 0.9rem !important;
-  opacity: 0.9;
 }
 
 .drawer-spacer {
