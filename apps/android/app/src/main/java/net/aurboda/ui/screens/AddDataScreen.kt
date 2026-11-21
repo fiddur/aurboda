@@ -54,16 +54,18 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.launch
 import net.aurboda.ActivityDataInput
 import net.aurboda.ActivityTypeDefinition
-import net.aurboda.AddActivityBody
+import net.aurboda.ACTIVITY_PEOPLE_MAX
 import net.aurboda.CatalogActivityType
 import net.aurboda.CatalogMetric
 import net.aurboda.CustomMetricDefinition
 import net.aurboda.DataFieldDefinition
 import net.aurboda.DataResult
+import net.aurboda.PendingActivityOutcome
 import net.aurboda.PendingActivityPayload
 import net.aurboda.PendingEntry
 import net.aurboda.PendingMetricPayload
 import net.aurboda.PendingPayload
+import net.aurboda.PersonOption
 import net.aurboda.addPendingEntry
 import net.aurboda.api.models.AddMetricBody
 import net.aurboda.appJson
@@ -72,6 +74,7 @@ import net.aurboda.cacheActivityTypeCatalog
 import net.aurboda.cacheActivityTypes
 import net.aurboda.cacheCustomMetrics
 import net.aurboda.cacheMetricCatalog
+import net.aurboda.cachePeople
 import net.aurboda.catalogMetricsToOffer
 import net.aurboda.catalogTypesToOffer
 import net.aurboda.defaultMetricUnit
@@ -79,20 +82,24 @@ import net.aurboda.fetchActivityTypeCatalog
 import net.aurboda.fetchActivityTypes
 import net.aurboda.fetchCustomMetrics
 import net.aurboda.fetchMetricCatalog
+import net.aurboda.fetchPeople
 import net.aurboda.getCachedActivityTypeCatalog
 import net.aurboda.getCachedActivityTypes
 import net.aurboda.getCachedCustomMetrics
 import net.aurboda.getCachedMetricCatalog
+import net.aurboda.getCachedPeople
 import net.aurboda.getPendingEntries
 import net.aurboda.markPendingEntryFailed
 import net.aurboda.metricUnitOptions
 import net.aurboda.metricUnitToSend
 import net.aurboda.pendingEntryCount
 import net.aurboda.postActivity
+import net.aurboda.postEntityComment
 import net.aurboda.postMetric
+import net.aurboda.recordCreatedActivity
 import net.aurboda.removePendingEntry
 import net.aurboda.resolveActivityType
-import net.aurboda.toAddActivityBody
+import net.aurboda.sendPendingActivity
 import net.aurboda.updatePendingEntry
 import java.time.Instant
 import java.time.LocalDate
@@ -385,6 +392,69 @@ private fun ActivityTypePicker(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun WithPickerField(
+    people: List<PersonOption>,
+    selected: List<String>,
+    onSelectedChange: (List<String>) -> Unit,
+) {
+    if (people.isEmpty()) {
+        Text(
+            "Add people on the People page",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
+        return
+    }
+
+    var showDialog by remember { mutableStateOf(false) }
+    val names = people.filter { it.id in selected }.joinToString(", ") { it.name }
+
+    OutlinedTextField(
+        value = names,
+        onValueChange = {},
+        readOnly = true,
+        label = { Text("With") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDialog = true },
+        singleLine = true,
+        enabled = false, // Prevents keyboard, click handled by modifier
+    )
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Done") }
+            },
+            title = { Text("With") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    people.forEach { person ->
+                        val checked = person.id in selected
+                        val enabled = checked || selected.size < ACTIVITY_PEOPLE_MAX
+                        val toggle = {
+                            onSelectedChange(if (checked) selected - person.id else selected + person.id)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { toggle() },
+                                enabled = enabled,
+                            )
+                            Text(
+                                person.relationship?.let { "${person.name} · $it" } ?: person.name,
+                                modifier = Modifier.clickable(enabled = enabled) { toggle() },
+                            )
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -726,7 +796,12 @@ private fun PendingEntriesSection(
 
     entries.forEach { entry ->
         val description = when (val data = entry.data) {
-            is PendingPayload.Activity -> "Activity: ${data.payload.activity_type}"
+            is PendingPayload.Activity ->
+                if (data.payload.created_activity_id != null) {
+                    "Comment for ${data.payload.activity_type}"
+                } else {
+                    "Activity: ${data.payload.activity_type}"
+                }
             is PendingPayload.Metric ->
                 "Metric: ${data.payload.metric} = ${data.payload.value} ${data.payload.unit ?: ""}".trimEnd()
         }
@@ -734,6 +809,7 @@ private fun PendingEntriesSection(
             is PendingPayload.Activity -> data.payload.start_time
             is PendingPayload.Metric -> data.payload.time
         }
+        val activityCreated = (entry.data as? PendingPayload.Activity)?.payload?.created_activity_id != null
 
         Column(
             modifier = Modifier
@@ -757,22 +833,38 @@ private fun PendingEntriesSection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 4.dp),
             ) {
-                OutlinedButton(onClick = {
-                    val millis = try {
-                        ZonedDateTime.parse(timeStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                            .toInstant().toEpochMilli()
-                    } catch (_: Exception) {
-                        nowEpochMillis()
-                    }
-                    editingTimeMillis = millis
-                    editingEntry = entry
-                }) { Text("Edit time") }
+                if (!activityCreated) {
+                    OutlinedButton(onClick = {
+                        val millis = try {
+                            ZonedDateTime.parse(timeStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                                .toInstant().toEpochMilli()
+                        } catch (_: Exception) {
+                            nowEpochMillis()
+                        }
+                        editingTimeMillis = millis
+                        editingEntry = entry
+                    }) { Text("Edit time") }
+                }
                 OutlinedButton(onClick = {
                     scope.launch {
-                        val result = when (val data = entry.data) {
+                        val error: DataResult.Error? = when (val data = entry.data) {
                             is PendingPayload.Activity -> {
-                                val body = data.payload.toAddActivityBody(getCachedActivityTypes(context))
-                                postActivity(httpClient, apiUrl, authToken, body)
+                                val outcome = sendPendingActivity(
+                                    payload = data.payload,
+                                    types = getCachedActivityTypes(context),
+                                    sendActivity = { body -> postActivity(httpClient, apiUrl, authToken, body) },
+                                    sendComment = { activityId, content ->
+                                        postEntityComment(httpClient, apiUrl, authToken, "activity", activityId, content)
+                                    },
+                                    saveActivityId = { activityId ->
+                                        recordCreatedActivity(context, entry.id, activityId)
+                                    },
+                                )
+                                when (outcome) {
+                                    PendingActivityOutcome.Sent -> null
+                                    is PendingActivityOutcome.ActivityFailed -> outcome.error
+                                    is PendingActivityOutcome.CommentFailed -> outcome.error
+                                }
                             }
                             is PendingPayload.Metric -> {
                                 val body = AddMetricBody(
@@ -781,16 +873,16 @@ private fun PendingEntriesSection(
                                     time = data.payload.time,
                                     unit = data.payload.unit,
                                 )
-                                postMetric(httpClient, apiUrl, authToken, body)
+                                when (val posted = postMetric(httpClient, apiUrl, authToken, body)) {
+                                    is DataResult.Success -> null
+                                    is DataResult.Error -> posted
+                                }
                             }
                         }
-                        when (result) {
-                            is DataResult.Success<*> -> {
-                                removePendingEntry(context, entry.id)
-                            }
-                            is DataResult.Error -> {
-                                markPendingEntryFailed(context, entry.id, result.message)
-                            }
+                        if (error == null) {
+                            removePendingEntry(context, entry.id)
+                        } else {
+                            markPendingEntryFailed(context, entry.id, error.message)
                         }
                         entries = getPendingEntries(context)
                     }
@@ -870,6 +962,9 @@ private fun AddActivityTab(
     var endTimeMillis by remember { mutableLongStateOf(nowEpochMillis()) }
     var hasEndTime by remember { mutableStateOf(true) }
     var notes by remember { mutableStateOf("") }
+    var comment by remember { mutableStateOf("") }
+    var people by remember { mutableStateOf(getCachedPeople(context)) }
+    var withPeople by remember { mutableStateOf<List<String>>(emptyList()) }
     var structuredData by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     var submitting by remember { mutableStateOf(false) }
@@ -894,6 +989,13 @@ private fun AddActivityTab(
             is DataResult.Success -> {
                 activityTypeCatalog = result.data
                 cacheActivityTypeCatalog(context, result.data)
+            }
+            is DataResult.Error -> { /* use cached */ }
+        }
+        when (val result = fetchPeople(httpClient, apiUrl, authToken)) {
+            is DataResult.Success -> {
+                people = result.data
+                cachePeople(context, result.data)
             }
             is DataResult.Error -> { /* use cached */ }
         }
@@ -980,6 +1082,12 @@ private fun AddActivityTab(
             )
         }
 
+        WithPickerField(
+            people = people,
+            selected = withPeople,
+            onSelectedChange = { withPeople = it },
+        )
+
         OutlinedTextField(
             value = notes,
             onValueChange = { notes = it },
@@ -992,6 +1100,16 @@ private fun AddActivityTab(
             },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
+            maxLines = 5,
+        )
+
+        OutlinedTextField(
+            value = comment,
+            onValueChange = { comment = it },
+            label = { Text("Comment") },
+            placeholder = { Text("Optional comment") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
             maxLines = 5,
         )
 
@@ -1025,26 +1143,19 @@ private fun AddActivityTab(
                 val startIso = epochMillisToIso(startTimeMillis)
                 val endIso = if (hasEndTime) epochMillisToIso(endTimeMillis) else null
 
-                val body = AddActivityBody(
-                    activityType = selectedType,
-                    startTime = startIso,
-                    endTime = endIso,
+                val payload = PendingActivityPayload(
+                    activity_type = selectedType,
+                    start_time = startIso,
+                    end_time = endIso,
                     title = title.trim().ifBlank { null },
                     notes = notes.trim().ifBlank { null },
                     data = activityData,
+                    people = withPeople.ifEmpty { null },
+                    comment = comment.trim().ifBlank { null },
                 )
 
                 val pendingEntry = PendingEntry(
-                    data = PendingPayload.Activity(
-                        PendingActivityPayload(
-                            activity_type = body.activityType,
-                            start_time = body.startTime,
-                            end_time = body.endTime,
-                            title = body.title,
-                            notes = body.notes,
-                            data = body.data,
-                        )
-                    ),
+                    data = PendingPayload.Activity(payload),
                     created_at = epochMillisToIso(nowEpochMillis()),
                 )
                 addPendingEntry(context, pendingEntry)
@@ -1052,13 +1163,31 @@ private fun AddActivityTab(
                     activityTypeCatalog.any { it.name == selectedType }
 
                 scope.launch {
-                    val result = postActivity(httpClient, apiUrl, authToken, body)
+                    val outcome = sendPendingActivity(
+                        payload = payload,
+                        types = activityTypes,
+                        sendActivity = { body -> postActivity(httpClient, apiUrl, authToken, body) },
+                        sendComment = { activityId, content ->
+                            postEntityComment(httpClient, apiUrl, authToken, "activity", activityId, content)
+                        },
+                        saveActivityId = { activityId -> recordCreatedActivity(context, pendingEntry.id, activityId) },
+                    )
                     submitting = false
-                    when (result) {
-                        is DataResult.Success -> {
-                            removePendingEntry(context, pendingEntry.id)
+                    when (outcome) {
+                        is PendingActivityOutcome.ActivityFailed -> {
+                            markPendingEntryFailed(context, pendingEntry.id, outcome.error.message)
+                            message = "Error: ${outcome.error.message}"
+                            isError = true
+                        }
+                        PendingActivityOutcome.Sent, is PendingActivityOutcome.CommentFailed -> {
+                            if (outcome is PendingActivityOutcome.CommentFailed) {
+                                markPendingEntryFailed(context, pendingEntry.id, outcome.error.message)
+                                message = "Activity added. The comment will be sent later."
+                            } else {
+                                removePendingEntry(context, pendingEntry.id)
+                                message = "Activity added!"
+                            }
                             if (adoptsCatalogType) loadActivityTypes()
-                            message = "Activity added!"
                             isError = false
                             selectedType = ""
                             title = ""
@@ -1066,12 +1195,9 @@ private fun AddActivityTab(
                             endTimeMillis = nowEpochMillis()
                             hasEndTime = true
                             notes = ""
+                            comment = ""
+                            withPeople = emptyList()
                             structuredData = emptyMap()
-                        }
-                        is DataResult.Error -> {
-                            markPendingEntryFailed(context, pendingEntry.id, result.message)
-                            message = "Error: ${result.message}"
-                            isError = true
                         }
                     }
                 }

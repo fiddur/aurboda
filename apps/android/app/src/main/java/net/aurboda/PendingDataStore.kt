@@ -19,6 +19,9 @@ data class PendingActivityPayload(
     val title: String? = null,
     val notes: String? = null,
     val data: JsonObject? = null,
+    val people: List<String>? = null,
+    val comment: String? = null,
+    val created_activity_id: String? = null,
 )
 
 @Serializable
@@ -77,6 +80,19 @@ fun updatePendingEntry(context: Context, updated: PendingEntry) {
     val entries = getPendingEntries(context).map { if (it.id == updated.id) updated else it }
     savePendingEntries(context, entries)
     Log.d(TAG, "Updated pending entry ${updated.id}")
+}
+
+fun PendingEntry.withCreatedActivityId(activityId: String): PendingEntry =
+    when (val payload = data) {
+        is PendingPayload.Activity ->
+            copy(data = PendingPayload.Activity(payload.payload.copy(created_activity_id = activityId)))
+        is PendingPayload.Metric -> this
+    }
+
+/** Kept before the comment is posted, so a retry after any failure posts only the comment. */
+fun recordCreatedActivity(context: Context, id: String, activityId: String) {
+    val entry = getPendingEntries(context).find { it.id == id } ?: return
+    updatePendingEntry(context, entry.withCreatedActivityId(activityId))
 }
 
 fun markPendingEntryFailed(context: Context, id: String, error: String) {

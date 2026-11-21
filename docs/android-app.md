@@ -26,6 +26,15 @@ field that does not parse, or falls outside the field's `min` and `max` ("Must b
 is marked on the field and nothing is sent. A queued entry whose values are strings (the older queue
 format) is converted with the cached activity types when it is sent.
 
+As on the web form, the Activity form has **With** and **Comment**. **With** opens a checklist of
+your [people](features/people.md) (archived ones left out, at most 20), cached so it works offline
+after one successful load; with no people it only says "Add people on the People page", since people
+are created on the web. **Comment** is posted as a comment (a note) on the new activity once it is
+saved. A queued activity keeps both: when it is sent the activity goes first, its id is stored in the
+queued entry, and then the comment is posted, so a comment that fails is retried on its own and never
+creates a second activity. Such an entry shows as "Comment for" and its type in the pending list, and the
+form says "Activity added. The comment will be sent later."
+
 Like the web Add data form, the Add tab offers the built-in catalogues. The activity type picker lists
 the [activity type catalogue](features/activity-type-catalog.md)'s types not in use yet under
 **Built-in**, after your own (matched by name, display name or alias; variants are not listed), and a

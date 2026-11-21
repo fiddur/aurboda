@@ -52,8 +52,9 @@ Sharing an activity can mention the people with a handle, off every time: see
 [Mentioning people](sharing.md#mentioning-people-in-an-activity-share). Their dates are
 markers on the [Timeline](timeline.md).
 
-The app's native Add tab has no With picker yet; add or edit the activity on the web to link
-people.
+The app's native Add tab has a With checklist of your people (see
+[Android app](../android-app.md)); it cannot add a person, so add people on the web first, and edit
+an activity's people on the web.
 
 ## In Analyze
 
