@@ -143,6 +143,14 @@ const saveRevisionIn = async (tx: Queryable, previous: Note, policy: NoteRevisio
   )
 }
 
+/** Whether an update replaces text worth keeping: an entry created empty keeps no empty first version. */
+const keepsRevision = (existing: Note, fields: NoteFieldUpdates): boolean => {
+  const contentChanged = fields.content !== undefined && fields.content !== existing.content
+  const titleChanged = fields.title !== undefined && (fields.title ?? undefined) !== existing.title
+  const wasBlank = existing.content.trim() === '' && !existing.title?.trim()
+  return (contentChanged || titleChanged) && !wasBlank
+}
+
 const isStale = (
   existing: Note,
   expected: { expected_updated_at?: Date; expected_entity_type?: EntityType },
@@ -183,9 +191,7 @@ export const updateNoteGuarded = async (
 
     if (isStale(existing, options)) return { note: existing, status: 'conflict' }
 
-    const contentChanged = fields.content !== undefined && fields.content !== existing.content
-    const titleChanged = fields.title !== undefined && (fields.title ?? undefined) !== existing.title
-    if (contentChanged || titleChanged) await saveRevisionIn(tx, existing, options.revisions)
+    if (keepsRevision(existing, fields)) await saveRevisionIn(tx, existing, options.revisions)
 
     const update = buildDynamicUpdate('notes', id, fieldEntries(fields), {
       defaultClauses: ['updated_at = NOW()'],

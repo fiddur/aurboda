@@ -24,7 +24,6 @@ import {
   getNonSleepActivitiesMerged,
   getNotesByEntityIds,
   getNotesForTimeRange,
-  getRepliesForRootIds,
   getProductivity,
   getScreentimeActivities,
   getSleepSessions,
@@ -35,7 +34,7 @@ import {
 import { getScreentimeCategories } from '../../db/screentime-categories.ts'
 import { getPlaceVisits, type PlaceVisit } from '../locations.ts'
 import { toMetricEntityId } from '../metric-entity-id.ts'
-import { toNoteData } from '../notes.ts'
+import { withReplies } from '../notes.ts'
 import { maxOf, minOf } from '../numeric-extremes.ts'
 import {
   categoryPathToString,
@@ -569,10 +568,7 @@ export async function getDailySummary(
       !(n.entity_type === 'meal' && n.entity_id && mealIdSet.has(n.entity_id)),
   )
 
-  const orphanedReplies = await getRepliesForRootIds(
-    user,
-    orphanedNotes.map((n) => n.id),
-  )
+  const notes = await withReplies(user, orphanedNotes)
 
   return {
     activities,
@@ -596,7 +592,7 @@ export async function getDailySummary(
     }),
     metrics_latest: metricsLatest,
     metrics_today: metricsToday,
-    notes: orphanedNotes.map((n) => toNoteData(n, orphanedReplies.get(n.id) ?? [])),
+    notes,
     scores,
     places: placeVisits
       .filter((p) => p.duration_minutes > 0)

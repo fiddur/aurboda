@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 
-import { buildViewHash, getDefaultOrientation, parseViewHash, timelineHref } from './viewHash'
+import {
+  buildViewHash,
+  getDefaultOrientation,
+  parseViewHash,
+  replaceViewHash,
+  timelineHref,
+} from './viewHash'
 
 describe('parseViewHash', () => {
   it('returns defaults when no hash', () => {
@@ -102,5 +108,21 @@ describe('timelineHref', () => {
     expect(timelineHref(new Date('2026-10-07T12:00:00Z'))).toBe(
       '/timeline#from=2026-10-07T00%3A00%3A00.000Z&to=2026-10-08T00%3A00%3A00.000Z',
     )
+  })
+})
+
+describe('replaceViewHash', () => {
+  it('writes the hash while the address is still the Timeline', () => {
+    history.replaceState(null, '', '/timeline?embed=1')
+    replaceViewHash('/timeline', '#from=2026-01-01T08:00:00.000Z')
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(
+      '/timeline?embed=1#from=2026-01-01T08:00:00.000Z',
+    )
+  })
+
+  it('leaves the address alone once a tap navigated to a journal entry', () => {
+    history.pushState(null, '', '/journal/abc')
+    replaceViewHash('/timeline', '#from=2026-01-01T08:00:00.000Z')
+    expect(`${window.location.pathname}${window.location.hash}`).toBe('/journal/abc')
   })
 })

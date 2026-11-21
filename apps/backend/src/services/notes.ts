@@ -239,7 +239,7 @@ const entryAttachments = (
   isFreeStandingNoteType(note.entity_type) ? (byNote.get(note.id) ?? []) : undefined
 
 /** Attach each root's replies, oldest first, and a journal entry's attachments, in batched lookups. */
-const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
+export const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
   if (roots.length === 0) return []
   const [repliesByRoot, attachments] = await Promise.all([
     dbGetRepliesForRootIds(
@@ -254,6 +254,10 @@ const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> =
 /** One root as answered by a write: with its attachments when it is a journal entry. */
 const withAttachments = async (user: string, note: DbNote): Promise<NoteData> =>
   toNoteData(note, undefined, entryAttachments(note, await attachmentsFor(user, [note])))
+
+/** A just-created root: a journal entry answers with its (still empty) attachments, as reads do. */
+const createdNoteData = (note: DbNote): NoteData =>
+  toNoteData(note, undefined, entryAttachments(note, new Map()))
 
 /** A real calendar date in YYYY-MM-DD, not just the shape of one. */
 export const isCalendarDate = (value: string): boolean => {
@@ -348,7 +352,7 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
       ...extras,
       date: input.date,
     })
-    return { data: toNoteData(note), success: true }
+    return { data: createdNoteData(note), success: true }
   }
 
   if (input.entity_type === 'time') {
@@ -370,7 +374,7 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
       input.end_time ? new Date(input.end_time) : undefined,
       extras,
     )
-    return { data: toNoteData(note), success: true }
+    return { data: createdNoteData(note), success: true }
   }
 
   if (!input.entity_id) {

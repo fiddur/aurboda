@@ -1,7 +1,9 @@
 import type { NoteAttachmentKind } from '@aurboda/api-spec'
 import type { QueryResultRow } from 'pg'
 
-import { query } from './connection.ts'
+import type { Queryable } from './pool.ts'
+
+import { query, withUserTransaction } from './connection.ts'
 
 export interface NoteAttachmentRecord {
   id: string
@@ -33,6 +35,17 @@ export interface NoteAttachmentUsage {
   account_bytes: number
 }
 
+export interface NoteAttachmentLimits {
+  /** Live attachments one note may hold. */
+  per_note: number
+  /** Stored bytes one account may hold, deleted attachments included. */
+  account_bytes: number
+}
+
+export type NoteAttachmentLimitResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; reason: 'note_limit' | 'account_limit' }
+
 const RECORD_COLUMNS =
   'a.id, a.note_id, a.kind, a.mime, a.size, a.width, a.height, a.position, a.created_at, a.deleted_at'
 
@@ -52,13 +65,13 @@ const toRecord = (row: QueryResultRow): NoteAttachmentRecord => ({
 const LIVE_NOTE = `EXISTS (SELECT 1 FROM notes n WHERE n.id = a.note_id AND n.deleted_at IS NULL)`
 
 export const insertNoteAttachment = async (
-  user: string,
+  db: Queryable | string,
   noteId: string,
   position: number,
   attachment: NewNoteAttachment,
 ): Promise<NoteAttachmentRecord> => {
   const result = await query(
-    user,
+    db,
     `INSERT INTO note_attachments AS a (note_id, kind, mime, bytes, size, width, height, position)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING ${RECORD_COLUMNS}`,
@@ -76,9 +89,12 @@ export const insertNoteAttachment = async (
   return toRecord(result.rows[0])
 }
 
-export const getNoteAttachmentUsage = async (user: string, noteId: string): Promise<NoteAttachmentUsage> => {
+export const getNoteAttachmentUsage = async (
+  db: Queryable | string,
+  noteId: string,
+): Promise<NoteAttachmentUsage> => {
   const result = await query(
-    user,
+    db,
     `SELECT
        (SELECT COUNT(*) FROM note_attachments WHERE note_id = $1 AND deleted_at IS NULL)::int AS live_count,
        (SELECT MAX(position) FROM note_attachments WHERE note_id = $1) AS max_position,
@@ -92,6 +108,58 @@ export const getNoteAttachmentUsage = async (user: string, noteId: string): Prom
     max_position: row.max_position ?? null,
   }
 }
+
+/**
+ * Serializes the account's attachment writes until the transaction ends. Each user has a database
+ * of their own, so one fixed key covers exactly that account, which the account-wide byte cap needs.
+ */
+const lockAttachmentWrites = async (tx: Queryable): Promise<void> => {
+  await query(tx, `SELECT pg_advisory_xact_lock(hashtext('note_attachments'))`)
+}
+
+/**
+ * Store an attachment one position after the note's highest (deleted ones included), unless the
+ * note already holds `per_note` live ones or the account would go past `account_bytes`. The check
+ * and the insert happen under the account's lock, so parallel uploads cannot share a position or
+ * pass a cap together.
+ */
+export const insertNoteAttachmentWithinLimits = async (
+  user: string,
+  noteId: string,
+  attachment: NewNoteAttachment,
+  limits: NoteAttachmentLimits,
+): Promise<NoteAttachmentLimitResult<NoteAttachmentRecord>> =>
+  withUserTransaction(user, async (tx) => {
+    await lockAttachmentWrites(tx)
+    const usage = await getNoteAttachmentUsage(tx, noteId)
+    if (usage.live_count >= limits.per_note) return { ok: false, reason: 'note_limit' }
+    if (usage.account_bytes + attachment.bytes.length > limits.account_bytes) {
+      return { ok: false, reason: 'account_limit' }
+    }
+    const record = await insertNoteAttachment(tx, noteId, (usage.max_position ?? 0) + 1, attachment)
+    return { ok: true, value: record }
+  })
+
+/**
+ * Bring back an attachment of a live note unless the note already holds `perNote` live ones, under
+ * the same lock as uploads. A live one is answered as it is; null when there is none.
+ */
+export const restoreNoteAttachmentWithinLimit = async (
+  user: string,
+  noteId: string,
+  id: string,
+  perNote: number,
+): Promise<NoteAttachmentLimitResult<NoteAttachmentRecord> | null> =>
+  withUserTransaction(user, async (tx) => {
+    await lockAttachmentWrites(tx)
+    const existing = await getNoteAttachment(tx, noteId, id, { include_deleted: true })
+    if (!existing) return null
+    if (!existing.deleted_at) return { ok: true, value: existing }
+    const usage = await getNoteAttachmentUsage(tx, noteId)
+    if (usage.live_count >= perNote) return { ok: false, reason: 'note_limit' }
+    const restored = await restoreNoteAttachment(tx, noteId, id)
+    return restored ? { ok: true, value: restored } : null
+  })
 
 /** The live attachments of each note, by position, in one query. */
 export const getNoteAttachmentsForNoteIds = async (
@@ -128,13 +196,13 @@ export const getDeletedNoteAttachments = async (
 
 /** An attachment of a live note; a deleted one only when asked for. */
 export const getNoteAttachment = async (
-  user: string,
+  db: Queryable | string,
   noteId: string,
   id: string,
   options: { include_deleted?: boolean } = {},
 ): Promise<NoteAttachmentRecord | null> => {
   const result = await query(
-    user,
+    db,
     `SELECT ${RECORD_COLUMNS} FROM note_attachments a
       WHERE a.id = $1 AND a.note_id = $2 AND ${LIVE_NOTE}
         ${options.include_deleted ? '' : 'AND a.deleted_at IS NULL'}`,
@@ -184,12 +252,12 @@ export const purgeNoteAttachment = async (user: string, noteId: string, id: stri
 }
 
 export const restoreNoteAttachment = async (
-  user: string,
+  db: Queryable | string,
   noteId: string,
   id: string,
 ): Promise<NoteAttachmentRecord | null> => {
   const result = await query(
-    user,
+    db,
     `UPDATE note_attachments a SET deleted_at = NULL
       WHERE a.id = $1 AND a.note_id = $2 AND ${LIVE_NOTE}
       RETURNING ${RECORD_COLUMNS}`,

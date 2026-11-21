@@ -280,7 +280,7 @@ export const dailySummaryResultSchema = z
     }),
     notes: z.array(noteSchema).meta({
       description:
-        'Notes not attached to any activity in the activities list (orphaned or non-activity notes)',
+        "Notes not attached to any activity in the activities list (orphaned or non-activity notes), each with its replies; a journal entry (a day or a moment) also carries its pictures' and recordings' metadata in `attachments`",
     }),
     scores: scoresSchema.nullable().meta({
       description: 'Daily scores (sleep, readiness, resilience, cardiovascular age).',

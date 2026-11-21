@@ -21,6 +21,7 @@ vi.mock('../../db', () => ({
   getLatestMetricValuesMulti: vi.fn().mockResolvedValue(new Map()),
   getMeals: vi.fn(),
   getNonSleepActivitiesMerged: vi.fn(),
+  getNoteAttachmentsForNoteIds: vi.fn().mockResolvedValue(new Map()),
   getNotesByEntityIds: vi.fn(),
   getNotesForTimeRange: vi.fn(),
   getProductivity: vi.fn(),
@@ -1300,6 +1301,7 @@ describe('getDailySummary', () => {
     })
     expect(result.notes).toEqual([
       expect.objectContaining({
+        attachments: [],
         date: '2024-01-15',
         entity_type: 'day',
         id: 'day-note',
@@ -1307,6 +1309,58 @@ describe('getDailySummary', () => {
         title: 'Sunday',
       }),
     ])
+  })
+
+  test("a day entry carries its attachments, fetched in one lookup for the day's entries", async () => {
+    vi.mocked(locationsService.getPlaceVisits).mockResolvedValue([])
+    vi.mocked(db.getDailyAggregateValue).mockResolvedValue(null)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({} as Record<MetricType, [Date, number][]>)
+    const entry = (id: string, entity_type: 'day' | 'time') => ({
+      content: 'Entry',
+      created_at: new Date('2024-01-15T20:00:00Z'),
+      date: entity_type === 'day' ? '2024-01-15' : undefined,
+      entity_id: null,
+      entity_type,
+      hashtags: [],
+      id,
+      start_time: entity_type === 'time' ? new Date('2024-01-15T12:00:00Z') : undefined,
+      tags: [],
+      updated_at: new Date('2024-01-15T20:00:00Z'),
+    })
+    vi.mocked(db.getNotesForTimeRange).mockResolvedValue([
+      entry('day-entry', 'day'),
+      entry('time-entry', 'time'),
+    ])
+    vi.mocked(db.getNoteAttachmentsForNoteIds).mockResolvedValueOnce(
+      new Map([
+        [
+          'day-entry',
+          [
+            {
+              created_at: new Date('2024-01-15T20:01:00Z'),
+              height: 300,
+              id: 'att-1',
+              kind: 'image' as const,
+              mime: 'image/webp',
+              note_id: 'day-entry',
+              position: 1,
+              size: 1234,
+              width: 400,
+            },
+          ],
+        ],
+      ]),
+    )
+
+    const result = await getDailySummary('testuser', new Date('2024-01-15'), undefined, 'Europe/Stockholm')
+
+    expect(db.getNoteAttachmentsForNoteIds).toHaveBeenCalledTimes(1)
+    expect(db.getNoteAttachmentsForNoteIds).toHaveBeenCalledWith('testuser', ['day-entry', 'time-entry'])
+    const byId = new Map(result.notes.map((n) => [n.id, n]))
+    expect(byId.get('day-entry')?.attachments).toEqual([
+      expect.objectContaining({ id: 'att-1', kind: 'image', mime: 'image/webp', position: 1 }),
+    ])
+    expect(byId.get('time-entry')?.attachments).toEqual([])
   })
 
   test('attaches comments to meals and keeps them out of the day-level notes', async () => {

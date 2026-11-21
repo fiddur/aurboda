@@ -272,6 +272,10 @@ export const updateSettingsInputSchema = z
     meal_slots: mealSlotsSchema.nullable().optional().meta({
       description: 'Configured meal slots for quick-logging (set to null to clear)',
     }),
+    journal_strip_metadata: z.boolean().nullable().optional().meta({
+      description:
+        'Remove the metadata (such as when and where a picture was taken) from pictures added to the Journal from now on. Recordings are always stored as they are. Default false: pictures keep it (set to null to reset to the default).',
+    }),
     lastfm_username: lastFmUsernameSchema.nullable().optional().meta({
       description: 'Last.fm username for scrobble sync (set to null to clear)',
     }),
@@ -474,6 +478,10 @@ export const userSettingsResponseSchema = baseResponseSchema
     item_icons: itemIconsSchema.default({}).meta({
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
+    }),
+    journal_strip_metadata: z.boolean().default(false).meta({
+      description:
+        'Remove the metadata (such as when and where a picture was taken) from pictures added to the Journal from now on. Recordings are always stored as they are.',
     }),
     lastfm_configured: z
       .boolean()

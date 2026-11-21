@@ -7,6 +7,7 @@ import type { BiologicalSex, HrZoneThresholds, UpdateSettingsInput } from '../..
 import { AvatarSettings } from '../../components/AvatarSettings'
 import { DataExportSettings } from '../../components/DataExportSettings'
 import { DeleteAccountSettings } from '../../components/DeleteAccountSettings'
+import { JournalSettings } from '../../components/JournalSettings'
 import { LinkedProvidersSettings } from '../../components/LinkedProvidersSettings'
 import { MealPreferencesSettings } from '../../components/MealPreferencesSettings'
 import { MenuSettings } from '../../components/MenuSettings'
@@ -360,6 +361,8 @@ export function Settings() {
           </p>
         </div>
       </SettingsSection>
+
+      <JournalSettings />
 
       <MenuSettings />
 
