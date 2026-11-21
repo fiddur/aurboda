@@ -78,11 +78,7 @@ function PresetInput({
       return (
         <label class="checkin-field">
           {label}
-          <select
-            aria-label="Preset answer"
-            value={question.preset}
-            onChange={(e) => set({ preset: e.currentTarget.value })}
-          >
+          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
             <option value="">None</option>
             <option value="yes">Yes</option>
             <option value="no">No</option>
@@ -94,11 +90,7 @@ function PresetInput({
       return (
         <label class="checkin-field">
           {label}
-          <select
-            aria-label="Preset answer"
-            value={question.preset}
-            onChange={(e) => set({ preset: e.currentTarget.value })}
-          >
+          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
             <option value="">None</option>
             {question.options.map((option, index) => (
               <option key={index} value={String(index)}>
@@ -208,7 +200,6 @@ function ActivityLogEditor({
           <span>The answer goes in the field</span>
           {numberFields.length > 0 ? (
             <select
-              aria-label="The field that takes the answer"
               value={question.answer_field}
               onChange={(e) => set({ answer_field: e.currentTarget.value })}
             >
@@ -240,7 +231,6 @@ function ActivityLogEditor({
                   <span>{field.label ?? field.name}</span>
                   {field.type === 'boolean' ? (
                     <select
-                      aria-label={field.label ?? field.name}
                       value={fieldValue(field.name)}
                       onChange={(e) =>
                         setField({ kind: 'boolean', name: field.name, value: e.currentTarget.value })
@@ -346,7 +336,6 @@ function SaveAnswerAs({
       <label class="checkin-field">
         <span>Save the answer as</span>
         <select
-          aria-label="Save the answer as"
           value={saveAs}
           onChange={(e) => {
             const next = e.currentTarget.value as SaveAs
@@ -604,7 +593,6 @@ function QuestionEditor({
       <label class="checkin-field">
         <span>Answer</span>
         <select
-          aria-label="Answer type"
           value={question.type}
           onChange={(e) => onChange(changeType(question, e.currentTarget.value as CheckInQuestionType))}
         >
