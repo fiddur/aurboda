@@ -14,7 +14,9 @@ all closed. Opening a page opens its section by itself, and you can still close 
 section that holds the current page is marked, so you can see where you are. With the sidebar
 collapsed, each section is one icon that opens its links in a panel beside it. The sections are
 `NAV_SECTIONS` in `apps/web/src/components/nav-links.ts`; the Android app's More tab uses the same
-groups (see [the Android app](../android-app.md#navigation)).
+groups (see [the Android app](../android-app.md#navigation)). The app's Setup group also lists Settings
+and the Audit log: on the web Settings is in the menu's footer and the audit log is reached from
+Settings.
 
 ## Choosing which pages show
 

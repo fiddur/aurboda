@@ -2,7 +2,7 @@ import type { ActivitySessionGroup } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { sortItemGroups } from './itemGroups'
+import { filterItemGroups, sortItemGroups } from './itemGroups'
 
 const group = (
   value: ActivitySessionGroup['value'],
@@ -59,5 +59,21 @@ describe('sortItemGroups', () => {
   test('does not mutate its input', () => {
     sortItemGroups(groups, 'name')
     expect(values(groups)).toEqual(['Bench Press', null, 'squat', 'Plank'])
+  })
+})
+
+describe('filterItemGroups', () => {
+  test('keeps every group while the query is blank', () => {
+    expect(filterItemGroups(groups, '')).toBe(groups)
+    expect(filterItemGroups(groups, '   ')).toBe(groups)
+  })
+
+  test('matches a substring of the value, ignoring case, and hides the no-value group', () => {
+    expect(values(filterItemGroups(groups, 'PRESS'))).toEqual(['Bench Press'])
+    expect(values(filterItemGroups(groups, 'S'))).toEqual(['Bench Press', 'squat'])
+  })
+
+  test('matches nothing', () => {
+    expect(filterItemGroups(groups, 'deadlift')).toEqual([])
   })
 })

@@ -27,8 +27,18 @@ const sets = (value: number): string => String(Math.round(value * 10) / 10)
 
 type LastTrained = Partial<Record<ExerciseMuscleGroup, string | null>>
 
-const RowName = ({ name, path, row }: { name: string; path: string; row: MuscleGroupSummaryRow }) => {
-  if (row.kind === 'not_in_catalogue') return <a href={`#${unmappedSectionId(path)}`}>{row.name}</a>
+const RowName = ({
+  name,
+  path,
+  row,
+  unmappedHref,
+}: {
+  name: string
+  path: string
+  row: MuscleGroupSummaryRow
+  unmappedHref: string
+}) => {
+  if (row.kind === 'not_in_catalogue') return <a href={unmappedHref}>{row.name}</a>
   if (row.muscle_group) return <a href={muscleGroupHref(name, path, row.muscle_group)}>{row.name}</a>
   return <>{row.name}</>
 }
@@ -51,17 +61,19 @@ const SummaryRow = ({
   name,
   path,
   row,
+  unmappedHref,
 }: {
   lastTrained?: LastTrained
   name: string
   path: string
   row: MuscleGroupSummaryRow
+  unmappedHref: string
 }) => (
   <li
     class={`activity-type-meta-muscle-summary-row${row.trained ? '' : ' activity-type-meta-muscle-summary-untrained'}`}
   >
     <span class="activity-type-meta-muscle-summary-name">
-      <RowName name={name} path={path} row={row} />
+      <RowName name={name} path={path} row={row} unmappedHref={unmappedHref} />
     </span>
     <span
       class="activity-type-meta-muscle-summary-bar activity-type-meta-muscle-summary-bar-slot"
@@ -91,7 +103,15 @@ const useLastTrained = (name: string, path: string): LastTrained | undefined => 
  * Working sets of a catalogue-backed item field per muscle group, each set weighted by recruitment:
  * a list of this week's and the average week's sets per group, and the weekly chart on request.
  */
-export function MuscleGroupSection({ name, path }: { name: string; path: string }) {
+export function MuscleGroupSection({
+  name,
+  path,
+  unmappedHref = `#${unmappedSectionId(path)}`,
+}: {
+  name: string
+  path: string
+  unmappedHref?: string
+}) {
   const [lookback, setLookback] = useState(90)
   const [showChart, setShowChart] = useState(false)
   const range = useMemo(() => {
@@ -177,7 +197,14 @@ export function MuscleGroupSection({ name, path }: { name: string; path: string 
                 <span class="activity-type-meta-muscle-summary-value">Last trained</span>
               </li>
               {summary.map((row) => (
-                <SummaryRow key={row.name} lastTrained={lastTrained} name={name} path={path} row={row} />
+                <SummaryRow
+                  key={row.name}
+                  lastTrained={lastTrained}
+                  name={name}
+                  path={path}
+                  row={row}
+                  unmappedHref={unmappedHref}
+                />
               ))}
             </ul>
             <button

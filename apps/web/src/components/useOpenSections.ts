@@ -22,9 +22,7 @@ const readStored = (): NavSectionId[] => {
 const store = (open: readonly NavSectionId[]) => {
   try {
     localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify(open))
-  } catch {
-    // Without storage the open sections last for this page view only.
-  }
+  } catch {}
 }
 
 // One list for the sidebar and the drawer, which are both mounted (CSS shows one).

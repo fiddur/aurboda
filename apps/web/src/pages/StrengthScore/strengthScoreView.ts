@@ -184,3 +184,31 @@ export const groupScoresLine = (score: StrengthScore): string =>
     .join(' · ')
 
 export const pointsLabel = (points: number | null): string => (points === null ? '–' : String(points))
+
+export interface ScoredGroup {
+  group: StrengthScoreGroup
+  name: string
+  score: number
+}
+
+/** The highest and lowest scored groups, ties going to the first in `score.groups` order. */
+export const strongestAndWeakest = (
+  score: StrengthScore,
+): { strongest: ScoredGroup; weakest: ScoredGroup } | undefined => {
+  const scored = score.groups.flatMap((g) =>
+    g.score === null ? [] : [{ group: g.group, name: g.name, score: g.score }],
+  )
+  const [first, ...rest] = scored
+  if (!first) return undefined
+  const strongest = rest.reduce((best, g) => (g.score > best.score ? g : best), first)
+  const weakest = rest.reduce((low, g) => (g.score < low.score ? g : low), first)
+  return strongest.group === weakest.group ? undefined : { strongest, weakest }
+}
+
+export const strongestAndWeakestLabel = ({
+  strongest,
+  weakest,
+}: {
+  strongest: ScoredGroup
+  weakest: ScoredGroup
+}): string => `${strongest.name} ${strongest.score} · ${weakest.name} ${weakest.score}`
