@@ -71,7 +71,7 @@ describe('createStravaQueue', () => {
       const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
 
       const run = handler([
-        { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'alice' } },
+        { data: { request_type: 'fetch_activity', strava_activity_id: '7', user: 'alice' } },
       ])
       await vi.runAllTimersAsync()
       await run
@@ -99,7 +99,7 @@ describe('createStravaQueue', () => {
       const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
 
       const run = handler([
-        { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'alice' } },
+        { data: { request_type: 'fetch_activity', strava_activity_id: '7', user: 'alice' } },
       ])
       await vi.runAllTimersAsync()
       await run
@@ -111,10 +111,8 @@ describe('createStravaQueue', () => {
     }
   })
 
-  test.each([
-    ['a legacy numeric id', 7, '7'],
-    ['a 64-bit string id exactly', '9007199254740993', '9007199254740993'],
-  ])('a fetch job passes %s to the client', async (_, jobId, expected) => {
+  test('a fetch job passes a 64-bit string id to the client exactly', async () => {
+    const id = '9007199254740993'
     vi.useFakeTimers()
     try {
       const boss = createMockBoss()
@@ -126,22 +124,42 @@ describe('createStravaQueue', () => {
       const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
 
       const run = handler([
-        { data: { request_type: 'fetch_activity', strava_activity_id: jobId, user: 'alice' } },
+        { data: { request_type: 'fetch_activity', strava_activity_id: id, user: 'alice' } },
       ])
       await vi.runAllTimersAsync()
       await run
 
-      expect(getActivity).toHaveBeenCalledWith('test-token', expected)
-      expect(getActivityStreams).toHaveBeenCalledWith('test-token', expected)
+      expect(getActivity).toHaveBeenCalledWith('test-token', id)
+      expect(getActivityStreams).toHaveBeenCalledWith('test-token', id)
     } finally {
       vi.useRealTimers()
     }
   })
 
-  test.each([
-    ['missing', undefined],
-    ['invalid', 'abc'],
-  ])('a fetch job with a %s id is skipped', async (_, jobId) => {
+  test('a fetch job still queued with a numeric id is fetched by that id as a string', async () => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const rateLimit = { reads_15min: 0, reads_daily: 0 }
+      const getActivity = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      const getActivityStreams = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      await createStravaQueue(boss as never, { ...mockDeps, getActivity, getActivityStreams })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([
+        { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'alice' } },
+      ])
+      await vi.runAllTimersAsync()
+      await run
+
+      expect(getActivity).toHaveBeenCalledWith('test-token', '7')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('a fetch job without an id is skipped', async () => {
     vi.useFakeTimers()
     try {
       const boss = createMockBoss()
@@ -150,9 +168,7 @@ describe('createStravaQueue', () => {
       const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
       const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
 
-      const run = handler([
-        { data: { request_type: 'fetch_activity', strava_activity_id: jobId, user: 'alice' } },
-      ])
+      const run = handler([{ data: { request_type: 'fetch_activity', user: 'alice' } }])
       await vi.runAllTimersAsync()
       await run
 
@@ -209,7 +225,7 @@ describe('createStravaQueue', () => {
     const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
 
     await handler([
-      { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'expired' } },
+      { data: { request_type: 'fetch_activity', strava_activity_id: '7', user: 'expired' } },
       { data: { request_type: 'list_activities', user: 'expired' } },
     ])
 
@@ -409,7 +425,7 @@ describe('createStravaQueue', () => {
         {
           data: {
             request_type: 'fetch_activity',
-            strava_activity_id: 42,
+            strava_activity_id: '42',
             user: 'testuser',
           },
         },
@@ -429,7 +445,7 @@ describe('createStravaQueue', () => {
           data: { request_type: 'list_activities', user: 'alice' },
         },
         {
-          data: { request_type: 'fetch_activity', strava_activity_id: 1, user: 'alice' },
+          data: { request_type: 'fetch_activity', strava_activity_id: '1', user: 'alice' },
         },
         {
           data: { request_type: 'list_activities', user: 'bob' },

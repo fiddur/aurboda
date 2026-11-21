@@ -24,6 +24,7 @@ import { auth } from '../../state/auth'
 import { toDisplayName } from '../../utils/displayName'
 import { NotesSection } from '../EntityDetail/NotesSection'
 import { TimelineCard } from '../Feed/HomeTimeline'
+import { JournalEntryRefs } from '../Journal/JournalEntryRefs'
 import {
   birthdayLabel,
   DATE_KIND_LABELS,
@@ -330,6 +331,19 @@ function RecentPosts({ person }: { person: PersonDetail }) {
   )
 }
 
+function PersonJournal({ person }: { person: PersonDetail }) {
+  return (
+    <div class="people-section">
+      <JournalEntryRefs
+        title="Journal entries"
+        entries={person.journal_entries ?? []}
+        filter={{ id: person.id, type: 'person' }}
+        empty={`None yet. Type @ in a journal entry to name ${person.name}, or relate an entry under Related.`}
+      />
+    </div>
+  )
+}
+
 function RecentActivities({ person }: { person: PersonDetail }) {
   return (
     <section class="people-section">
@@ -482,6 +496,7 @@ export function PersonPage({ id }: { id: string }) {
       <section class="people-section people-notes">
         <NotesSection entityType="person" entityId={person.id} title="Notes" />
       </section>
+      <PersonJournal person={person} />
       <RecentActivities person={person} />
       <RecentPosts person={person} />
       <p class="people-private">

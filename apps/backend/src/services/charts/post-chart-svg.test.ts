@@ -69,6 +69,12 @@ describe('postChartCaption', () => {
         type: 'scatter',
       }),
     ).toBe('Meals with dairy (count) vs sleep_score (score)')
+    expect(
+      postChartCaption({
+        data: { ...scatter, person_names: { p1: 'Anna' }, trigger: { kind: 'people', person_id: 'p1' } },
+        type: 'scatter',
+      }),
+    ).toBe('Time with Anna (min) vs sleep_score (score)')
   })
 })
 

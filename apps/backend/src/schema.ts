@@ -182,6 +182,8 @@ export const tableCreationOrder = [
   'note_revisions_indexes',
   'note_attachments',
   'note_attachments_indexes',
+  'note_links',
+  'note_links_indexes',
   'note_templates',
   'shared_dashboards',
   'shared_dashboards_indexes',

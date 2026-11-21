@@ -7,6 +7,7 @@ import { normalizeItemValue } from '../../services/activity-measures.ts'
 import { UUID_RE } from '../../utils.ts'
 import { query, withUserTransaction } from '../connection.ts'
 import { buildDynamicUpdate, type UpdateEntry } from '../dynamic-update.ts'
+import { copyActivityNoteLinksIn } from '../note-links.ts'
 import { reanchorNotes } from '../notes.ts'
 import { copyActivityPeopleIn } from '../people.ts'
 import { type InsertedActivityKey, mapActivityRow, mapInsertedActivityKey } from '../row-mappers.ts'
@@ -16,11 +17,12 @@ import { materializeSuperseded } from './supersession.ts'
 
 /**
  * Replace `sourceIds` with the merged activity in one transaction: the originals
- * are soft-deleted first, then the merged row is written and the originals'
- * notes re-anchored onto it; it is with everyone they were with. `idx_activities_type_time` ignores `deleted_at`, so
- * a row of the merged row's source that already holds its (type, start_time)
- * slot — the earliest original, when it was created by hand — becomes the merged
- * activity instead of colliding with a duplicate INSERT (#1251).
+ * are soft-deleted first, then the merged row is written, the originals' notes
+ * are re-anchored onto it, and it is with everyone they were with.
+ * `idx_activities_type_time` ignores `deleted_at`, so a row of the merged row's
+ * source that already holds its (type, start_time) slot — the earliest original,
+ * when it was created by hand — becomes the merged activity instead of colliding
+ * with a duplicate INSERT (#1251).
  */
 export const insertMergedActivity = async (
   user: string,
@@ -71,6 +73,7 @@ export const insertMergedActivity = async (
     const others = sourceIds.filter((sourceId) => sourceId !== id)
     await reanchorNotes(tx, 'activity', others, id)
     await copyActivityPeopleIn(tx, others, id)
+    await copyActivityNoteLinksIn(tx, others, id)
     return id
   })
 

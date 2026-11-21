@@ -112,7 +112,11 @@ data class AddActivityBody(
     val title: String? = null,
     val notes: String? = null,
     val data: JsonObject? = null,
+    val people: List<String>? = null,
 )
+
+/** `ACTIVITY_PEOPLE_MAX` in `packages/api-spec/src/schemas/activities.ts`. */
+const val ACTIVITY_PEOPLE_MAX = 20
 
 @Serializable
 data class AddedActivity(
@@ -194,6 +198,88 @@ suspend fun postMetric(
         }
     } catch (e: Exception) {
         Log.e("DataApi", "Error posting metric", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+@Serializable
+data class AddEntityCommentBody(
+    val content: String,
+    @SerialName("entity_id") val entityId: String,
+    @SerialName("entity_type") val entityType: String,
+)
+
+/** A comment on an entity is a note on it, as the web's `addEntityComment` posts. */
+suspend fun postEntityComment(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+    entityType: String,
+    entityId: String,
+    content: String,
+): DataResult<Unit> {
+    return try {
+        val response = httpClient.post("$serverUrl/notes") {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+            contentType(ContentType.Application.Json)
+            setBody(
+                appJson.encodeToString(
+                    AddEntityCommentBody.serializer(),
+                    AddEntityCommentBody(content = content, entityId = entityId, entityType = entityType),
+                ),
+            )
+        }
+
+        if (response.status == HttpStatusCode.Created || response.status == HttpStatusCode.OK) {
+            DataResult.Success(Unit)
+        } else {
+            val errorBody = response.bodyAsText()
+            Log.e("DataApi", "Add comment error: ${response.status} - $errorBody")
+            writeError(response.status, errorBody)
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error posting comment", e)
+        DataResult.Error(e.message ?: "Unknown error")
+    }
+}
+
+/** The fields of `Person` the With picker uses. */
+@Serializable
+data class PersonOption(
+    val id: String,
+    val name: String,
+    val relationship: String? = null,
+    val archived: Boolean = false,
+)
+
+@Serializable
+data class PeopleListResponse(
+    val success: Boolean,
+    val people: List<PersonOption>? = null,
+)
+
+suspend fun fetchPeople(
+    httpClient: HttpClient,
+    serverUrl: String,
+    authToken: String,
+): DataResult<List<PersonOption>> {
+    return try {
+        val url = "$serverUrl/people"
+        Log.d("DataApi", "Fetching people from: $url")
+
+        val response = httpClient.get(url) {
+            headers { append(HttpHeaders.Authorization, "Bearer $authToken") }
+        }
+
+        if (response.status == HttpStatusCode.OK) {
+            val parsed = appJson.decodeFromString<PeopleListResponse>(response.bodyAsText())
+            DataResult.Success((parsed.people ?: emptyList()).filter { !it.archived })
+        } else {
+            Log.e("DataApi", "People error: ${response.status}")
+            DataResult.Error("Server returned ${response.status}")
+        }
+    } catch (e: Exception) {
+        Log.e("DataApi", "Error fetching people", e)
         DataResult.Error(e.message ?: "Unknown error")
     }
 }

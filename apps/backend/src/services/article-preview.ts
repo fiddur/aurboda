@@ -16,7 +16,7 @@ import { articleSharingWarnings, isCompleteArticleBlock } from '@aurboda/api-spe
 
 import type { ArticleFigure } from './activitypub/article-object.ts'
 import type { ArticleChartDeps } from './article-figure.ts'
-import type { ArticleFlagNames, BuildArticleResult } from './article.ts'
+import type { ArticleSelectorNames, BuildArticleResult } from './article.ts'
 
 import {
   articleFigureName,
@@ -27,7 +27,7 @@ import { hashtagLinks, linkifyHashtags } from './activitypub/hashtag-html.ts'
 import { linkedHashtags, mastodonSanitize, splitTrailingHashtags } from './activitypub/mastodon-sanitize.ts'
 import { checkDraftChallenges, checkedPublishable, draftPostTags } from './article-drafts.ts'
 import { articleBlockFigureSvg } from './article-figure.ts'
-import { articleFlagNames, withCanonicalChallengeUrls } from './article.ts'
+import { articleSelectorNames, withCanonicalChallengeUrls } from './article.ts'
 import { articleBlockAt, timeBucket } from './post-chart.ts'
 import { createRenderCache } from './render-cache.ts'
 
@@ -42,7 +42,7 @@ export interface ArticlePreviewDeps {
   /** The tags the article would get; defaults to the owner's settings, as publishing does. */
   postTags?: (user: string, content: ArticleDraftContent) => Promise<string[]>
   /** The names of the sensitivity flags the blocks use; defaults to the owner's flags. */
-  flagNames?: (user: string, blocks: ArticleDraftContent['blocks']) => Promise<ArticleFlagNames>
+  selectorNames?: (user: string, blocks: ArticleDraftContent['blocks']) => Promise<ArticleSelectorNames>
   now?: () => number
   /** Drawn figures, so retyping prose does not draw the charts again. */
   figureCache?: FigureCache
@@ -83,14 +83,14 @@ export const previewableArticle = (
 /** The Note `content` and figures, a block figure linking `#figure-N` since its post does not exist yet. */
 const renderPreviewNote = (
   article: ArticleContent,
-  flagNames: ArticleFlagNames,
+  selectorNames: ArticleSelectorNames,
 ): { content: string; figures: ArticleFigure[] } => {
   const numbers = new Map(
-    renderArticleNote(article, () => '', flagNames).figures.flatMap((figure) =>
+    renderArticleNote(article, () => '', selectorNames).figures.flatMap((figure) =>
       figure.block_index === undefined ? [] : [[figure.block_index, figure.number] as const],
     ),
   )
-  return renderArticleNote(article, (index) => `#figure-${numbers.get(index)}`, flagNames)
+  return renderArticleNote(article, (index) => `#figure-${numbers.get(index)}`, selectorNames)
 }
 
 const isShownBlockFigure = (figure: ArticleFigure): boolean =>
@@ -192,9 +192,9 @@ export const previewArticle = async (
     deps.checkContent ?? checkDraftChallenges,
   )
   const { article, indices } = previewableArticle(body.article)
-  const flagNames = await (deps.flagNames ?? articleFlagNames)(user, body.article.blocks)
-  const note = renderPreviewNote(article, flagNames)
-  const warnings = articleSharingWarnings(body.article.blocks, flagNames)
+  const selectorNames = await (deps.selectorNames ?? articleSelectorNames)(user, body.article.blocks)
+  const note = renderPreviewNote(article, selectorNames)
+  const warnings = articleSharingWarnings(body.article.blocks, selectorNames)
   const tags = await (deps.postTags ?? draftPostTags)(user, body.article)
   const content = linkifyHashtags(
     note.content,

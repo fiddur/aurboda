@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type { Activity, FeedPostRecord } from '../db/index.ts'
 import type { FeedDeliver } from '../routes/feed-router.ts'
 
-import { deliverFeedPostEdit, withoutParticipantsDelivery } from './feed-deliver-guard.ts'
+import { deliverFeedPostEdit, droppedMentions, withoutParticipantsDelivery } from './feed-deliver-guard.ts'
 
 const post = (
   visibility: FeedPostRecord['visibility'],
@@ -99,5 +99,39 @@ describe('deliverFeedPostEdit', () => {
     deliverFeedPostEdit(deliver, 'alice', post('public', 'activity'))
     deliverFeedPostEdit(undefined, 'alice', post('public'))
     expect(calls).toEqual(['updatedReply', 'updatedChallenge', 'updated'])
+  })
+})
+
+describe('mentions dropped by an edit', () => {
+  const anna = { actor_uri: 'https://example.social/users/anna', handle: '@anna@example.social' }
+  const bo = { actor_uri: 'https://other.example/users/bo', handle: '@bo@other.example' }
+
+  test('droppedMentions lists the accounts the edit no longer mentions', () => {
+    expect(droppedMentions({ mentions: [anna, bo] }, { mentions: [bo] })).toEqual([anna])
+    expect(droppedMentions({ mentions: [anna] }, { mentions: [anna, bo] })).toEqual([])
+    expect(droppedMentions({}, { mentions: [anna] })).toEqual([])
+  })
+
+  test('an activity edit passes the dropped mentions to its Update, and only when there are some', () => {
+    const updated = vi.fn()
+    const deliver = { ...recording().deliver, updated }
+    const after = { ...post('public', 'activity'), mentions: [bo] }
+    deliverFeedPostEdit(deliver, 'alice', after, { mentions: [anna, bo] })
+    deliverFeedPostEdit(deliver, 'alice', after, { mentions: [bo] })
+    deliverFeedPostEdit(deliver, 'alice', after)
+    expect(updated.mock.calls).toEqual([
+      ['alice', after, [anna]],
+      ['alice', after],
+      ['alice', after],
+    ])
+  })
+
+  test('a participants post drops its mentions with everything else', () => {
+    const updated = vi.fn()
+    const guarded = withoutParticipantsDelivery({ ...recording().deliver, updated })
+    guarded.updated('alice', post('participants', 'activity'), [anna])
+    guarded.updated('alice', post('public', 'activity'), [anna])
+    expect(updated).toHaveBeenCalledTimes(1)
+    expect(updated.mock.calls[0]![2]).toEqual([anna])
   })
 })

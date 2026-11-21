@@ -24,6 +24,7 @@ import {
   updateFeedPost,
 } from '../db/feed.ts'
 import { _setDbForUser } from '../db/index.ts'
+import { insertPerson, softDeletePerson, updatePerson } from '../db/people.ts'
 import { createRolePool, type UserDb } from '../db/pool.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { configureStructuredChallenge } from '../services/feed-structured-challenge.ts'
@@ -44,7 +45,11 @@ const END = new Date('2026-07-01T08:40:00Z')
 const startApp = (
   deps: Pick<
     FeedPublicRouterDeps,
-    'listOfficialRemotePosts' | 'readOfficialFeed' | 'renderableBlocks' | 'sensitivityFlagsVersion'
+    | 'listOfficialRemotePosts'
+    | 'peopleNamesVersion'
+    | 'readOfficialFeed'
+    | 'renderableBlocks'
+    | 'sensitivityFlagsVersion'
   > = {},
 ) => {
   const app = express()
@@ -746,6 +751,36 @@ describe('GET /public/official-feed', () => {
     }
   })
 
+  test('leaves out an author whose database disappears after the listing', async () => {
+    const first = getTestUser()
+    const article = (user: string, title: string) =>
+      createArticlePost(user, {
+        article: { blocks: [{ markdown: 'Body', type: 'prose' }], title },
+        visibility: 'public',
+      })
+    const kept = await article(first, 'Kept')
+    await article(second, 'Gone')
+    const sensitivityFlagsVersion = async (user: string) => {
+      if (user === second) {
+        throw Object.assign(new Error(`database "${second}" does not exist`), { code: '3D000' })
+      }
+      return 'v1'
+    }
+    const { request, close } = startApp({ ...feedOf([first, second]), sensitivityFlagsVersion })
+    try {
+      const res = await request.get('/public/official-feed')
+      expect(res.status).toBe(200)
+      expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([kept.id])
+
+      const atom = await request.get('/public/official-feed.atom')
+      expect(atom.status).toBe(200)
+      expect(atom.text).toContain('<title type="text">Kept</title>')
+      expect(atom.text).not.toContain('Gone')
+    } finally {
+      await close()
+    }
+  })
+
   test('merges remote authors’ posts with the users’ by time, paging across both', async () => {
     const first = getTestUser()
     const local = [
@@ -955,6 +990,58 @@ describe('sensitivity flag versions in the public caches (#1878)', () => {
       flags.bump()
       await request.get(`/public/${user}/articles.atom`)
       expect(rendered).toEqual([post.id, post.id])
+    } finally {
+      await close()
+    }
+  })
+})
+
+describe('a person named in an article’s correlation block (#1895)', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('the payload names only that person, follows a rename and forgets a deleted one', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    await insertPerson(user, { name: 'Bo' })
+    const article = await createArticlePost(user, {
+      article: {
+        blocks: [
+          {
+            end: END.toISOString(),
+            outcome: { kind: 'metric', metric: 'heart_rate' },
+            start: START.toISOString(),
+            trigger: { kind: 'people', person_id: anna.id },
+            type: 'correlation',
+          },
+        ],
+        title: 'Time with Anna',
+      },
+      visibility: 'public',
+    })
+    const { request, close } = startApp()
+    const block = async () => {
+      const res = await request.get(`/public/${user}/feed/${article.id}`)
+      expect(res.status).toBe(200)
+      return res.body.structured.blocks[0]
+    }
+    try {
+      expect((await block()).person_names).toEqual({ [anna.id]: 'Anna' })
+      await updatePerson(user, anna.id, { name: 'Annie' })
+      expect((await block()).person_names).toEqual({ [anna.id]: 'Annie' })
+      const listed = await request.get(`/public/${user}/posts`)
+      expect(listed.body.posts[0].structured.blocks[0].person_names).toEqual({ [anna.id]: 'Annie' })
+      await softDeletePerson(user, anna.id)
+      expect(await block()).not.toHaveProperty('person_names')
     } finally {
       await close()
     }

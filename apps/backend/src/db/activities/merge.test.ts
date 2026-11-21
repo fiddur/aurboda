@@ -548,3 +548,117 @@ describe('mergeOverlappingActivities — a live session overlapped by a synced o
     expect(merged[0].source_ids).toEqual(['watch-strength', 'live-strength'])
   })
 })
+
+describe('mergeOverlappingActivities — doses of a routine logged at one instant (#1892)', () => {
+  const at = new Date('2026-11-21T07:00:00Z')
+  const dose = (id: string, data: Activity['data'], overrides: Partial<Activity> = {}): Activity => ({
+    activity_type: 'supplement',
+    data,
+    id,
+    source: 'check_in',
+    start_time: at,
+    ...overrides,
+  })
+  const vitaminD = dose('vitamin-d', { dose: 50, substance: 'vitamin D' })
+  const magnesium = dose('magnesium', { dose: 300, substance: 'magnesium' })
+
+  test('two points with conflicting data stay two rows, each with its own id and data', () => {
+    const merged = mergeOverlappingActivities([vitaminD, magnesium])
+    expect(merged.map((m) => m.id)).toEqual(['vitamin-d', 'magnesium'])
+    expect(merged.map((m) => m.data)).toEqual([vitaminD.data, magnesium.data])
+    expect(merged.every((m) => m.source_ids === undefined)).toBe(true)
+  })
+
+  test('a point whose end equals its start counts as a point', () => {
+    const merged = mergeOverlappingActivities([vitaminD, { ...magnesium, end_time: at }])
+    expect(merged).toHaveLength(2)
+  })
+
+  test('complementary data still merges', () => {
+    const merged = mergeOverlappingActivities([dose('a', { notes: 'x' }), dose('b', { dose: 1 })])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].data).toEqual({ dose: 1, notes: 'x' })
+    expect(merged[0].source_ids).toEqual(['a', 'b'])
+  })
+
+  test('keys starting with _ do not count as a conflict', () => {
+    const merged = mergeOverlappingActivities([
+      dose('a', { _user_edited: true, dose: 1 }),
+      dose('b', { _user_edited: false, dose: 1 }),
+    ])
+    expect(merged).toHaveLength(1)
+  })
+
+  test('values are compared structurally', () => {
+    const merged = mergeOverlappingActivities([
+      dose('a', { items: [{ name: 'x' }] }),
+      dose('b', { items: [{ name: 'x' }] }),
+    ])
+    expect(merged).toHaveLength(1)
+  })
+
+  test('a duplicate of the first dose joins it past a conflicting one', () => {
+    const duplicate = { ...vitaminD, id: 'vitamin-d-again' }
+    const merged = mergeOverlappingActivities([vitaminD, magnesium, duplicate])
+    expect(merged).toHaveLength(2)
+    expect(merged[0].id).toBe('vitamin-d')
+    expect(merged[0].source_ids).toEqual(['vitamin-d', 'vitamin-d-again'])
+    expect(merged[1].id).toBe('magnesium')
+    expect(merged[1].source_ids).toBeUndefined()
+  })
+
+  describe('an aurboda override at the same instant with different data merges with its target', () => {
+    const edited = dose(
+      'override',
+      { dose: 100, substance: 'vitamin D' },
+      { override_target_ids: ['vitamin-d'], source: 'aurboda' },
+    )
+
+    test.each([
+      ['without a category map', undefined],
+      ['with a category map', new Map([['supplement', 'supplement']])],
+    ])('%s', (_label, map) => {
+      const merged = mergeOverlappingActivities([vitaminD, magnesium, edited], map)
+      expect(merged).toHaveLength(2)
+      const target = merged.find((m) => m.source_ids?.includes('vitamin-d'))
+      expect(target?.source_ids?.toSorted()).toEqual(['override', 'vitamin-d'])
+      expect(merged.find((m) => m.id === 'magnesium')?.source_ids).toBeUndefined()
+    })
+  })
+
+  test('points at different starts are untouched', () => {
+    const later = { ...magnesium, start_time: new Date('2026-11-21T07:05:00Z') }
+    const merged = mergeOverlappingActivities([vitaminD, later])
+    expect(merged.map((m) => m.id)).toEqual(['vitamin-d', 'magnesium'])
+  })
+
+  test('a span of the same type starting at the instant still absorbs the points', () => {
+    const span = dose('span', { notes: 'routine' }, { end_time: new Date('2026-11-21T07:30:00Z') })
+    const merged = mergeOverlappingActivities([span, vitaminD, magnesium])
+    expect(merged).toHaveLength(1)
+  })
+
+  describe('a span at the instant absorbs every point there, whatever the row order', () => {
+    const span = dose('span', { notes: 'routine' }, { end_time: new Date('2026-11-21T07:30:00Z') })
+
+    test.each([
+      ['span first', [span, vitaminD, magnesium]],
+      ['span between the points', [vitaminD, span, magnesium]],
+      ['span last', [vitaminD, magnesium, span]],
+    ])('%s', (_label, rows) => {
+      const merged = mergeOverlappingActivities(rows)
+      expect(merged).toHaveLength(1)
+      expect(merged[0].id).toBe('span')
+      expect(merged[0].end_time).toEqual(span.end_time)
+      expect(merged[0].source_ids?.toSorted()).toEqual(['magnesium', 'span', 'vitamin-d'])
+    })
+
+    test('the longer of two spans at the instant leads', () => {
+      const short = dose('short', { notes: 'routine' }, { end_time: new Date('2026-11-21T07:10:00Z') })
+      const merged = mergeOverlappingActivities([vitaminD, short, magnesium, span])
+      expect(merged).toHaveLength(1)
+      expect(merged[0].id).toBe('span')
+      expect(merged[0].source_ids?.toSorted()).toEqual(['magnesium', 'short', 'span', 'vitamin-d'])
+    })
+  })
+})

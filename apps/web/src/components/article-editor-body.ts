@@ -209,7 +209,7 @@ const selectorIncomplete = (s: CorrelationSelector): boolean =>
       ? false
       : s.kind === 'sensitivity'
         ? !s.flag.trim()
-        : s.kind === 'people' || !s.pattern.trim()
+        : s.kind !== 'people' && !s.pattern.trim()
 
 export interface ArticleEditorState {
   title: string
@@ -387,14 +387,18 @@ export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBo
 
 /**
  * Each block's sharing warnings, in block order, from the blocks as the editor would save them:
- * a meal sensitivity is named from the discovered selectors' flags. Never blocks publishing.
+ * a meal sensitivity and a person are named from the discovered selectors. Never blocks publishing.
  */
 export const editorBlockWarnings = (
   state: ArticleEditorState,
-  selectors: Pick<CorrelationSelectorsData, 'sensitivities'> | undefined,
+  selectors: Partial<Pick<CorrelationSelectorsData, 'people' | 'sensitivities'>> | undefined,
 ): string[][] => {
-  const flagNames = Object.fromEntries((selectors?.sensitivities ?? []).map((s) => [s.value, s.label]))
-  const warnings = articleSharingWarnings(buildDraftContent(state).blocks, flagNames)
+  const byValue = (options: { label: string; value: string }[] = []) =>
+    Object.fromEntries(options.map((o) => [o.value, o.label]))
+  const warnings = articleSharingWarnings(buildDraftContent(state).blocks, {
+    flag_names: byValue(selectors?.sensitivities),
+    person_names: byValue(selectors?.people),
+  })
   return state.blocks.map((_, i) => warnings.filter((w) => w.block === i).map((w) => w.message))
 }
 

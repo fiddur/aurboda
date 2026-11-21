@@ -4,7 +4,7 @@ import type { Queryable } from './pool.ts'
 import type { UserSettings } from './types.ts'
 
 import { query, withUserTransaction } from './connection.ts'
-import { withStoredInternalFields } from './training-load-internal.ts'
+import { clearedTrainingLoad, withStoredInternalFields } from './training-load-internal.ts'
 
 // One-time migration from camelCase to snake_case JSONB keys.
 const topLevelRenames: Record<string, string> = {
@@ -131,6 +131,10 @@ export const upsertUserSettings = (
       merged.training_load = withStoredInternalFields(merged.training_load, existing.training_load)
     }
     for (const key of clear) delete merged[key]
+    const keptLease = clear.includes('training_load')
+      ? clearedTrainingLoad(existing.training_load)
+      : undefined
+    if (keptLease) merged.training_load = keptLease
     if (tag_icons !== undefined) {
       merged.item_icons = { ...merged.item_icons, ...tag_icons }
     }

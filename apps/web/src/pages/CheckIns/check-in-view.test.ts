@@ -9,8 +9,10 @@ import {
   fillHref,
   formatAnswer,
   latestByForm,
+  dueCardActions,
   openSlots,
   showsDueCard,
+  slotActions,
   slotLabel,
   whenLine,
 } from './check-in-view'
@@ -73,21 +75,42 @@ describe('checkInScheduleLine', () => {
       }),
     ).toBe('Every day at 08:00 and 21:00')
     expect(
-      checkInScheduleLine({
-        day_starts_at: '04:00',
-        start_date: '2026-12-01',
-        times: ['07:30'],
-        weekdays: [1, 2, 3, 4, 5],
-      }),
-    ).toBe('Weekdays at 07:30, from 2026-12-01')
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          start_date: '2026-12-01',
+          times: ['07:30'],
+          weekdays: [1, 2, 3, 4, 5],
+        },
+        'en-US',
+      ),
+    ).toBe('Weekdays at 07:30, from Dec 1, 2026')
     expect(
-      checkInScheduleLine({
-        day_starts_at: '04:00',
-        end_date: '2027-01-31',
-        times: ['07:30'],
-        weekdays: [6, 7],
-      }),
-    ).toBe('Weekends at 07:30, until 2027-01-31')
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          end_date: '2027-01-31',
+          times: ['07:30'],
+          weekdays: [6, 7],
+        },
+        'en-US',
+      ),
+    ).toBe('Weekends at 07:30, until Jan 31, 2027')
+  })
+
+  test('formats the dates in the locale, as the calendar dates they are', () => {
+    expect(
+      checkInScheduleLine(
+        {
+          day_starts_at: '04:00',
+          end_date: '2027-01-31',
+          start_date: '2027-01-01',
+          times: ['07:30'],
+          weekdays: [1, 2, 3, 4, 5, 6, 7],
+        },
+        'en-GB',
+      ),
+    ).toBe('Every day at 07:30, from 1 Jan 2027 to 31 Jan 2027')
   })
 })
 
@@ -203,5 +226,22 @@ describe('showsDueCard and openSlots', () => {
         slot('missed', '06:00'),
       ]).map((s) => s.time),
     ).toEqual(['12:00', '21:00'])
+  })
+})
+
+describe('slotActions and dueCardActions', () => {
+  test('a due slot is confirmed (a routine), filled in or skipped; an upcoming one filled in early', () => {
+    expect(slotActions({ state: 'due' }, true)).toEqual({ confirm: true, fill: true, skip: true })
+    expect(slotActions({ state: 'due' }, false)).toEqual({ confirm: false, fill: true, skip: true })
+    expect(slotActions({ state: 'upcoming' }, true)).toEqual({ confirm: false, fill: true, skip: false })
+    for (const state of ['done', 'skipped', 'missed'] as const) {
+      expect(slotActions({ state }, true)).toEqual({ confirm: false, fill: false, skip: false })
+    }
+  })
+
+  test("Home's card offers Done and Skip for a routine's due slot, else the link", () => {
+    expect(dueCardActions({ state: 'due' }, true)).toEqual({ confirm: true, fill: false, skip: true })
+    expect(dueCardActions({ state: 'due' }, false)).toEqual({ confirm: false, fill: true, skip: false })
+    expect(dueCardActions({ state: 'upcoming' }, true)).toEqual({ confirm: false, fill: true, skip: false })
   })
 })

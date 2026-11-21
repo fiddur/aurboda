@@ -50,10 +50,13 @@ vi.mock('../services/segments.ts', () => ({ activitySegmentEfforts: vi.fn() }))
 
 vi.mock('../services/activity-people.ts', () => ({ activityPeopleOf: vi.fn().mockResolvedValue(undefined) }))
 
+vi.mock('../services/notes.ts', () => ({ listJournalEntryRefs: vi.fn().mockResolvedValue([]) }))
+
 const db = await import('../db/index.ts')
 const queries = await import('../services/queries/index.ts')
 const activityFeatures = await import('../services/activity-features.ts')
 const segments = await import('../services/segments.ts')
+const notes = await import('../services/notes.ts')
 
 const ACTIVITY_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
 
@@ -236,6 +239,62 @@ describe('GET /activities/:id', () => {
 
       expect(res.body).not.toHaveProperty('referenced_rules')
     })
+  })
+})
+
+describe('journal entries on the activity detail', () => {
+  const OTHER_ID = '1f5c2e8a-3b4d-4e6f-9a0b-1c2d3e4f5a6b'
+  const entry = { entity_type: 'day', excerpt: 'Long walk', id: '2f5c2e8a-3b4d-4e6f-9a0b-1c2d3e4f5a6b' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.computeActivityDetailMetrics).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof queries.computeActivityDetailMetrics>>,
+    )
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(queries.dedupeCommentsForIds).mockReturnValue([])
+    vi.mocked(notes.listJournalEntryRefs).mockResolvedValue([entry] as Awaited<
+      ReturnType<typeof notes.listJournalEntryRefs>
+    >)
+  })
+
+  test('the plain detail lists the entries related to the activity', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow())
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.journal_entries).toEqual([entry])
+    expect(notes.listJournalEntryRefs).toHaveBeenCalledWith('tester', 'activity', [ACTIVITY_ID])
+  })
+
+  test('the merged detail matches the entries related to any of its source rows', async () => {
+    const activity = activityRow()
+    vi.mocked(db.getActivityById).mockResolvedValue(activity)
+    vi.mocked(db.getOverlappingActivities).mockResolvedValue([
+      activity!,
+      activityRow({ id: OTHER_ID, source: 'health_connect' })!,
+    ])
+
+    const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}`)
+
+    expect(res.body.data.journal_entries).toEqual([entry])
+    expect(notes.listJournalEntryRefs).toHaveBeenCalledWith('tester', 'activity', [ACTIVITY_ID, OTHER_ID])
+  })
+
+  test('the full detail carries them too', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow())
+    vi.mocked(queries.parseActivityId).mockReturnValue({ id: ACTIVITY_ID, isMerged: false })
+    vi.mocked(queries.resolveActivityWindow).mockResolvedValue({
+      start_time: new Date('2026-06-08T10:00:00Z'),
+    })
+    vi.mocked(queries.getActivityFullDetail).mockResolvedValue({})
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/full`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.journal_entries).toEqual([entry])
   })
 })
 

@@ -9,6 +9,7 @@ import {
   deletePersonDate,
   getLivePersonByActor,
   getPeopleForActivities,
+  getPeopleNamesVersion,
   getPerson,
   getPersonDate,
   insertPerson,
@@ -146,6 +147,24 @@ describe('People Integration Tests', () => {
     })
     expect(await restorePerson(user, anna.id)).toMatchObject({ status: 'live' })
     expect(await restorePerson(user, MISSING)).toEqual({ status: 'not_found' })
+  })
+
+  test('getPeopleNamesVersion changes on an add, a rename, a delete and a restore, not on other edits', async () => {
+    const user = getTestUser()
+    const empty = await getPeopleNamesVersion(user)
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const added = await getPeopleNamesVersion(user)
+    expect(added).not.toBe(empty)
+    await updatePerson(user, anna.id, { archived: true, relationship: 'friend' })
+    expect(await getPeopleNamesVersion(user)).toBe(added)
+    await updatePerson(user, anna.id, { name: 'Annie' })
+    const renamed = await getPeopleNamesVersion(user)
+    expect(renamed).not.toBe(added)
+    await softDeletePerson(user, anna.id)
+    const deleted = await getPeopleNamesVersion(user)
+    expect(deleted).not.toBe(renamed)
+    await restorePerson(user, anna.id)
+    expect(await getPeopleNamesVersion(user)).toBe(renamed)
   })
 
   test('listLivePersonIds names only live people', async () => {

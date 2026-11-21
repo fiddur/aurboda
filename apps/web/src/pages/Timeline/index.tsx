@@ -48,7 +48,7 @@ import { useTimelineData } from './useTimelineData'
 import { _initialHash, useTimelineNavigation } from './useTimelineNavigation'
 import { HORIZONTAL_MARGIN, useTimelineZoom, VERTICAL_MARGIN } from './useTimelineZoom'
 import { layoutVerticalTracks, verticalTrackSpecs } from './verticalLayout'
-import { buildViewHash, getDefaultOrientation } from './viewHash'
+import { buildViewHash, getDefaultOrientation, replaceViewHash } from './viewHash'
 import './style.css'
 
 // eslint-disable-next-line complexity -- D3 visualization component
@@ -174,6 +174,8 @@ export const Timeline = () => {
     hasLastFm,
   } = data
 
+  const timelinePath = useRef(window.location.pathname)
+
   // Sync view state + orientation → URL hash
   useSignalEffect(() => {
     const hash = buildViewHash(
@@ -182,12 +184,12 @@ export const Timeline = () => {
       hiddenCategoriesRef.current,
       orientationRef.current,
     )
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+    replaceViewHash(timelinePath.current, hash)
   })
 
   useEffect(() => {
     const hash = buildViewHash(viewStart.value, viewEnd.value, hiddenCategories, orientation)
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${hash}`)
+    replaceViewHash(timelinePath.current, hash)
   }, [hiddenCategories, orientation])
 
   const queryClient = useQueryClient()

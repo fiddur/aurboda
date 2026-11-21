@@ -39,6 +39,7 @@ import { activityPeopleOf } from '../services/activity-people.ts'
 import { getActivityRecords } from '../services/activity-records.ts'
 import { getLatestSleep } from '../services/latest-sleep.ts'
 import { getCustomMetrics } from '../services/mutations.ts'
+import { listJournalEntryRefs } from '../services/notes.ts'
 import {
   computeActivityDetailMetrics,
   getActivityFullDetail,
@@ -339,7 +340,7 @@ The 'metrics' parameter controls time-series payload size:
 - pass 'all' for every metric with data in the activity range
 - pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
 
-people lists who the activity was with, when anyone.
+people lists who the activity was with, when anyone; journal_entries lists the journal entries related to it, newest first.
 
 Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
     {
@@ -364,7 +365,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [summary, fullDetail, features, segmentEfforts, people] = await Promise.all([
+      const [summary, fullDetail, features, segmentEfforts, people, journalEntries] = await Promise.all([
         computeActivityDetailMetrics(user, window),
         getActivityFullDetail(
           user,
@@ -377,6 +378,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
         firstActivityFeatures(user, trackOwnerIds),
         activitySegmentEfforts(user, trackOwnerIds),
         activityPeopleOf(user, trackOwnerIds),
+        listJournalEntryRefs(user, 'activity', trackOwnerIds),
       ])
 
       return tzJsonResponse(
@@ -389,6 +391,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             end_time: activity.end_time?.toISOString(),
             features,
             id: activity.id,
+            journal_entries: journalEntries,
             people,
             segment_efforts: segmentEfforts,
             source: activity.source,

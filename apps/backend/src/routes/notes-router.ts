@@ -82,7 +82,7 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     authMiddleware,
     validateBody(addNoteBodySchema),
     async (req, res) => {
-      const { entity_type, entity_id, content, start_time, end_time, date, title, tags } = req.body
+      const { entity_type, entity_id, content, start_time, end_time, date, title, tags, related } = req.body
       const user = req.user!
 
       const result = await addNote(user, {
@@ -91,6 +91,7 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
         end_time,
         entity_id,
         entity_type,
+        related,
         start_time,
         tags,
         title,

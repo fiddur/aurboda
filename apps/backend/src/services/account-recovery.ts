@@ -139,15 +139,18 @@ export const createAccountRecovery = ({
 
   return {
     completeRecovery: async (token, newPassword) => {
-      const consumed = await centralDb.consumeAccountEmailToken(hashEmailLinkToken(token), 'reset')
-      if (!consumed || !isValidUsername(consumed.username)) return { ok: false }
-      const account = await centralDb.getUserAccount(consumed.username)
-      if (!isVerified(account) || account.email !== consumed.email) return { ok: false }
+      const recovered: { account?: UserAccount & { email: string } } = {}
+      await centralDb.consumeAccountEmailToken(hashEmailLinkToken(token), 'reset', async (consumed) => {
+        if (!isValidUsername(consumed.username)) return
+        const found = await centralDb.getUserAccount(consumed.username)
+        if (!isVerified(found) || found.email !== consumed.email) return
+        if (newPassword !== undefined) await setPassword(found.username, newPassword)
+        recovered.account = found
+      })
+      const { account } = recovered
+      if (!account) return { ok: false }
       const { username } = account
-      if (newPassword !== undefined) {
-        await setPassword(username, newPassword)
-        clearFailedLogins(username)
-      }
+      if (newPassword !== undefined) clearFailedLogins(username)
       const kind: RecoveryNoticeKind = newPassword !== undefined ? 'password_reset' : 'recovery_sign_in'
       await audit(username, kind === 'password_reset' ? 'Password reset by email' : 'Recovery sign-in')
       sendNotice(account.email, username, kind)

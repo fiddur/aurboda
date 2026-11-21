@@ -17,11 +17,13 @@ import type {
   ArticleDraftBlock,
   ArticleWarning,
   FeedPostVisibility,
+  SelectorNames,
 } from '@aurboda/api-spec'
 
 import {
   articleBlockWindow,
   articleImpactLabel,
+  articlePersonIds,
   articleSensitivityFlagIds,
   articleSharingWarnings,
   canonicalChallengeUrl,
@@ -29,38 +31,59 @@ import {
   getMetricDisplayName,
   impactActivityLabel,
   parseChallengeUrl,
+  selectorName,
 } from '@aurboda/api-spec'
 
-import type { SensitivityFlag } from '../db/index.ts'
+import type { PersonRecord, SensitivityFlag } from '../db/index.ts'
 
 import { isValidUsername } from '../api/auth-routes.ts'
-import { isMissingDatabase, listSensitivityFlags } from '../db/index.ts'
+import { isMissingDatabase, listPeople, listSensitivityFlags } from '../db/index.ts'
 import { isPubliclyVisible } from './activitypub/object.ts'
 import { configuredStructuredChallengeDeps } from './feed-structured-challenge.ts'
 
 export type BuildArticleResult = { ok: true; article: ArticleContent } | { ok: false; error: string }
 
-/** Sensitivity flag names by id, as `articleFlagNames` loads them for an article's blocks. */
-export type ArticleFlagNames = Record<string, string>
+/** The flag and person names an article's selectors read by, as `articleSelectorNames` loads them. */
+export type ArticleSelectorNames = SelectorNames
+
+export interface ArticleSelectorNamesDeps {
+  flags?: (user: string) => Promise<Pick<SensitivityFlag, 'id' | 'name'>[]>
+  people?: (user: string) => Promise<Pick<PersonRecord, 'id' | 'name'>[]>
+}
+
+const namesOf = async (
+  ids: Set<string>,
+  load: () => Promise<{ id: string; name: string }[]>,
+): Promise<Record<string, string> | undefined> => {
+  if (ids.size === 0) return undefined
+  const names = Object.fromEntries((await load()).filter((r) => ids.has(r.id)).map((r) => [r.id, r.name]))
+  return Object.keys(names).length > 0 ? names : undefined
+}
 
 /**
- * The names of the sensitivity flags an article's blocks use, by id: resolved at render time,
- * never stored in the article. A flag that no longer exists is left out. Without a block that
- * uses a flag, nothing is looked up.
+ * The names of the sensitivity flags and the people an article's blocks name, by id: resolved at
+ * render time, never stored in the article, and only those the blocks name. A deleted flag or
+ * person is left out (an archived person still resolves). Nothing is looked up for a kind the
+ * blocks do not use.
  */
-export const articleFlagNames = async (
+export const articleSelectorNames = async (
   user: string,
   blocks: ArticleDraftBlock[],
-  list: (user: string) => Promise<Pick<SensitivityFlag, 'id' | 'name'>[]> = listSensitivityFlags,
-): Promise<ArticleFlagNames> => {
-  const ids = new Set(articleSensitivityFlagIds(blocks))
-  if (ids.size === 0) return {}
-  return Object.fromEntries((await list(user)).filter((f) => ids.has(f.id)).map((f) => [f.id, f.name]))
+  {
+    flags = listSensitivityFlags,
+    people = (u) => listPeople(u, { include_archived: true }),
+  }: ArticleSelectorNamesDeps = {},
+): Promise<ArticleSelectorNames> => {
+  const [flag_names, person_names] = await Promise.all([
+    namesOf(new Set(articleSensitivityFlagIds(blocks)), () => flags(user)),
+    namesOf(new Set(articlePersonIds(blocks)), () => people(user)),
+  ])
+  return { ...(flag_names ? { flag_names } : {}), ...(person_names ? { person_names } : {}) }
 }
 
 /** What the article's blocks show readers that the author may want to think twice about. */
 export const articleWarnings = async (user: string, blocks: ArticleDraftBlock[]): Promise<ArticleWarning[]> =>
-  articleSharingWarnings(blocks, await articleFlagNames(user, blocks))
+  articleSharingWarnings(blocks, await articleSelectorNames(user, blocks))
 
 /** `{ warnings }` for an article answer (REST and MCP), or nothing when there is none. */
 export const articleWarningsField = async (
@@ -76,23 +99,23 @@ export const articleWarningsField = async (
  * Shared single source for the article Note's figure labels
  * (`renderArticleNote`) and the markdown export (`article-export.ts`) so
  * the two can't diverge. A blank caption falls back to the data label. A meal
- * sensitivity reads by its flag's name from `flagNames`, generically when the
- * flag is gone.
+ * sensitivity reads by its flag's name and a person by theirs, from `names`,
+ * generically when the flag or person is gone.
  */
 export const articleBlockLabel = (
   block: Exclude<ArticleBlock, { type: 'prose' }>,
-  flagNames: ArticleFlagNames = {},
+  names: ArticleSelectorNames = {},
 ): string => {
   if (block.caption) return block.caption
   if (block.type === 'challenge') return 'Challenge standings'
   if (block.type === 'impact') {
     if (block.activity_type !== 'meal_sensitivity') return articleImpactLabel(block)
-    const name = flagNames[block.activity] ?? 'a sensitivity flag'
+    const name = names.flag_names?.[block.activity] ?? 'a sensitivity flag'
     return articleImpactLabel({ activity: impactActivityLabel(block.activity_type, name) })
   }
   if (block.type === 'chart') return getMetricDisplayName(block.metric)
   const axis = (selector: typeof block.trigger): string =>
-    describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames[selector.flag] : undefined)
+    describeSelectorAxis(selector, selectorName(selector, names))
   return `${axis(block.trigger)} vs ${axis(block.outcome)}`
 }
 

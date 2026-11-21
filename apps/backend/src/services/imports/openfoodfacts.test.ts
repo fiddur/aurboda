@@ -122,6 +122,16 @@ describe('mapOffProductToColumns', () => {
     expect(mapOffProductToColumns({ nutriments: { salt_100g: 1 } }, '12345678').columns.sodium).toBe(400)
   })
 
+  test('maps alcohol from % vol to grams of ethanol', () => {
+    expect(mapOffProductToColumns({ nutriments: { alcohol_100g: 5 } }, '12345678').columns.alcohol).toBe(
+      3.945,
+    )
+    expect(
+      mapOffProductToColumns({ nutrition_data_per: '100ml', nutriments: { alcohol_100ml: 12 } }, '12345678')
+        .columns.alcohol,
+    ).toBe(9.468)
+  })
+
   test('ignores a serving in a unit other than the nutrient basis', () => {
     const mapped = mapOffProductToColumns(
       { nutriments: {}, serving_quantity: 330, serving_quantity_unit: 'ml' },

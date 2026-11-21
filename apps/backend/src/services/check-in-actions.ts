@@ -3,7 +3,7 @@ import { isCheckInRoutine } from '@aurboda/api-spec'
 import type { NotificationRecord } from '../db/index.ts'
 import type { NotificationActionHandler, NotificationActionResult } from './notification-actions.ts'
 
-import { type CheckInDeps, formSlotAt, type Outcome, submitCheckIn } from './check-ins.ts'
+import { type CheckInDeps, formSlotAt, type Outcome, submitCheckInLocked } from './check-ins.ts'
 
 const localTime = (instant: Date, timezone: string): string =>
   Temporal.Instant.fromEpochMilliseconds(instant.getTime())
@@ -21,7 +21,12 @@ const conflict = (
   revision: { body, title: notification.title },
 })
 
-const slotOf = (notification: NotificationRecord): { form_id: string; scheduled_for: string } | null => {
+interface Slot {
+  form_id: string
+  scheduled_for: string
+}
+
+const slotOf = (notification: NotificationRecord): Slot | null => {
   const formId = notification.data?.form_id
   const scheduledFor = notification.data?.scheduled_for
   return typeof formId === 'string' && typeof scheduledFor === 'string'
@@ -42,16 +47,16 @@ const outcomeResult = (
  * The `done` and `skip` actions of a routine's `check_in_due` notification. Done saves the routine
  * as preset at the time pressed, for the notification's slot; Skip records the slot as skipped. Both
  * answer a conflict when the form is gone, the slot is already done or skipped, or (for Done) the
- * form is no longer a routine.
+ * form is no longer a routine. The guard and the save run under one hold of the form's lock, so two
+ * presses at once save once.
  */
 export const checkInDueActionHandlers = (deps: CheckInDeps): Record<string, NotificationActionHandler> => {
   const guard = async (
     user: string,
     notification: NotificationRecord,
+    slot: Slot,
     needsRoutine: boolean,
-  ): Promise<NotificationActionResult | { form_id: string; scheduled_for: string }> => {
-    const slot = slotOf(notification)
-    if (!slot) return { message: 'This notification names no check-in slot', ok: false }
+  ): Promise<NotificationActionResult | null> => {
     const form = await deps.getForm(user, slot.form_id)
     if (!form || form.deleted_at) {
       return conflict(notification, 'The check-in form was deleted', 'The form was deleted')
@@ -69,33 +74,44 @@ export const checkInDueActionHandlers = (deps: CheckInDeps): Record<string, Noti
     if (state.state === 'skipped') {
       return conflict(notification, 'This slot is already skipped', 'Already skipped')
     }
-    return slot
+    return null
   }
 
+  const guarded =
+    (
+      needsRoutine: boolean,
+      act: (user: string, notification: NotificationRecord, slot: Slot) => Promise<NotificationActionResult>,
+    ): NotificationActionHandler =>
+    async (user, notification) => {
+      const slot = slotOf(notification)
+      if (!slot) return { message: 'This notification names no check-in slot', ok: false }
+      return deps.withFormLock(
+        user,
+        slot.form_id,
+        async () => (await guard(user, notification, slot, needsRoutine)) ?? act(user, notification, slot),
+      )
+    }
+
   return {
-    done: async (user, notification) => {
-      const guarded = await guard(user, notification, true)
-      if ('ok' in guarded) return guarded
+    done: guarded(true, async (user, notification, slot) => {
       const now = deps.now()
-      const outcome = await submitCheckIn(deps, user, {
+      const outcome = await submitCheckInLocked(deps, user, {
         answered_at: now.toISOString(),
         answers: {},
-        form_id: guarded.form_id,
-        scheduled_for: guarded.scheduled_for,
+        form_id: slot.form_id,
+        scheduled_for: slot.scheduled_for,
         use_defaults: true,
       })
       return outcomeResult(notification, outcome, `Done at ${localTime(now, await deps.getTimezone(user))}`)
-    },
-    skip: async (user, notification) => {
-      const guarded = await guard(user, notification, false)
-      if ('ok' in guarded) return guarded
-      const outcome = await submitCheckIn(deps, user, {
+    }),
+    skip: guarded(false, async (user, notification, slot) => {
+      const outcome = await submitCheckInLocked(deps, user, {
         answers: {},
-        form_id: guarded.form_id,
-        scheduled_for: guarded.scheduled_for,
+        form_id: slot.form_id,
+        scheduled_for: slot.scheduled_for,
         status: 'skipped',
       })
       return outcomeResult(notification, outcome, 'Skipped')
-    },
+    }),
   }
 }

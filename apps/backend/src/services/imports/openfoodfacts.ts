@@ -83,7 +83,10 @@ export const OFF_FIELDS = [
 const G = 1
 const MG = 1000
 const UG = 1_000_000
+/** OFF's alcohol is % vol; ×0.789 (ethanol's g/ml) gives grams, taking 100 g of a drink as 100 ml. */
+const ALCOHOL_G_PER_PERCENT_VOL = 0.789
 const OFF_NUTRIENTS: [string, string, number][] = [
+  ['alcohol', 'alcohol', ALCOHOL_G_PER_PERCENT_VOL],
   ['proteins', 'protein', G],
   ['carbohydrates', 'carbs', G],
   ['fat', 'fat', G],

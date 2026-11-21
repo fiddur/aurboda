@@ -8,6 +8,8 @@
  */
 import type { DataSource } from '@aurboda/api-spec'
 
+import { isDeepStrictEqual } from 'node:util'
+
 import type { Activity, MergedActivity } from '../types.ts'
 
 /** Max start_time difference (ms) for cross-source merge eligibility. */
@@ -79,11 +81,18 @@ const ufUnion = (parent: number[], rank: number[], a: number, b: number) => {
   }
 }
 
-/** True when one of the two activities is an aurboda override targeting the other. */
-const isOverrideLinked = (a: Activity, b: Activity): boolean => {
-  if (a.override_target_ids && b.id && a.override_target_ids.includes(b.id)) return true
-  if (b.override_target_ids && a.id && b.override_target_ids.includes(a.id)) return true
-  return false
+/**
+ * The rows a merge input stands for: a cross-source group carries every member in
+ * `source_ids`, and the same-type pass must keep them all or supersession loses the
+ * members that are not the group's winner (an override's target, #1259).
+ */
+const memberIds = (a: MergedActivity): string[] => (a.source_ids ? [...a.source_ids] : a.id ? [a.id] : [])
+
+/** True when one of the two is an aurboda override targeting the other or a member of its group. */
+const isOverrideLinked = (a: MergedActivity, b: MergedActivity): boolean => {
+  const targets = (x: MergedActivity, y: MergedActivity) =>
+    memberIds(y).some((id) => x.override_target_ids?.includes(id) ?? false)
+  return targets(a, b) || targets(b, a)
 }
 
 const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, string>): boolean => {
@@ -99,9 +108,9 @@ const isCrossMergePair = (a: Activity, b: Activity, categoryMap: Map<string, str
 }
 
 export const pickOverrideWinner = (members: Activity[]): Activity | undefined => {
-  const memberIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
+  const groupIds = new Set(members.map((m) => m.id).filter((id): id is string => !!id))
   const overrides = members.filter(
-    (m) => m.source === 'aurboda' && m.override_target_ids?.some((tid) => memberIds.has(tid)),
+    (m) => m.source === 'aurboda' && m.override_target_ids?.some((tid) => groupIds.has(tid)),
   )
   if (overrides.length === 0) return undefined
   if (overrides.length > 1) {
@@ -288,13 +297,6 @@ const mergeCrossSources = (activities: Activity[], categoryMap: Map<string, stri
 }
 
 /**
- * The rows a merge input stands for: a cross-source group carries every member in
- * `source_ids`, and the same-type pass must keep them all or supersession loses the
- * members that are not the group's winner (an override's target, #1259).
- */
-const memberIds = (a: MergedActivity): string[] => (a.source_ids ? [...a.source_ids] : a.id ? [a.id] : [])
-
-/**
  * Sources whose rows are whole sessions, logged by a person or a device in one piece. Two such rows
  * of one type that only touch (one ends as the next begins) are back-to-back sessions and stay apart
  * (#981, #1488). Every other source, listed or not, is treated as fragmenting: screen-time and
@@ -313,6 +315,84 @@ const DISCRETE_SESSION_SOURCES = new Set<DataSource>([
 
 const bridgesTouch = (a: Activity, b: Activity): boolean =>
   !DISCRETE_SESSION_SOURCES.has(a.source) || !DISCRETE_SESSION_SOURCES.has(b.source)
+
+const isPointInTime = (a: Activity): boolean => !a.end_time || a.end_time.getTime() === a.start_time.getTime()
+
+/** Some key both carry, other than `_`-prefixed markers, holds a different value in each. */
+const dataConflicts = (a: Activity, b: Activity): boolean => {
+  const { data: da } = a
+  const { data: db } = b
+  if (!da || !db) return false
+  return Object.keys(da).some(
+    (key) => !key.startsWith('_') && Object.hasOwn(db, key) && !isDeepStrictEqual(da[key], db[key]),
+  )
+}
+
+const durationMs = (a: Activity): number => (a.end_time ? a.end_time.getTime() - a.start_time.getTime() : 0)
+
+/**
+ * By start, then longest first: the database orders by start alone, and a span at an instant must
+ * lead the points there or the first point closes as its own row before the span can absorb the rest.
+ */
+const byStartThenLongest = (a: Activity, b: Activity): number =>
+  a.start_time.getTime() - b.start_time.getTime() || durationMs(b) - durationMs(a)
+
+const absorbInto = (current: MergedActivity, next: Activity) => {
+  if (!current.title && next.title) current.title = next.title
+  if (next.data) current.data = blendData(current.data, next.data)
+}
+
+interface PointCluster {
+  ids: string[]
+  members: MergedActivity[]
+  row: MergedActivity
+}
+
+/**
+ * Same-type point rows at one instant are separate events (a routine's doses, #1892) unless their
+ * data agree or one overrides the other. Each point joins the first earlier cluster at its instant
+ * that it is linked to or does not conflict with, so a duplicate of the first dose still finds it
+ * past a different dose. Rows with a duration pass through. Returns the rows in order and the
+ * clusters after the first at their instant, which the run loop must not join to that instant.
+ */
+const clusterSameInstantPoints = (
+  sorted: MergedActivity[],
+): { detached: Set<MergedActivity>; rows: MergedActivity[] } => {
+  const rows: MergedActivity[] = []
+  const detached = new Set<MergedActivity>()
+  let clusters: PointCluster[] = []
+  let instant: number | undefined
+  const finish = () => {
+    for (const c of clusters) if (c.ids.length > 1) c.row.source_ids = c.ids
+  }
+
+  for (const a of sorted) {
+    if (a.start_time.getTime() !== instant) {
+      finish()
+      clusters = []
+      instant = a.start_time.getTime()
+    }
+    if (!isPointInTime(a)) {
+      rows.push(a)
+      continue
+    }
+    const target =
+      clusters.find((c) => c.members.some((m) => isOverrideLinked(m, a))) ??
+      clusters.find((c) => !dataConflicts(c.row, a))
+    if (target) {
+      absorbInto(target.row, a)
+      target.ids.push(...memberIds(a))
+      target.members.push(a)
+      continue
+    }
+    const cluster: PointCluster = { ids: memberIds(a), members: [a], row: { ...a } }
+    if (clusters.length > 0) detached.add(cluster.row)
+    clusters.push(cluster)
+    rows.push(cluster.row)
+  }
+  finish()
+  return { detached, rows }
+}
 
 /**
  * When the same activity is logged in multiple apps (e.g., Polar for HR data
@@ -344,7 +424,7 @@ const mergeSettledActivities = (
   const result: MergedActivity[] = []
 
   for (const [, typeActivities] of byType) {
-    const sorted = [...typeActivities].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+    const { detached, rows: sorted } = clusterSameInstantPoints(typeActivities.toSorted(byStartThenLongest))
 
     let current: MergedActivity = { ...sorted[0] }
     let currentSourceIds: string[] = memberIds(sorted[0])
@@ -354,11 +434,13 @@ const mergeSettledActivities = (
       const next = sorted[i]
       const currentEnd = current.end_time?.getTime() ?? current.start_time.getTime()
       const nextStart = next.start_time.getTime()
+      const sharesStart = nextStart === current.start_time.getTime()
+      const separateEvent = sharesStart && detached.has(next) && isPointInTime(current)
       // A shared start is an overlap even when the run so far has no duration.
-      const overlaps = currentEnd > nextStart || nextStart === current.start_time.getTime()
+      const overlaps = currentEnd > nextStart || sharesStart
       const touches = currentEnd === nextStart
 
-      if (overlaps || (touches && bridgesTouch(endingRow, next))) {
+      if (!separateEvent && (overlaps || (touches && bridgesTouch(endingRow, next)))) {
         const nextEnd = next.end_time?.getTime()
         if (nextEnd !== undefined && nextEnd >= currentEnd) endingRow = next
         if (
@@ -368,14 +450,7 @@ const mergeSettledActivities = (
           current.end_time = next.end_time
         }
 
-        if (!current.title && next.title) {
-          current.title = next.title
-        }
-
-        if (next.data) {
-          current.data = blendData(current.data, next.data)
-        }
-
+        absorbInto(current, next)
         currentSourceIds.push(...memberIds(next))
       } else {
         if (currentSourceIds.length > 1) {

@@ -62,7 +62,7 @@ describe('Live LISTEN/NOTIFY integration', () => {
     async (kind) => {
       const user = getTestUser()
       const event = nextEvent(5000)
-      const close = await openLiveChannel(user, event.onEvent, listenClient)
+      const close = await openLiveChannel(user, event.onEvent, undefined, listenClient)
       try {
         await emitLiveNotify(user, kind)
         await expect(event.promise).resolves.toBe(kind)
@@ -75,7 +75,7 @@ describe('Live LISTEN/NOTIFY integration', () => {
   test("a ping in another user's database does not arrive", async () => {
     const user = getTestUser()
     const seen: LiveEventKind[] = []
-    const close = await openLiveChannel(user, (kind) => seen.push(kind), listenClient)
+    const close = await openLiveChannel(user, (kind) => seen.push(kind), undefined, listenClient)
     try {
       await emitLiveNotify(OTHER_USER, 'notification')
       await settle()
@@ -88,7 +88,7 @@ describe('Live LISTEN/NOTIFY integration', () => {
   test('after teardown, further pings are not delivered', async () => {
     const user = getTestUser()
     const seen: LiveEventKind[] = []
-    const close = await openLiveChannel(user, (kind) => seen.push(kind), listenClient)
+    const close = await openLiveChannel(user, (kind) => seen.push(kind), undefined, listenClient)
     await emitLiveNotify(user, 'timeline')
     await settle()
     expect(seen).toEqual(['timeline'])
@@ -97,5 +97,44 @@ describe('Live LISTEN/NOTIFY integration', () => {
     await emitLiveNotify(user, 'notification')
     await settle()
     expect(seen).toEqual(['timeline'])
+  })
+
+  test('a terminated LISTEN connection reports itself closed, once', async () => {
+    const user = getTestUser()
+    let client: Client | null = null
+    let closedCount = 0
+    const close = await openLiveChannel(
+      user,
+      () => {},
+      () => closedCount++,
+      () => (client = listenClient()),
+    )
+    const admin = listenClient()
+    await admin.connect()
+    try {
+      const pid = (client as unknown as { processID: number }).processID
+      await admin.query('SELECT pg_terminate_backend($1)', [pid])
+      for (let i = 0; i < 50 && closedCount === 0; i++) await new Promise((r) => setTimeout(r, 20))
+      await settle()
+      expect(closedCount).toBe(1)
+    } finally {
+      await admin.end()
+      await close()
+    }
+    expect(closedCount).toBe(1)
+  })
+
+  test('its own teardown does not report the channel closed', async () => {
+    const user = getTestUser()
+    let closedCount = 0
+    const close = await openLiveChannel(
+      user,
+      () => {},
+      () => closedCount++,
+      listenClient,
+    )
+    await close()
+    await settle()
+    expect(closedCount).toBe(0)
   })
 })

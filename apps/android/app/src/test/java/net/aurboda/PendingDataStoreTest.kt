@@ -19,6 +19,19 @@ class PendingDataStoreTest {
     }
 
     @Test
+    fun `an activity queued before people and comments decodes without them`() {
+        val stored = """
+            [{"id":"e0","data":{"type":"activity","payload":{"activity_type":"walk","start_time":"2026-11-01T08:00:00Z",
+              "notes":"Along the river"}},"created_at":"2026-11-01T08:00:00Z","fail_count":1,"last_error":"offline"}]
+        """.trimIndent()
+        val payload = (appJson.decodeFromString<List<PendingEntry>>(stored).single().data as PendingPayload.Activity).payload
+        assertEquals("Along the river", payload.notes)
+        assertNull(payload.people)
+        assertNull(payload.comment)
+        assertNull(payload.created_activity_id)
+    }
+
+    @Test
     fun `a metric's unit survives the queue`() {
         val entry = PendingEntry(
             id = "e2",

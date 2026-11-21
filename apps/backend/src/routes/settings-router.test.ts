@@ -75,6 +75,23 @@ describe('hidden_pages over GET/PATCH /user/settings', () => {
   })
 })
 
+describe('journal_strip_metadata over GET/PATCH /user/settings', () => {
+  test('is false until set, and reads back what was stored', async () => {
+    expect((await supertest(app()).get('/user/settings')).body.journal_strip_metadata).toBe(false)
+
+    const patched = await supertest(app()).patch('/user/settings').send({ journal_strip_metadata: true })
+    expect(patched.status).toBe(200)
+    expect(patched.body.journal_strip_metadata).toBe(true)
+    expect((await supertest(app()).get('/user/settings')).body.journal_strip_metadata).toBe(true)
+  })
+
+  test('refuses a value that is not a boolean', async () => {
+    const res = await supertest(app()).patch('/user/settings').send({ journal_strip_metadata: 'yes' })
+    expect(res.status).toBe(400)
+    expect(store.settings).toEqual({})
+  })
+})
+
 describe('tz over PATCH /user/settings', () => {
   test('stores the zone as device_timezone and answers it as tz', async () => {
     const res = await supertest(app()).patch('/user/settings').send({ tz: 'Europe/Stockholm' })

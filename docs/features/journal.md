@@ -98,6 +98,8 @@ material too: search includes them when `entity_types` names them.
   longer matches answers `409` with the entry as it now is, and writes nothing.
 - **Revisions**: every edit of the text or title keeps the text it replaced (one
   per 10 minutes of editing, the latest 50); `GET /notes/:id/revisions` lists them.
+  An entry created empty keeps no empty first version: the first revision is the
+  first text it had.
 - **Deleting is recoverable** for 30 days (`DELETED_NOTE_RETENTION_DAYS` in
   `@aurboda/api-spec`): `GET /notes/deleted` lists what can be restored and
   `POST /notes/:id/restore` brings an entry back with its replies. After 30 days the
@@ -106,12 +108,55 @@ material too: search includes them when `entity_types` names them.
 
 See [Comments](./comments.md) for the exact rules.
 
+## Related
+
+An entry can be **related to** any number of people (see [People](./people.md)) and
+activities without being a comment on any of them: today's entry mentions a partner,
+another is about last night's sleep. A link is made explicitly, never by reading the
+text; removing a name from the text does not remove the link, and a link can exist with
+nothing about it in the text.
+
+- **Model.** `note_links` holds `note_id`, `entity_type` (`person` or `activity`),
+  `entity_id` and `created_at`, one row per note and target. Only a thread root carries
+  links (a `day` or `time` entry, or a comment on something); a reply is refused with a
+  `400`. Targets are referenced by id and their labels resolved when read, so a renamed
+  person or a retyped activity stays right.
+- **Making one.** `related` on `POST /notes` and `PATCH /notes/:id` (MCP `add_note`,
+  `update_note`) is the full list of `{ entity_type, entity_id }`, at most 30,
+  duplicates collapsed: it replaces the links when present, `[]` removes them all, and
+  leaving it out leaves them. An unknown, malformed or deleted target is a `400` naming
+  it (`Unknown person: <id>`, `Unknown activity: <id>`). A change of links follows the
+  same `expected_updated_at` check as the text (a stale one is the usual `409`); it bumps
+  `updated_at` but keeps no text revision.
+- **Where it shows.** Every thread root in an answer carries `related`: each target's
+  `entity_type`, `entity_id` and a `label` -- the person's name, or the activity's title
+  (else its type's name) with its local date, "Evening walk, 2026-11-20". `GET /people/:id`
+  (MCP `get_person`) and the activity detail (`GET /activities/:id`,
+  `GET /activities/:id/full`, MCP `get_activity_detail`) carry `journal_entries`: the
+  related entries newest first, at most 50, each with `id`, `title`, `entity_type`,
+  `date` or `start_time`, and `excerpt` (the first non-empty line, at most 200
+  characters). A merged activity lists the entries related to any of its source rows,
+  and merging activities relates their entries to the merged one. On the Timeline
+  nothing changes: an entry stays where its own time puts it.
+- **The filter.** `GET /notes/search` takes `related_type` (`person` or `activity`) with
+  `related_id`, both or neither, and combines them with every other filter. An activity
+  is matched by the id given.
+- **Deleted targets.** A link to a soft-deleted person or activity is hidden while its
+  target is deleted and back on restore; it goes when the target is removed for good.
+  Replacing an entry's links only touches the visible ones, so a hidden link survives
+  an edit and comes back with its target.
+  A deleted entry's links are out of sight with it and come back with it.
+- **Privacy.** As the rest of People: links never leave your account. A note is never
+  shared, and nothing about its links goes into an activity's share, the feed or
+  anything federated.
+
 ## Finding entries
 
 `GET /notes/search` (MCP `search_notes`) is the journal's one read: newest first,
 paged with `next_cursor`, free-standing entries by default. It takes full-text `q`
 (title and content, the last word as a prefix, a reply's match returns its root),
-`tags` (all of them), `from`/`to` local dates, and `on_this_day` -- entries from the
+`tags` (all of them), `from`/`to` local dates, `related_type`/`related_id` (see
+[Related](#related)), and `on_this_day` -- entries from the
 same month and day in earlier years, 29 February included on a non-leap 28
 February. A `day` entry sorts at the start of its date in your timezone. The
 full-text index covers the first 100 000 characters of an entry. See
@@ -119,7 +164,8 @@ full-text index covers the first 100 000 characters of an entry. See
 
 The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns the
 `day` entries of the window's dates alongside the timed ones; the daily summary
-lists the day's `day` entries under `notes`.
+lists the day's `day` entries under `notes`, each with its `attachments` like any
+other read.
 
 ## Pictures and recordings
 
@@ -127,9 +173,12 @@ An entry (a `time` or `day` thread root) can carry pictures -- a photographed di
 page, say -- and voice recordings. Upload them one file per request,
 `POST /notes/:id/attachments` with the file in the multipart field `file`, in page
 order: an attachment's `position` is one more than the entry's highest, so upload
-order is page order. Entries answer them as `attachments`, live ones in page order,
-each with `id`, `kind` (`image` or `audio`), `mime`, `size`, `width`/`height`
-(pictures), `position` and `created_at`.
+order is page order. Uploads to one account are taken one at a time for the
+count, position and space checks, so parallel uploads cannot share a position or
+pass a cap together. Every answer of an entry -- reads, the daily summary, and the
+`POST /notes` that creates it (`[]`) -- carries them as `attachments`, live ones in
+page order, each with `id`, `kind` (`image` or `audio`), `mime`, `size`,
+`width`/`height` (pictures), `position` and `created_at`.
 
 - **Limits**: at most 20 MB per file (`413` beyond; the bundled nginx lets uploads
   to this address through up to 25 MB, and a proxy in front of it must too), 30
@@ -138,13 +187,22 @@ each with `id`, `kind` (`image` or `audio`), `mime`, `size`, `width`/`height`
   removed for good (`409` for either). The constants are in
   `@aurboda/api-spec` (`note-attachments.ts`).
 - **A picture** (PNG, JPEG, WebP or GIF, recognised by its content, not the type
-  the client claims) is turned upright from its EXIF orientation, loses all its
-  metadata (camera, GPS position), is fitted inside 3000 px -- enough to keep a
-  photographed page legible -- and is stored as WebP.
+  the client claims) is turned upright from its EXIF orientation, is fitted inside
+  3000 px -- enough to keep a photographed page legible -- and is stored as WebP.
+  It keeps its metadata (EXIF such as when and where it was taken and the camera,
+  ICC and XMP), with the orientation reset so a viewer does not turn it again:
+  the journal is private, so that is the owner's to keep. The user setting
+  `journal_strip_metadata` (Settings → Journal, "Remove metadata from Journal
+  pictures"; `PATCH /user/settings`, MCP `update_user_settings`; default `false`)
+  removes it from pictures added from then on; pictures already stored stay as
+  they are. The downscaled previews (`?max_edge=`) and the copy an assistant gets
+  carry no metadata either way.
 - **A recording** is stored exactly as recorded, as WebM, Ogg, MP4/M4A, MP3 or WAV
-  -- the type its first bytes say, not the client's. Anything else is a `400`.
-  Unlike a picture, it keeps whatever metadata the recorder wrote into the file (a
-  phone's voice memo can carry where it was made).
+  -- the type its first bytes say, not the client's -- with whatever metadata the
+  recorder wrote into the file (a phone's voice memo can carry where it was made),
+  whatever the setting says. An MP4 with a video track (a `hdlr` box naming the
+  `vide` handler) is a video, not a recording, and is refused. Anything else is a
+  `400`.
 - **Where the bytes live**: in `note_attachments` in your own database, so the
   account export carries them. See
   [Data Storage → `note_attachments`](../data-storage.md#note_attachments---pictures-and-recordings-on-journal-entries).

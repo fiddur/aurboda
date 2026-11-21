@@ -26,10 +26,13 @@ import {
   checkInFormProblems,
   DEFAULT_DAY_STARTS_AT,
   isCheckInRoutine,
+  isTakenAnswer,
+  presetLine,
   UUID_RE,
 } from '@aurboda/api-spec'
 import { randomUUID } from 'node:crypto'
 
+import type { ActivityNotifier } from './deduction-queue.ts'
 import type { BulkAddMetricsResult, BulkMetricItem } from './mutations.ts'
 
 import {
@@ -54,6 +57,7 @@ import {
   listCheckIns,
   type ListCheckInsOptions,
   listFormCheckInsBetween,
+  listOverridesOfActivities,
   markCheckInDueNotificationsRead,
   restoreCheckInForm,
   setCheckInDeleted,
@@ -61,6 +65,7 @@ import {
   softDeleteCheckInForm,
   updateCheckIn,
   updateCheckInForm,
+  withCheckInFormLock,
 } from '../db/index.ts'
 import {
   activityItemsFor,
@@ -68,10 +73,8 @@ import {
   answerProblems,
   defaultProblems,
   definitionChanged,
-  isTakenAnswer,
   metricPointsFor,
   presetAnswers,
-  presetLine,
   reusedKeyProblems,
   scoreOf,
 } from './check-in-definitions.ts'
@@ -96,7 +99,7 @@ import {
   deleteActivity,
   restoreActivity,
 } from './mutations.ts'
-import { type Notifier, notifier } from './notifications.ts'
+import { type Notifier, notifier, pingWhenMarkedRead } from './notifications.ts'
 import { getUserTimezone } from './settings.ts'
 
 const DUE_WINDOW_MS = 60 * 60 * 1000
@@ -111,6 +114,12 @@ export interface CheckInActivityInput {
   data: Record<string, unknown>
   start_time: Date
   external_id: string
+}
+
+export interface ActivitySpan {
+  activity_type: string
+  start_time: Date
+  end_time?: Date | null
 }
 
 export interface CheckInDeps {
@@ -154,11 +163,22 @@ export interface CheckInDeps {
   addActivity: (
     user: string,
     input: CheckInActivityInput,
+    onMutated?: ActivityNotifier,
   ) => Promise<{ success: true; id: string } | { success: false; error: string }>
-  /** Soft-deletes it; false when there was no live activity to delete. */
-  deleteActivity: (user: string, id: string) => Promise<boolean>
-  restoreActivity: (user: string, id: string) => Promise<boolean>
+  /** Soft-deletes it and resolves to what it deleted; null when there was no live activity to delete. */
+  deleteActivity: (user: string, id: string) => Promise<ActivitySpan | null>
+  /** Resolves to what it restored; null when there was no deleted activity to restore. */
+  restoreActivity: (user: string, id: string) => Promise<ActivitySpan | null>
   activityIsLive: (user: string, id: string) => Promise<boolean>
+  /**
+   * The overrides all of whose targets are among `activityIds`: the live ones, or with
+   * `deletedSince` those deleted at or after it.
+   */
+  overridesOf: (user: string, activityIds: readonly string[], deletedSince?: Date) => Promise<string[]>
+  /** Tells deduction rules that an activity was added, deleted or restored. */
+  activityMutated?: ActivityNotifier
+  /** Runs `fn` as the form's only writer, across processes. Not re-entrant. */
+  withFormLock: <T>(user: string, formId: string, fn: () => Promise<T>) => Promise<T>
   markDueRead: (user: string, formId: string, scheduledFor: readonly string[]) => Promise<unknown>
   raise: Notifier['raiseBestEffort']
   getTimezone: (user: string) => Promise<string>
@@ -168,16 +188,20 @@ export interface CheckInDeps {
 /** Resolved at call time, so importing this module never touches the db module's bindings. */
 export const checkInDeps: CheckInDeps = {
   activityIsLive: async (user, id) => (await getActivityById(user, id)) !== null,
+  activityMutated: () => undefined,
   activityTypeSchema: (user, activityType) => activityWriteSchema(user, activityType),
-  addActivity: async (user, input) => {
-    const result = await addActivity(user, { ...input, source: 'check_in' })
+  addActivity: async (user, input, onMutated) => {
+    const result = await addActivity(user, { ...input, source: 'check_in' }, onMutated)
     return result.success && result.id
       ? { id: result.id, success: true }
       : { error: result.error ?? 'Could not add the activity', success: false }
   },
   catalog: () => loadMetricCatalog(),
   createMetric: (user, definition) => addCustomMetric(user, { ...definition, separate_metric: true }),
-  deleteActivity: async (user, id) => (await deleteActivity(user, id)).deleted,
+  deleteActivity: async (user, id) => {
+    const activity = await getActivityById(user, id)
+    return activity && (await deleteActivity(user, id)).deleted ? activity : null
+  },
   deletePoints: (user, points) => deleteCheckInPoints(user, points),
   deleteSkips: (user, formId, scheduledFor) => deleteSkippedCheckIns(user, formId, scheduledFor),
   getCheckIn: (user, id) => getCheckIn(user, id),
@@ -190,16 +214,22 @@ export const checkInDeps: CheckInDeps = {
   listFormCheckInsBetween: (user, formId, from, to) => listFormCheckInsBetween(user, formId, from, to),
   listForms: (user, options) => listCheckInForms(user, options),
   listVersions: (user, formId) => listCheckInFormVersions(user, formId),
-  markDueRead: (user, formId, scheduledFor) => markCheckInDueNotificationsRead(user, formId, scheduledFor),
+  markDueRead: pingWhenMarkedRead((user, formId: string, scheduledFor: readonly string[]) =>
+    markCheckInDueNotificationsRead(user, formId, scheduledFor),
+  ),
   now: () => new Date(),
+  overridesOf: (user, activityIds, deletedSince) =>
+    listOverridesOfActivities(user, activityIds, deletedSince),
   raise: (user, input) => notifier.raiseBestEffort(user, input),
-  restoreActivity: async (user, id) => (await restoreActivity(user, id)).restored,
+  restoreActivity: async (user, id) =>
+    (await restoreActivity(user, id)).restored ? await getActivityById(user, id) : null,
   restoreForm: (user, id, notBefore) => restoreCheckInForm(user, id, notBefore),
   setCheckInDeleted: (user, id, deleted) => setCheckInDeleted(user, id, deleted),
   softDeleteForm: (user, id) => softDeleteCheckInForm(user, id),
   updateCheckIn: (user, id, patch) => updateCheckIn(user, id, patch),
   updateForm: (user, id, patch, options) => updateCheckInForm(user, id, patch, options),
-  writePoints: (user, items) => bulkAddMetrics(user, items, 'check_in'),
+  withFormLock: (user, formId, fn) => withCheckInFormLock(user, formId, fn),
+  writePoints: (user, items) => bulkAddMetrics(user, items, 'check_in', undefined, { outboundSync: true }),
 }
 
 const FORM_NOT_FOUND = 'Check-in form not found'
@@ -436,8 +466,17 @@ export const updateCheckInFormById = async (
   user: string,
   id: string,
   body: UpdateCheckInFormBody,
+): Promise<Outcome<CheckInForm>> =>
+  UUID_RE.test(id)
+    ? deps.withFormLock(user, id, () => updateCheckInFormLocked(deps, user, id, body))
+    : fail(404, FORM_NOT_FOUND)
+
+const updateCheckInFormLocked = async (
+  deps: CheckInDeps,
+  user: string,
+  id: string,
+  body: UpdateCheckInFormBody,
 ): Promise<Outcome<CheckInForm>> => {
-  if (!UUID_RE.test(id)) return fail(404, FORM_NOT_FOUND)
   const existing = await deps.getForm(user, id)
   if (!existing || existing.deleted_at) return fail(404, FORM_NOT_FOUND)
   const questions = body.questions ?? existing.questions
@@ -458,7 +497,7 @@ export const deleteCheckInFormById = async (
   id: string,
 ): Promise<CheckInForm | null> => {
   if (!UUID_RE.test(id)) return null
-  const record = await deps.softDeleteForm(user, id)
+  const record = await deps.withFormLock(user, id, () => deps.softDeleteForm(user, id))
   return record ? serializeCheckInForm(record) : null
 }
 
@@ -468,7 +507,7 @@ export const restoreCheckInFormById = async (
   id: string,
 ): Promise<CheckInForm | null> => {
   if (!UUID_RE.test(id)) return null
-  const record = await deps.restoreForm(user, id, deps.now())
+  const record = await deps.withFormLock(user, id, () => deps.restoreForm(user, id, deps.now()))
   return record ? serializeCheckInForm(record) : null
 }
 
@@ -478,6 +517,41 @@ interface LogResult {
   logged: Record<string, CheckInLoggedPoint>
   log_errors: LogErrors
 }
+
+/** What a check-in has in place while it is being logged or unlogged, step by step. */
+interface Written {
+  logged: Record<string, CheckInLoggedPoint>
+  activity_ids: Record<string, string>
+}
+
+/**
+ * Runs `steps`. When one throws, it stores on the check-in what `written` says is in place by then,
+ * so `logged` and `activity_ids` never claim what is gone, and rethrows.
+ */
+const storingWrittenOnFailure = async <T>(
+  deps: CheckInDeps,
+  user: string,
+  id: string,
+  written: Written,
+  steps: () => Promise<T>,
+): Promise<T> => {
+  try {
+    return await steps()
+  } catch (error) {
+    await deps
+      .updateCheckIn(user, id, { activity_ids: { ...written.activity_ids }, logged: { ...written.logged } })
+      .catch(() => null)
+    throw error
+  }
+}
+
+const notifyActivity = (deps: CheckInDeps, user: string, activity: ActivitySpan): void =>
+  deps.activityMutated?.(
+    user,
+    activity.activity_type,
+    activity.start_time,
+    activity.end_time ?? activity.start_time,
+  )
 
 /** Writes the metric points of the answers through the metric write service, adding new custom metrics first. */
 const logAnswers = async (
@@ -537,18 +611,25 @@ const logActivities = async (
   questions: readonly CheckInQuestion[],
   answers: Record<string, CheckInAnswerValue>,
   answeredAt: Date,
+  written: Written,
 ): Promise<{ activity_ids: Record<string, string>; log_errors: LogErrors }> => {
   const activityIds: Record<string, string> = {}
   const logErrors: LogErrors = []
   for (const item of activityItemsFor(questions, answers)) {
-    const result = await deps.addActivity(user, {
-      activity_type: item.activity_type,
-      data: item.data,
-      external_id: `check_in:${randomUUID()}`,
-      start_time: answeredAt,
-    })
-    if (result.success) activityIds[item.key] = result.id
-    else logErrors.push({ error: result.error, question_key: item.key })
+    const result = await deps.addActivity(
+      user,
+      {
+        activity_type: item.activity_type,
+        data: item.data,
+        external_id: `check_in:${randomUUID()}`,
+        start_time: answeredAt,
+      },
+      deps.activityMutated,
+    )
+    if (result.success) {
+      activityIds[item.key] = result.id
+      written.activity_ids[item.key] = result.id
+    } else logErrors.push({ error: result.error, question_key: item.key })
   }
   return { activity_ids: activityIds, log_errors: logErrors }
 }
@@ -559,6 +640,7 @@ const logEverything = async (
   source: { formName: string; questions: readonly CheckInQuestion[]; score: CheckInScore | null },
   answers: Record<string, CheckInAnswerValue>,
   answeredAt: Date,
+  written: Written = { activity_ids: {}, logged: {} },
 ): Promise<LogResult & { activity_ids: Record<string, string> }> => {
   const metrics = await logAnswers(
     deps,
@@ -569,7 +651,8 @@ const logEverything = async (
     answers,
     answeredAt,
   )
-  const activities = await logActivities(deps, user, source.questions, answers, answeredAt)
+  written.logged = metrics.logged
+  const activities = await logActivities(deps, user, source.questions, answers, answeredAt, written)
   return {
     activity_ids: activities.activity_ids,
     log_errors: [...metrics.log_errors, ...activities.log_errors],
@@ -577,17 +660,51 @@ const logEverything = async (
   }
 }
 
-/** Deletes the activities; resolves to those of them that were live and are now deleted. */
+/**
+ * Deletes the activities, and the overrides (Timeline edits) all of whose targets are among them.
+ * Resolves to those of the activities that were live and are now deleted; `onEach` hears of each
+ * activity as it is done with, whether it was deleted.
+ */
 const deleteActivities = async (
   deps: CheckInDeps,
   user: string,
   activityIds: Record<string, string>,
+  onEach: (key: string, deleted: boolean) => void,
 ): Promise<Record<string, string>> => {
   const deleted: Record<string, string> = {}
   for (const [key, id] of Object.entries(activityIds)) {
-    if (await deps.deleteActivity(user, id)) deleted[key] = id
+    const activity = await deps.deleteActivity(user, id)
+    if (activity) {
+      deleted[key] = id
+      notifyActivity(deps, user, activity)
+    }
+    onEach(key, activity !== null)
+  }
+  for (const overrideId of await deps.overridesOf(user, Object.values(activityIds))) {
+    const override = await deps.deleteActivity(user, overrideId)
+    if (override) notifyActivity(deps, user, override)
   }
   return deleted
+}
+
+/** Restores the activities, and their overrides that were deleted at or after `deletedAt`. */
+const restoreActivities = async (
+  deps: CheckInDeps,
+  user: string,
+  activityIds: readonly string[],
+  deletedAt: Date,
+): Promise<void> => {
+  const restored: string[] = []
+  for (const id of activityIds) {
+    const activity = await deps.restoreActivity(user, id)
+    if (!activity) continue
+    restored.push(id)
+    notifyActivity(deps, user, activity)
+  }
+  for (const overrideId of await deps.overridesOf(user, restored, deletedAt)) {
+    const override = await deps.restoreActivity(user, overrideId)
+    if (override) notifyActivity(deps, user, override)
+  }
 }
 
 const withLogErrors = (checkIn: CheckIn, logErrors: LogErrors): CheckIn =>
@@ -658,6 +775,8 @@ const entityProblem = async (deps: CheckInDeps, user: string, body: SubmitCheckI
     : `No activity ${body.entity_id} to tie the check-in to`
 }
 
+const NOT_A_SLOT = 'scheduled_for is not a slot of this form'
+
 const skipSlot = async (
   deps: CheckInDeps,
   user: string,
@@ -666,7 +785,7 @@ const skipSlot = async (
 ): Promise<Outcome<CheckIn>> => {
   const scheduledFor = new Date(body.scheduled_for!)
   const slot = await formSlotAt(deps, user, form, scheduledFor)
-  if (!slot) return fail(400, 'scheduled_for is not a slot of this form')
+  if (!slot) return fail(400, NOT_A_SLOT)
   if (isClosed(slot.state)) return fail(409, `This slot is already ${slot.state}`)
   const record = await deps.insertCheckIn(user, {
     activity_ids: {},
@@ -685,7 +804,15 @@ const skipSlot = async (
   return ok(serializeCheckIn(record))
 }
 
-export const submitCheckIn = async (
+export const submitCheckIn = (
+  deps: CheckInDeps,
+  user: string,
+  body: SubmitCheckInBody,
+): Promise<Outcome<CheckIn>> =>
+  deps.withFormLock(user, body.form_id, () => submitCheckInLocked(deps, user, body))
+
+/** `submitCheckIn` for a caller that already holds the form's lock. */
+export const submitCheckInLocked = async (
   deps: CheckInDeps,
   user: string,
   body: SubmitCheckInBody,
@@ -728,6 +855,25 @@ export const submitCheckIn = async (
   return ok(withLogErrors(serializeCheckIn(record), log_errors))
 }
 
+/**
+ * Runs `fn` on the check-in holding its form's lock, the check-in read again inside it; null when
+ * there is no such check-in.
+ */
+const withCheckInLocked = async <T>(
+  deps: CheckInDeps,
+  user: string,
+  id: string,
+  fn: (checkIn: CheckInRecord) => Promise<T>,
+): Promise<T | null> => {
+  if (!UUID_RE.test(id)) return null
+  const before = await deps.getCheckIn(user, id)
+  if (!before) return null
+  return deps.withFormLock(user, before.form_id, async () => {
+    const checkIn = await deps.getCheckIn(user, id)
+    return checkIn ? fn(checkIn) : null
+  })
+}
+
 const checkInPatch = (body: UpdateCheckInBody, answeredAt: Date): CheckInPatch => {
   const patch: CheckInPatch = {}
   if (body.answers !== undefined) patch.answers = body.answers
@@ -739,87 +885,164 @@ const checkInPatch = (body: UpdateCheckInBody, answeredAt: Date): CheckInPatch =
   return patch
 }
 
+/** A skip moved to another instant must take an open slot of its form; it cannot leave its slot. */
+const movedSkipProblem = async (
+  deps: CheckInDeps,
+  user: string,
+  existing: CheckInRecord,
+  scheduledFor: string | null,
+): Promise<Outcome<CheckIn> | null> => {
+  if (scheduledFor === null) {
+    return fail(400, 'A skipped check-in needs its slot: scheduled_for cannot be null')
+  }
+  const at = new Date(scheduledFor)
+  if (existing.scheduled_for?.getTime() === at.getTime()) return null
+  const form = await deps.getForm(user, existing.form_id)
+  const slot = form ? await formSlotAt(deps, user, form, at) : null
+  if (!slot) return fail(400, NOT_A_SLOT)
+  if (isClosed(slot.state) && slot.check_in_id !== existing.id) {
+    return fail(409, `This slot is already ${slot.state}`)
+  }
+  return null
+}
+
 export const updateCheckInById = async (
   deps: CheckInDeps,
   user: string,
   id: string,
   body: UpdateCheckInBody,
+): Promise<Outcome<CheckIn>> =>
+  (await withCheckInLocked(deps, user, id, (existing) => updateCheckInLocked(deps, user, existing, body))) ??
+  fail(404, CHECK_IN_NOT_FOUND)
+
+const updateCheckInLocked = async (
+  deps: CheckInDeps,
+  user: string,
+  existing: CheckInRecord,
+  body: UpdateCheckInBody,
 ): Promise<Outcome<CheckIn>> => {
-  if (!UUID_RE.test(id)) return fail(404, CHECK_IN_NOT_FOUND)
-  const existing = await deps.getCheckIn(user, id)
-  if (!existing || existing.deleted_at) return fail(404, CHECK_IN_NOT_FOUND)
+  if (existing.deleted_at) return fail(404, CHECK_IN_NOT_FOUND)
   if (existing.status === 'skipped' && body.answers !== undefined) {
     return fail(400, 'A skipped check-in has no answers; answer the slot with a new check-in instead')
   }
+  if (existing.status === 'skipped' && body.scheduled_for !== undefined) {
+    const moved = await movedSkipProblem(deps, user, existing, body.scheduled_for)
+    if (moved) return moved
+  }
   const answers = body.answers ?? existing.answers
-  const problem = answerError(existing.questions, answers)
+  const problem = existing.status === 'answered' ? answerError(existing.questions, answers) : null
   if (problem) return fail(400, problem)
   const answeredAt = body.answered_at ? new Date(body.answered_at) : existing.answered_at
   const patch = checkInPatch(body, answeredAt)
-  let logErrors: LogErrors = []
-  if (body.answers !== undefined || body.answered_at !== undefined) {
-    await deps.deletePoints(user, Object.values(existing.logged))
-    await deleteActivities(deps, user, existing.activity_ids)
-    const result = await logEverything(
-      deps,
-      user,
-      { formName: existing.form_name, questions: existing.questions, score: existing.score_definition },
-      answers,
-      answeredAt,
-    )
-    patch.logged = result.logged
-    patch.activity_ids = result.activity_ids
-    logErrors = result.log_errors
-  }
-  const record = await deps.updateCheckIn(user, id, patch)
-  if (!record) return fail(404, CHECK_IN_NOT_FOUND)
+  const relogs = body.answers !== undefined || body.answered_at !== undefined
+  const written: Written = { activity_ids: { ...existing.activity_ids }, logged: { ...existing.logged } }
+  const outcome = await storingWrittenOnFailure(deps, user, existing.id, written, async () => {
+    let logErrors: LogErrors = []
+    if (relogs) {
+      await deps.deletePoints(user, Object.values(existing.logged))
+      written.logged = {}
+      await deleteActivities(deps, user, existing.activity_ids, (key) => {
+        delete written.activity_ids[key]
+      })
+      const result = await logEverything(
+        deps,
+        user,
+        { formName: existing.form_name, questions: existing.questions, score: existing.score_definition },
+        answers,
+        answeredAt,
+        written,
+      )
+      patch.logged = result.logged
+      patch.activity_ids = result.activity_ids
+      logErrors = result.log_errors
+    }
+    return { logErrors, record: await deps.updateCheckIn(user, existing.id, patch) }
+  })
+  if (!outcome.record) return fail(404, CHECK_IN_NOT_FOUND)
+  const { record } = outcome
   await markDoneSlotsRead(deps, user, record.form_id, [record.answered_at, record.scheduled_for])
-  return ok(withLogErrors(serializeCheckIn(record), logErrors))
+  return ok(withLogErrors(serializeCheckIn(record), outcome.logErrors))
 }
 
 /**
- * Soft-deletes the check-in, removes its points and soft-deletes its activities. It keeps the ids
- * of only the activities this deleted, so a restore brings back no activity deleted on its own.
+ * Soft-deletes the check-in, removes its points and soft-deletes its activities with their
+ * overrides. It keeps the ids of only the activities this deleted, so a restore brings back no
+ * activity deleted on its own. The check-in is marked deleted before its activities, so their
+ * overrides are deleted at or after it, which is how a restore finds them.
  */
 export const deleteCheckInById = async (
   deps: CheckInDeps,
   user: string,
   id: string,
-): Promise<CheckIn | null> => {
-  if (!UUID_RE.test(id)) return null
-  const existing = await deps.getCheckIn(user, id)
-  if (!existing || existing.deleted_at) return null
-  await deps.deletePoints(user, Object.values(existing.logged))
-  const deleted = await deleteActivities(deps, user, existing.activity_ids)
-  if (!(await deps.setCheckInDeleted(user, id, true))) return null
-  const record = await deps.updateCheckIn(user, id, { activity_ids: deleted })
-  return record ? serializeCheckIn(record) : null
+): Promise<CheckIn | null> =>
+  withCheckInLocked(deps, user, id, async (existing) => {
+    if (existing.deleted_at) return null
+    const written: Written = { activity_ids: { ...existing.activity_ids }, logged: { ...existing.logged } }
+    return storingWrittenOnFailure(deps, user, id, written, async () => {
+      await deps.deletePoints(user, Object.values(existing.logged))
+      written.logged = {}
+      if (!(await deps.setCheckInDeleted(user, id, true))) {
+        await deps.updateCheckIn(user, id, { logged: {} })
+        return null
+      }
+      const deleted = await deleteActivities(deps, user, existing.activity_ids, (key, wasDeleted) => {
+        if (!wasDeleted) delete written.activity_ids[key]
+      })
+      const record = await deps.updateCheckIn(user, id, { activity_ids: deleted })
+      return record ? serializeCheckIn(record) : null
+    })
+  })
+
+/** A restored skip must find its slot still open. */
+const restoreSlotProblem = async (
+  deps: CheckInDeps,
+  user: string,
+  existing: CheckInRecord,
+): Promise<Outcome<CheckIn> | null> => {
+  if (!existing.scheduled_for || existing.status === 'answered') return null
+  const form = await deps.getForm(user, existing.form_id)
+  const slot = form ? await formSlotAt(deps, user, form, existing.scheduled_for) : null
+  return slot && isClosed(slot.state) ? fail(409, `This slot is already ${slot.state}`) : null
 }
 
 export const restoreCheckInById = async (
   deps: CheckInDeps,
   user: string,
   id: string,
+): Promise<Outcome<CheckIn>> =>
+  (await withCheckInLocked(deps, user, id, (existing) => restoreCheckInLocked(deps, user, existing))) ??
+  fail(404, CHECK_IN_NOT_FOUND)
+
+const restoreCheckInLocked = async (
+  deps: CheckInDeps,
+  user: string,
+  existing: CheckInRecord,
 ): Promise<Outcome<CheckIn>> => {
-  if (!UUID_RE.test(id)) return fail(404, CHECK_IN_NOT_FOUND)
-  const existing = await deps.getCheckIn(user, id)
-  if (!existing || !existing.deleted_at) return fail(404, CHECK_IN_NOT_FOUND)
-  if (!(await deps.setCheckInDeleted(user, id, false))) return fail(404, CHECK_IN_NOT_FOUND)
-  const { log_errors, logged } = await logAnswers(
-    deps,
-    user,
-    existing.form_name,
-    existing.questions,
-    existing.score_definition,
-    existing.answers,
-    existing.answered_at,
-  )
-  for (const activityId of Object.values(existing.activity_ids)) {
-    await deps.restoreActivity(user, activityId)
+  const deletedAt = existing.deleted_at
+  if (!deletedAt) return fail(404, CHECK_IN_NOT_FOUND)
+  const slotProblem = await restoreSlotProblem(deps, user, existing)
+  if (slotProblem) return slotProblem
+  if (!(await deps.setCheckInDeleted(user, existing.id, false))) return fail(404, CHECK_IN_NOT_FOUND)
+  if (existing.status === 'answered' && existing.scheduled_for) {
+    await deps.deleteSkips(user, existing.form_id, existing.scheduled_for)
   }
-  const record = await deps.updateCheckIn(user, id, { logged })
-  if (!record) return fail(404, CHECK_IN_NOT_FOUND)
-  return ok(withLogErrors(serializeCheckIn(record), log_errors))
+  const written: Written = { activity_ids: { ...existing.activity_ids }, logged: {} }
+  return storingWrittenOnFailure(deps, user, existing.id, written, async () => {
+    const { log_errors, logged } = await logAnswers(
+      deps,
+      user,
+      existing.form_name,
+      existing.questions,
+      existing.score_definition,
+      existing.answers,
+      existing.answered_at,
+    )
+    written.logged = logged
+    await restoreActivities(deps, user, Object.values(existing.activity_ids), deletedAt)
+    const record = await deps.updateCheckIn(user, existing.id, { logged })
+    if (!record) return fail(404, CHECK_IN_NOT_FOUND)
+    return ok(withLogErrors(serializeCheckIn(record), log_errors))
+  })
 }
 
 export const queryCheckIns = async (

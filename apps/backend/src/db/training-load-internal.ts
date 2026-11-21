@@ -15,3 +15,12 @@ export const withStoredInternalFields = (
   }
   return merged as TrainingLoadSettings
 }
+
+/**
+ * What clearing `training_load` leaves: a recompute in progress keeps its lease, so another
+ * process does not start a second one before it ends.
+ */
+export const clearedTrainingLoad = (
+  stored: TrainingLoadSettings | undefined,
+): TrainingLoadSettings | undefined =>
+  stored?.impulse_recompute_lease ? { impulse_recompute_lease: stored.impulse_recompute_lease } : undefined

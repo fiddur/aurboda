@@ -31,7 +31,10 @@ account and nothing else:
 - the federated Note carries a `Mention` tag per account, addresses each in `cc`, and reads
   "with @anna@example.social", the handle linked to the account like any mention; the Create,
   Update and Delete are also sent to each mentioned account's inbox, so someone who does not
-  follow you is told (a local user gets the usual "mentioned you" notification);
+  follow you is told (a local user gets the usual "mentioned you" notification); an edit that
+  stops mentioning an account sends that account the Update too, so its copy loses the mention
+  (that account therefore receives the edited post once more, as Mastodon does for a removed
+  mention, even when the post is for followers only);
 - the structured payload, the images, the public page's data and the Atom feed carry nothing
   about anyone; the post's text shows the "with" line as the Note does.
 

@@ -14,6 +14,7 @@ import { browserPush } from '../state/push-browser'
 import { derivePushState, disablePush, enablePush, type PushBrowser, type PushServerApi } from './push'
 
 export const PUSH_KEY = ['push'] as const
+export const PUSH_CONFIG_STALE_MS = 10 * 60_000
 
 export const pushServerApi: PushServerApi = {
   add: addPushSubscription,
@@ -32,7 +33,7 @@ export const usePush = (browser: PushBrowser = browserPush) => {
     enabled: signedIn && !embedded,
     queryFn: fetchPushConfig,
     queryKey: [...PUSH_KEY, 'config'],
-    staleTime: 10 * 60_000,
+    staleTime: PUSH_CONFIG_STALE_MS,
   })
   const serverEnabled = config.data?.enabled
   const active = serverEnabled === true && browser.supported && !browser.needsHomeScreen

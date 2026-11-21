@@ -20,6 +20,8 @@ import {
   updateActivityTypeDefinition,
 } from './activity-type-definitions.ts'
 import { query } from './connection.ts'
+import { listUnscannedTrackedActivities, markSuggestionsScanned } from './suggested-segments.ts'
+import { upsertActivityTrack } from './tracks.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -498,6 +500,26 @@ describe('Hierarchical activity types', () => {
         [suggested.rows[0].id],
       )
       expect(movedSuggestion.rows[0]?.activity_type).toBe('yoga')
+    })
+
+    test('puts the moved tracks back in the segment suggestion scan', async () => {
+      const user = getTestUser()
+      const { live } = await seed(user, 'yin')
+      const stays = await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2025-02-19T19:00:00Z'),
+        source: 'aurboda',
+        start_time: new Date('2025-02-19T18:00:00Z'),
+      })
+      const ewkt = 'SRID=4326;LINESTRING ZM(18.07 59.3 0 0, 18.08 59.3 0 5)'
+      for (const id of [live, stays]) {
+        await upsertActivityTrack(user, { activity_id: id, ewkt, full_resolution: true, source: 'aurboda' })
+        await markSuggestionsScanned(user, id)
+      }
+
+      await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
+
+      expect(await listUnscannedTrackedActivities(user, 10)).toEqual([{ activity_id: live }])
     })
 
     test('a deleted source row that duplicates a target row is dropped rather than colliding', async () => {

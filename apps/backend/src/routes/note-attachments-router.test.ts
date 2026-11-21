@@ -39,16 +39,18 @@ const makeDeps = (overrides: Partial<NoteAttachmentDeps> = {}): NoteAttachmentDe
   getAttachment: vi.fn(async () => record()),
   getBytes: vi.fn(async () => ({ bytes: Buffer.from('webp-bytes'), kind: 'image', mime: 'image/webp' })),
   getNoteById: vi.fn(async (user: string) => (user === 'tester' ? entry : null)),
+  getStripMetadata: vi.fn(async () => false),
   getUsage: vi.fn(async () => ({ account_bytes: 0, live_count: 0, max_position: null })),
-  insert: vi.fn(async (_user, _note, position, a) =>
-    record({ height: a.height, kind: a.kind, mime: a.mime, position, size: a.bytes.length, width: a.width }),
-  ),
+  insert: vi.fn(async (_user, _note, a) => ({
+    ok: true as const,
+    value: record({ height: a.height, kind: a.kind, mime: a.mime, size: a.bytes.length, width: a.width }),
+  })),
   listDeleted: vi.fn(async () => [record({ deleted_at: new Date('2026-11-02T08:00:00Z') })]),
   listLive: vi.fn(async () => new Map([[NOTE_ID, [record()]]])),
   process: processNoteAttachment,
   purge: vi.fn(async () => true),
   resize: vi.fn(async () => Buffer.from('small')),
-  restore: vi.fn(async () => record()),
+  restore: vi.fn(async () => ({ ok: true as const, value: record() })),
   softDelete: vi.fn(async () => true),
   toAssistantImage: vi.fn(async () => Buffer.from('jpeg')),
   ...overrides,
@@ -200,7 +202,7 @@ describe('listing, deleting and restoring', () => {
 
     const full = makeDeps({
       getAttachment: vi.fn(async () => deleted()),
-      getUsage: vi.fn(async () => ({ account_bytes: 0, live_count: 30, max_position: 31 })),
+      restore: vi.fn(async () => ({ ok: false as const, reason: 'note_limit' as const })),
     })
     const refused = await buildApp(full).post(`/notes/${NOTE_ID}/attachments/${randomUUID()}/restore`)
     expect(refused.status).toBe(409)

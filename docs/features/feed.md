@@ -292,10 +292,16 @@ and leave it out otherwise. Warnings are given whatever the visibility. The web 
 same sentences live under each block, as a note that does not stop **Publish**
 (`articleSharingWarnings` in `@aurboda/api-spec`, shared by the backend and the editor).
 
-A correlation block with a `people` selector (time with [people](people.md)) is the exception:
-it is refused (a `400`, in drafts as in published articles), because a published one would name
-the people the author spends time with, and the name could not be kept out of the figures,
-exports and structured payload a reader gets.
+A person is named the same way (#1895). A correlation block with a `people` selector for one
+person (time with [people](people.md)) shows readers the person's name and how much time the
+author spent with them on each day of the window, so it warns: "Readers see <name> by name, and how
+much time you spent with them on each day of the window." The person is stored by id and named at
+render time from the author's People (an archived person still reads by name; a deleted or unknown
+one reads "a person", with no time, as in Explore), in the same places as a flag's name, the
+structured payload's `person_names` included. Only the names of the people the article's blocks
+name leave the server. The public caches key on the author's live people's names too, so a rename
+or a deletion shows at once. The time with anyone (a `people` selector without `person_id`) names
+no one and gives no warning.
 
 #### Preview
 
@@ -1067,7 +1073,9 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses, with `flag_names` (the names
-   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity; an
+   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity and
+   `person_names` (the names of the people its selectors name, by id) when a selector names one
+   person; an
    impact block's `activity`, `activity_type`, `activity_label` (set for `meal_sensitivity`, as
    in "meals with gluten"), `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
    buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`
@@ -1180,10 +1188,9 @@ stream and, when shown again, reopens it and refetches once. If the stream can't
 drops, the client retries after 5 s, 15 s, 60 s and then every minute, and meanwhile **falls back
 to polling** the newest page every 30 s — so the pill still works without a live connection.
 In-process fan-out is handled by a single `LiveHub` that keeps one `LISTEN` connection open per
-user regardless of how many tabs are streaming.
-
-`GET /feed/timeline/stream`, the earlier endpoint, still answers for one release for web bundles
-loaded before the change: it forwards only timeline pings, as `event: new`.
+user regardless of how many tabs are streaming. If that connection drops (the database restarted, or the
+connection was terminated), the hub forgets it and ends the user's open streams, so each client
+reconnects and the first one opens a fresh channel.
 
 ### Images
 
@@ -1530,7 +1537,9 @@ hashtags — a curated instance blog, e.g. everyone's `#aurboda` posts.
   merges them newest-first on `(created_at, id)` for local posts and `(published_at, id)` for
   remote ones, at microsecond precision; 20 make the page and the last one the `next_cursor`.
   Ids are UUIDs, so the key is unique across sources. A listed user whose database is missing is
-  skipped (logged once). Each entry carries `origin`: a `local` one serialises as on the
+  skipped (logged once), and so are the entries of one whose database disappears between the
+  listing and the reads that serialise them (an account deleted mid-request), in the Atom feed
+  too: the page is then shorter, the rest answered as usual. Each entry carries `origin`: a `local` one serialises as on the
   author's profile listing (structured payload included, through the same cache), plus
   `author_username`; a `remote` one as on a public tag page (`OfficialFeedRemotePost`). The
   response also carries the feed's `users`, `remote_authors` and `tags`. Unauthenticated,
@@ -1647,7 +1656,6 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
 | `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
 | `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page, `?tag=` to filter by a hashtag                                                                                                    |
-| `GET /feed/timeline/stream`                       | Deprecated alias of `GET /events/stream` carrying only timeline pings, as `event: new`; goes after the next release                                                                                          |
 | `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |

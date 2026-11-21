@@ -1,8 +1,12 @@
 import {
   addCheckInFormBodySchema,
+  type CheckInQuestion,
   checkInFormProblems,
   checkInsQuerySchema,
   isCheckInRoutine,
+  isTakenAnswer,
+  presetItem,
+  presetLine,
   scheduleSchema,
   submitCheckInBodySchema,
   updateCheckInBodySchema,
@@ -247,6 +251,81 @@ describe('isCheckInRoutine', () => {
     expect(isCheckInRoutine([item])).toBe(false)
     expect(isCheckInRoutine([{ ...item, required: false }])).toBe(false)
     expect(isCheckInRoutine([{ ...item, default: '', type: 'text' as const }])).toBe(false)
+  })
+})
+
+describe('routine items', () => {
+  const vitaminD: CheckInQuestion = {
+    default: 50,
+    key: 'vitamin_d',
+    logs_to: { activity_type: 'supplement', answer_field: 'dose', fields: { substance: 'vitamin D' } },
+    prompt: 'Vitamin D',
+    required: true,
+    type: 'number',
+    unit: 'µg',
+  }
+  const fishOil: CheckInQuestion = {
+    default: true,
+    key: 'fish_oil',
+    logs_to: { activity_type: 'supplement', fields: { substance: 'fish oil' } },
+    prompt: 'Fish oil',
+    required: false,
+    type: 'yes_no',
+  }
+  const rested: CheckInQuestion = {
+    key: 'rested',
+    max: 5,
+    min: 1,
+    prompt: 'How rested?',
+    required: true,
+    type: 'scale',
+  }
+  const feel: CheckInQuestion = {
+    key: 'feel',
+    options: [{ key: 'ok', label: 'OK' }],
+    prompt: 'Feel',
+    required: false,
+    type: 'choice',
+  }
+  const tags: CheckInQuestion = {
+    key: 'tags',
+    options: [
+      { key: 'a', label: 'A' },
+      { key: 'b', label: 'B' },
+    ],
+    prompt: 'Tags',
+    required: false,
+    type: 'multi_choice',
+  }
+  const note: CheckInQuestion = { key: 'note', prompt: 'Note', required: false, type: 'text' }
+
+  test('presetLine lists the items taken, with dose and unit', () => {
+    expect(presetLine([vitaminD, fishOil, { ...rested, default: 4 }])).toBe(
+      'Vitamin D 50 µg, Fish oil, How rested? 4',
+    )
+    expect(
+      presetLine([
+        { ...fishOil, default: false },
+        { ...vitaminD, default: 0 },
+      ]),
+    ).toBe('')
+  })
+
+  test('presetItem labels choices, and is null for an answer not taken', () => {
+    expect(presetItem(feel, 'ok')).toBe('Feel: OK')
+    expect(presetItem(tags, ['a', 'b'])).toBe('Tags: A, B')
+    expect(presetItem(note, 'slept well')).toBe('Note: slept well')
+    expect(presetItem(note, '  ')).toBeNull()
+    expect(presetItem(vitaminD, 0)).toBeNull()
+  })
+
+  test('isTakenAnswer: given and not 0 or no', () => {
+    expect(isTakenAnswer(fishOil, true)).toBe(true)
+    expect(isTakenAnswer(fishOil, false)).toBe(false)
+    expect(isTakenAnswer(vitaminD, 0)).toBe(false)
+    expect(isTakenAnswer(vitaminD, undefined)).toBe(false)
+    expect(isTakenAnswer(vitaminD, 25)).toBe(true)
+    expect(isTakenAnswer(tags, [])).toBe(false)
   })
 })
 

@@ -28,12 +28,7 @@ import {
   iso8601DateTimeSchema,
   metricTypeSchema,
 } from './common.ts'
-import {
-  activityImpactTypeSchema,
-  isPublishableSelector,
-  publishableSelectorMessage,
-  selectorSchema,
-} from './correlations.ts'
+import { activityImpactTypeSchema, selectorSchema } from './correlations.ts'
 import { dashboardConfigSchema, periodKeySchema } from './dashboard.ts'
 import {
   feedStructuredDashboardShareSchema,
@@ -482,8 +477,6 @@ export const defaultArticleChartBucket = (start: Date, end: Date): string =>
  * when `start`/`end` are omitted. `lag_days` shifts the outcome forward relative
  * to the trigger (e.g. does today's training load predict tomorrow's HRV).
  */
-const articleSelectorSchema = selectorSchema.refine(isPublishableSelector, publishableSelectorMessage)
-
 export const articleCorrelationBlockSchema = z
   .object({
     caption: z.string().max(280).optional().meta({ description: 'Optional caption shown under the scatter' }),
@@ -495,16 +488,16 @@ export const articleCorrelationBlockSchema = z
       .int()
       .optional()
       .meta({ description: 'Days the outcome lags the trigger (default: 0)' }),
-    outcome: articleSelectorSchema.meta({
+    outcome: selectorSchema.meta({
       description:
-        "Outcome dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is refused",
+        "Outcome dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is shown to readers by the person's name",
     }),
     start: iso8601DateTimeSchema
       .optional()
       .meta({ description: "Window start (ISO 8601); inherits the article's default window if omitted" }),
-    trigger: articleSelectorSchema.meta({
+    trigger: selectorSchema.meta({
       description:
-        "Trigger / predictor dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is refused",
+        "Trigger / predictor dimension; a `sensitivity` selector is shown to readers by the flag's name; a `people` selector is shown to readers by the person's name",
     }),
     type: z.literal('correlation'),
   })
@@ -962,10 +955,8 @@ export const articleDraftChartBlockSchema = articleChartBlockSchema
 
 export const articleDraftCorrelationBlockSchema = articleCorrelationBlockSchema
   .extend({
-    outcome: articleSelectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
-    trigger: articleSelectorSchema
-      .optional()
-      .meta({ description: 'Trigger / predictor dimension, once chosen' }),
+    outcome: selectorSchema.optional().meta({ description: 'Outcome dimension, once chosen' }),
+    trigger: selectorSchema.optional().meta({ description: 'Trigger / predictor dimension, once chosen' }),
   })
   .meta({
     description: 'A correlation block in a draft; trigger and outcome may be unset',

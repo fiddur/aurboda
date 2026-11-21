@@ -124,6 +124,31 @@ describe('account_email_tokens', () => {
     expect(await centralDb.consumeAccountEmailToken('unknown', 'reset')).toBeNull()
   })
 
+  test('a use that fails leaves the token unused', async () => {
+    await issue('h2')
+    await expect(
+      centralDb.consumeAccountEmailToken('h2', 'reset', async () => {
+        throw new Error('password not saved')
+      }),
+    ).rejects.toThrow('password not saved')
+    expect(await centralDb.consumeAccountEmailToken('h2', 'reset')).not.toBeNull()
+  })
+
+  test('two concurrent uses of one token: only one runs and succeeds', async () => {
+    await issue('h3')
+    let uses = 0
+    const use = async () => {
+      uses++
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    const results = await Promise.all([
+      centralDb.consumeAccountEmailToken('h3', 'reset', use),
+      centralDb.consumeAccountEmailToken('h3', 'reset', use),
+    ])
+    expect(results.filter((r) => r !== null)).toHaveLength(1)
+    expect(uses).toBe(1)
+  })
+
   test('an expired token is refused and pruned at the next issue', async () => {
     await issue('old', 'verify', new Date(Date.now() - 1000))
     expect(await centralDb.consumeAccountEmailToken('old', 'verify')).toBeNull()

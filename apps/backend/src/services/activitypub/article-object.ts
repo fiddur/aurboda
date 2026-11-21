@@ -14,7 +14,7 @@ import type { ArticleContent } from '@aurboda/api-spec'
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
-import { type ArticleFlagNames, articleBlockLabel } from '../article.ts'
+import { type ArticleSelectorNames, articleBlockLabel } from '../article.ts'
 import { escapeXml } from '../charts/chart-svg.ts'
 import { articleBlockFigureSize, FIGURE_BAND_HEIGHT } from '../charts/figure-svg.ts'
 import { httpUrl, type NoteProseImage, renderNoteProse, renderProse } from './note-prose.ts'
@@ -100,7 +100,7 @@ const figureReference = (figure: ArticleFigure): string => {
 export const renderArticleNote = (
   article: ArticleContent,
   blockFigureUrl: (blockIndex: number) => string,
-  flagNames: ArticleFlagNames = {},
+  selectorNames: ArticleSelectorNames = {},
 ): { content: string; figures: ArticleFigure[] } => {
   const figures: ArticleFigure[] = []
   const addFigure = (figure: Omit<ArticleFigure, 'number'>): ArticleFigure => {
@@ -122,7 +122,7 @@ export const renderArticleNote = (
       const figure = addFigure({
         block_index: index,
         height: height + FIGURE_BAND_HEIGHT,
-        label: articleBlockLabel(block, flagNames),
+        label: articleBlockLabel(block, selectorNames),
         media_type: 'image/png',
         url: blockFigureUrl(index),
         width,

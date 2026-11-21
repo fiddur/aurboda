@@ -7,6 +7,7 @@ import {
   IMPORTANT_DATES_DEFAULT_DAYS,
   IMPORTANT_DATES_MAX_SPAN_DAYS,
   type ImportantDate,
+  type JournalEntryRef,
   isValidMonthDay,
   normalizeFediverseHandle,
   parseBirthDate,
@@ -68,6 +69,7 @@ import {
   importantDateOccurrences,
   importantDateTitle,
 } from './important-dates.ts'
+import { listJournalEntryRefs } from './notes.ts'
 import { type Notifier, notifier } from './notifications.ts'
 import { getUserTimezone } from './settings.ts'
 import { loadReactionsForRows, serializeTimelineEntry } from './timeline.ts'
@@ -108,6 +110,7 @@ export interface PeopleDeps {
   deleteDate: (user: string, personId: string, dateId: string) => Promise<boolean>
   listDateSources: (user: string) => Promise<ImportantDateSource[]>
   listRecentActivities: (user: string, personId: string, limit: number) => Promise<DbActivity[]>
+  listJournalEntries: (user: string, personId: string) => Promise<JournalEntryRef[]>
   actorPresentations: (
     user: string,
     actorUris: string[],
@@ -144,6 +147,7 @@ export const defaultPeopleDeps = (resolveHandle?: ResolveActorHandle): PeopleDep
   listDateSources: (user) => listImportantDateSources(user),
   listDates: (user, personId) => listPersonDates(user, personId),
   listDeleted: (user) => listDeletedPeople(user),
+  listJournalEntries: (user, personId) => listJournalEntryRefs(user, 'person', [personId]),
   listPosts: listPostsFromTimeline,
   listRecentActivities: (user, personId, limit) => listRecentActivitiesForPerson(user, personId, limit),
   now: () => new Date(),
@@ -291,7 +295,7 @@ const serializeActivityItem = (activity: DbActivity): Activity => ({
   title: activity.title,
 })
 
-/** The person with their dates and latest activities; refreshes the account cache when it went stale. */
+/** The person with their dates, latest activities and related journal entries; refreshes the account cache when it went stale. */
 export const getPersonDetail = async (
   deps: PeopleDeps,
   user: string,
@@ -300,10 +304,11 @@ export const getPersonDetail = async (
   if (!UUID_RE.test(id)) return null
   const record = await deps.get(user, id)
   if (!record) return null
-  const [actors, dates, activities] = await Promise.all([
+  const [actors, dates, activities, journalEntries] = await Promise.all([
     resolveActors(deps, user, [record]),
     deps.listDates(user, id),
     deps.listRecentActivities(user, id, PERSON_RECENT_ACTIVITIES_LIMIT),
+    deps.listJournalEntries(user, id),
   ])
   const actor = actorOf(record, actors)
   if (actor && record.actor_uri && isStale(record, actor)) {
@@ -318,6 +323,7 @@ export const getPersonDetail = async (
   return {
     ...serializePerson(record, actor),
     dates: dates.map(serializePersonDate),
+    journal_entries: journalEntries,
     recent_activities: activities.map(serializeActivityItem),
   }
 }

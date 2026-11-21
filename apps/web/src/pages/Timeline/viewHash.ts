@@ -62,6 +62,16 @@ export const buildViewHash = (
   return str ? `#${str}` : ''
 }
 
+/**
+ * Put the view hash on the address while it is still the Timeline's `path`. A view change can land
+ * after a tap navigated away (the next page loads lazily while the Timeline is still mounted), and
+ * must not carry the Timeline's hash onto that page.
+ */
+export const replaceViewHash = (path: string, hash: string): void => {
+  if (window.location.pathname !== path) return
+  history.replaceState(null, '', `${path}${window.location.search}${hash}`)
+}
+
 const LINKED_SPAN_MS = 24 * 3_600_000
 
 export const timelineHref = (start: Date, end?: Date): string => {

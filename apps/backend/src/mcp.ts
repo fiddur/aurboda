@@ -100,6 +100,7 @@ import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
+import { checkInDeps } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { isOAuthAccessToken, validateAccessToken } from './services/oauth.ts'
 import { defaultPeopleDeps } from './services/people.ts'
@@ -263,7 +264,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webPush: deps.webPush,
   })
   registerReminderTools(server, user)
-  registerCheckInTools(server, user)
+  registerCheckInTools(server, user, { ...checkInDeps, activityMutated: deps.onActivityMutated })
   registerPeopleTools(server, user, defaultPeopleDeps(deps.followActions?.resolve))
   registerMealTools(server, user)
   registerNutrientRecommendationTools(server, user)

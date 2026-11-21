@@ -2,6 +2,9 @@ import type { Note } from '@aurboda/api-spec'
 
 import { addDays, format, parseISO } from 'date-fns'
 
+import type { JournalQuery } from '../../state/api'
+import type { RelatedFilter } from './related'
+
 /** The local calendar date an entry belongs to: a `day` entry's own date, else its start's date here. */
 export const entryDate = (note: Note): string | undefined => {
   if (note.date) return note.date
@@ -85,3 +88,39 @@ export const entryGlimpse = (note: Pick<Note, 'title' | 'content'>, max = 90): s
 /** Text long enough to be clamped in the list with a "Show more". */
 export const isLongText = (content: string, maxChars = 480, maxLines = 6): boolean =>
   content.length > maxChars || content.split('\n').length > maxLines
+
+/** What the journal page filters on. */
+export interface JournalFilters {
+  search: string
+  tags: string[]
+  jumpTo: string
+  withComments: boolean
+  needsText: boolean
+  related?: RelatedFilter
+}
+
+/**
+ * The search the filters ask for. Related to someone or something, comments on activities and
+ * meals count too: a person's or an activity's page lists them as well.
+ */
+export const journalQueryFor = (
+  filters: JournalFilters,
+  q: string,
+  tz: string | undefined,
+): JournalQuery => ({
+  include_comments: filters.withComments || filters.related !== undefined,
+  needs_text: filters.needsText,
+  q,
+  related: filters.related,
+  tags: filters.tags,
+  to: filters.jumpTo || undefined,
+  tz,
+})
+
+export const isUnfiltered = (filters: JournalFilters, q: string): boolean =>
+  !q.trim() &&
+  filters.tags.length === 0 &&
+  !filters.jumpTo &&
+  !filters.withComments &&
+  !filters.needsText &&
+  filters.related === undefined

@@ -1,10 +1,13 @@
 import type { ArticleBlock, ArticleContent } from '@aurboda/api-spec'
 
+import { feedStructuredArticleCorrelationBlockSchema } from '@aurboda/api-spec'
 import { describe, expect, test, vi } from 'vitest'
 
 import type { ContinuousCorrelation } from './correlations/explore.ts'
 
 import { resolveStructuredCorrelationBlock, resolveStructuredImpactBlock } from './feed-structured.ts'
+
+const PERSON_ID = '11111111-1111-4111-8111-111111111111'
 
 const content: ArticleContent = {
   blocks: [],
@@ -76,13 +79,44 @@ describe('resolveStructuredCorrelationBlock', () => {
       trigger: { flag: 'gluten-id', kind: 'sensitivity' },
       type: 'correlation',
     }
-    const flagNames = vi.fn(async () => ({ 'gluten-id': 'gluten' }))
+    const selectorNames = vi.fn(async () => ({ flag_names: { 'gluten-id': 'gluten' } }))
     const resolved = await resolveStructuredCorrelationBlock('alice', block, content, {
       correlate: async () => correlation(),
-      flagNames,
+      selectorNames,
     })
-    expect(flagNames).toHaveBeenCalledWith('alice', [block])
+    expect(selectorNames).toHaveBeenCalledWith('alice', [block])
     expect(resolved?.flag_names).toEqual({ 'gluten-id': 'gluten' })
+    expect(resolved).not.toHaveProperty('person_names')
+  })
+
+  test('names the person its people selector names', async () => {
+    const block: Extract<ArticleBlock, { type: 'correlation' }> = {
+      outcome: { kind: 'metric', metric: 'hrv' },
+      trigger: { kind: 'people', person_id: PERSON_ID },
+      type: 'correlation',
+    }
+    const selectorNames = vi.fn(async () => ({ person_names: { [PERSON_ID]: 'Anna' } }))
+    const resolved = await resolveStructuredCorrelationBlock('alice', block, content, {
+      correlate: async () => correlation(),
+      selectorNames,
+    })
+    expect(selectorNames).toHaveBeenCalledWith('alice', [block])
+    expect(resolved?.person_names).toEqual({ [PERSON_ID]: 'Anna' })
+    expect(resolved).not.toHaveProperty('flag_names')
+    expect(feedStructuredArticleCorrelationBlockSchema.safeParse(resolved).success).toBe(true)
+  })
+
+  test('has no person names for the time with anyone', async () => {
+    const block: Extract<ArticleBlock, { type: 'correlation' }> = {
+      outcome: { kind: 'metric', metric: 'hrv' },
+      trigger: { kind: 'people' },
+      type: 'correlation',
+    }
+    const resolved = await resolveStructuredCorrelationBlock('alice', block, content, {
+      correlate: async () => correlation(),
+    })
+    expect(resolved).not.toHaveProperty('person_names')
+    expect(resolved).not.toHaveProperty('flag_names')
   })
 
   test('has no flag names without a sensitivity selector', async () => {

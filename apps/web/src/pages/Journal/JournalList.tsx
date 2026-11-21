@@ -6,6 +6,7 @@ import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import {
+  fetchActivityById,
   fetchDeletedEntries,
   fetchNoteTemplates,
   type JournalQuery,
@@ -13,6 +14,7 @@ import {
   restoreNoteTemplate,
   searchJournal,
 } from '../../state/api'
+import { toDisplayName } from '../../utils/displayName'
 import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
 import { AttachmentStrip } from './Attachments'
@@ -24,8 +26,13 @@ import {
   entryTimeLabel,
   groupEntriesByDay,
   isLongText,
+  isUnfiltered,
+  type JournalFilters as Filters,
+  journalQueryFor,
   localToday,
 } from './journal-list'
+import { RelatedChips, usePeople } from './Related'
+import { type RelatedFilter, relatedFilterFromQuery, relatedFilterHref } from './related'
 import { DELETED_TEMPLATES_KEY, TEMPLATES_KEY, TemplateManager, useTemplates } from './Templates'
 
 export const JOURNAL_KEY = ['journal'] as const
@@ -135,6 +142,7 @@ const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }
       </h3>
     )}
     <EntryText content={note.content} />
+    {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
     {note.id && (note.attachments ?? []).length > 0 && (
       <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} />
     )}
@@ -288,12 +296,59 @@ const JournalHeader = () => {
   )
 }
 
-interface Filters {
-  search: string
-  tags: string[]
-  jumpTo: string
-  withComments: boolean
-  needsText: boolean
+const replaceQuery = (filter: RelatedFilter | undefined) => {
+  try {
+    history.replaceState(history.state, '', filter ? relatedFilterHref(filter) : '/journal')
+  } catch {
+    /* not in a browser */
+  }
+}
+
+/** "Related to": a person from the list, or the activity the page was opened with. */
+const RelatedToFilter = ({
+  related,
+  onChange,
+}: {
+  related: RelatedFilter | undefined
+  onChange: (related: RelatedFilter | undefined) => void
+}) => {
+  const people = usePeople()
+  const activity = useQuery({
+    enabled: related?.type === 'activity',
+    queryFn: () => fetchActivityById(related!.id),
+    queryKey: ['journal-related-activity', related?.id],
+  })
+  const choose = (next: RelatedFilter | undefined) => {
+    replaceQuery(next)
+    onChange(next)
+  }
+  const list = people.data?.people ?? []
+  return (
+    <label class="journal-related-filter">
+      <span>Related to</span>
+      <select
+        value={related ? `${related.type}:${related.id}` : ''}
+        onChange={(e) => {
+          const [type, id] = e.currentTarget.value.split(':')
+          choose(type && id ? { id, type: type as RelatedFilter['type'] } : undefined)
+        }}
+      >
+        <option value="">Anyone or anything</option>
+        {related?.type === 'activity' && (
+          <option value={`activity:${related.id}`}>
+            {activity.data
+              ? activity.data.activity.title || toDisplayName(activity.data.activity.activity_type)
+              : 'This activity'}
+          </option>
+        )}
+        {list.map((person) => (
+          <option key={person.id} value={`person:${person.id}`}>
+            {person.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }
 
 const JournalFilters = ({
@@ -347,6 +402,7 @@ const JournalFilters = ({
         />
         <span>Photos without text</span>
       </label>
+      <RelatedToFilter related={filters.related} onChange={(related) => onChange({ related })} />
     </div>
     {filters.tags.length > 0 && (
       <div class="journal-active-tags" aria-label="Showing entries tagged">
@@ -451,6 +507,7 @@ export const JournalList = () => {
   const [filters, setFilters] = useState<Filters>({
     jumpTo: urlQuery.date ?? '',
     needsText: false,
+    related: relatedFilterFromQuery(urlQuery),
     search: '',
     tags: [],
     withComments: false,
@@ -460,16 +517,8 @@ export const JournalList = () => {
   const today = localToday()
   const change = (patch: Partial<Filters>) => setFilters((current) => ({ ...current, ...patch }))
 
-  const query: JournalQuery = {
-    include_comments: filters.withComments,
-    needs_text: filters.needsText,
-    q,
-    tags: filters.tags,
-    to: filters.jumpTo || undefined,
-    tz: browserTimezone(),
-  }
-  const unfiltered =
-    !q.trim() && filters.tags.length === 0 && !filters.jumpTo && !filters.withComments && !filters.needsText
+  const query: JournalQuery = journalQueryFor(filters, q, browserTimezone())
+  const unfiltered = isUnfiltered(filters, q)
 
   return (
     <div class="journal-page">

@@ -15,7 +15,7 @@ import {
   queryBooleanSchema,
   timeRangeQuerySchema,
 } from './common.ts'
-import { commentSchema } from './notes.ts'
+import { commentSchema, journalEntryRefsSchema } from './notes.ts'
 import { activityRouteSummarySchema } from './routes.ts'
 import { activitySegmentEffortSchema } from './segments.ts'
 
@@ -251,6 +251,7 @@ export const activityDetailSchema = activitySchema
     features: activityFeaturesSchema.optional().meta({
       description: 'Computed run features, when the activity has been analysed',
     }),
+    journal_entries: journalEntryRefsSchema.optional(),
     merged_end_time: iso8601DateTimeSchema
       .optional()
       .meta({ description: 'Merged end time across all overlapping sources' }),

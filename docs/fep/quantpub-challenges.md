@@ -493,7 +493,10 @@ in the inbox (§4.1), `attendees` and `Create{Event}` delivery are not yet
 implemented, nor is `joinMode: restricted`. Comment and share Notes name the
 challenge as their `context` (§2), and a host takes comments from other servers
 into its challenge's thread. Aurboda serves and pulls the §3.1 thread and
-delivers comments both ways.
+delivers comments both ways. As a host it sends `Add` for an entry taken in from elsewhere (not
+again on its `Update`) or unhidden, and `Remove` for one hidden or for a share that leaves the
+thread (deleted, or edited out of it); as a member it does not handle the member-removal
+`Remove{target: attendees}` of §4.1.
 
 A `challenge` feed post is still a plain `Note` with a link. Aurboda peers also
 fetch the post's Aurboda-only structured payload, which carries the §3 document

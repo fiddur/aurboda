@@ -18,9 +18,12 @@ import {
   metricNameForDose,
   moveQuestion,
   newQuestion,
+  presetTicks,
+  presetWithoutOption,
   type QuestionDraft,
   startsNewVersion,
   toAddBody,
+  togglePresetOption,
   toUpdateBody,
 } from './form-editor'
 
@@ -411,5 +414,65 @@ describe('the medication or supplement shortcut', () => {
   test('replaces the untouched question a new form starts with', () => {
     expect(isBlankQuestion(newQuestion('scale'))).toBe(true)
     expect(isBlankQuestion({ ...newQuestion('scale'), prompt: 'Mood' })).toBe(false)
+  })
+})
+
+describe('a multi-choice preset', () => {
+  const drinks = question({
+    options: [
+      { key: null, label: 'Coffee', value: '' },
+      { key: null, label: 'Tea', value: '' },
+      { key: null, label: 'Water', value: '' },
+    ],
+    prompt: 'Drinks',
+    type: 'multi_choice',
+  })
+
+  test('ticks and unticks options, in option order', () => {
+    const ticked = togglePresetOption(togglePresetOption('', 2, true), 0, true)
+    expect(ticked).toBe('0,2')
+    expect(presetTicks(ticked, 2)).toBe(true)
+    expect(presetTicks(ticked, 1)).toBe(false)
+    expect(togglePresetOption(ticked, 2, false)).toBe('0')
+    expect(togglePresetOption('0', 0, false)).toBe('')
+  })
+
+  test('follows its options when one is removed', () => {
+    expect(presetWithoutOption('0,2', 2)).toBe('0')
+    expect(presetWithoutOption('0,2', 1)).toBe('0,1')
+    expect(presetWithoutOption('2', 0)).toBe('1')
+    expect(presetWithoutOption('1', 1)).toBe('')
+    expect(presetWithoutOption('0', 1)).toBe('0')
+    expect(presetWithoutOption('', 0)).toBe('')
+  })
+
+  test('saves the ticked option keys as the default, and none when nothing is ticked', () => {
+    const withPreset = buildForm(draft({ questions: [{ ...drinks, preset: '0,2' }] }))
+    expect(withPreset.ok && withPreset.value.questions[0]!.default).toEqual(['coffee', 'water'])
+    const without = buildForm(draft({ questions: [drinks] }))
+    expect(without.ok && 'default' in without.value.questions[0]!).toBe(false)
+  })
+
+  test('a saved multi-choice preset round-trips through the draft', () => {
+    const form: CheckInForm = {
+      ...savedForm,
+      questions: [
+        {
+          default: ['tea'],
+          key: 'drinks',
+          options: [
+            { key: 'coffee', label: 'Coffee' },
+            { key: 'tea', label: 'Tea' },
+          ],
+          prompt: 'Drinks',
+          required: false,
+          type: 'multi_choice',
+        },
+      ],
+    }
+    const loaded = draftFromForm(form)
+    expect(loaded.questions[0]!.preset).toBe('1')
+    const built = buildForm(loaded)
+    expect(built.ok && toUpdateBody(form, built.value)).toEqual({})
   })
 })

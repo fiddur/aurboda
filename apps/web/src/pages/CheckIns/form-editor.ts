@@ -80,7 +80,7 @@ export interface QuestionDraft {
   answer_field: string
   /**
    * The preset answer as typed: a number's or scale's text, `yes` or `no`, a choice's option index,
-   * a text, or a multi-choice's option keys joined by commas.
+   * a text, or a multi-choice's option indexes joined by commas.
    */
   preset: string
 }
@@ -182,8 +182,28 @@ export const canLog = (question: Pick<QuestionDraft, 'type' | 'options'>): boole
 export const canLogActivity = (question: Pick<QuestionDraft, 'type'>): boolean =>
   question.type === 'number' || question.type === 'scale' || question.type === 'yes_no'
 
-/** Whether the question takes a preset answer in the editor; a multi-choice keeps one set elsewhere. */
-export const canPreset = (question: Pick<QuestionDraft, 'type'>): boolean => question.type !== 'multi_choice'
+const presetIndexes = (preset: string): number[] =>
+  preset
+    .split(',')
+    .filter((part) => part.trim() !== '')
+    .map(Number)
+    .filter((index) => Number.isInteger(index) && index >= 0)
+
+/** Whether a multi-choice's preset ticks the option at `index`. */
+export const presetTicks = (preset: string, index: number): boolean => presetIndexes(preset).includes(index)
+
+/** A multi-choice's preset with the option at `index` ticked or not, in option order. */
+export const togglePresetOption = (preset: string, index: number, ticked: boolean): string =>
+  [...new Set([...presetIndexes(preset).filter((i) => i !== index), ...(ticked ? [index] : [])])]
+    .sort((a, b) => a - b)
+    .join(',')
+
+/** The preset of a choice or multi-choice once the option at `removed` is gone: it keeps the same options. */
+export const presetWithoutOption = (preset: string, removed: number): string =>
+  presetIndexes(preset)
+    .filter((index) => index !== removed)
+    .map((index) => (index > removed ? index - 1 : index))
+    .join(',')
 
 /** Whether the question has a numeric answer a score can sum. */
 export const canScore = canLog
@@ -234,7 +254,9 @@ const presetDraft = (question: CheckInQuestion): string => {
       return index < 0 ? '' : String(index)
     }
     case 'multi_choice':
-      return Array.isArray(value) ? value.join(',') : ''
+      return Array.isArray(value)
+        ? question.options.flatMap((option, index) => (value.includes(option.key) ? [index] : [])).join(',')
+        : ''
     default:
       return typeof value === 'number' || typeof value === 'string' ? String(value) : ''
   }
@@ -544,7 +566,10 @@ const buildPreset = (
       return { errors: [], value: option?.key }
     }
     case 'multi_choice': {
-      const keys = typed.split(',').filter((key) => question.options.some((option) => option.key === key))
+      const keys = presetIndexes(typed).flatMap((index) => {
+        const option = question.options[index]
+        return option ? [option.key] : []
+      })
       return { errors: [], value: keys.length > 0 ? keys : undefined }
     }
     case 'text':

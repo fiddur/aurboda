@@ -83,6 +83,7 @@ import { pushAll } from '../utils.ts'
 import { adoptLegacyActivity, insertActivities, insertActivity } from './activities/index.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
+import { deleteNoteLinksOfTarget } from './note-links.ts'
 import { deleteNotesForEntitiesIn, upsertSyncedNote, upsertSyncedNoteIn } from './notes.ts'
 import { insertRawRecord, insertRawRecords } from './raw-records.ts'
 import { insertTimeSeries } from './time-series.ts'
@@ -554,6 +555,11 @@ export const deleteHealthConnectRecords = async (user: string, externalIds: stri
         params,
       )
       await deleteNotesForEntitiesIn(
+        tx,
+        'activity',
+        deletedActivities.rows.map((r) => r.id),
+      )
+      await deleteNoteLinksOfTarget(
         tx,
         'activity',
         deletedActivities.rows.map((r) => r.id),

@@ -78,6 +78,15 @@ recognises a post's hashtags (not inside a word, a URL or markdown code) and
 recomputed whenever the content changes. Every answer's `tags` is the union of
 both, deduplicated and sorted, and tag filters match against that union.
 
+## Related people and activities
+
+A thread root can be related to people and activities without being a comment on
+them: `related` on `POST /notes` and `PATCH /notes/:id` is the full list of
+`{ entity_type: "person" | "activity", entity_id }` (at most 30; present replaces,
+`[]` clears, absent leaves). A reply cannot carry it (`400`), nor an unknown or deleted
+target (`400` naming it). Every thread root in an answer carries `related` with a
+display `label` for each live target. See [Journal → Related](./journal.md#related).
+
 ## Where comments show up
 
 - **Entity pages** -- each activity, meal, report or metric point lists its own
@@ -171,7 +180,7 @@ back:
   seconds keeps one revision per burst, the text as it stood before it. The latest
   50 per comment are kept. `GET /notes/:id/revisions` (MCP `list_note_revisions`)
   lists them newest first (`id`, `content`, `title`, `saved_at`); going back to one
-  is an ordinary update with its text. Synced comments are not editable, so they
+  is an ordinary update with its text. A change of `related` alone keeps no revision. Synced comments are not editable, so they
   have none.
 
 ## Finding comments
@@ -181,17 +190,18 @@ nested, newest first, and `next_cursor` for the next page. With no parameter it
 lists the free-standing comments (`time` and `day`), which is what the journal
 reads.
 
-| Parameter      | What it does                                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `q`            | Full-text search over title and content (PostgreSQL `websearch_to_tsquery`, `simple` configuration, so any language); the last word also matches as a prefix. A match in a reply returns its root |
-| `tags`         | Comma-separated: only comments carrying all of them                                                                                                                                               |
-| `from`, `to`   | Local dates, inclusive: a `day` comment's `date`, else its `start_time`'s date in `tz`                                                                                                            |
-| `on_this_day`  | A date: comments on the same month and day in earlier years (on 28 February of a non-leap year, 29 February counts too)                                                                           |
-| `entity_types` | Comma-separated root types, default `time,day`; add `activity`, `meal`, … to include comments on those. `note` is refused                                                                         |
-| `tz`           | The timezone local dates are read in (default: your timezone)                                                                                                                                     |
-| `limit`        | 1--200, default 50                                                                                                                                                                                |
-| `cursor`       | The `next_cursor` of the previous page                                                                                                                                                            |
-| `needs_text`   | `true`: only entries with a live picture and no text yet (the range read `GET /notes?from=&to=` takes it too)                                                                                     |
+| Parameter                    | What it does                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `q`                          | Full-text search over title and content (PostgreSQL `websearch_to_tsquery`, `simple` configuration, so any language); the last word also matches as a prefix. A match in a reply returns its root |
+| `tags`                       | Comma-separated: only comments carrying all of them                                                                                                                                               |
+| `from`, `to`                 | Local dates, inclusive: a `day` comment's `date`, else its `start_time`'s date in `tz`                                                                                                            |
+| `on_this_day`                | A date: comments on the same month and day in earlier years (on 28 February of a non-leap year, 29 February counts too)                                                                           |
+| `entity_types`               | Comma-separated root types, default `time,day`; add `activity`, `meal`, … to include comments on those. `note` is refused                                                                         |
+| `tz`                         | The timezone local dates are read in (default: your timezone)                                                                                                                                     |
+| `limit`                      | 1--200, default 50                                                                                                                                                                                |
+| `cursor`                     | The `next_cursor` of the previous page                                                                                                                                                            |
+| `needs_text`                 | `true`: only entries with a live picture and no text yet (the range read `GET /notes?from=&to=` takes it too)                                                                                     |
+| `related_type`, `related_id` | Both or neither: only comments related to that person or activity (by its own id; a deleted target matches nothing)                                                                               |
 
 The order is newest first by anchor -- a `day` comment's anchor is the start of
 its date in `tz` -- then by `created_at` and `id`. Comments with no anchor at all
@@ -214,8 +224,8 @@ template. Both, with their limits and their recoverable deletion, are described 
 | `GET`    | `/notes/:id`           | One comment: a thread root with its `replies` and `attachments`, or a single reply                                                                  |
 | `GET`    | `/notes/search`        | List and search thread roots (see [Finding comments](#finding-comments))                                                                            |
 | `GET`    | `/notes/deleted`       | The deleted comments that can still be restored                                                                                                     |
-| `POST`   | `/notes`               | Create a comment in any of the four shapes, with an optional `title` and `tags`                                                                     |
-| `PATCH`  | `/notes/:id`           | Change `content`, `title`, `tags`; times on a `time` comment, `date` on a `day` one (switching kinds as above); `expected_updated_at`               |
+| `POST`   | `/notes`               | Create a comment in any of the four shapes, with an optional `title`, `tags` and (not on a reply) `related`                                         |
+| `PATCH`  | `/notes/:id`           | Change `content`, `title`, `tags`, `related`; times on a `time` comment, `date` on a `day` one (switching kinds as above); `expected_updated_at`    |
 | `DELETE` | `/notes/:id`           | Delete a comment (and, for a root, its replies), restorable for 30 days; `?purge=true` removes it for good                                          |
 | `POST`   | `/notes/:id/restore`   | Restore a deleted comment                                                                                                                           |
 | `GET`    | `/notes/:id/revisions` | A comment's earlier texts, newest first                                                                                                             |

@@ -93,4 +93,36 @@ fun PendingActivityPayload.toAddActivityBody(types: List<ActivityTypeDefinition>
         title = title,
         notes = notes,
         data = typedActivityData(data, types.find { it.name == activity_type }?.dataSchema?.fields),
+        people = people?.ifEmpty { null },
     )
+
+sealed interface PendingActivityOutcome {
+    data object Sent : PendingActivityOutcome
+    data class ActivityFailed(val error: DataResult.Error) : PendingActivityOutcome
+    data class CommentFailed(val error: DataResult.Error) : PendingActivityOutcome
+}
+
+/**
+ * Posts a queued activity, then its comment. The created activity's id is handed to
+ * [saveActivityId] before the comment is posted, so an entry that carries one posts only the
+ * comment and never a second activity.
+ */
+suspend fun sendPendingActivity(
+    payload: PendingActivityPayload,
+    types: List<ActivityTypeDefinition>,
+    sendActivity: suspend (AddActivityBody) -> DataResult<AddActivityResponse>,
+    sendComment: suspend (activityId: String, content: String) -> DataResult<Unit>,
+    saveActivityId: (String) -> Unit,
+): PendingActivityOutcome {
+    val comment = payload.comment?.trim()?.ifEmpty { null }
+    val activityId = payload.created_activity_id ?: when (val result = sendActivity(payload.toAddActivityBody(types))) {
+        is DataResult.Error -> return PendingActivityOutcome.ActivityFailed(result)
+        is DataResult.Success -> result.data.data?.id
+    }
+    if (comment == null || activityId == null) return PendingActivityOutcome.Sent
+    if (payload.created_activity_id == null) saveActivityId(activityId)
+    return when (val result = sendComment(activityId, comment)) {
+        is DataResult.Error -> PendingActivityOutcome.CommentFailed(result)
+        is DataResult.Success -> PendingActivityOutcome.Sent
+    }
+}

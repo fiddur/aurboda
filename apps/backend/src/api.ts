@@ -176,7 +176,7 @@ import {
 } from './services/challenge-thread-remote.ts'
 import { syncThreadEntryForPost } from './services/challenge-thread.ts'
 import { checkInDueActionHandlers } from './services/check-in-actions.ts'
-import { checkInDeps, raiseDueCheckIns } from './services/check-ins.ts'
+import { type CheckInDeps, checkInDeps, raiseDueCheckIns } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
 import { buildFullWindow, evaluateAllRules } from './services/deduction-engine.ts'
 import {
@@ -486,6 +486,7 @@ const main = async () => {
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
   }
+  const checkInServiceDeps: CheckInDeps = { ...checkInDeps, activityMutated: activityNotifier }
   // Home Assistant location pull. The detection trigger is built much
   // further down (it needs the geocode queue, which needs pg-boss), so the
   // post-sync hook reads it through this holder once it exists.
@@ -945,12 +946,12 @@ const main = async () => {
     },
     // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
     // lookup failure never bubbles into the (already-committed) edit's response.
-    updated: (user, post) => {
+    updated: (user, post, droppedMentions) => {
       revokeUnsharedStamps(user, post)
       void (async () => {
         if (!post.activity_id) return
         const activity = await resolveFeedActivity(user, post.activity_id)
-        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity, droppedMentions)
       })().catch(onDeliverError('update', user, post.id))
     },
     // Articles fan out as a Create{Note}/Update{Note} built purely from stored
@@ -1055,7 +1056,7 @@ const main = async () => {
     get: notificationStore.get,
     handlers: {
       autoshare_pending: { skip: autosharePendingSkipHandler(skipAutoshareActivity) },
-      check_in_due: checkInDueActionHandlers(checkInDeps),
+      check_in_due: checkInDueActionHandlers(checkInServiceDeps),
     },
     revise: notificationStore.revise,
   })
@@ -1194,7 +1195,7 @@ const main = async () => {
       await createReminderScheduler(boss, {
         listUsers: () => listUserNames(userDb),
         raiseDue: (user) => raiseDueReminders(reminderDeps, user),
-        raiseDueCheckIns: (user) => raiseDueCheckIns(checkInDeps, user),
+        raiseDueCheckIns: (user) => raiseDueCheckIns(checkInServiceDeps, user),
         raiseImportantDates: (user) => raiseDueImportantDates(defaultPeopleDeps(), user),
       })
     } catch (error) {

@@ -24,24 +24,34 @@ import {
   extractHashtags,
   isFreeStandingNoteType,
   isValidEntityId,
+  JOURNAL_ENTRY_EXCERPT_MAX,
+  JOURNAL_ENTRY_REFS_LIMIT,
+  type JournalEntryRef,
+  NOTE_REPLY_RELATED_ERROR,
   NOTE_REVISION_LIMIT,
   NOTE_REVISION_MIN_INTERVAL_MINUTES,
   NOTE_TAGS_MAX,
   NOTE_TITLE_MAX_LENGTH,
   NOTES_SEARCH_DEFAULT_LIMIT,
   NOTES_SEARCH_MAX_LIMIT,
+  NOTES_SEARCH_RELATED_PAIR_ERROR,
   normalizeNoteTags,
   normalizeNoteTitle,
   notesSearchRootTypes,
   parseNotesSearchEntityTypes,
   parseNotesSearchTags,
   type NoteAttachment,
+  type NoteRelated,
+  type NoteRelatedEntityType,
 } from '@aurboda/api-spec'
 
 import {
   deleteNote as dbDeleteNote,
   getDeletedNotes as dbGetDeletedNotes,
   getNoteAttachmentsForNoteIds as dbGetNoteAttachmentsForNoteIds,
+  getNoteLinksForNoteIds as dbGetNoteLinksForNoteIds,
+  listLiveLinkTargetIds as dbListLiveLinkTargetIds,
+  listNotesRelatedTo as dbListNotesRelatedTo,
   getNoteById as dbGetNoteById,
   getNoteRevisions as dbGetNoteRevisions,
   getNoteRoot as dbGetNoteRoot,
@@ -62,6 +72,8 @@ import {
   type EntityType,
   type Note as DbNote,
   type NoteFieldUpdates,
+  type NoteLinkInput,
+  type NoteLinkRecord,
   type NotesSearchCursor,
 } from '../db/index.ts'
 import { UUID_RE } from '../utils.ts'
@@ -81,6 +93,8 @@ export interface AddNoteInput {
   /** Not on a reply. */
   title?: string | null
   tags?: string[]
+  /** Not on a reply. */
+  related?: NoteLinkInput[]
 }
 
 export interface UpdateNoteInput {
@@ -94,6 +108,8 @@ export interface UpdateNoteInput {
   /** Null clears it. Not on a reply. */
   title?: string | null
   tags?: string[]
+  /** Replaces the links when given; absent leaves them. Not on a reply. */
+  related?: NoteLinkInput[]
   /** When given and the note's `updated_at` differs, nothing is written: the answer is a conflict. */
   expected_updated_at?: string
 }
@@ -130,6 +146,8 @@ export interface NoteData {
   replies?: NoteReplyData[]
   /** On a journal entry (a `time` or `day` root): its live pictures and recordings, in page order. */
   attachments?: NoteAttachment[]
+  /** On a thread root: the people and activities it is related to whose targets are live. */
+  related?: NoteRelated[]
 }
 
 export type NoteResultErrorCode = 'not_found' | 'invalid' | 'conflict'
@@ -159,6 +177,8 @@ export interface NotesSearchInput {
   limit?: number
   cursor?: string
   needs_text?: boolean
+  related_type?: NoteRelatedEntityType
+  related_id?: string
 }
 
 export type NotesSearchResult =
@@ -202,6 +222,7 @@ export const toNoteData = (
   note: DbNote,
   replies?: DbNote[],
   attachments?: readonly NoteAttachment[],
+  related?: readonly NoteRelated[],
 ): NoteData => ({
   attachments: attachments === undefined ? undefined : [...attachments],
   content: note.content,
@@ -215,6 +236,7 @@ export const toNoteData = (
   purge_at: note.deleted_at
     ? new Date(note.deleted_at.getTime() + DELETED_NOTE_RETENTION_DAYS * DAY_MS).toISOString()
     : undefined,
+  related: related === undefined ? undefined : [...related],
   replies: replies?.map(toNoteReplyData),
   source: note.source,
   start_time: note.start_time?.toISOString(),
@@ -238,22 +260,117 @@ const entryAttachments = (
 ): NoteAttachment[] | undefined =>
   isFreeStandingNoteType(note.entity_type) ? (byNote.get(note.id) ?? []) : undefined
 
-/** Attach each root's replies, oldest first, and a journal entry's attachments, in batched lookups. */
-const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
+const localDate = (instant: Date, tz: string): string =>
+  Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
+
+/** A link's label: the person's name, or the activity's name and its local date in `tz`. */
+export const noteRelatedLabel = (link: NoteLinkRecord, tz: string): string =>
+  link.start_time === null ? link.name : `${link.name}, ${localDate(link.start_time, tz)}`
+
+/** The visible links of the thread roots among `notes`, labelled, in one batched lookup. */
+const relatedFor = async (user: string, notes: DbNote[]): Promise<Map<string, NoteRelated[]>> => {
+  const rootIds = notes.filter((n) => n.entity_type !== 'note').map((n) => n.id)
+  if (rootIds.length === 0) return new Map()
+  const links = await dbGetNoteLinksForNoteIds(user, rootIds)
+  const needsZone = [...links.values()].some((list) => list.some((link) => link.start_time !== null))
+  const tz = needsZone ? await getUserTimezone(user) : 'UTC'
+  return new Map(
+    [...links].map(([id, list]) => [
+      id,
+      list.map((link) => ({
+        entity_id: link.entity_id,
+        entity_type: link.entity_type,
+        label: noteRelatedLabel(link, tz),
+      })),
+    ]),
+  )
+}
+
+/** A thread root's links ([] when it has none); undefined for a reply. */
+const rootRelated = (note: DbNote, byNote: Map<string, NoteRelated[]>): NoteRelated[] | undefined =>
+  note.entity_type === 'note' ? undefined : (byNote.get(note.id) ?? [])
+
+/** Attach each root's replies, oldest first, a journal entry's attachments and the links, in batched lookups. */
+export const withReplies = async (user: string, roots: DbNote[]): Promise<NoteData[]> => {
   if (roots.length === 0) return []
-  const [repliesByRoot, attachments] = await Promise.all([
+  const [repliesByRoot, attachments, related] = await Promise.all([
     dbGetRepliesForRootIds(
       user,
       roots.map((n) => n.id),
     ),
     attachmentsFor(user, roots),
+    relatedFor(user, roots),
   ])
-  return roots.map((n) => toNoteData(n, repliesByRoot.get(n.id) ?? [], entryAttachments(n, attachments)))
+  return roots.map((n) =>
+    toNoteData(n, repliesByRoot.get(n.id) ?? [], entryAttachments(n, attachments), rootRelated(n, related)),
+  )
 }
 
-/** One root as answered by a write: with its attachments when it is a journal entry. */
-const withAttachments = async (user: string, note: DbNote): Promise<NoteData> =>
-  toNoteData(note, undefined, entryAttachments(note, await attachmentsFor(user, [note])))
+/** One root as answered by a write: with its attachments when it is a journal entry, and its links. */
+const withAttachments = async (user: string, note: DbNote): Promise<NoteData> => {
+  const [attachments, related] = await Promise.all([attachmentsFor(user, [note]), relatedFor(user, [note])])
+  return toNoteData(note, undefined, entryAttachments(note, attachments), rootRelated(note, related))
+}
+
+/** A just-created root: a journal entry answers with its (still empty) attachments, as reads do. */
+const createdNoteData = async (user: string, note: DbNote, related: boolean): Promise<NoteData> =>
+  toNoteData(
+    note,
+    undefined,
+    entryAttachments(note, new Map()),
+    rootRelated(note, related ? await relatedFor(user, [note]) : new Map()),
+  )
+
+const relatedKinds: { type: NoteRelatedEntityType; label: string }[] = [
+  { label: 'person', type: 'person' },
+  { label: 'activity', type: 'activity' },
+]
+
+/** Why the links are refused (on a reply, or naming the targets that are not a live person or activity), or null. */
+const checkRelated = async (
+  user: string,
+  related: NoteLinkInput[] | undefined,
+  isReply: boolean,
+): Promise<string | null> => {
+  if (related !== undefined && isReply) return NOTE_REPLY_RELATED_ERROR
+  if (related === undefined || related.length === 0) return null
+  for (const { label, type } of relatedKinds) {
+    const ids = [...new Set(related.filter((l) => l.entity_type === type).map((l) => l.entity_id))]
+    if (ids.length === 0) continue
+    const live = new Set((await dbListLiveLinkTargetIds(user, type, ids)).map((id) => id.toLowerCase()))
+    const unknown = ids.filter((id) => !live.has(id.toLowerCase()))
+    if (unknown.length > 0) return `Unknown ${label}: ${unknown.join(', ')}`
+  }
+  return null
+}
+
+/** The first non-empty line of a note's text, cut to the excerpt length. */
+export const journalExcerpt = (content: string): string =>
+  (content.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, JOURNAL_ENTRY_EXCERPT_MAX)
+
+/** The live notes related to any of `targetIds`, newest first, as a person's or an activity's page lists them. */
+export async function listJournalEntryRefs(
+  user: string,
+  targetType: NoteRelatedEntityType,
+  targetIds: string[],
+): Promise<JournalEntryRef[]> {
+  if (targetIds.length === 0) return []
+  const notes = await dbListNotesRelatedTo(
+    user,
+    targetType,
+    targetIds,
+    JOURNAL_ENTRY_REFS_LIMIT,
+    await getUserTimezone(user),
+  )
+  return notes.map((n) => ({
+    date: n.date ?? undefined,
+    entity_type: n.entity_type,
+    excerpt: journalExcerpt(n.content),
+    id: n.id,
+    start_time: n.start_time?.toISOString(),
+    title: n.title ?? undefined,
+  }))
+}
 
 /** A real calendar date in YYYY-MM-DD, not just the shape of one. */
 export const isCalendarDate = (value: string): boolean => {
@@ -334,7 +451,15 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
   if (input.entity_type !== 'day' && input.date !== undefined) {
     return invalid("date can only be set when entity_type is 'day'")
   }
-  const extras = { hashtags: extractHashtags(input.content), tags: checked.tags, title: checked.title }
+  const relatedError = await checkRelated(user, input.related, input.entity_type === 'note')
+  if (relatedError) return invalid(relatedError)
+  const hasRelated = input.related !== undefined && input.related.length > 0
+  const extras = {
+    hashtags: extractHashtags(input.content),
+    tags: checked.tags,
+    title: checked.title,
+    ...(hasRelated ? { related: input.related } : {}),
+  }
 
   if (input.entity_type === 'day') {
     if (input.entity_id) return invalid("entity_id must be omitted when entity_type is 'day'")
@@ -348,7 +473,7 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
       ...extras,
       date: input.date,
     })
-    return { data: toNoteData(note), success: true }
+    return { data: await createdNoteData(user, note, hasRelated), success: true }
   }
 
   if (input.entity_type === 'time') {
@@ -370,7 +495,7 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
       input.end_time ? new Date(input.end_time) : undefined,
       extras,
     )
-    return { data: toNoteData(note), success: true }
+    return { data: await createdNoteData(user, note, hasRelated), success: true }
   }
 
   if (!input.entity_id) {
@@ -410,7 +535,15 @@ export async function addNote(user: string, input: AddNoteInput): Promise<NoteRe
     times?.end_time,
     extras,
   )
-  return { data: toNoteData(note), success: true }
+  return {
+    data: toNoteData(
+      note,
+      undefined,
+      undefined,
+      rootRelated(note, hasRelated ? await relatedFor(user, [note]) : new Map()),
+    ),
+    success: true,
+  }
 }
 
 /** Why moving a `time` note to the times in `fields` is refused, if it is: the result is checked whole. */
@@ -475,6 +608,8 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
   const checked = checkTitleAndTags(fields, existing.entity_type === 'note')
   if (typeof checked === 'string') return invalid(checked)
   if (fields.content === '' && !isFreeStandingNoteType(existing.entity_type)) return invalid(EMPTY_CONTENT)
+  const relatedError = await checkRelated(user, fields.related, existing.entity_type === 'note')
+  if (relatedError) return invalid(relatedError)
 
   const anchor = anchorUpdate(existing, fields)
   if (typeof anchor === 'string') return invalid(anchor)
@@ -486,6 +621,7 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
       ...anchor,
       content: fields.content,
       hashtags: fields.content === undefined ? undefined : extractHashtags(fields.content),
+      related: fields.related,
       tags: checked.tags,
       title: checked.title,
     },
@@ -646,6 +782,12 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
   if (input.from !== undefined && input.to !== undefined && input.from > input.to) {
     return searchInvalid('to must not precede from')
   }
+  if ((input.related_type === undefined) !== (input.related_id === undefined)) {
+    return searchInvalid(NOTES_SEARCH_RELATED_PAIR_ERROR)
+  }
+  if (input.related_id !== undefined && !UUID_RE.test(input.related_id)) {
+    return searchInvalid(`Not a UUID: ${input.related_id}`)
+  }
   const cursor = input.cursor === undefined ? undefined : decodeNotesCursor(input.cursor)
   if (cursor === null) return searchInvalid('Not a valid cursor')
   const limit = Math.min(
@@ -659,6 +801,10 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
     from: input.from,
     limit,
     on_this_day: input.on_this_day === undefined ? undefined : onThisDayFilter(input.on_this_day),
+    related:
+      input.related_type === undefined || input.related_id === undefined
+        ? undefined
+        : { entity_id: input.related_id, entity_type: input.related_type },
     tags,
     text: input.q === undefined ? undefined : splitSearchText(input.q),
     needs_text: input.needs_text,
@@ -672,18 +818,19 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
   }
 }
 
-/** All comments on an entity, each with its own thread nested under `replies`. */
+/**
+ * All comments on an entity, each with its own thread nested under `replies`. A deleted person has
+ * none, as an unknown entity has none; restoring the person brings them back.
+ */
 export async function getNotesForEntity(
   user: string,
   entityType: EntityType,
   entityId: string,
 ): Promise<NoteData[]> {
+  if (entityType === 'person' && (!UUID_RE.test(entityId) || !(await getPerson(user, entityId)))) return []
   const notes = await dbGetNotesForEntity(user, entityType, entityId)
   return withReplies(user, notes)
 }
-
-const localDate = (instant: Date, tz: string): string =>
-  Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
 
 /**
  * The window's end is exclusive for its dates: a window ending exactly at a local midnight covers

@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import {
   addTags,
   emptyEntryForm,
+  entryDay,
   entryFormProblem,
   formFromNote,
   formToCreateBody,
@@ -125,5 +126,49 @@ describe('isEntryEmpty and sameEntry', () => {
       true,
     )
     expect(sameEntry(base, { ...base, content: 'x' })).toBe(false)
+  })
+})
+
+describe('related links', () => {
+  const anna = {
+    entity_id: '00000000-0000-4000-8000-00000000000a',
+    entity_type: 'person' as const,
+    label: 'Anna',
+  }
+
+  test("a note's links fill the form; none is an empty list", () => {
+    expect(
+      formFromNote({ content: '', date: '2026-11-20', entity_type: 'day', related: [anna] }).related,
+    ).toEqual([anna])
+    expect(formFromNote({ content: '', date: '2026-11-20', entity_type: 'day' }).related).toEqual([])
+  })
+
+  test('a new entry sends its links without labels, and none when there are none', () => {
+    expect(formToCreateBody({ ...base, related: [anna] }).related).toEqual([
+      { entity_id: anna.entity_id, entity_type: 'person' },
+    ])
+    expect(formToCreateBody(base)).not.toHaveProperty('related')
+  })
+
+  test('the autosave sends related only when it differs from what the server confirmed', () => {
+    expect(formToUpdateBody({ ...base, related: [anna] }, undefined, [anna])).not.toHaveProperty('related')
+    expect(formToUpdateBody({ ...base, related: [anna] }, undefined, []).related).toEqual([
+      { entity_id: anna.entity_id, entity_type: 'person' },
+    ])
+    expect(formToUpdateBody(base, undefined, [anna]).related).toEqual([])
+  })
+
+  test('two forms with other links are not the same entry', () => {
+    expect(sameEntry(base, { ...base, related: [anna] })).toBe(false)
+    expect(sameEntry({ ...base, related: [anna] }, { ...base, related: [{ ...anna, label: 'A' }] })).toBe(
+      true,
+    )
+  })
+})
+
+describe('entryDay', () => {
+  test('an all-day entry is on its date, a timed one on its start day', () => {
+    expect(entryDay({ allDay: true, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-20')
+    expect(entryDay({ allDay: false, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-19')
   })
 })

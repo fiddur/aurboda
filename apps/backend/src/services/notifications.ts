@@ -53,6 +53,8 @@ export interface RaiseNotificationInput {
 
 export type NotificationPing = (user: string) => void | Promise<void>
 
+const pingNotificationStreams: NotificationPing = (user) => emitLiveNotify(user, 'notification')
+
 type LogError = (message: string, error: unknown) => void
 
 const defaultLogError: LogError = (message, error) => console.error(message, error)
@@ -234,7 +236,7 @@ export const notifier: Notifier = createNotifier({
     await pushEnqueuer?.(user, notificationId)
   },
   getPreference: (user, type) => getNotificationPreference(user, type),
-  ping: (user) => emitLiveNotify(user, 'notification'),
+  ping: (user) => pingNotificationStreams(user),
   insert: (user, input) => insertNotification(user, input),
   prune: (user, readBefore, anyBefore) => pruneNotifications(user, readBefore, anyBefore),
   revise: (user, target, patch) => reviseNotification(user, target, patch),
@@ -383,6 +385,22 @@ export const withNotificationPing = (
   }
 }
 
+/**
+ * Wraps a write outside the store that marks notifications read and resolves to how many rows it
+ * changed, so it pings the user's open tabs like the store's own writes do.
+ */
+export const pingWhenMarkedRead =
+  <Args extends unknown[]>(
+    markRead: (user: string, ...args: Args) => Promise<number>,
+    ping: NotificationPing = pingNotificationStreams,
+    logError: LogError = defaultLogError,
+  ) =>
+  async (user: string, ...args: Args): Promise<number> => {
+    const updated = await markRead(user, ...args)
+    if (updated > 0) firePing(ping, logError)(user)
+    return updated
+  }
+
 /** Resolved at call time, so importing this module never touches the db module's bindings. */
 export const notificationStore: NotificationStore = withNotificationPing(
   {
@@ -395,7 +413,7 @@ export const notificationStore: NotificationStore = withNotificationPing(
     revise: (user, id, patch) => reviseNotification(user, { id }, patch),
     upsertPreference: (user, type, patch) => upsertNotificationPreference(user, type, patch),
   },
-  (user) => emitLiveNotify(user, 'notification'),
+  pingNotificationStreams,
 )
 
 export type NotificationsPage = Required<

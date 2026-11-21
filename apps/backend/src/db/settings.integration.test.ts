@@ -83,6 +83,18 @@ describe('Settings Integration Tests', () => {
       await upsertUserSettings(user, {}, ['training_load'])
       expect(await getUserSettings(user)).not.toHaveProperty('training_load')
     })
+
+    test('clearing training_load keeps a recompute lease in progress', async () => {
+      const user = getTestUser()
+      const lease = { holder: 'process-a', until: '2026-11-18T12:02:00.000Z' }
+      await mutateTrainingLoadSettings(user, () => ({
+        impulse_recompute_lease: lease,
+        impulse_watermark: '2026-11-17T08:00:00.000Z',
+        tau_acute: 5,
+      }))
+      await upsertUserSettings(user, {}, ['training_load'])
+      expect((await getUserSettings(user))?.training_load).toEqual({ impulse_recompute_lease: lease })
+    })
   })
 
   describe('mutateTrainingLoadSettings', () => {

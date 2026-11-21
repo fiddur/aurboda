@@ -20,7 +20,6 @@ import {
   buildForm,
   canLog,
   canLogActivity,
-  canPreset,
   canScore,
   changeType,
   draftFromForm,
@@ -37,10 +36,13 @@ import {
   moveQuestion,
   newQuestion,
   type OptionDraft,
+  presetTicks,
+  presetWithoutOption,
   QUESTION_TYPES,
   type QuestionDraft,
   startsNewVersion,
   toAddBody,
+  togglePresetOption,
   toUpdateBody,
 } from './form-editor'
 import { checkInKeys, useRefreshCheckIns } from './queries'
@@ -98,6 +100,27 @@ function PresetInput({
           </select>
           {hint}
         </label>
+      )
+    case 'multi_choice':
+      return (
+        <fieldset class="checkin-field checkin-preset-options">
+          <legend>
+            Preset answer <small>(optional)</small>
+          </legend>
+          {question.options.map((option, index) => (
+            <label key={index} class="checkin-check">
+              <input
+                type="checkbox"
+                checked={presetTicks(question.preset, index)}
+                onChange={(e) =>
+                  set({ preset: togglePresetOption(question.preset, index, e.currentTarget.checked) })
+                }
+              />
+              {option.label || `Option ${index + 1}`}
+            </label>
+          ))}
+          {hint}
+        </fieldset>
       )
     default:
       return (
@@ -460,7 +483,7 @@ function OptionsEditor({
 }: {
   options: OptionDraft[]
   withValues: boolean
-  onChange: (options: OptionDraft[]) => void
+  onChange: (options: OptionDraft[], removed?: number) => void
 }) {
   const set = (index: number, patch: Partial<OptionDraft>) =>
     onChange(options.map((option, i) => (i === index ? { ...option, ...patch } : option)))
@@ -493,7 +516,12 @@ function OptionsEditor({
             class="checkin-icon-btn"
             aria-label={`Remove option ${index + 1}`}
             disabled={options.length <= 2}
-            onClick={() => onChange(options.filter((_, i) => i !== index))}
+            onClick={() =>
+              onChange(
+                options.filter((_, i) => i !== index),
+                index,
+              )
+            }
           >
             ×
           </button>
@@ -668,11 +696,11 @@ function QuestionEditor({
         <OptionsEditor
           options={question.options}
           withValues={question.type === 'choice'}
-          onChange={(options) =>
+          onChange={(options, removed) =>
             set({
               logs: question.logs && (question.log_as === 'activity' || canLog({ ...question, options })),
               options,
-              preset: Number(question.preset) < options.length ? question.preset : '',
+              preset: removed === undefined ? question.preset : presetWithoutOption(question.preset, removed),
             })
           }
         />
@@ -685,7 +713,7 @@ function QuestionEditor({
         />
         Required
       </label>
-      {canPreset(question) && <PresetInput question={question} set={set} />}
+      <PresetInput question={question} set={set} />
       <SaveAnswerAs question={question} activityTypes={activityTypes} set={set} />
     </li>
   )

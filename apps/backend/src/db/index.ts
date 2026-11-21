@@ -301,17 +301,32 @@ export {
   upsertSyncedNote,
 } from './notes.ts'
 export {
+  copyActivityNoteLinksIn,
+  deleteNoteLinksOfTarget,
+  getNoteLinksForNoteIds,
+  listLiveLinkTargetIds,
+  listNotesRelatedTo,
+  type NoteLinkInput,
+  type NoteLinkRecord,
+  type RelatedNoteRecord,
+  replaceNoteLinks,
+} from './note-links.ts'
+export {
   getDeletedNoteAttachments,
   getNoteAttachment,
   getNoteAttachmentBytes,
   getNoteAttachmentsForNoteIds,
   getNoteAttachmentUsage,
   insertNoteAttachment,
+  insertNoteAttachmentWithinLimits,
   type NewNoteAttachment,
+  type NoteAttachmentLimitResult,
+  type NoteAttachmentLimits,
   type NoteAttachmentRecord,
   type NoteAttachmentUsage,
   purgeNoteAttachment,
   restoreNoteAttachment,
+  restoreNoteAttachmentWithinLimit,
   softDeleteNoteAttachment,
 } from './note-attachments.ts'
 export {
@@ -1001,6 +1016,7 @@ export {
   listCheckIns,
   type ListCheckInsOptions,
   listFormCheckInsBetween,
+  listOverridesOfActivities,
   purgeDeletedCheckIns,
   restoreCheckInForm,
   setCheckInDeleted,
@@ -1008,6 +1024,7 @@ export {
   softDeleteCheckInForm,
   updateCheckIn,
   updateCheckInForm,
+  withCheckInFormLock,
 } from './check-ins.ts'
 export {
   type ActivityPersonRef,
@@ -1018,6 +1035,7 @@ export {
   type FollowPresentationRow,
   getLivePersonByActor,
   getPeopleForActivities,
+  getPeopleNamesVersion,
   getPerson,
   getPersonDate,
   type ImportantDateSource,

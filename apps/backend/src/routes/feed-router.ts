@@ -10,6 +10,7 @@ import {
   type CreateArticleBody,
   createArticleBodySchema,
   type CreateArticleDraftBody,
+  type PostMention,
   createArticleDraftBodySchema,
   type DashboardSharePreviewResponse,
   type FeedPostReactionsResponse,
@@ -52,7 +53,6 @@ import type { Activity, FeedPostRecord, FeedQuoteAuthorizationRecord } from '../
 import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
-import type { LiveHub } from '../services/live-hub.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
 
 import {
@@ -82,7 +82,7 @@ import {
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import {
-  articleFlagNames,
+  articleSelectorNames,
   articleWarningsField,
   mergeArticleContent,
   validateArticleContent,
@@ -131,7 +131,6 @@ import { withTimeout } from '../services/with-timeout.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { UUID_RE } from '../utils.ts'
 import { validateBody, validateQuery } from '../validation.ts'
-import { LIVE_UNAVAILABLE, serveLiveStream } from './events-router.ts'
 
 /**
  * Fire-and-forget federation delivery hooks for the feed-post lifecycle,
@@ -148,7 +147,8 @@ import { LIVE_UNAVAILABLE, serveLiveStream } from './events-router.ts'
  */
 export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
-  updated: (user: string, post: FeedPostRecord) => void
+  /** `droppedMentions` are the accounts the edit stopped mentioning, sent the `Update` as well. */
+  updated: (user: string, post: FeedPostRecord, droppedMentions?: PostMention[]) => void
   /** `stamps` are the post's FEP-044f quote approvals, read before the delete dropped them. */
   deleted: (user: string, post: FeedPostRecord, stamps: FeedQuoteAuthorizationRecord[]) => void
   createdArticle: (user: string, post: FeedPostRecord) => void
@@ -180,7 +180,6 @@ const reactionResponse = (result: ReactionResult): { status: number; body: Timel
 export const createFeedRouter = (
   authMiddleware: AnyMiddleware,
   deliver?: FeedDeliver,
-  hub?: LiveHub,
   apiBaseUrl?: string,
   retroEnrichTimeline?: RetroEnrichTrigger,
   /** Canonical web origin, to build a shared challenge's public URL (#994). */
@@ -213,15 +212,6 @@ export const createFeedRouter = (
       res.json({ next_cursor, posts, success: true })
     },
   )
-
-  // The live stream moved to `/events/stream`; this alias serves web bundles from
-  // before that and can go after the next release. Registered before `/:postId`-style routes.
-  router.get<Record<string, never>, BaseResponse>('/timeline/stream', authMiddleware, async (req, res) => {
-    if (!hub) return res.status(503).json(LIVE_UNAVAILABLE)
-    await serveLiveStream(req, res, req.user!, hub, (kind) =>
-      kind === 'timeline' ? 'event: new\ndata: {}\n\n' : null,
-    )
-  })
 
   router.get<Record<string, never>, TimelineResponse, unknown, TimelineQuery>(
     '/timeline',
@@ -747,7 +737,7 @@ export const createFeedRouter = (
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
         await renderableArticleBlocks(user, post.id, post.article),
-        await articleFlagNames(user, post.article.blocks),
+        await articleSelectorNames(user, post.article.blocks),
       )
       res.json({ markdown, success: true })
     },
@@ -803,7 +793,7 @@ export const createFeedRouter = (
       }
       // Federate the edit as an Update so followers replace the stored object.
       // Fire-and-forget: the impl resolves what it needs, so it can't 500 here.
-      deliverFeedPostEdit(deliver, user, record)
+      deliverFeedPostEdit(deliver, user, record, existing)
       await followPostEditInThread(thread, user, record)
       res.json({
         post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),

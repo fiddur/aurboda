@@ -3,6 +3,7 @@ import type { Activity } from './types.ts'
 
 import { activityColumns } from './activities/queries.ts'
 import { query, withUserTransaction } from './connection.ts'
+import { deleteNoteLinksOfTarget } from './note-links.ts'
 import { deleteNotesForEntitiesIn } from './notes.ts'
 import { mapActivityRow } from './row-mappers.ts'
 
@@ -147,6 +148,19 @@ export const getLivePersonByActor = async (user: string, actorUri: string): Prom
   return result.rows[0] ?? null
 }
 
+/**
+ * Changes whenever a live person's name changes or a person is added, deleted, restored or purged,
+ * so a cache of anything that shows a person's name can carry it in its key.
+ */
+export const getPeopleNamesVersion = async (user: string): Promise<string> => {
+  const result = await query<{ version: string }>(
+    user,
+    `SELECT COUNT(*)::int || ':' || COALESCE(md5(string_agg(id::text || ':' || name, ',' ORDER BY id)), '') AS version
+       FROM people WHERE deleted_at IS NULL`,
+  )
+  return result.rows[0]!.version
+}
+
 /** The ids among `ids` that name a live person. */
 export const listLivePersonIds = async (user: string, ids: string[]): Promise<string[]> => {
   if (ids.length === 0) return []
@@ -279,11 +293,12 @@ export const restorePerson = async (user: string, id: string): Promise<PersonRes
 const purgeIn = async (tx: Queryable, ids: string[]): Promise<number> => {
   if (ids.length === 0) return 0
   await deleteNotesForEntitiesIn(tx, 'person', ids)
+  await deleteNoteLinksOfTarget(tx, 'person', ids)
   const result = await query(tx, 'DELETE FROM people WHERE id = ANY($1::uuid[])', [ids])
   return result.rowCount ?? 0
 }
 
-/** Removes a person for good, deleted or not, with their dates, notes and activity links. */
+/** Removes a person for good, deleted or not, with their dates, notes, activity links and journal links. */
 export const purgePerson = async (user: string, id: string): Promise<boolean> =>
   withUserTransaction(user, async (tx) => (await purgeIn(tx, [id])) > 0)
 

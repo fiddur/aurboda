@@ -231,10 +231,22 @@ class SyncWorker(
     var failed = 0
 
     for (entry in entries) {
-      val result = when (val data = entry.data) {
+      val result: DataResult.Error? = when (val data = entry.data) {
         is PendingPayload.Activity -> {
-          val body = data.payload.toAddActivityBody(activityTypes)
-          postActivity(httpClient, serverUrl, authToken, body)
+          val outcome = sendPendingActivity(
+            payload = data.payload,
+            types = activityTypes,
+            sendActivity = { body -> postActivity(httpClient, serverUrl, authToken, body) },
+            sendComment = { activityId, content ->
+              postEntityComment(httpClient, serverUrl, authToken, "activity", activityId, content)
+            },
+            saveActivityId = { activityId -> recordCreatedActivity(applicationContext, entry.id, activityId) },
+          )
+          when (outcome) {
+            PendingActivityOutcome.Sent -> null
+            is PendingActivityOutcome.ActivityFailed -> outcome.error
+            is PendingActivityOutcome.CommentFailed -> outcome.error
+          }
         }
         is PendingPayload.Metric -> {
           val body = net.aurboda.api.models.AddMetricBody(
@@ -243,11 +255,14 @@ class SyncWorker(
             time = data.payload.time,
             unit = data.payload.unit,
           )
-          postMetric(httpClient, serverUrl, authToken, body)
+          when (val posted = postMetric(httpClient, serverUrl, authToken, body)) {
+            is DataResult.Success -> null
+            is DataResult.Error -> posted
+          }
         }
       }
       when (result) {
-        is DataResult.Success<*> -> {
+        null -> {
           removePendingEntry(applicationContext, entry.id)
           Log.d(TAG, "Pending entry ${entry.id} synced successfully")
           sentPayloads.add(entry.data)

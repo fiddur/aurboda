@@ -12,6 +12,9 @@ export interface FakeActivity {
   start_time: Date
   external_id: string
   deleted: boolean
+  deleted_at?: Date
+  /** Set on an override: the activities it edits. */
+  override_target_ids?: string[]
 }
 
 export interface FakePoint {
@@ -52,6 +55,8 @@ export const fakeCheckInDeps = (
   const customMetrics: CustomMetricDefinition[] = []
   const raised: Parameters<CheckInDeps['raise']>[1][] = []
   const markedRead: [string, readonly string[]][] = []
+  const mutated: [string, Date, Date][] = []
+  const locks = new Map<string, Promise<unknown>>()
   const catalog = loadMetricCatalog()
 
   const joined = (id: string): CheckInRecord | null => {
@@ -70,16 +75,26 @@ export const fakeCheckInDeps = (
     }
   }
 
+  const span = ({ activity_type, start_time }: FakeActivity) => ({
+    activity_type,
+    end_time: null,
+    start_time,
+  })
+
   const deps: CheckInDeps = {
     activityIsLive: async (_user, id) => activities.get(id)?.deleted === false,
+    activityMutated: (_user, activityType, start, end) => {
+      mutated.push([activityType, start, end])
+    },
     activityTypeSchema: async (_user, activityType) =>
       activityType in activityTypes ? { schema: activityTypes[activityType] } : undefined,
-    addActivity: async (_user, input) => {
+    addActivity: async (_user, input, onMutated) => {
       if (input.data.dose !== undefined && (input.data.dose as number) < 0) {
         return { error: 'Data validation failed: dose below 0', success: false }
       }
       const id = nextId()
       activities.set(id, { ...input, deleted: false, id })
+      onMutated?.(_user, input.activity_type, input.start_time, input.start_time)
       return { id, success: true }
     },
     catalog: () => catalog,
@@ -88,9 +103,10 @@ export const fakeCheckInDeps = (
     },
     deleteActivity: async (_user, id) => {
       const activity = activities.get(id)
-      if (!activity || activity.deleted) return false
+      if (!activity || activity.deleted) return null
       activity.deleted = true
-      return true
+      activity.deleted_at = now
+      return span(activity)
     },
     deletePoints: async (_user, removed) => {
       for (const point of removed) {
@@ -184,14 +200,23 @@ export const fakeCheckInDeps = (
       markedRead.push([formId, scheduledFor])
     },
     now: () => now,
+    overridesOf: async (_user, activityIds, deletedSince) =>
+      [...activities.values()]
+        .filter(
+          (activity) =>
+            activity.override_target_ids?.every((target) => activityIds.includes(target)) &&
+            (deletedSince ? activity.deleted && activity.deleted_at! >= deletedSince : !activity.deleted),
+        )
+        .map((activity) => activity.id),
     raise: async (_user, input) => {
       raised.push(input)
     },
     restoreActivity: async (_user, id) => {
       const activity = activities.get(id)
-      if (!activity?.deleted) return false
+      if (!activity?.deleted) return null
       activity.deleted = false
-      return true
+      delete activity.deleted_at
+      return span(activity)
     },
     restoreForm: async (_user, id, notBefore) => {
       const form = forms.get(id)
@@ -234,6 +259,14 @@ export const fakeCheckInDeps = (
       }
       return next
     },
+    withFormLock: <T>(_user: string, formId: string, fn: () => Promise<T>): Promise<T> => {
+      const run = (locks.get(formId) ?? Promise.resolve()).then(fn)
+      locks.set(
+        formId,
+        run.catch(() => undefined),
+      )
+      return run
+    },
     writePoints: async (_user, items) => {
       const errors: { index: number; error: string }[] = []
       items.forEach((item, index) => {
@@ -259,6 +292,7 @@ export const fakeCheckInDeps = (
     deps,
     forms,
     markedRead,
+    mutated,
     points,
     raised,
     setNow: (date: Date) => {

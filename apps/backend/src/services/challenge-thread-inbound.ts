@@ -279,7 +279,7 @@ const admitIntoThread = async (
   )
   const admitted = await admitThreadEntry(deps, host, challenge, candidate)
   if (!admitted.admitted) return null
-  if (!verifiedRemoteActors(members).includes(actorUri)) {
+  if (admitted.created && !verifiedRemoteActors(members).includes(actorUri)) {
     signalVerifiedMembers(deps, thread, members, 'add', admitted.entry.object_uri)
   }
   return admission
@@ -290,7 +290,8 @@ const admitIntoThread = async (
  * Authority as for the timeline (same host, explicit attribution); a non-public Note only with the
  * challenge as its `context`; participants-only from participants; and at most
  * `INBOUND_NON_MEMBER_DAILY_LIMIT` new entries a day from anyone else. An entry the verified members
- * on other servers did not get pushed by its author is signalled (`add`) to them.
+ * on other servers did not get pushed by its author is signalled (`add`) to them when it first enters
+ * the thread, not again on its `Update`.
  */
 export const admitInboundThreadNote = async (
   deps: InboundThreadDeps,

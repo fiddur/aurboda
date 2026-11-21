@@ -11,7 +11,9 @@ import {
   type OfficialFeedEntryRow,
   type OfficialFeedRow,
   officialRemoteHandles,
+  readListedAuthor,
   readOfficialFeedSetting,
+  serializeOfficialFeedEntries,
   withoutOfficialFeedUser,
   writeOfficialFeedSetting,
 } from './official-feed.ts'
@@ -297,5 +299,60 @@ describe('mergeOfficialFeedPage', () => {
     })
     expect(page.rows.map(describeEntry)).toEqual(['remote:r2'])
     expect(page.next?.label).toBe('r2')
+  })
+})
+
+describe('readListedAuthor', () => {
+  test('answers what the read answers', async () => {
+    expect(await readListedAuthor('alice', async () => 'v1')).toBe('v1')
+  })
+
+  test('answers null for a missing database and reports the author', async () => {
+    const missing: string[] = []
+    const read = async (): Promise<string> => {
+      throw missingDatabase()
+    }
+    expect(await readListedAuthor('ghost', read, (username) => missing.push(username))).toBeNull()
+    expect(missing).toEqual(['ghost'])
+  })
+
+  test('lets any other error through', async () => {
+    const read = async () => {
+      throw new Error('connection refused')
+    }
+    await expect(readListedAuthor('alice', read)).rejects.toThrow('connection refused')
+  })
+})
+
+describe('serializeOfficialFeedEntries', () => {
+  const entries: OfficialFeedEntryRow<Row, Row>[] = [
+    { origin: 'local', row: row('a1', '2026-07-03 10:00:00+00', 'a'), username: 'alice' },
+    { origin: 'remote', row: row('r1', '2026-07-02 10:00:00+00', 'r') },
+    { origin: 'local', row: row('g1', '2026-07-01 10:00:00+00', 'g'), username: 'ghost' },
+    { origin: 'local', row: row('g2', '2026-06-30 10:00:00+00', 'h'), username: 'ghost' },
+  ]
+
+  test('leaves out the entries of an author whose database is gone, keeping the order of the rest', async () => {
+    const missing: string[] = []
+    const serialized = await serializeOfficialFeedEntries(
+      entries,
+      async (entry) => {
+        if (entry.origin === 'local' && entry.username === 'ghost') throw missingDatabase()
+        return describeEntry(entry)
+      },
+      (username) => missing.push(username),
+    )
+    expect(serialized).toEqual(['alice:a1', 'remote:r1'])
+    expect(missing).toEqual(['ghost', 'ghost'])
+  })
+
+  test('lets any other error through, a remote entry’s too', async () => {
+    const serialize = async (entry: OfficialFeedEntryRow<Row, Row>) => {
+      if (entry.origin === 'remote') throw missingDatabase()
+      return describeEntry(entry)
+    }
+    await expect(serializeOfficialFeedEntries(entries.slice(0, 2), serialize)).rejects.toThrow(
+      'does not exist',
+    )
   })
 })

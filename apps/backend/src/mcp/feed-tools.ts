@@ -64,7 +64,7 @@ import {
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import {
-  articleFlagNames,
+  articleSelectorNames,
   articleWarningsField,
   mergeArticleContent,
   validateArticleContent,
@@ -282,7 +282,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Feed post not found')
-      deliverFeedPostEdit(deliver, user, record)
+      deliverFeedPostEdit(deliver, user, record, existing)
       await followPostEditInThread(thread, user, record)
       return jsonResponse(await serializeFeedPost(user, record, { webHost }))
     },
@@ -360,7 +360,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { ...createArticleBodySchema.shape },
     async (body) => {
       const built = await validateArticleContent({
@@ -385,7 +385,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'update_article',
-    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
+    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { id: z.string().uuid().describe('Feed post ID'), ...updateArticleBodySchema.shape },
     async ({ id, ...body }) => {
       const existing = await getFeedPostById(user, id)
@@ -417,7 +417,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article_draft',
-    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`, an impact block without `activity`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
+    'Save an ARTICLE DRAFT: a private, unpublished article the user can keep working on in the web editor (or via `update_article_draft`) and publish when ready. A draft is never federated or shown on any feed. It may be incomplete — an empty title, a chart block without `metric`, a correlation block without `trigger`/`outcome`, an impact block without `activity`. `article` takes the same shape as `create_article` (`title`, `blocks`, `default_start`, `default_end`); `visibility` is the audience it gets once published. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { ...createArticleDraftBodySchema.shape },
     async ({ article, visibility }) => {
       const record = await createArticleDraft(user, {
@@ -433,7 +433,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'update_article_draft',
-    'Update an ARTICLE DRAFT (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The draft stays private until `publish_article_draft`. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
+    'Update an ARTICLE DRAFT (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The draft stays private until `publish_article_draft`. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     // The window bounds are re-declared without `.nullable()`: a nullable field makes
     // clients that validate the tool list (e.g. Claude) drop the whole tool.
     {
@@ -468,7 +468,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'get_article_draft',
-    'Get one private ARTICLE DRAFT by ID, with its full content. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.',
+    'Get one private ARTICLE DRAFT by ID, with its full content. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { id: z.string().uuid().describe('Draft ID') },
     async ({ id }) => {
       const record = await getArticleDraft(user, id)
@@ -492,7 +492,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'publish_article_draft',
-    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.",
+    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
     { id: z.string().uuid().describe('Draft ID'), ...publishArticleDraftBodySchema.shape },
     async ({ id, ...body }) => {
       const result = await publishArticleDraft(user, id, body)
@@ -507,7 +507,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'preview_article',
-    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity, by name); they never block anything.",
+    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
     { ...previewArticleBodySchema.shape },
     async (body) => {
       if (!previewArticle) return errorResponse('Article preview is not available')
@@ -540,7 +540,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
         await renderableArticleBlocks(user, post.id, post.article),
-        await articleFlagNames(user, post.article.blocks),
+        await articleSelectorNames(user, post.article.blocks),
       )
       return jsonResponse({ markdown })
     },

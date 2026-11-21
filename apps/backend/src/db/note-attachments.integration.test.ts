@@ -9,9 +9,11 @@ import {
   getNoteAttachmentsForNoteIds,
   getNoteAttachmentUsage,
   insertNoteAttachment,
+  insertNoteAttachmentWithinLimits,
   type NewNoteAttachment,
   purgeNoteAttachment,
   restoreNoteAttachment,
+  restoreNoteAttachmentWithinLimit,
   softDeleteNoteAttachment,
 } from './note-attachments.ts'
 import { insertNoteTemplate, softDeleteNoteTemplate } from './note-templates.ts'
@@ -76,6 +78,66 @@ describe('Note attachments integration', () => {
     })
     const audio = await insertNoteAttachment(user, note.id, 2, recording)
     expect(audio).toMatchObject({ height: undefined, kind: 'audio', mime: 'audio/ogg', width: undefined })
+  })
+
+  test('parallel uploads at the per-entry cap store exactly the cap, at unique contiguous positions', async () => {
+    const user = getTestUser()
+    const note = await dayEntry(user)
+    await insertNoteAttachment(user, note.id, 1, picture())
+    await insertNoteAttachment(user, note.id, 2, picture())
+    const limits = { account_bytes: 1_000_000, per_note: 6 }
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => insertNoteAttachmentWithinLimits(user, note.id, picture(), limits)),
+    )
+
+    expect(results.filter((r) => r.ok)).toHaveLength(4)
+    expect(results.filter((r) => !r.ok).map((r) => !r.ok && r.reason)).toEqual(Array(6).fill('note_limit'))
+    const stored = (await getNoteAttachmentsForNoteIds(user, [note.id])).get(note.id) ?? []
+    expect(stored.map((a) => a.position)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  test('parallel uploads cannot pass the account cap together', async () => {
+    const user = getTestUser()
+    const note = await dayEntry(user)
+    const other = await dayEntry(user)
+    await insertNoteAttachment(user, other.id, 1, picture(40))
+    const limits = { account_bytes: 100, per_note: 30 }
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => insertNoteAttachmentWithinLimits(user, note.id, picture(10), limits)),
+    )
+
+    expect(results.filter((r) => r.ok)).toHaveLength(6)
+    expect(results.filter((r) => !r.ok).map((r) => !r.ok && r.reason)).toEqual([
+      'account_limit',
+      'account_limit',
+    ])
+    expect((await getNoteAttachmentUsage(user, note.id)).account_bytes).toBe(100)
+  })
+
+  test('a capped restore brings one back, refuses at the cap, answers a live one as it is', async () => {
+    const user = getTestUser()
+    const note = await dayEntry(user)
+    const first = await insertNoteAttachment(user, note.id, 1, picture())
+    const second = await insertNoteAttachment(user, note.id, 2, picture())
+    await softDeleteNoteAttachment(user, note.id, first.id)
+    await softDeleteNoteAttachment(user, note.id, second.id)
+    await insertNoteAttachment(user, note.id, 3, picture())
+
+    const restored = await restoreNoteAttachmentWithinLimit(user, note.id, first.id, 2)
+    expect(restored).toMatchObject({ ok: true, value: { deleted_at: undefined, id: first.id } })
+    expect(await restoreNoteAttachmentWithinLimit(user, note.id, second.id, 2)).toEqual({
+      ok: false,
+      reason: 'note_limit',
+    })
+    expect(await restoreNoteAttachmentWithinLimit(user, note.id, first.id, 2)).toMatchObject({
+      ok: true,
+      value: { id: first.id },
+    })
+    expect(
+      await restoreNoteAttachmentWithinLimit(user, note.id, '00000000-0000-4000-8000-000000000000', 2),
+    ).toBeNull()
   })
 
   test('list and metadata reads never carry the bytes', async () => {

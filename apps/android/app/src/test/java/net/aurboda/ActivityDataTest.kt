@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -141,6 +142,19 @@ class ActivityDataTest {
     assertTrue(json, Regex(""""indoor":\s*true""").containsMatchIn(json))
     assertEquals("run", body.activityType)
     assertEquals("2026-11-01T08:00:00Z", body.startTime)
+  }
+
+  @Test
+  fun `a pending entry's people are sent, and an empty list is left out`() {
+    val payload = PendingActivityPayload(activity_type = "walk", start_time = "2026-11-01T08:00:00Z", people = listOf("p1", "p2"))
+    val json = appJson.encodeToString(AddActivityBody.serializer(), payload.toAddActivityBody(emptyList()))
+    assertTrue(json, Regex(""""people":\s*\[\s*"p1",\s*"p2"\s*]""").containsMatchIn(json))
+
+    val alone = appJson.encodeToString(
+      AddActivityBody.serializer(),
+      payload.copy(people = emptyList()).toAddActivityBody(emptyList()),
+    )
+    assertFalse(alone, alone.contains("\"people\""))
   }
 
   @Test
