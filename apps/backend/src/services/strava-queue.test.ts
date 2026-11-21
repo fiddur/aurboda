@@ -136,6 +136,29 @@ describe('createStravaQueue', () => {
     }
   })
 
+  test('a fetch job still queued with a numeric id is fetched by that id as a string', async () => {
+    vi.useFakeTimers()
+    try {
+      const boss = createMockBoss()
+      const rateLimit = { reads_15min: 0, reads_daily: 0 }
+      const getActivity = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      const getActivityStreams = vi.fn().mockResolvedValue({ data: {}, rateLimit })
+      await createStravaQueue(boss as never, { ...mockDeps, getActivity, getActivityStreams })
+      const mainCall = boss.work.mock.calls.find((args) => args[0] === 'strava-sync')
+      const handler = mainCall?.[2] as (jobs: { data: unknown }[]) => Promise<void>
+
+      const run = handler([
+        { data: { request_type: 'fetch_activity', strava_activity_id: 7, user: 'alice' } },
+      ])
+      await vi.runAllTimersAsync()
+      await run
+
+      expect(getActivity).toHaveBeenCalledWith('test-token', '7')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   test('a fetch job without an id is skipped', async () => {
     vi.useFakeTimers()
     try {

@@ -228,7 +228,8 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
         if (request_type === 'list_activities') {
           await handleListActivities(user, token, list_params)
         } else if (request_type === 'fetch_activity' && strava_activity_id) {
-          await handleFetchActivity(user, token, strava_activity_id)
+          // A job queued before ids became strings can still wait in the queue as a number.
+          await handleFetchActivity(user, token, String(strava_activity_id))
         }
 
         await sleep(calculateDelay())
