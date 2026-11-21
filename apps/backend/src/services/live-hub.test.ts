@@ -6,6 +6,7 @@ const fakeDeps = () => {
   const opened: {
     user: string
     onNotify: (kind: LiveEventKind) => void
+    onClosed: () => void
     teardown: ReturnType<typeof vi.fn>
   }[] = []
   const emits: [string, LiveEventKind][] = []
@@ -13,9 +14,9 @@ const fakeDeps = () => {
     emit: async (user, kind) => {
       emits.push([user, kind])
     },
-    openChannel: async (user, onNotify) => {
+    openChannel: async (user, onNotify, onClosed) => {
       const teardown = vi.fn(async () => {})
-      opened.push({ onNotify, teardown, user })
+      opened.push({ onClosed, onNotify, teardown, user })
       return teardown
     },
   }
@@ -135,5 +136,51 @@ describe('createLiveHub', () => {
     // The slot was freed, so a retry opens a fresh channel instead of reusing the broken one.
     await expect(hub.subscribe('alice', vi.fn())).resolves.toBeTypeOf('function')
     expect(opened).toEqual(['alice', 'alice'])
+  })
+
+  test('a dropped channel tells each subscriber once and frees the slot', async () => {
+    const { deps, opened } = fakeDeps()
+    const hub = createLiveHub(deps)
+    const closedA = vi.fn()
+    const closedB = vi.fn()
+    const onEvent = vi.fn()
+    await hub.subscribe('alice', onEvent, closedA)
+    await hub.subscribe('alice', vi.fn(), closedB)
+
+    opened[0].onClosed()
+    opened[0].onClosed()
+
+    expect(closedA).toHaveBeenCalledTimes(1)
+    expect(closedB).toHaveBeenCalledTimes(1)
+    opened[0].onNotify('timeline')
+    expect(onEvent).not.toHaveBeenCalled()
+
+    await hub.subscribe('alice', vi.fn())
+    expect(opened).toHaveLength(2)
+  })
+
+  test('unsubscribing after a drop is a no-op that leaves the fresh channel open', async () => {
+    const { deps, opened } = fakeDeps()
+    const hub = createLiveHub(deps)
+    const offOld = await hub.subscribe('alice', vi.fn(), vi.fn())
+    opened[0].onClosed()
+
+    const onEvent = vi.fn()
+    await hub.subscribe('alice', onEvent)
+    await expect(offOld()).resolves.toBeUndefined()
+
+    expect(opened[1].teardown).not.toHaveBeenCalled()
+    opened[1].onNotify('notification')
+    expect(onEvent).toHaveBeenCalledWith('notification')
+    await hub.subscribe('alice', vi.fn())
+    expect(opened).toHaveLength(2)
+  })
+
+  test('a subscriber without an onClosed is dropped quietly', async () => {
+    const { deps, opened } = fakeDeps()
+    const hub = createLiveHub(deps)
+    const off = await hub.subscribe('alice', vi.fn())
+    expect(() => opened[0].onClosed()).not.toThrow()
+    await expect(off()).resolves.toBeUndefined()
   })
 })

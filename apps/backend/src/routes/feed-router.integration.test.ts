@@ -47,10 +47,7 @@ const startApp = (
 ) => {
   const app = express()
   app.use(express.json())
-  app.use(
-    '/feed',
-    createFeedRouter(auth, deliver, undefined, apiBaseUrl, undefined, webHost, undefined, previewArticle),
-  )
+  app.use('/feed', createFeedRouter(auth, deliver, apiBaseUrl, undefined, webHost, undefined, previewArticle))
   const server = app.listen(0)
   const port = (server.address() as AddressInfo).port
   const close = () =>

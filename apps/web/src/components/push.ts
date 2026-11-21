@@ -107,6 +107,15 @@ export const urlBase64ToUint8Array = (base64: string): Uint8Array<ArrayBuffer> =
   return bytes
 }
 
+/** Bytes (such as a subscription's `applicationServerKey`) as URL-safe base64 without padding. */
+export const uint8ArrayToUrlBase64 = (bytes: Uint8Array): string =>
+  btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
+
+const normalizeKey = (key: string): string => key.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+
 export interface PushBrowser {
   supported: boolean
   needsHomeScreen: boolean
@@ -114,6 +123,8 @@ export interface PushBrowser {
   requestPermission: () => Promise<NotificationPermission>
   /** This browser's subscription endpoint, or null when it has none. */
   endpoint: () => Promise<string | null>
+  /** The VAPID public key (URL-safe base64) this browser's subscription was made with; null when it has none or the browser does not say. */
+  subscriptionKey: () => Promise<string | null>
   subscribe: (publicKey: string) => Promise<PushSubscriptionJSON>
   /** Resolves to the endpoint it dropped, or null when there was none. */
   unsubscribe: () => Promise<string | null>
@@ -148,6 +159,49 @@ export const dropUnknownSubscription = async (
   if ((await browser.endpoint()) !== endpoint) return false
   await browser.unsubscribe()
   return true
+}
+
+/**
+ * The account's own subscription in this browser, made with a VAPID key other than the server's
+ * current one, can no longer be reached. It is unsubscribed and, since permission was already
+ * granted, subscribed again with the current key and registered; when that fails it is just
+ * dropped, so the offer shows again. Resolves to whether anything changed.
+ */
+export const renewStaleSubscription = async (
+  browser: PushBrowser,
+  api: PushServerApi,
+  publicKey: string,
+): Promise<boolean> => {
+  const key = await browser.subscriptionKey()
+  if (key === null || normalizeKey(key) === normalizeKey(publicKey)) return false
+  const endpoint = await browser.endpoint()
+  if (endpoint !== null) {
+    const stale = (await api.list(endpoint).catch(() => [])).find((subscription) => subscription.current)
+    if (stale) await api.remove(stale.id).catch(() => undefined)
+  }
+  await browser.unsubscribe()
+  if (browser.permission() !== 'granted') return true
+  try {
+    await api.add(toSubscriptionBody(await browser.subscribe(publicKey)))
+  } catch {
+    await browser.unsubscribe().catch(() => null)
+  }
+  return true
+}
+
+/**
+ * On sign-in: drops a subscription another account left in this browser, else renews the
+ * account's own one when the server's key changed. Resolves to whether anything changed.
+ */
+export const reconcilePushSubscription = async (
+  browser: PushBrowser,
+  api: PushServerApi,
+  publicKey: () => Promise<string | undefined>,
+): Promise<boolean> => {
+  if (await dropUnknownSubscription(browser, api)) return true
+  if ((await browser.endpoint()) === null) return false
+  const key = await publicKey()
+  return key ? renewStaleSubscription(browser, api, key) : false
 }
 
 /** Asks for permission, subscribes this browser and tells the server. Resolves to the state it ends in. */

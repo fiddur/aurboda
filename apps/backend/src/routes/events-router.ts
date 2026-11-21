@@ -16,6 +16,7 @@ export const LIVE_UNAVAILABLE: BaseResponse = { error: 'Live updates unavailable
  * Each event is a bare "refetch" signal with an empty payload. The channel is opened before
  * the response starts, so a failure to open it answers 503 and the client backs off and polls,
  * where a 200 that ends at once would read as a healthy stream to reconnect to right away.
+ * When the channel drops after the stream started, the response ends, so the client reconnects.
  */
 export const serveLiveStream = async (
   req: Request,
@@ -49,11 +50,23 @@ export const serveLiveStream = async (
   }
   req.on('close', () => void cleanup())
 
+  let channelDropped = false
+  const onChannelClosed = () => {
+    channelDropped = true
+    if (!started) return
+    void cleanup()
+    if (!res.writableEnded) res.end()
+  }
+
   try {
-    unsubscribe = await hub.subscribe(user, (kind) => {
-      const chunk = toChunk(kind)
-      if (chunk != null) write(chunk)
-    })
+    unsubscribe = await hub.subscribe(
+      user,
+      (kind) => {
+        const chunk = toChunk(kind)
+        if (chunk != null) write(chunk)
+      },
+      onChannelClosed,
+    )
   } catch {
     closed = true
     clearInterval(heartbeat)
@@ -62,6 +75,10 @@ export const serveLiveStream = async (
   }
   // The client may have disconnected while the channel was opening.
   if (closed) return void (await unsubscribe().catch(() => {}))
+  if (channelDropped) {
+    await cleanup()
+    return void res.status(503).json(LIVE_UNAVAILABLE)
+  }
 
   // `X-Accel-Buffering: no` keeps nginx from holding events back for a full response body.
   res.writeHead(200, {

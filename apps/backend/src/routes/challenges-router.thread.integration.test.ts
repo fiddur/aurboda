@@ -41,7 +41,7 @@ const startApp = () => {
     '/challenges',
     createChallengesRouter(auth, WEB_HOST, API_BASE, async () => ({ challenges: [], peers_unreachable: 0 })),
   )
-  app.use('/feed', createFeedRouter(auth, undefined, undefined, API_BASE, undefined, WEB_HOST))
+  app.use('/feed', createFeedRouter(auth, undefined, API_BASE, undefined, WEB_HOST))
   app.use(createFeedPublicRouter({ apiBaseUrl: API_BASE, webHost: WEB_HOST }))
   app.use(createChallengeQuantpubRouter({ apiBaseUrl: API_BASE, webHost: WEB_HOST }))
   const server = app.listen(0)

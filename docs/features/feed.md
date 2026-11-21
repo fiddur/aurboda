@@ -1180,10 +1180,9 @@ stream and, when shown again, reopens it and refetches once. If the stream can't
 drops, the client retries after 5 s, 15 s, 60 s and then every minute, and meanwhile **falls back
 to polling** the newest page every 30 s — so the pill still works without a live connection.
 In-process fan-out is handled by a single `LiveHub` that keeps one `LISTEN` connection open per
-user regardless of how many tabs are streaming.
-
-`GET /feed/timeline/stream`, the earlier endpoint, still answers for one release for web bundles
-loaded before the change: it forwards only timeline pings, as `event: new`.
+user regardless of how many tabs are streaming. If that connection drops (the database restarted, or the
+connection was terminated), the hub forgets it and ends the user's open streams, so each client
+reconnects and the first one opens a fresh channel.
 
 ### Images
 
@@ -1647,7 +1646,6 @@ Owner-facing (authenticated, scoped to the caller):
 | `POST /feed/followers/:id/approve`                | Approve a pending follow request (sends the deferred `Accept`)                                                                                                                                               |
 | `DELETE /feed/followers/:id`                      | Reject a request / remove a follower (sends `Reject`)                                                                                                                                                        |
 | `GET /feed/timeline`                              | My home timeline (posts from followees), newest-first, `?cursor=` to page, `?tag=` to filter by a hashtag                                                                                                    |
-| `GET /feed/timeline/stream`                       | Deprecated alias of `GET /events/stream` carrying only timeline pings, as `event: new`; goes after the next release                                                                                          |
 | `POST/DELETE /feed/timeline/:id/like`             | Favourite ⭐ / un-favourite a timeline post (`Like` / `Undo{Like}`); idempotent, returns the updated entry                                                                                                   |
 | `POST/DELETE /feed/timeline/:id/boost`            | Boost 🔄 / un-boost a timeline post (`Announce` / `Undo{Announce}`); idempotent, returns the updated entry                                                                                                   |
 | `GET /feed/timeline/:id/replies`                  | Bounded snapshot of a timeline post's thread (origin's `replies` + my own replies merged); `fetched`/`partial`                                                                                               |

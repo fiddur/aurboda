@@ -9,6 +9,7 @@ import {
   isInAppLink,
   markAllReadInPage,
   markReadInPage,
+  panelShowsPushOffer,
 } from './notifications'
 
 const notification = (id: string, overrides: Partial<Notification> = {}): Notification => ({
@@ -114,5 +115,13 @@ describe('groupNotificationSettings', () => {
 
   it('is empty for no types', () => {
     expect(groupNotificationSettings([])).toEqual([])
+  })
+})
+
+describe('panelShowsPushOffer', () => {
+  it('leaves the offer to the notifications page while it is open', () => {
+    expect(panelShowsPushOffer('/notifications')).toBe(false)
+    expect(panelShowsPushOffer('/feed')).toBe(true)
+    expect(panelShowsPushOffer('/')).toBe(true)
   })
 })

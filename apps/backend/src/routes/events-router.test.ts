@@ -16,20 +16,23 @@ const auth: RequestHandler = (req, _res, next) => {
 
 const fakeHub = (failOpen = false) => {
   let fire: ((kind: LiveEventKind) => void) | null = null
+  let dropChannel: (() => void) | undefined
   let subscribedUser: string | null = null
   let unsubscribed = false
   const hub: LiveHub = {
     notify: async () => {},
-    subscribe: async (user, onEvent) => {
+    subscribe: async (user, onEvent, onClosed) => {
       if (failOpen) throw new Error('LISTEN failed')
       subscribedUser = user
       fire = onEvent
+      dropChannel = onClosed
       return async () => {
         unsubscribed = true
       }
     },
   }
   return {
+    dropChannel: () => dropChannel?.(),
     fire: (kind: LiveEventKind) => fire?.(kind),
     hub,
     subscribedUser: () => subscribedUser,
@@ -139,6 +142,45 @@ describe('GET /events/stream', () => {
       const res = await fetch(`${url}/events/stream`)
       expect(res.status).toBe(503)
       expect(await res.json()).toEqual({ error: 'Live updates unavailable', success: false })
+    } finally {
+      await close()
+    }
+  })
+
+  test('ends the stream when the live channel drops, so the client reconnects', async () => {
+    const { dropChannel, hub, wasUnsubscribed } = fakeHub()
+    const { url, close } = startApp(hub)
+    const ctrl = new AbortController()
+    try {
+      const { read, res } = await openStream(url, ctrl.signal)
+      expect(res.status).toBe(200)
+      expect(await read()).toContain(': connected')
+
+      dropChannel()
+
+      expect(await read()).toBeNull()
+      expect(wasUnsubscribed()).toBe(true)
+    } finally {
+      await close()
+    }
+  })
+
+  test('503 when the channel drops while the stream is opening', async () => {
+    let unsubscribed = false
+    const hub: LiveHub = {
+      notify: async () => {},
+      subscribe: async (_user, _onEvent, onClosed) => {
+        onClosed?.()
+        return async () => {
+          unsubscribed = true
+        }
+      },
+    }
+    const { url, close } = startApp(hub)
+    try {
+      const res = await fetch(`${url}/events/stream`)
+      expect(res.status).toBe(503)
+      expect(unsubscribed).toBe(true)
     } finally {
       await close()
     }

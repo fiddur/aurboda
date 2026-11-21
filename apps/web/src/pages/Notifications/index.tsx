@@ -4,6 +4,7 @@ import { type InfiniteData, useInfiniteQuery } from '@tanstack/react-query'
 
 import { NOTIFICATION_PAGES_KEY, useMarkAllNotificationsRead } from '../../components/notification-queries'
 import { NotificationList } from '../../components/NotificationList'
+import { PushOffer } from '../../components/PushOffer'
 import { fetchNotifications } from '../../state/api'
 import { auth } from '../../state/auth'
 import './style.css'
@@ -57,6 +58,7 @@ export function Notifications() {
           </button>
         </div>
       </div>
+      <PushOffer />
       {isLoading ? (
         <p class="notification-empty">Loading…</p>
       ) : error ? (

@@ -12,10 +12,13 @@ import {
   type PushBrowser,
   type PushStateInput,
   pushTargetUrl,
+  reconcilePushSubscription,
+  renewStaleSubscription,
   sha256Hex,
   shouldOfferPush,
   takeNotificationRead,
   toSubscriptionBody,
+  uint8ArrayToUrlBase64,
   urlBase64ToUint8Array,
 } from './push'
 
@@ -144,6 +147,13 @@ describe('urlBase64ToUint8Array', () => {
   })
 })
 
+describe('uint8ArrayToUrlBase64', () => {
+  it('round-trips a key through urlBase64ToUint8Array', () => {
+    const key = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U'
+    expect(uint8ArrayToUrlBase64(urlBase64ToUint8Array(key))).toBe(key)
+  })
+})
+
 describe('toSubscriptionBody', () => {
   it('keeps the endpoint and keys', () => {
     expect(
@@ -167,6 +177,7 @@ const fakeBrowser = (overrides: Partial<PushBrowser> = {}) => {
       calls.push(`subscribe ${key}`)
       return { endpoint: ENDPOINT, keys: { auth: 'a', p256dh: 'p' } }
     },
+    subscriptionKey: async () => 'KEY',
     supported: true,
     unsubscribe: async () => {
       calls.push('unsubscribe')
@@ -282,5 +293,110 @@ describe('disablePush', () => {
     await disablePush(browser, api)
     expect(apiCalls).toEqual([])
     expect(calls).toEqual(['unsubscribe'])
+  })
+})
+
+describe('renewStaleSubscription', () => {
+  it('leaves a subscription made with the current key', async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    const { api, calls: apiCalls } = fakeApi([subscription('mine', true)])
+    expect(await renewStaleSubscription(browser, api, 'KEY==')).toBe(false)
+    expect(calls).toEqual([])
+    expect(apiCalls).toEqual([])
+  })
+
+  it('does nothing when the browser has no subscription or does not say its key', async () => {
+    const { browser, calls } = fakeBrowser({ subscriptionKey: async () => null })
+    const { api, calls: apiCalls } = fakeApi()
+    expect(await renewStaleSubscription(browser, api, 'NEW')).toBe(false)
+    expect(calls).toEqual([])
+    expect(apiCalls).toEqual([])
+  })
+
+  it('replaces a subscription made with an old key, and registers the new one', async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    const { api, calls: apiCalls } = fakeApi([subscription('other', false), subscription('mine', true)])
+    expect(await renewStaleSubscription(browser, api, 'NEW')).toBe(true)
+    expect(calls).toEqual(['unsubscribe', 'subscribe NEW'])
+    expect(apiCalls).toEqual([
+      ['list', ENDPOINT],
+      ['remove', 'mine'],
+      ['add', { endpoint: ENDPOINT, keys: { auth: 'a', p256dh: 'p' } }],
+    ])
+  })
+
+  it('only drops it when permission is no longer granted', async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'default' })
+    const { api, calls: apiCalls } = fakeApi([subscription('mine', true)])
+    expect(await renewStaleSubscription(browser, api, 'NEW')).toBe(true)
+    expect(calls).toEqual(['unsubscribe'])
+    expect(apiCalls).not.toContainEqual(expect.arrayContaining(['add']))
+  })
+
+  it('drops the new subscription when registering it fails, so the offer shows again', async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    const { api } = fakeApi([subscription('mine', true)])
+    const failing = {
+      ...api,
+      add: async () => {
+        throw new Error('server down')
+      },
+    }
+    expect(await renewStaleSubscription(browser, failing, 'NEW')).toBe(true)
+    expect(calls).toEqual(['unsubscribe', 'subscribe NEW', 'unsubscribe'])
+  })
+
+  it('drops it when subscribing again fails', async () => {
+    const { browser, calls } = fakeBrowser({
+      permission: () => 'granted',
+      subscribe: async () => {
+        throw new Error('push service unreachable')
+      },
+    })
+    expect(await renewStaleSubscription(browser, fakeApi([subscription('mine', true)]).api, 'NEW')).toBe(true)
+    expect(calls).toEqual(['unsubscribe', 'unsubscribe'])
+  })
+})
+
+describe('reconcilePushSubscription', () => {
+  it("drops another account's subscription without asking for the server key", async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    let asked = false
+    const publicKey = async () => {
+      asked = true
+      return 'NEW'
+    }
+    expect(
+      await reconcilePushSubscription(browser, fakeApi([subscription('other', false)]).api, publicKey),
+    ).toBe(true)
+    expect(calls).toEqual(['unsubscribe'])
+    expect(asked).toBe(false)
+  })
+
+  it("renews the account's own subscription when the server key changed", async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    const { api } = fakeApi([subscription('mine', true)])
+    expect(await reconcilePushSubscription(browser, api, async () => 'NEW')).toBe(true)
+    expect(calls).toEqual(['unsubscribe', 'subscribe NEW'])
+  })
+
+  it('keeps it when the key is unchanged or the server offers no push', async () => {
+    const { browser, calls } = fakeBrowser({ permission: () => 'granted' })
+    const { api } = fakeApi([subscription('mine', true)])
+    expect(await reconcilePushSubscription(browser, api, async () => 'KEY')).toBe(false)
+    expect(await reconcilePushSubscription(browser, api, async () => undefined)).toBe(false)
+    expect(calls).toEqual([])
+  })
+
+  it('asks for nothing without a subscription in this browser', async () => {
+    const { browser } = fakeBrowser({ endpoint: async () => null })
+    let asked = false
+    expect(
+      await reconcilePushSubscription(browser, fakeApi().api, async () => {
+        asked = true
+        return 'NEW'
+      }),
+    ).toBe(false)
+    expect(asked).toBe(false)
   })
 })

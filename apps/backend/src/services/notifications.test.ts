@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import type {
   NotificationInsert,
@@ -17,6 +17,7 @@ import {
   notifyAdminsOfUnfinishedSignup,
   type RaiseNotificationInput,
   serializeNotification,
+  pingWhenMarkedRead,
   withNotificationPing,
 } from './notifications.ts'
 
@@ -425,6 +426,45 @@ describe('withNotificationPing', () => {
     await expect(store.markAllRead('alice')).resolves.toBe(2)
     await settle()
     expect(pinged).toEqual(['alice'])
+    expect(errors).toEqual([new Error('ping failed')])
+  })
+})
+
+describe('pingWhenMarkedRead', () => {
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+
+  test('pings once the write marked something read, and passes its arguments through', async () => {
+    const pinged: string[] = []
+    const markRead = vi.fn(async (_user: string, _id: string, _except?: string) => 2)
+    const wrapped = pingWhenMarkedRead(markRead, (user) => void pinged.push(user))
+    await expect(wrapped('alice', 'r1', 'k1')).resolves.toBe(2)
+    await settle()
+    expect(markRead).toHaveBeenCalledWith('alice', 'r1', 'k1')
+    expect(pinged).toEqual(['alice'])
+  })
+
+  test('a write that marked nothing does not ping', async () => {
+    const pinged: string[] = []
+    const wrapped = pingWhenMarkedRead(
+      async (_user: string) => 0,
+      (user) => void pinged.push(user),
+    )
+    await wrapped('alice')
+    await settle()
+    expect(pinged).toEqual([])
+  })
+
+  test('a failing ping is logged and does not fail the write', async () => {
+    const errors: unknown[] = []
+    const wrapped = pingWhenMarkedRead(
+      async (_user: string) => 1,
+      async () => {
+        throw new Error('ping failed')
+      },
+      (_message, error) => errors.push(error),
+    )
+    await expect(wrapped('alice')).resolves.toBe(1)
+    await settle()
     expect(errors).toEqual([new Error('ping failed')])
   })
 })

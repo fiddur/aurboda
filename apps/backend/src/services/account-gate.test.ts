@@ -156,6 +156,12 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/dashboards/preview'],
     ['POST', '/notifications/read-all'],
     ['POST', '/notifications/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/read'],
+    ['PUT', '/notifications/types/admin_signup'],
+    ['PUT', '/notifications/types/{type}'],
+    ['POST', '/notifications/push/subscriptions'],
+    ['DELETE', '/notifications/push/subscriptions/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10'],
+    ['DELETE', '/notifications/push/subscriptions/{id}'],
+    ['POST', '/notifications/push/test'],
   ])('allows %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(true)
   })
@@ -175,9 +181,15 @@ describe('isAllowedWhenReadOnly', () => {
     ['POST', '/feed/activities/abc/share'],
     ['POST', '/feed/activities/abc/def/preview'],
     ['POST', '/feed/abc/preview'],
-    ['PUT', '/notifications/types/admin_signup'],
     ['POST', '/notifications/abc/def/read'],
+    ['POST', '/notifications/types/admin_signup'],
+    ['PUT', '/notifications/types/admin_signup/extra'],
+    ['PUT', '/notifications/push/subscriptions'],
+    ['DELETE', '/notifications/push/subscriptions'],
+    ['DELETE', '/notifications/push/subscriptions/abc/def'],
+    ['PUT', '/notifications/push/test'],
     ['POST', '/notifications/0b6c1f0e-3f7e-4a43-9a51-3c1d7d1f2a10/actions/skip'],
+    ['POST', '/notifications/{id}/actions/{key}'],
     ['POST', '/autoshare-rules/skips'],
   ])('refuses %s %s', (method, path) => {
     expect(isAllowedWhenReadOnly(method, path)).toBe(false)

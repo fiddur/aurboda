@@ -1,4 +1,9 @@
-import { needsHomeScreen, type PushBrowser, urlBase64ToUint8Array } from '../components/push'
+import {
+  needsHomeScreen,
+  type PushBrowser,
+  uint8ArrayToUrlBase64,
+  urlBase64ToUint8Array,
+} from '../components/push'
 
 const SERVICE_WORKER_URL = '/sw.js'
 
@@ -42,6 +47,10 @@ export const browserPush: PushBrowser = {
         userVisibleOnly: true,
       }))
     return subscription.toJSON()
+  },
+  subscriptionKey: async () => {
+    const key = (await currentSubscription())?.options.applicationServerKey
+    return key ? uint8ArrayToUrlBase64(new Uint8Array(key)) : null
   },
   supported: isSupported(),
   unsubscribe: async () => {

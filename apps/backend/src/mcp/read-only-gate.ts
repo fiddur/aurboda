@@ -6,15 +6,20 @@ import { registeredTools } from './tool-catalogue.ts'
 
 /**
  * Mutating tools a read-only account may still call: its data must stay exportable and deletable,
- * its owner reachable about renewing, and the notifications about its plan dismissable.
+ * its owner reachable about renewing (by email and by browser push, which is how it hears that its plan
+ * needs renewing), and the notifications about its plan dismissable. A notification's actions stay
+ * refused: running one writes data.
  */
 export const READ_ONLY_ALLOWED_TOOLS = new Set([
   'delete_my_account',
+  'delete_push_subscription',
   'export_data_dump',
   'mark_all_notifications_read',
   'mark_notification_read',
   'send_email_verification',
+  'send_test_push',
   'set_my_email',
+  'set_notification_preference',
 ])
 
 export const isToolAllowedWhenReadOnly = (name: string): boolean =>

@@ -1,13 +1,11 @@
 import type { FeedPost, TimelineEntry } from '@aurboda/api-spec'
 import type { RequestHandler } from 'express'
-import type { AddressInfo } from 'node:net'
 
 import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
 import type { ReactionActions } from '../services/feed-reactions.ts'
-import type { LiveEventKind, LiveHub } from '../services/live-hub.ts'
 
 import { createFeedRouter } from './feed-router.ts'
 
@@ -17,100 +15,13 @@ const auth: RequestHandler = (req, _res, next) => {
   next()
 }
 
-/** A fake hub that captures the SSE listener so the test can fire pings, and records teardown. */
-const fakeHub = () => {
-  let fire: ((kind: LiveEventKind) => void) | null = null
-  let unsubscribed = false
-  const hub: LiveHub = {
-    notify: async () => {},
-    subscribe: async (_user, onEvent) => {
-      fire = onEvent
-      return async () => {
-        unsubscribed = true
-      }
-    },
-  }
-  return { fire: (kind: LiveEventKind) => fire?.(kind), hub, wasUnsubscribed: () => unsubscribed }
-}
-
-const startApp = (hub?: LiveHub) => {
-  const app = express()
-  app.use('/feed', createFeedRouter(auth, undefined, hub))
-  const server = app.listen(0)
-  const port = (server.address() as AddressInfo).port
-  const close = () =>
-    new Promise<void>((resolve) => {
-      server.closeAllConnections()
-      server.close(() => resolve())
-    })
-  return { close, url: `http://127.0.0.1:${port}` }
-}
-
 describe('GET /feed/timeline', () => {
   test('400 on a tag filter that is not a hashtag', async () => {
     const app = express()
-    app.use('/feed', createFeedRouter(auth, undefined, undefined))
+    app.use('/feed', createFeedRouter(auth))
     const res = await supertest(app).get('/feed/timeline').query({ tag: 'not valid' })
     expect(res.status).toBe(400)
     expect(res.body.success).toBe(false)
-  })
-})
-
-describe('GET /feed/timeline/stream', () => {
-  test('returns 503 when live updates are unavailable (no hub wired)', async () => {
-    const app = express()
-    app.use('/feed', createFeedRouter(auth, undefined, undefined))
-    const res = await supertest(app).get('/feed/timeline/stream')
-    expect(res.status).toBe(503)
-    expect(res.body).toEqual({ error: 'Live updates unavailable', success: false })
-  })
-
-  test('forwards only timeline pings, as `event: new`', async () => {
-    const { hub, fire } = fakeHub()
-    const { url, close } = startApp(hub)
-    const ctrl = new AbortController()
-    try {
-      const res = await fetch(`${url}/feed/timeline/stream`, { signal: ctrl.signal })
-      expect(res.headers.get('content-type')).toContain('text/event-stream')
-      expect(res.headers.get('x-accel-buffering')).toBe('no')
-
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('no response body')
-      const decoder = new TextDecoder()
-
-      const connected = await reader.read()
-      expect(decoder.decode(connected.value)).toContain(': connected')
-
-      fire('notification')
-      fire('timeline')
-      const event = await reader.read()
-      const text = decoder.decode(event.value)
-      expect(text).toBe('event: new\ndata: {}\n\n')
-
-      ctrl.abort()
-      await reader.cancel().catch(() => {})
-    } finally {
-      await close()
-    }
-  })
-
-  test('unsubscribes from the hub when the client disconnects', async () => {
-    const { hub, wasUnsubscribed } = fakeHub()
-    const { url, close } = startApp(hub)
-    const ctrl = new AbortController()
-    try {
-      const res = await fetch(`${url}/feed/timeline/stream`, { signal: ctrl.signal })
-      const reader = res.body?.getReader()
-      if (!reader) throw new Error('no response body')
-      await reader.read() // wait until the stream is live (subscribed)
-      ctrl.abort()
-      await reader.cancel().catch(() => {})
-      // The server-side 'close' → cleanup is async; poll briefly for the teardown.
-      for (let i = 0; i < 50 && !wasUnsubscribed(); i++) await new Promise((r) => setTimeout(r, 20))
-      expect(wasUnsubscribed()).toBe(true)
-    } finally {
-      await close()
-    }
   })
 })
 
@@ -155,7 +66,7 @@ const fakeReactions = (
 
 const reactionApp = (reactions?: ReactionActions) => {
   const app = express()
-  app.use('/feed', createFeedRouter(auth, undefined, undefined, undefined, undefined, undefined, reactions))
+  app.use('/feed', createFeedRouter(auth, undefined, undefined, undefined, undefined, reactions))
   return app
 }
 
@@ -248,7 +159,7 @@ describe('POST /feed/timeline/:id/reply', () => {
   const replyApp = (reactions?: ReactionActions) => {
     const app = express()
     app.use(express.json())
-    app.use('/feed', createFeedRouter(auth, undefined, undefined, undefined, undefined, undefined, reactions))
+    app.use('/feed', createFeedRouter(auth, undefined, undefined, undefined, undefined, reactions))
     return app
   }
 
