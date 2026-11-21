@@ -143,6 +143,8 @@ nothing about it in the text.
   is matched by the id given.
 - **Deleted targets.** A link to a soft-deleted person or activity is hidden while its
   target is deleted and back on restore; it goes when the target is removed for good.
+  Replacing an entry's links only touches the visible ones, so a hidden link survives
+  an edit and comes back with its target.
   A deleted entry's links are out of sight with it and come back with it.
 - **Privacy.** As the rest of People: links never leave your account. A note is never
   shared, and nothing about its links goes into an activity's share, the feed or

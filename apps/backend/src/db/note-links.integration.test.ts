@@ -125,6 +125,28 @@ describe('Note links Integration Tests', () => {
     expect(await linkCount(user)).toBe(0)
   })
 
+  test('replacing the links leaves a link hidden by its deleted target, which is back on restore', async () => {
+    const user = getTestUser()
+    const anna = await person(user, 'Anna')
+    const bo = await person(user, 'Bo')
+    const note = await insertNote(user, 'day', null, 'With Anna and Bo', undefined, undefined, {
+      date: '2026-11-20',
+      related: [
+        { entity_id: anna.id, entity_type: 'person' },
+        { entity_id: bo.id, entity_type: 'person' },
+      ],
+    })
+
+    await softDeletePerson(user, anna.id)
+    await replaceNoteLinks(user, note.id, [])
+    expect((await getNoteLinksForNoteIds(user, [note.id])).get(note.id)).toBeUndefined()
+
+    await restorePerson(user, anna.id)
+    expect((await getNoteLinksForNoteIds(user, [note.id])).get(note.id)?.map((l) => l.entity_id)).toEqual([
+      anna.id,
+    ])
+  })
+
   test('a soft-deleted activity hides its links; deleteNoteLinksOfTarget removes them', async () => {
     const user = getTestUser()
     const walk = await insertActivity(user, '2026-11-20T17:00:00Z')

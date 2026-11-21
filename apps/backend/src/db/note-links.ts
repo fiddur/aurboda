@@ -52,13 +52,17 @@ const dedupeLinks = (links: readonly NoteLinkInput[]): NoteLinkInput[] => {
   return [...seen.values()]
 }
 
-/** Replace a note's links with `links` (duplicates collapsed). Runs in the caller's transaction. */
+/**
+ * Replace a note's visible links with `links` (duplicates collapsed). A link hidden by its deleted
+ * target is not the caller's to remove: it stays, to come back with the target. Runs in the
+ * caller's transaction.
+ */
 export const replaceNoteLinks = async (
   tx: Queryable | string,
   noteId: string,
   links: readonly NoteLinkInput[],
 ): Promise<void> => {
-  await query(tx, 'DELETE FROM note_links WHERE note_id = $1', [noteId])
+  await query(tx, `DELETE FROM note_links l WHERE l.note_id = $1 AND ${LINK_TARGET_IS_LIVE}`, [noteId])
   const unique = dedupeLinks(links)
   if (unique.length === 0) return
   await query(

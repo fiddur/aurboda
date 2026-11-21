@@ -33,7 +33,6 @@ export const removeLink = (
   link: Pick<NoteRelated, 'entity_type' | 'entity_id'>,
 ): RelatedLink[] => links.filter((l) => linkKey(l) !== linkKey(link))
 
-/** The same targets, whatever their order and labels. */
 export const sameLinks = (a: readonly RelatedLink[], b: readonly RelatedLink[]): boolean => {
   const keys = new Set(a.map(linkKey))
   return keys.size === new Set(b.map(linkKey)).size && b.every((l) => keys.has(linkKey(l)))

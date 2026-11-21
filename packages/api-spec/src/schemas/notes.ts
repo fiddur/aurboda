@@ -159,10 +159,8 @@ export const noteRelatedEntityTypeSchema = z.enum(noteRelatedEntityTypes).meta({
 
 export type NoteRelatedEntityType = z.infer<typeof noteRelatedEntityTypeSchema>
 
-/** Most people and activities one note can be related to. */
 export const NOTE_RELATED_MAX = 30
 
-/** Most journal entries a person's or an activity's answer lists. */
 export const JOURNAL_ENTRY_REFS_LIMIT = 50
 
 export const JOURNAL_ENTRY_EXCERPT_MAX = 200
