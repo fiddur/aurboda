@@ -139,7 +139,7 @@ Each recognised session also enqueues a **source enrichment** job so the provide
 
 ### Estimated activity steps
 
-An `ExerciseSessionRecord` carries no step count. When an activity that came through Health Connect (its `data.metadata.dataOrigin` is set, also when it is stored under the provider's identity) has no step count of its own, its detail shows an estimate: the same app's `StepsRecord`s summed over the activity, a record reaching over the start or end counted by its overlap, and a record written again counted once (the latest). The time-series `steps` samples are not used, since they mix every app writing to Health Connect. The detail flags it `steps_estimated` (the web shows `≈`), and the source's own count replaces it once a direct sync (e.g. Garmin's activity summary) delivers one.
+An `ExerciseSessionRecord` carries no step count. When an activity that came through Health Connect (its `data.metadata.dataOrigin` is set, also when it is stored under the provider's identity) has no step count of its own, its detail shows an estimate: the same app's `StepsRecord`s summed over the activity, a record reaching over the start or end counted by its overlap (one that starts more than an hour before the activity is not read), and a record written again counted once (the latest). The time-series `steps` samples are not used, since they mix every app writing to Health Connect. The detail flags it `steps_estimated` (the web shows `≈`), and the source's own count replaces it once a direct sync (e.g. Garmin's activity summary) delivers one.
 
 ### Activity notes
 

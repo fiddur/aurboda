@@ -647,7 +647,7 @@ describe('POST /activities/:id/resync-detail', () => {
     [
       'no_connection',
       409,
-      'Re-syncing needs the Garmin Connect login or a Personal API key. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
+      'Re-syncing needs the Garmin Connect login or a Personal API key that Garmin accepts. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
     ],
     ['no_file', 404, 'Garmin has no activity file for this activity.'],
     ['failed', 502, 'Garmin did not return the activity. The audit log has the reason.'],

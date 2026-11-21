@@ -744,7 +744,7 @@ export const createActivitiesRouter = (
             points: 0,
             success: false,
             error:
-              'Re-syncing needs the Garmin Connect login or a Personal API key. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
+              'Re-syncing needs the Garmin Connect login or a Personal API key that Garmin accepts. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
           })
           return
         case 'no_file':
