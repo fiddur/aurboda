@@ -7,41 +7,14 @@ import type {
   CheckInQuestion,
 } from '@aurboda/api-spec'
 
+import { presetItem } from '@aurboda/api-spec'
+
 import type { AnswerDraft, AnswerDrafts } from './answers'
 
 const isBlank = (value: CheckInAnswerValue | undefined): boolean =>
   value === undefined ||
   (typeof value === 'string' && value.trim() === '') ||
   (Array.isArray(value) && value.length === 0)
-
-/** Mirrors the server: an answer counts as taken when given, and not 0 or no. */
-export const isTakenAnswer = (question: CheckInQuestion, value: CheckInAnswerValue | undefined): boolean => {
-  if (isBlank(value)) return false
-  if (question.type === 'yes_no') return value === true
-  if (question.type === 'number' || question.type === 'scale') return typeof value === 'number' && value !== 0
-  return true
-}
-
-const optionLabel = (question: CheckInQuestion, key: string): string =>
-  'options' in question ? (question.options.find((option) => option.key === key)?.label ?? key) : key
-
-const presetItem = (question: CheckInQuestion, value: CheckInAnswerValue): string | null => {
-  if (!isTakenAnswer(question, value)) return null
-  switch (question.type) {
-    case 'number':
-      return `${question.prompt} ${value}${question.unit ? ` ${question.unit}` : ''}`
-    case 'scale':
-      return `${question.prompt} ${value}`
-    case 'yes_no':
-      return question.prompt
-    case 'choice':
-      return `${question.prompt}: ${optionLabel(question, String(value))}`
-    case 'multi_choice':
-      return `${question.prompt}: ${(Array.isArray(value) ? value : []).map((key) => optionLabel(question, key)).join(', ')}`
-    case 'text':
-      return `${question.prompt}: ${value}`
-  }
-}
 
 /** The answers taken, in a line: "Vitamin D 50 µg, Magnesium 200 mg"; 0, no and blanks left out. */
 export const answersLine = (
@@ -55,10 +28,6 @@ export const answersLine = (
       return item ? [item] : []
     })
     .join(', ')
-
-/** Mirrors the server's notification body: a routine's preset items in a line. */
-export const presetLine = (questions: readonly CheckInQuestion[]): string =>
-  answersLine(questions, Object.fromEntries(questions.map((question) => [question.key, question.default])))
 
 /** The routines without a schedule, taken when needed: one large button each on the Check-ins page. */
 export const asNeededRoutines = (forms: readonly CheckInForm[]): CheckInForm[] =>

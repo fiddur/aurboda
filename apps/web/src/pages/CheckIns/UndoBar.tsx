@@ -1,5 +1,7 @@
 import { useState } from 'preact/hooks'
 
+import './UndoBar.css'
+
 interface Props {
   message: string
   onUndo: () => Promise<unknown>

@@ -20,7 +20,6 @@ import {
   buildForm,
   canLog,
   canLogActivity,
-  canPreset,
   canScore,
   changeType,
   draftFromForm,
@@ -37,10 +36,13 @@ import {
   moveQuestion,
   newQuestion,
   type OptionDraft,
+  presetTicks,
+  presetWithin,
   QUESTION_TYPES,
   type QuestionDraft,
   startsNewVersion,
   toAddBody,
+  togglePresetOption,
   toUpdateBody,
 } from './form-editor'
 import { checkInKeys, useRefreshCheckIns } from './queries'
@@ -76,7 +78,11 @@ function PresetInput({
       return (
         <label class="checkin-field">
           {label}
-          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
+          <select
+            aria-label="Preset answer"
+            value={question.preset}
+            onChange={(e) => set({ preset: e.currentTarget.value })}
+          >
             <option value="">None</option>
             <option value="yes">Yes</option>
             <option value="no">No</option>
@@ -88,7 +94,11 @@ function PresetInput({
       return (
         <label class="checkin-field">
           {label}
-          <select value={question.preset} onChange={(e) => set({ preset: e.currentTarget.value })}>
+          <select
+            aria-label="Preset answer"
+            value={question.preset}
+            onChange={(e) => set({ preset: e.currentTarget.value })}
+          >
             <option value="">None</option>
             {question.options.map((option, index) => (
               <option key={index} value={String(index)}>
@@ -98,6 +108,27 @@ function PresetInput({
           </select>
           {hint}
         </label>
+      )
+    case 'multi_choice':
+      return (
+        <fieldset class="checkin-field checkin-preset-options">
+          <legend>
+            Preset answer <small>(optional)</small>
+          </legend>
+          {question.options.map((option, index) => (
+            <label key={index} class="checkin-check">
+              <input
+                type="checkbox"
+                checked={presetTicks(question.preset, index)}
+                onChange={(e) =>
+                  set({ preset: togglePresetOption(question.preset, index, e.currentTarget.checked) })
+                }
+              />
+              {option.label || `Option ${index + 1}`}
+            </label>
+          ))}
+          {hint}
+        </fieldset>
       )
     default:
       return (
@@ -177,6 +208,7 @@ function ActivityLogEditor({
           <span>The answer goes in the field</span>
           {numberFields.length > 0 ? (
             <select
+              aria-label="The field that takes the answer"
               value={question.answer_field}
               onChange={(e) => set({ answer_field: e.currentTarget.value })}
             >
@@ -208,6 +240,7 @@ function ActivityLogEditor({
                   <span>{field.label ?? field.name}</span>
                   {field.type === 'boolean' ? (
                     <select
+                      aria-label={field.label ?? field.name}
                       value={fieldValue(field.name)}
                       onChange={(e) =>
                         setField({ kind: 'boolean', name: field.name, value: e.currentTarget.value })
@@ -313,6 +346,7 @@ function SaveAnswerAs({
       <label class="checkin-field">
         <span>Save the answer as</span>
         <select
+          aria-label="Save the answer as"
           value={saveAs}
           onChange={(e) => {
             const next = e.currentTarget.value as SaveAs
@@ -570,6 +604,7 @@ function QuestionEditor({
       <label class="checkin-field">
         <span>Answer</span>
         <select
+          aria-label="Answer type"
           value={question.type}
           onChange={(e) => onChange(changeType(question, e.currentTarget.value as CheckInQuestionType))}
         >
@@ -672,7 +707,7 @@ function QuestionEditor({
             set({
               logs: question.logs && (question.log_as === 'activity' || canLog({ ...question, options })),
               options,
-              preset: Number(question.preset) < options.length ? question.preset : '',
+              preset: presetWithin(question.preset, options.length),
             })
           }
         />
@@ -685,7 +720,7 @@ function QuestionEditor({
         />
         Required
       </label>
-      {canPreset(question) && <PresetInput question={question} set={set} />}
+      <PresetInput question={question} set={set} />
       <SaveAnswerAs question={question} activityTypes={activityTypes} set={set} />
     </li>
   )

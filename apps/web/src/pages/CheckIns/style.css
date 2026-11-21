@@ -285,36 +285,6 @@
   transform: translateX(16px);
 }
 
-.checkin-undo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  margin: 0 0 1rem;
-  padding: 0.6rem 0.75rem 0.6rem 1rem;
-  background: var(--color-accent-soft);
-  border: 1px solid var(--color-accent-border);
-  border-radius: 8px;
-}
-
-.checkin-undo > span {
-  flex: 1 1 auto;
-}
-
-.checkin-undo .btn-secondary {
-  padding: 0.35rem 0.85rem;
-}
-
-.checkin-undo-close {
-  border: none;
-  background: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  font-size: 1.3rem;
-  line-height: 1;
-  padding: 0.25rem;
-}
-
 /* Filling in */
 
 .checkin-fill-form {
@@ -1061,7 +1031,7 @@ ul.checkin-error {
 
 .state-done.checkin-adherence-slot,
 .state-done.checkin-adherence-swatch {
-  background: var(--color-primary);
+  background: var(--color-accent);
 }
 
 .state-skipped.checkin-adherence-slot,
@@ -1126,7 +1096,7 @@ ul.checkin-error {
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--color-primary);
+  background: var(--color-accent);
 }
 
 .checkin-adherence-item-count {

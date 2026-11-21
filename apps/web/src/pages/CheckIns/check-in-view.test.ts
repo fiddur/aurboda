@@ -9,8 +9,10 @@ import {
   fillHref,
   formatAnswer,
   latestByForm,
+  dueCardActions,
   openSlots,
   showsDueCard,
+  slotActions,
   slotLabel,
   whenLine,
 } from './check-in-view'
@@ -203,5 +205,22 @@ describe('showsDueCard and openSlots', () => {
         slot('missed', '06:00'),
       ]).map((s) => s.time),
     ).toEqual(['12:00', '21:00'])
+  })
+})
+
+describe('slotActions and dueCardActions', () => {
+  test('a due slot is confirmed (a routine), filled in or skipped; an upcoming one filled in early', () => {
+    expect(slotActions({ state: 'due' }, true)).toEqual({ confirm: true, fill: true, skip: true })
+    expect(slotActions({ state: 'due' }, false)).toEqual({ confirm: false, fill: true, skip: true })
+    expect(slotActions({ state: 'upcoming' }, true)).toEqual({ confirm: false, fill: true, skip: false })
+    for (const state of ['done', 'skipped', 'missed'] as const) {
+      expect(slotActions({ state }, true)).toEqual({ confirm: false, fill: false, skip: false })
+    }
+  })
+
+  test("Home's card offers Done and Skip for a routine's due slot, else the link", () => {
+    expect(dueCardActions({ state: 'due' }, true)).toEqual({ confirm: true, fill: false, skip: true })
+    expect(dueCardActions({ state: 'due' }, false)).toEqual({ confirm: false, fill: true, skip: false })
+    expect(dueCardActions({ state: 'upcoming' }, true)).toEqual({ confirm: false, fill: true, skip: false })
   })
 })

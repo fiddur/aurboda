@@ -1,19 +1,18 @@
 import type { CheckIn, CheckInForm, CheckInTemplate, DueSlot } from '@aurboda/api-spec'
 
+import { presetLine } from '@aurboda/api-spec'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
-import { useEffect, useState } from 'preact/hooks'
+import { useState } from 'preact/hooks'
 
 import {
   addCheckInForm,
-  deleteCheckIn,
   fetchCheckInForms,
   fetchCheckIns,
   fetchCheckInTemplates,
   fetchDue,
   restoreCheckIn,
   restoreCheckInForm,
-  submitCheckIn,
   updateCheckInForm,
 } from '../../state/api'
 import { auth } from '../../state/auth'
@@ -22,31 +21,17 @@ import {
   checkInScheduleLine,
   fillHref,
   latestByForm,
+  slotActions,
   slotLabel,
   whenLine,
 } from './check-in-view'
 import { checkInKeys, useRefreshCheckIns } from './queries'
-import { asNeededRoutines, presetLine } from './routines'
+import { type Quick, type QuickAction, sameAction, useQuickCheckIn } from './quick'
+import { asNeededRoutines } from './routines'
 import { UndoBar } from './UndoBar'
 import './style.css'
 
 const RECENT_LIMIT = 200
-const LOGGED_UNDO_MS = 10_000
-
-type QuickAction =
-  | { kind: 'confirm'; form: CheckInForm; slot?: string }
-  | { kind: 'skip'; form_id: string; slot: string }
-
-interface Quick {
-  run: (action: QuickAction) => void
-  pending: QuickAction | undefined
-}
-
-const sameAction = (a: QuickAction | undefined, b: QuickAction): boolean =>
-  a !== undefined &&
-  a.kind === b.kind &&
-  (a.kind === 'confirm' ? a.form.id : a.form_id) === (b.kind === 'confirm' ? b.form.id : b.form_id) &&
-  a.slot === b.slot
 
 function AsNeeded({ forms, quick }: { forms: CheckInForm[]; quick: Quick }) {
   if (forms.length === 0) return null
@@ -93,6 +78,7 @@ function DueToday({
         {slots.map((slot) => {
           const routine = routines.get(slot.form_id)
           const skip: QuickAction = { form_id: slot.form_id, kind: 'skip', slot: slot.scheduled_for }
+          const actions = slotActions(slot, routine !== undefined)
           return (
             <li key={`${slot.form_id}-${slot.scheduled_for}`} class={`checkin-slot state-${slot.state}`}>
               <span class="checkin-slot-time">{slot.time}</span>
@@ -100,9 +86,9 @@ function DueToday({
                 <strong>{slot.form_name}</strong>
                 <span class={`checkin-slot-state state-${slot.state}`}>{slotLabel(slot)}</span>
               </span>
-              {slot.state === 'due' && (
+              {(actions.confirm || actions.fill || actions.skip) && (
                 <span class="checkin-slot-actions">
-                  {routine && (
+                  {routine && actions.confirm && (
                     <button
                       type="button"
                       class="btn-primary"
@@ -112,20 +98,24 @@ function DueToday({
                       Confirm
                     </button>
                   )}
-                  <a
-                    class={`${routine ? 'btn-secondary' : 'btn-primary'} checkin-fill`}
-                    href={fillHref(slot.form_id, slot.scheduled_for)}
-                  >
-                    Fill in
-                  </a>
-                  <button
-                    type="button"
-                    class="btn-secondary"
-                    disabled={quick.pending !== undefined}
-                    onClick={() => quick.run(skip)}
-                  >
-                    {sameAction(quick.pending, skip) ? 'Skipping…' : 'Skip'}
-                  </button>
+                  {actions.fill && (
+                    <a
+                      class={`${actions.confirm || slot.state !== 'due' ? 'btn-secondary' : 'btn-primary'} checkin-fill`}
+                      href={fillHref(slot.form_id, slot.scheduled_for)}
+                    >
+                      Fill in
+                    </a>
+                  )}
+                  {actions.skip && (
+                    <button
+                      type="button"
+                      class="btn-secondary"
+                      disabled={quick.pending !== undefined}
+                      onClick={() => quick.run(skip)}
+                    >
+                      {sameAction(quick.pending, skip) ? 'Skipping…' : 'Skip'}
+                    </button>
+                  )}
                 </span>
               )}
             </li>
@@ -355,7 +345,6 @@ export function CheckIns() {
   const { query, route } = useLocation()
   const refresh = useRefreshCheckIns()
   const [actionError, setActionError] = useState<string | null>(null)
-  const [logged, setLogged] = useState<CheckIn | null>(null)
   const forms = useQuery({
     enabled: isLoggedIn,
     queryFn: () => fetchCheckInForms(),
@@ -368,37 +357,7 @@ export function CheckIns() {
     queryKey: checkInKeys.recent,
   })
 
-  const quickAction = useMutation({
-    mutationFn: (action: QuickAction) =>
-      action.kind === 'confirm'
-        ? submitCheckIn({
-            answers: {},
-            form_id: action.form.id,
-            use_defaults: true,
-            ...(action.slot ? { scheduled_for: action.slot } : {}),
-          })
-        : submitCheckIn({
-            answers: {},
-            form_id: action.form_id,
-            scheduled_for: action.slot,
-            status: 'skipped',
-          }),
-    onError: (error) => setActionError(error.message),
-    onSuccess: async (checkIn) => {
-      setActionError(null)
-      setLogged(checkIn)
-      await refresh()
-    },
-  })
-  const quick: Quick = {
-    pending: quickAction.isPending ? quickAction.variables : undefined,
-    run: (action) => quickAction.mutate(action),
-  }
-  useEffect(() => {
-    if (!logged) return
-    const timer = setTimeout(() => setLogged(null), LOGGED_UNDO_MS)
-    return () => clearTimeout(timer)
-  }, [logged])
+  const { feedback, quick } = useQuickCheckIn()
 
   if (!isLoggedIn) {
     return (
@@ -434,17 +393,7 @@ export function CheckIns() {
           onClose={closeUndo}
         />
       )}
-      {logged && (
-        <UndoBar
-          key={logged.id}
-          message={`${logged.status === 'skipped' ? 'Skipped' : 'Logged'} ${logged.form_name}.`}
-          onUndo={async () => {
-            await deleteCheckIn(logged.id)
-            await refresh()
-          }}
-          onClose={() => setLogged(null)}
-        />
-      )}
+      {feedback}
       {actionError && (
         <p class="checkin-error" role="alert">
           {actionError}

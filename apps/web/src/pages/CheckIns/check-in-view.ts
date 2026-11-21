@@ -173,3 +173,24 @@ export const openSlots = (slots: readonly DueSlot[]): DueSlot[] => [
   ...slots.filter((slot) => slot.state === 'due'),
   ...slots.filter((slot) => slot.state === 'upcoming'),
 ]
+
+export interface SlotActions {
+  confirm: boolean
+  fill: boolean
+  skip: boolean
+}
+
+/**
+ * What a slot of today offers on the Check-ins page: a due slot is filled in or skipped, and a
+ * routine's confirmed as preset; an upcoming slot can be filled in early.
+ */
+export const slotActions = (slot: Pick<DueSlot, 'state'>, isRoutine: boolean): SlotActions => {
+  if (slot.state === 'due') return { confirm: isRoutine, fill: true, skip: true }
+  return { confirm: false, fill: slot.state === 'upcoming', skip: false }
+}
+
+/** On Home's card a routine's due slot is Done or Skip in place; any other slot links to filling in. */
+export const dueCardActions = (slot: Pick<DueSlot, 'state'>, isRoutine: boolean): SlotActions => {
+  const actions = slotActions(slot, isRoutine)
+  return actions.confirm ? { ...actions, fill: false } : { ...actions, skip: false }
+}
