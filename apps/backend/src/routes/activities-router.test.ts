@@ -578,7 +578,7 @@ describe('POST /activities/:id/resync-detail', () => {
         end_time: new Date('2026-06-08T11:00:00Z'),
       }),
     )
-    const resync = vi.fn().mockResolvedValue(42)
+    const resync = vi.fn().mockResolvedValue({ points: 42, status: 'synced' })
 
     const res = await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
 
@@ -608,7 +608,7 @@ describe('POST /activities/:id/resync-detail', () => {
         start_time: new Date('2026-06-08T11:00:00Z'),
       }),
     ] as unknown as Awaited<ReturnType<typeof db.getOverlappingActivities>>)
-    const resync = vi.fn().mockResolvedValue(7)
+    const resync = vi.fn().mockResolvedValue({ points: 7, status: 'synced' })
 
     const res = await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
 
@@ -626,7 +626,7 @@ describe('POST /activities/:id/resync-detail', () => {
     vi.mocked(db.getActivityById).mockResolvedValue(
       activityRow({ data: { garmin_activity_id: 999 }, end_time: undefined }),
     )
-    const resync = vi.fn().mockResolvedValue(0)
+    const resync = vi.fn().mockResolvedValue({ points: 0, status: 'synced' })
 
     await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
 
@@ -641,6 +641,24 @@ describe('POST /activities/:id/resync-detail', () => {
 
     expect(res.status).toBe(400)
     expect(resync).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [
+      'no_connection',
+      409,
+      'Re-syncing needs the Garmin Connect login or a Personal API key. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
+    ],
+    ['no_file', 404, 'Garmin has no activity file for this activity.'],
+    ['failed', 502, 'Garmin did not return the activity. The audit log has the reason.'],
+  ])('a %s result answers %i with its reason', async (status, code, error) => {
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ data: { garmin_activity_id: 999 } }))
+    const resync = vi.fn().mockResolvedValue({ status })
+
+    const res = await supertest(buildApp(resync)).post(`/activities/${ACTIVITY_ID}/resync-detail`)
+
+    expect(res.status).toBe(code)
+    expect(res.body).toEqual({ error, points: 0, success: false })
   })
 })
 

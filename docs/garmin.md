@@ -109,6 +109,8 @@ The raw record is a compact summary only (`garmin_activity_fit`, `external_id` `
 
 When Garmin has no usable file for an activity (a `404`, a ZIP without a readable `.fit` entry, a file failing its integrity check, or one over 50 MB, or an entry over 100 MB unpacked): with a login, that activity's JSON detail is used instead; without one, an activity that started less than 24 hours ago is left as it is and asked for again on the next run (Garmin can list an activity before it serves its file), and an older one is marked as having its detail (a manual activity has no file to wait for) and the audit log says so. Any other failure (the network, a `5xx`, a refused key or download, or a ZIP whose `.fit` entries add up to more than 400 MB unpacked, which is refused before unpacking further): with a login, that activity's JSON detail is used instead and the audit log has a warning with the error; without one, the activity is left for the next run and the audit log has the error. A full re-sync downloads the file of every activity again, and the files are larger than the JSON detail. For an activity synced through its JSON detail before, the file's samples replace the `garmin` samples that detail wrote: the old ones of the metrics the file carries, over the activity's span, are deleted in the same transaction that writes the new ones (a metric only the JSON detail has, like `body_battery`, stays). The replacement goes by source, metric and time, not by who wrote a sample: every live `garmin` sample of a metric the file carries inside the activity's window is replaced, the all-day monitoring samples the wellness sync wrote there (`heart_rate`, `stress_level`, `respiratory_rate`) included, not only the ones the JSON detail wrote. The file samples the activity more densely than the monitoring does, so nothing is lost. The file's strength sets are read as described under [Strength sets](#strength-sets); laps and swim lengths are not read from the file.
 
+The activity page's **Re-sync Garmin Detail** fetches one activity's detail again through the same choice: the Personal API key's FIT file, else the login's JSON detail (also when the key's download fails or Garmin has no file, while there is a login). The button shows only with a login or a key; Connect with Garmin only receives what Garmin sends and cannot fetch an activity again, so with it alone only **Open in Garmin Connect** shows. A re-sync that cannot complete answers `409` when no connection can pull, `404` when the key found no file and there is no login (the activity is not marked), and `502` when Garmin failed (the audit log has the error); the page shows the reason.
+
 ## Activity Type Mapping
 
 Garmin labels each activity with a `typeKey` (e.g. `running`, `indoor_rowing`, `rowing_v2`). It is resolved to an aurboda activity type in this order:
@@ -238,7 +240,7 @@ When the login is connected and the server offers Connect with Garmin, the Garmi
 
 What stops when the login is disconnected depends on what else is connected:
 
-- Connect with Garmin only: training readiness, data from before you connected, and **Sync now** and **Full Re-sync**.
+- Connect with Garmin only: training readiness, data from before you connected, **Sync now** and **Full Re-sync**, and re-syncing a single activity.
 - A Personal API key only: stress, the sleep stage timeline and training readiness.
 - Both: training readiness.
 

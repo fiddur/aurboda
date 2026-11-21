@@ -6,6 +6,7 @@ import type { Activity } from '../../db/types.ts'
 vi.mock('../../db/index.ts', async () => ({
   getActivityTrack: vi.fn(),
   getDistinctMetrics: vi.fn(),
+  getHealthConnectStepRecords: vi.fn(),
   getLocations: vi.fn(),
   getOverlappingActivities: vi.fn(),
   getTimeSeries: vi.fn(),
@@ -17,7 +18,9 @@ vi.mock('../../db/index.ts', async () => ({
 vi.mock('../settings.ts', () => ({ computeHrZoneSecs: vi.fn(), getEffectiveHrZones: vi.fn() }))
 
 const db = await import('../../db/index.ts')
-const { getActivityFullDetail, resolveActivityWindow } = await import('./activity-detail.ts')
+const settings = await import('../settings.ts')
+const { computeActivityDetailMetrics, getActivityFullDetail, resolveActivityWindow } =
+  await import('./activity-detail.ts')
 
 const start = new Date('2026-06-08T10:00:00Z')
 const end = new Date('2026-06-08T11:00:00Z')
@@ -197,5 +200,59 @@ describe('resolveActivityWindow', () => {
       end_time: new Date('2026-06-08T10:20:00Z'),
       start_time: new Date('2026-06-08T10:05:00Z'),
     })
+  })
+})
+
+describe('computeActivityDetailMetrics steps', () => {
+  const GARMIN = 'com.garmin.android.apps.connectmobile'
+  const viaHealthConnect = (data: Record<string, unknown> = {}) => ({
+    data: { metadata: { dataOrigin: GARMIN }, ...data },
+    end_time: end,
+    start_time: start,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(settings.getEffectiveHrZones).mockResolvedValue({ zones: [] } as never)
+    vi.mocked(db.getTimeSeriesMultiMetric).mockResolvedValue({})
+    vi.mocked(db.getTimeSeries).mockResolvedValue([])
+    vi.mocked(db.getHealthConnectStepRecords).mockResolvedValue([
+      { count: 100, end: new Date('2026-06-08T10:11:00Z'), start: new Date('2026-06-08T10:10:00Z') },
+      { count: 120, end: new Date('2026-06-08T10:31:00Z'), start: new Date('2026-06-08T10:30:00Z') },
+    ])
+  })
+
+  test('a stored step count wins, even 0, and is not flagged', async () => {
+    for (const steps of [3360, 0]) {
+      const result = await computeActivityDetailMetrics('u', viaHealthConnect({ steps }))
+      expect(result.steps).toBe(steps)
+      expect(result.steps_estimated).toBeUndefined()
+    }
+    expect(db.getHealthConnectStepRecords).not.toHaveBeenCalled()
+  })
+
+  test('an activity without a Health Connect origin queries nothing', async () => {
+    const result = await computeActivityDetailMetrics('u', { data: {}, end_time: end, start_time: start })
+
+    expect(result.steps).toBeUndefined()
+    expect(result.steps_estimated).toBeUndefined()
+    expect(db.getHealthConnectStepRecords).not.toHaveBeenCalled()
+  })
+
+  test('sums the origin’s step records and flags them estimated', async () => {
+    const result = await computeActivityDetailMetrics('u', viaHealthConnect())
+
+    expect(db.getHealthConnectStepRecords).toHaveBeenCalledWith('u', GARMIN, start, end)
+    expect(result.steps).toBe(220)
+    expect(result.steps_estimated).toBe(true)
+  })
+
+  test('without step records neither field is set', async () => {
+    vi.mocked(db.getHealthConnectStepRecords).mockResolvedValue([])
+
+    const result = await computeActivityDetailMetrics('u', viaHealthConnect())
+
+    expect(result).not.toHaveProperty('steps')
+    expect(result).not.toHaveProperty('steps_estimated')
   })
 })

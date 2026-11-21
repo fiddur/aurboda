@@ -102,6 +102,15 @@ const avgHrRow = (avgHr: number, typical: TypicalAvgHr | undefined): ActivitySta
   }
 }
 
+const stepsRow = (steps: number, estimated: boolean): ActivityStatRow =>
+  estimated
+    ? {
+        label: 'Steps',
+        title: 'Summed from the step records the recording app wrote to Health Connect during the activity',
+        value: `≈ ${Math.round(steps)}`,
+      }
+    : { label: 'Steps', value: String(Math.round(steps)) }
+
 // eslint-disable-next-line complexity -- one optional row per summary metric
 export const buildMetricRows = ({
   activity,
@@ -125,7 +134,7 @@ export const buildMetricRows = ({
   add('Max HR', a.max_hr === undefined ? undefined : `${Math.round(a.max_hr)} bpm`)
   const calories = formatCalories(a.calories, totalCalories)
   if (calories) rows.push(calories)
-  add('Steps', a.steps ? String(Math.round(a.steps)) : undefined)
+  if (a.steps) rows.push(stepsRow(a.steps, a.steps_estimated === true))
   add(
     'Body Battery',
     a.body_battery_before !== undefined && a.body_battery_after !== undefined

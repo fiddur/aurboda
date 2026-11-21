@@ -1,6 +1,7 @@
 import { addDays, addMinutes, isFuture, subDays } from 'date-fns'
 
 import type { SyncState } from '../../db/types.ts'
+import type { ActivitySpan } from '../gps-precedence.ts'
 import type { GarminClient, GarminSource } from './source.ts'
 
 import {
@@ -347,6 +348,15 @@ const fitDetailOrNull = async (context: DetailContext, hasSession: boolean): Pro
 /** Garmin can list an activity before it serves its file, so a fresh one without a file is asked for again. */
 const NO_FILE_GRACE_MS = 24 * 60 * 60 * 1000
 
+const detailVia = (source: GarminSource) => (source === 'personal_key' ? 'FIT file' : 'detail')
+
+const syncedDetailMessage = (
+  verb: string,
+  synced: { count: number; fromFile: boolean },
+  garminActivityId: number,
+) =>
+  `📊 ${verb} ${synced.count} detail metrics for Garmin activity ${garminActivityId}${synced.fromFile ? ' from its FIT file' : ''}`
+
 /** Fetch, process and mark one activity's detail. A failure is audited and leaves it for the next run. */
 const syncOneDetail = async (
   context: DetailContext,
@@ -365,18 +375,68 @@ const syncOneDetail = async (
       return
     }
     if (!hadDetail) onDetailSynced?.(user, activityId)
-    const from = synced.fromFile ? ' from its FIT file' : ''
-    auditInfo(
-      user,
-      'sync',
-      `📊 Synced ${synced.count} detail metrics for Garmin activity ${garminActivityId}${from}`,
-    )
+    auditInfo(user, 'sync', syncedDetailMessage('Synced', synced, garminActivityId))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const via = source === 'personal_key' ? 'FIT file' : 'detail'
-    auditError(user, 'sync', `Failed to sync ${via} for Garmin activity ${garminActivityId}`, {
+    auditError(user, 'sync', `Failed to sync ${detailVia(source)} for Garmin activity ${garminActivityId}`, {
       error: message,
     })
+  }
+}
+
+export type ResyncDetailResult =
+  | { status: 'synced'; points: number }
+  | { status: 'no_connection' }
+  | { status: 'no_file' }
+  | { status: 'failed' }
+
+/** One activity's detail, fetched again on request through whichever connection can pull it. */
+export const resyncActivityDetail = async (
+  user: string,
+  garmin: GarminClient,
+  activity: {
+    activityId: string
+    garminActivityId: number
+    activitySpan: ActivitySpan | null
+    activityStart: Date
+  },
+  {
+    now = new Date(),
+    onDetailSynced,
+    onTrackWritten,
+  }: { onDetailSynced?: DetailSyncedCallback; onTrackWritten?: TrackWrittenCallback; now?: Date } = {},
+): Promise<ResyncDetailResult> => {
+  const source = await garmin.sourceFor(user, 'activityDetail')
+  if (source === null) return { status: 'no_connection' }
+  const hasSession = (await garmin.sourceFor(user, 'activitySession')) === 'session'
+  const { activityId, activitySpan, activityStart, garminActivityId } = activity
+  const context: DetailContext = {
+    activityId,
+    garmin,
+    garminActivityId,
+    now,
+    options: { activityId, activitySpan, activityStart, onTrackWritten },
+    startTime: activityStart,
+    user,
+  }
+  try {
+    const synced = await fetchDetail(context, source, hasSession)
+    if (synced === null) return { status: 'no_file' }
+    await markActivityDetailSynced(user, activityId)
+    onDetailSynced?.(user, activityId)
+    auditInfo(user, 'sync', syncedDetailMessage('Re-synced', synced, garminActivityId))
+    return { points: synced.count, status: 'synced' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    auditError(
+      user,
+      'sync',
+      `Failed to re-sync ${detailVia(source)} for Garmin activity ${garminActivityId}`,
+      {
+        error: message,
+      },
+    )
+    return { status: 'failed' }
   }
 }
 

@@ -120,6 +120,19 @@ describe('buildActivityStatRows: source summary fields', () => {
     expect(value('Body Battery')).toBe('56 → 54')
     expect(value('Elevation')).toBe('+120 m / −118 m')
   })
+
+  test('steps summed from Health Connect step records are marked as estimated', () => {
+    const steps = (activity: Activity) =>
+      buildMetricRows({ activity, sleepMinutes: undefined, totalCalories: undefined }).find(
+        (r) => r.label === 'Steps',
+      )
+    expect(steps(baseActivity({ steps: 3324, steps_estimated: true }))).toEqual({
+      label: 'Steps',
+      title: 'Summed from the step records the recording app wrote to Health Connect during the activity',
+      value: '≈ 3324',
+    })
+    expect(steps(baseActivity({ steps: 3360 }))).toEqual({ label: 'Steps', value: '3360' })
+  })
 })
 
 describe('buildMetricRows: typical Avg HR', () => {
