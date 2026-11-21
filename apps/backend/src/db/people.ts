@@ -3,6 +3,7 @@ import type { Activity } from './types.ts'
 
 import { activityColumns } from './activities/queries.ts'
 import { query, withUserTransaction } from './connection.ts'
+import { deleteNoteLinksOfTarget } from './note-links.ts'
 import { deleteNotesForEntitiesIn } from './notes.ts'
 import { mapActivityRow } from './row-mappers.ts'
 
@@ -292,11 +293,12 @@ export const restorePerson = async (user: string, id: string): Promise<PersonRes
 const purgeIn = async (tx: Queryable, ids: string[]): Promise<number> => {
   if (ids.length === 0) return 0
   await deleteNotesForEntitiesIn(tx, 'person', ids)
+  await deleteNoteLinksOfTarget(tx, 'person', ids)
   const result = await query(tx, 'DELETE FROM people WHERE id = ANY($1::uuid[])', [ids])
   return result.rowCount ?? 0
 }
 
-/** Removes a person for good, deleted or not, with their dates, notes and activity links. */
+/** Removes a person for good, deleted or not, with their dates, notes, activity links and journal links. */
 export const purgePerson = async (user: string, id: string): Promise<boolean> =>
   withUserTransaction(user, async (tx) => (await purgeIn(tx, [id])) > 0)
 

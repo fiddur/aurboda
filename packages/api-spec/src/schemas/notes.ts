@@ -75,6 +75,8 @@ export const NOTE_TITLE_MAX_LENGTH = 200
 
 export const NOTE_TAGS_MAX = 20
 
+export const NOTE_REPLY_RELATED_ERROR = 'A reply cannot be related to people or activities'
+
 export const NOTES_SEARCH_DEFAULT_LIMIT = 50
 
 export const NOTES_SEARCH_MAX_LIMIT = 200
@@ -148,6 +150,81 @@ export const noteReplySchema = z
 
 export type NoteReply = z.infer<typeof noteReplySchema>
 
+export const noteRelatedEntityTypes = ['person', 'activity'] as const
+
+export const noteRelatedEntityTypeSchema = z.enum(noteRelatedEntityTypes).meta({
+  description: 'What a journal entry can be related to: a person or an activity',
+  id: 'NoteRelatedEntityType',
+})
+
+export type NoteRelatedEntityType = z.infer<typeof noteRelatedEntityTypeSchema>
+
+/** Most people and activities one note can be related to. */
+export const NOTE_RELATED_MAX = 30
+
+/** Most journal entries a person's or an activity's answer lists. */
+export const JOURNAL_ENTRY_REFS_LIMIT = 50
+
+export const JOURNAL_ENTRY_EXCERPT_MAX = 200
+
+export const noteRelatedInputSchema = z
+  .object({
+    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_type: noteRelatedEntityTypeSchema,
+  })
+  .meta({ description: 'A person or an activity a note is related to', id: 'NoteRelatedInput' })
+
+export type NoteRelatedInput = z.infer<typeof noteRelatedInputSchema>
+
+export const noteRelatedSchema = z
+  .object({
+    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_type: noteRelatedEntityTypeSchema,
+    label: z.string().meta({
+      description:
+        'Display label: the person\'s name; for an activity its title (else its type\'s name) and its local date, e.g. "Evening walk, 2026-11-20"',
+    }),
+  })
+  .meta({
+    description: 'A person or an activity the note is related to, without being a comment on it',
+    id: 'NoteRelated',
+  })
+
+export type NoteRelated = z.infer<typeof noteRelatedSchema>
+
+const noteRelatedInputListSchema = z
+  .array(noteRelatedInputSchema)
+  .max(NOTE_RELATED_MAX)
+  .meta({
+    description: `The people and activities this note is related to, without being a comment on them (at most ${NOTE_RELATED_MAX}). The full list: it replaces the note's links when present; an empty list removes them all. Duplicates are collapsed. Not on a reply.`,
+  })
+
+export const journalEntryRefSchema = z
+  .object({
+    date: noteDateSchema.optional(),
+    entity_type: entityTypeSchema,
+    excerpt: z.string().meta({
+      description: `The first non-empty line of the text, at most ${JOURNAL_ENTRY_EXCERPT_MAX} characters`,
+    }),
+    id: z.string().uuid().meta({ description: 'Note ID' }),
+    start_time: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'When the note is anchored, if at a time' }),
+    title: noteTitleResponseSchema.optional(),
+  })
+  .meta({
+    description: 'A journal entry or comment related to a person or an activity',
+    id: 'JournalEntryRef',
+  })
+
+export type JournalEntryRef = z.infer<typeof journalEntryRefSchema>
+
+const journalEntriesDescription = `Journal entries and comments related to this, newest first (at most ${JOURNAL_ENTRY_REFS_LIMIT}). Private: never in a share.`
+
+export const journalEntryRefsSchema = z.array(journalEntryRefSchema).meta({
+  description: journalEntriesDescription,
+})
+
 export const noteSchema = z
   .object({
     attachments: z.array(noteAttachmentSchema).optional().meta({
@@ -168,6 +245,10 @@ export const noteSchema = z
     entity_type: entityTypeSchema,
     id: z.string().uuid().optional().meta({ description: 'Note ID' }),
     purge_at: notePurgeAtSchema.optional(),
+    related: z.array(noteRelatedSchema).optional().meta({
+      description:
+        'The people and activities this note is related to (a thread root only; a deleted target is left out until it is restored)',
+    }),
     replies: z.array(noteReplySchema).optional().meta({
       description: "Replies in this comment's thread, oldest first",
     }),
@@ -324,6 +405,7 @@ export const addNoteBodySchema = z
         'ID of the referenced entity (UUID for most types, composite key for metrics, the comment id for a reply). Omit for `entity_type` "time" and "day".',
     }),
     entity_type: entityTypeSchema,
+    related: noteRelatedInputListSchema.optional(),
     start_time: iso8601DateTimeSchema.optional().meta({
       description: "Only for `entity_type: 'time'` — when the comment is about (required)",
     }),
@@ -338,6 +420,9 @@ export const addNoteBodySchema = z
     }
     if (body.entity_type === 'note' && normalizeNoteTitle(body.title) != null) {
       pushIssue(ctx, 'title', body.title, 'A reply cannot have a title')
+    }
+    if (body.entity_type === 'note' && body.related !== undefined) {
+      pushIssue(ctx, 'related', body.related, NOTE_REPLY_RELATED_ERROR)
     }
     if (body.entity_type !== 'day' && body.date !== undefined) {
       pushIssue(ctx, 'date', body.date, "date can only be set when entity_type is 'day'")
@@ -373,6 +458,7 @@ export const updateNoteBodySchema = z
       description:
         'The `updated_at` the change was based on. When the comment has changed since, nothing is written and the answer is a 409 carrying the current comment.',
     }),
+    related: noteRelatedInputListSchema.optional(),
     start_time: iso8601DateTimeSchema.optional().meta({
       description:
         "New start time. Only for a comment with `entity_type` 'time' or 'day': on a 'day' entry it makes it a 'time' comment and drops its date.",
@@ -396,13 +482,14 @@ export const updateNoteBodySchema = z
       body.end_time === undefined &&
       body.date === undefined &&
       body.title === undefined &&
-      body.tags === undefined
+      body.tags === undefined &&
+      body.related === undefined
     ) {
       pushIssue(
         ctx,
         'content',
         body,
-        'At least one of content, title, tags, date, start_time or end_time must be provided',
+        'At least one of content, title, tags, related, date, start_time or end_time must be provided',
       )
     }
     if (body.date !== undefined && (body.start_time !== undefined || body.end_time !== undefined)) {
@@ -481,6 +568,8 @@ export type DeleteNoteResponse = z.infer<typeof deleteNoteResponseSchema>
 /** Notes about a person are read through the person, so a deleted person's stay out of sight. */
 export const notesSearchRootTypes = entityTypes.filter((type) => type !== 'note' && type !== 'person')
 
+export const NOTES_SEARCH_RELATED_PAIR_ERROR = 'related_type and related_id go together'
+
 export const NOTES_SEARCH_DEFAULT_ENTITY_TYPES: readonly EntityType[] = freeStandingNoteTypes
 
 const splitList = (raw: string | undefined): string[] =>
@@ -533,6 +622,12 @@ export const notesSearchQuerySchema = z
       description:
         'Full-text search over title and content (words, "quoted phrases", -excluded, or); the last word also matches as a prefix. A match in a reply returns its thread root.',
     }),
+    related_id: z.string().uuid().optional().meta({
+      description: 'With related_type: only entries related to this person or activity (by its own id)',
+    }),
+    related_type: noteRelatedEntityTypeSchema.optional().meta({
+      description: 'With related_id: whether it names a person or an activity',
+    }),
     tags: z.string().optional().meta({
       description: 'Comma-separated tags: only entries carrying all of them (set explicitly or as #hashtags)',
       example: 'travel,family',
@@ -559,6 +654,9 @@ export const notesSearchQuerySchema = z
     }
     if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
       pushIssue(ctx, 'to', query.to, 'to must not precede from')
+    }
+    if ((query.related_type === undefined) !== (query.related_id === undefined)) {
+      pushIssue(ctx, 'related_id', query.related_id, NOTES_SEARCH_RELATED_PAIR_ERROR)
     }
   })
   .meta({ id: 'NotesSearchQuery' })

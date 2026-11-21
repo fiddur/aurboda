@@ -72,7 +72,11 @@ describe('/people', () => {
     const { id } = (await http.post('/people').send({ name: 'Anna' })).body.person
     await http.post(`/people/${id}/dates`).send({ day: 1, kind: 'anniversary', label: 'Wedding', month: 6 })
     const detail = await http.get(`/people/${id}`)
-    expect(detail.body.person).toMatchObject({ dates: [{ label: 'Wedding' }], recent_activities: [] })
+    expect(detail.body.person).toMatchObject({
+      dates: [{ label: 'Wedding' }],
+      journal_entries: [],
+      recent_activities: [],
+    })
 
     const patched = await http.patch(`/people/${id}`).send({ pronouns: 'she/her' })
     expect(patched.body.person.pronouns).toBe('she/her')

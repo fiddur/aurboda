@@ -58,6 +58,7 @@ import {
   restoreActivity,
   updateActivity,
 } from '../services/mutations.ts'
+import { listJournalEntryRefs } from '../services/notes.ts'
 import {
   computeActivityDetailMetrics,
   dedupeCommentsForIds,
@@ -168,11 +169,13 @@ const buildMergedResponse = async (
   const commentsMap = await getCommentsMap(user, 'activity', commentLookupIds)
   const comments = dedupeCommentsForIds(commentsMap, commentLookupIds)
   const sourceIds = [...new Set([activity.id!, ...commentLookupIds])]
-  const [route, features, segmentEfforts, people] = await Promise.all([
+  const rowIds = [...sourceIds, ...(activity.override_target_ids ?? [])]
+  const [route, features, segmentEfforts, people, journalEntries] = await Promise.all([
     routeSummary(user, sourceIds),
     firstActivityFeatures(user, sourceIds),
     activitySegmentEfforts(user, sourceIds),
-    activityPeopleOf(user, [...sourceIds, ...(activity.override_target_ids ?? [])]),
+    activityPeopleOf(user, rowIds),
+    listJournalEntryRefs(user, 'activity', rowIds),
   ])
 
   return {
@@ -183,6 +186,7 @@ const buildMergedResponse = async (
     end_time: activity.end_time?.toISOString(),
     features,
     id: activity.id,
+    journal_entries: journalEntries,
     merged_end_time: mergedEndTime,
     merged_start_time: mergedStartTime,
     override_target_ids: activity.override_target_ids,
@@ -557,7 +561,10 @@ export const createActivitiesRouter = (
     const trackOwnerIds = [realId, ...(activity.override_target_ids ?? [])]
     const features = activity.deleted_at ? undefined : await firstActivityFeatures(user, trackOwnerIds)
     const segmentEfforts = activity.deleted_at ? undefined : await activitySegmentEfforts(user, trackOwnerIds)
-    const people = await activityPeopleOf(user, trackOwnerIds)
+    const [people, journalEntries] = await Promise.all([
+      activityPeopleOf(user, trackOwnerIds),
+      listJournalEntryRefs(user, 'activity', trackOwnerIds),
+    ])
 
     res.json({
       data: {
@@ -569,6 +576,7 @@ export const createActivitiesRouter = (
         end_time: activity.end_time?.toISOString(),
         features,
         id: activity.id,
+        journal_entries: journalEntries,
         override_target_ids: activity.override_target_ids,
         people,
         route,
@@ -598,20 +606,22 @@ export const createActivitiesRouter = (
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [activityMetrics, fullDetail, features, segmentEfforts, people] = await Promise.all([
-        computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(
-          user,
-          { ...window, id },
-          {
-            includeGps: include_gps,
-            metrics: parseMetricsParam(metrics),
-          },
-        ),
-        firstActivityFeatures(user, trackOwnerIds),
-        activitySegmentEfforts(user, trackOwnerIds),
-        activityPeopleOf(user, trackOwnerIds),
-      ])
+      const [activityMetrics, fullDetail, features, segmentEfforts, people, journalEntries] =
+        await Promise.all([
+          computeActivityDetailMetrics(user, window),
+          getActivityFullDetail(
+            user,
+            { ...window, id },
+            {
+              includeGps: include_gps,
+              metrics: parseMetricsParam(metrics),
+            },
+          ),
+          firstActivityFeatures(user, trackOwnerIds),
+          activitySegmentEfforts(user, trackOwnerIds),
+          activityPeopleOf(user, trackOwnerIds),
+          listJournalEntryRefs(user, 'activity', trackOwnerIds),
+        ])
 
       res.json({
         data: {
@@ -623,6 +633,7 @@ export const createActivitiesRouter = (
           end_time: activity.end_time?.toISOString(),
           features,
           id: activity.id,
+          journal_entries: journalEntries,
           override_target_ids: activity.override_target_ids,
           people,
           segment_efforts: segmentEfforts,

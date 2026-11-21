@@ -173,6 +173,23 @@ describe('the actor read at query time', () => {
   })
 })
 
+describe('getPersonDetail journal entries', () => {
+  test('carries the journal entries related to the person, [] when none', async () => {
+    const fake = setup()
+    const person = value(await addPerson(fake.deps, USER, { name: 'Anna' }))
+    expect((await getPersonDetail(fake.deps, USER, person.id))?.journal_entries).toEqual([])
+
+    const entry = {
+      date: '2026-11-20',
+      entity_type: 'day' as const,
+      excerpt: 'Dinner with Anna',
+      id: '00000000-0000-4000-8000-00000000aaaa',
+    }
+    fake.journalEntries.set(person.id, [entry])
+    expect((await getPersonDetail(fake.deps, USER, person.id))?.journal_entries).toEqual([entry])
+  })
+})
+
 describe('soft delete', () => {
   test('a deleted person is gone from lists, details, dates and posts until restored', async () => {
     const fake = setup()

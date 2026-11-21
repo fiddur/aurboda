@@ -29,15 +29,16 @@ const noteIdSchema = (what: string) => z.string().uuid().describe(`The ID of the
 export const registerNoteTools = (server: McpServer, user: string) => {
   server.tool(
     'add_note',
-    'Add a comment or journal entry. Four shapes: (1) on an entity — entity_type "activity", "productivity", "report", "meal" or "metric" plus entity_id (for metrics entity_id is a composite key "<iso_time>|<metric>|<source>", e.g. "2024-01-15T10:30:00.000Z|heart_rate|oura"); (2) a reply — entity_type "note" with entity_id set to the comment being replied to (threads are one level deep, so replying to a reply re-anchors to its root); (3) a comment or journal entry about a moment — entity_type "time" with no entity_id, start_time required and end_time optional; (4) a journal entry for a whole day — entity_type "day" with no entity_id and no times, date (YYYY-MM-DD) required. start_time/end_time may only be given for "time" and date only for "day"; every other shape inherits its times from the entity. Optional title (not on a reply) and tags (lowercase words without "#"); #hashtags written in the content count as tags too. content may be empty only for "time" and "day" entries. A new journal entry ("time" or "day") answers with its pictures and recordings in `attachments`, empty until add_note_attachment adds one; a reply and a comment on an entity carry none.',
+    'Add a comment or journal entry. Four shapes: (1) on an entity — entity_type "activity", "productivity", "report", "meal" or "metric" plus entity_id (for metrics entity_id is a composite key "<iso_time>|<metric>|<source>", e.g. "2024-01-15T10:30:00.000Z|heart_rate|oura"); (2) a reply — entity_type "note" with entity_id set to the comment being replied to (threads are one level deep, so replying to a reply re-anchors to its root); (3) a comment or journal entry about a moment — entity_type "time" with no entity_id, start_time required and end_time optional; (4) a journal entry for a whole day — entity_type "day" with no entity_id and no times, date (YYYY-MM-DD) required. start_time/end_time may only be given for "time" and date only for "day"; every other shape inherits its times from the entity. Optional title (not on a reply) and tags (lowercase words without "#"); #hashtags written in the content count as tags too. content may be empty only for "time" and "day" entries. A new journal entry ("time" or "day") answers with its pictures and recordings in `attachments`, empty until add_note_attachment adds one; a reply and a comment on an entity carry none. related (not on a reply) relates it to people and activities without making it a comment on them: [{ entity_type: "person" | "activity", entity_id }], at most 30.',
     { ...addNoteBodySchema.shape },
-    async ({ entity_type, entity_id, content, start_time, end_time, date, title, tags }) => {
+    async ({ entity_type, entity_id, content, start_time, end_time, date, title, tags, related }) => {
       const result = await addNote(user, {
         content,
         date,
         end_time,
         entity_id,
         entity_type,
+        related,
         start_time,
         tags,
         title,
@@ -84,7 +85,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'search_notes',
-    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years. Page with next_cursor.',
+    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years; related_type with related_id keeps entries related to that person or activity. Page with next_cursor.',
     { ...notesSearchQuerySchema.shape },
     async (params) => {
       const result = await searchNotesForUser(user, params)
@@ -95,7 +96,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'update_note',
-    'Update a comment or journal entry by its ID: content, title (null clears it; not on a reply) and tags (replaces the explicit tags; #hashtags in the content stay tags). start_time/end_time can only be changed on a "time" entry, and date on a "day" one; giving a "time" entry a date makes it a "day" entry, and giving a "day" entry a start_time makes it a "time" one. Moving an entry moves its whole thread. Pass expected_updated_at (the updated_at you read) to refuse the change when the entry was edited elsewhere since: the error then carries the current entry. The replaced text is kept: see list_note_revisions.',
+    'Update a comment or journal entry by its ID: content, title (null clears it; not on a reply) and tags (replaces the explicit tags; #hashtags in the content stay tags). start_time/end_time can only be changed on a "time" entry, and date on a "day" one; giving a "time" entry a date makes it a "day" entry, and giving a "day" entry a start_time makes it a "time" one. Moving an entry moves its whole thread. Pass expected_updated_at (the updated_at you read) to refuse the change when the entry was edited elsewhere since: the error then carries the current entry. The replaced text is kept: see list_note_revisions. related replaces the people and activities the entry is related to ([] removes them; absent leaves them; not on a reply); a change of links alone keeps no revision.',
     {
       id: noteIdSchema('update'),
       ...updateNoteBodySchema.shape,

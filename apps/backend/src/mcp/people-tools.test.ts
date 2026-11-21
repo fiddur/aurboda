@@ -53,7 +53,11 @@ describe('people tools', () => {
     const { person } = await call('add_person', { handle: '@anna@example.social', name: 'Anna' })
     expect(person.actor.uri).toBe('https://example.social/users/anna')
     expect((await call('list_people')).people).toHaveLength(1)
-    expect((await call('get_person', { id: person.id })).person).toMatchObject({ dates: [], name: 'Anna' })
+    expect((await call('get_person', { id: person.id })).person).toMatchObject({
+      dates: [],
+      journal_entries: [],
+      name: 'Anna',
+    })
     expect(
       (await call('update_person', { id: person.id, relationship: 'sibling' })).person.relationship,
     ).toBe('sibling')

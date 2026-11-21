@@ -2419,6 +2419,38 @@ describe('MCP Server', () => {
       })
     })
 
+    test('add_note, update_note and search_notes take related and its filter', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const personId = '00000000-0000-4000-8000-0000000000aa'
+      const related = [{ entity_id: personId, entity_type: 'person' }]
+      vi.mocked(mutations.addNote).mockResolvedValue({ success: true })
+      vi.mocked(mutations.updateNote).mockResolvedValue({ success: true })
+      vi.mocked(mutations.searchNotesForUser).mockResolvedValue({
+        data: [],
+        next_cursor: null,
+        success: true,
+      })
+
+      await callNoteTool(app, token, 'add_note', {
+        content: '',
+        date: '2024-01-20',
+        entity_type: 'day',
+        related,
+      })
+      expect(mutations.addNote).toHaveBeenLastCalledWith('testuser', expect.objectContaining({ related }))
+
+      const noteId = '00000000-0000-4000-8000-000000000000'
+      await callNoteTool(app, token, 'update_note', { id: noteId, related: [] })
+      expect(mutations.updateNote).toHaveBeenLastCalledWith('testuser', noteId, { related: [] })
+
+      await callNoteTool(app, token, 'search_notes', { related_id: personId, related_type: 'person' })
+      expect(mutations.searchNotesForUser).toHaveBeenLastCalledWith('testuser', {
+        related_id: personId,
+        related_type: 'person',
+      })
+    })
+
     test('update_note answers a conflict with an error carrying the current note', async () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')

@@ -133,6 +133,20 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_note_attachments_note ON note_attachments (note_id, position)
   `,
 
+  note_links: `
+    CREATE TABLE IF NOT EXISTS note_links (
+      note_id     UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('person', 'activity')),
+      entity_id   UUID NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (note_id, entity_type, entity_id)
+    )
+  `,
+
+  note_links_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links (entity_type, entity_id)
+  `,
+
   note_templates: `
     CREATE TABLE IF NOT EXISTS note_templates (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
