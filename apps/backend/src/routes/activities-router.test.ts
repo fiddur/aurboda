@@ -27,6 +27,7 @@ vi.mock('../services/queries/index.ts', () => ({
   getActivityNeighbors: vi.fn(),
   queryActivityItemHistory: vi.fn(),
   getCommentsMap: vi.fn(),
+  getRecentActivities: vi.fn(),
   parseActivityId: vi.fn(),
   parseDataFilter: vi.fn(),
   parseMetricsParam: vi.fn(),
@@ -52,11 +53,14 @@ vi.mock('../services/activity-people.ts', () => ({ activityPeopleOf: vi.fn().moc
 
 vi.mock('../services/notes.ts', () => ({ listJournalEntryRefs: vi.fn().mockResolvedValue([]) }))
 
+vi.mock('../services/settings.ts', () => ({ getUserTimezone: vi.fn().mockResolvedValue('Europe/Stockholm') }))
+
 const db = await import('../db/index.ts')
 const queries = await import('../services/queries/index.ts')
 const activityFeatures = await import('../services/activity-features.ts')
 const segments = await import('../services/segments.ts')
 const notes = await import('../services/notes.ts')
+const settings = await import('../services/settings.ts')
 
 const ACTIVITY_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
 
@@ -89,6 +93,61 @@ const activityRow = (overrides: Record<string, unknown> = {}) =>
     start_time: new Date('2026-06-08T10:00:00Z'),
     ...overrides,
   }) as unknown as Awaited<ReturnType<typeof db.getActivityById>>
+
+describe('GET /activities/recent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(queries.getRecentActivities).mockResolvedValue({ activities: [], tz: 'Europe/Stockholm' })
+  })
+
+  test('answers the latest activities with the defaults and the user timezone', async () => {
+    const res = await supertest(buildApp()).get('/activities/recent')
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { activities: [], tz: 'Europe/Stockholm' }, success: true })
+    expect(vi.mocked(queries.getRecentActivities)).toHaveBeenCalledWith(
+      'tester',
+      {
+        exclude_types: undefined,
+        limit: 5,
+        lookback_days: undefined,
+        manual_only: undefined,
+        types: undefined,
+        window: 'today',
+      },
+      { tz: 'Europe/Stockholm' },
+    )
+    expect(vi.mocked(db.getActivityById)).not.toHaveBeenCalled()
+  })
+
+  test('parses the query: comma lists, numbers, the boolean and tz', async () => {
+    const res = await supertest(buildApp()).get(
+      '/activities/recent?types=exercise,meditation&exclude_types=walking&limit=3&window=latest&lookback_days=7&manual_only=true&tz=America/New_York',
+    )
+
+    expect(res.status).toBe(200)
+    expect(vi.mocked(queries.getRecentActivities)).toHaveBeenCalledWith(
+      'tester',
+      {
+        exclude_types: ['walking'],
+        limit: 3,
+        lookback_days: 7,
+        manual_only: true,
+        types: ['exercise', 'meditation'],
+        window: 'latest',
+      },
+      { tz: 'America/New_York' },
+    )
+    expect(vi.mocked(settings.getUserTimezone)).not.toHaveBeenCalled()
+  })
+
+  test('rejects a limit over 20', async () => {
+    const res = await supertest(buildApp()).get('/activities/recent?limit=21')
+
+    expect(res.status).toBe(400)
+    expect(vi.mocked(queries.getRecentActivities)).not.toHaveBeenCalled()
+  })
+})
 
 describe('GET /activities/:id', () => {
   beforeEach(() => {

@@ -78,6 +78,7 @@ import {
   timeWeightedAveragesNote,
 } from './schemas/common.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
+import { recentActivitiesQuerySchema } from './schemas/dashboard.ts'
 import {
   exerciseCatalogEntryResponseSchema,
   exerciseCatalogQuerySchema,
@@ -286,6 +287,7 @@ import {
 } from './schemas/segments.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
+import { recentActivitiesResponseSchema } from './schemas/social.ts'
 import {
   createStrengthPlanBodySchema,
   strengthPlanResponseSchema,
@@ -857,6 +859,24 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get activities',
+        tags: ['Activities'],
+      },
+    },
+    '/activities/recent': {
+      get: {
+        description:
+          "The latest activities, newest first: today's so far or the most recent ones, by default of the types a day overview draws as icons. The read behind the dashboard's latest activities card.",
+        requestParams: { query: recentActivitiesQuerySchema },
+        responses: {
+          200: {
+            content: {
+              'application/json': { schema: recentActivitiesResponseSchema },
+            },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the latest activities',
         tags: ['Activities'],
       },
     },

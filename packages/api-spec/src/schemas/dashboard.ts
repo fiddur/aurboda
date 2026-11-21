@@ -2,7 +2,13 @@ import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { chartFilterFieldSchema } from './chart-data.ts'
-import { baseResponseSchema, dataFieldPathSchema } from './common.ts'
+import {
+  activityTypeSchema,
+  baseResponseSchema,
+  dataFieldPathSchema,
+  queryBooleanSchema,
+  tzSchema,
+} from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
 import { mediaPlaySourceSchema } from './media.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
@@ -468,6 +474,90 @@ export const dayOverviewConfigSchema = z
 
 export type DayOverviewConfig = z.infer<typeof dayOverviewConfigSchema>
 
+export const recentActivitiesWindows = ['today', 'latest'] as const
+
+export const recentActivitiesWindowSchema = z.enum(recentActivitiesWindows).meta({
+  description:
+    "Which activities are listed: today's so far (the owner's local day), or the latest ones looking back lookback_days",
+  id: 'RecentActivitiesWindow',
+})
+
+export type RecentActivitiesWindow = z.infer<typeof recentActivitiesWindowSchema>
+
+const recentActivitiesTypeListSchema = z.array(activityTypeSchema).max(50).optional()
+
+export const recentActivitiesFilterShape = {
+  exclude_types: recentActivitiesTypeListSchema.meta({
+    description: 'Activity types left out, with their subtypes',
+  }),
+  limit: z.number().int().min(1).max(20).default(5).meta({ description: 'Activities listed (default 5)' }),
+  lookback_days: z.number().int().positive().max(365).optional().meta({
+    description: 'With window latest: days looked back (default 30)',
+  }),
+  manual_only: z.boolean().optional().meta({
+    description: 'Only activities logged by hand in Aurboda (an edit of a synced activity does not count)',
+  }),
+  types: recentActivitiesTypeListSchema.meta({
+    description:
+      'Activity types listed, with their subtypes, whatever their category. Default: the types a day overview draws as icons (shown on the timeline, an activity category, not sleep)',
+  }),
+  window: recentActivitiesWindowSchema.default('today'),
+}
+
+export const recentActivitiesConfigSchema = z
+  .object({
+    ...recentActivitiesFilterShape,
+    title: z.string().optional().meta({
+      description: 'Card title (default: "Today" with window today, else "Latest activities")',
+    }),
+    visible_to_visitors: z.boolean().optional().meta({
+      description:
+        "Show the card to visitors of a shared dashboard (default: false, only the owner sees it). Visitors then see each listed activity's name, start time and duration, and its distance, sets, average heart rate and calories where it has them",
+    }),
+  })
+  .meta({
+    description:
+      'The latest activities as a list: what was logged today, or the most recent ones. On a period dashboard, the latest ones inside the period. Shown to visitors of a shared dashboard only with visible_to_visitors',
+    id: 'RecentActivitiesConfig',
+  })
+
+export type RecentActivitiesConfig = z.infer<typeof recentActivitiesConfigSchema>
+
+const typeNameListQuerySchema = z.string().max(4000).optional()
+
+export const recentActivitiesQuerySchema = z
+  .object({
+    exclude_types: typeNameListQuerySchema.meta({
+      description: 'Comma-separated activity types left out, with their subtypes',
+      example: 'walking',
+    }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(5)
+      .meta({ description: 'Activities listed (default 5)' }),
+    lookback_days: z.coerce.number().int().positive().max(365).optional().meta({
+      description: 'With window latest: days looked back (default 30)',
+    }),
+    manual_only: queryBooleanSchema.optional().meta({
+      description: 'true lists only activities logged by hand in Aurboda',
+    }),
+    types: typeNameListQuerySchema.meta({
+      description:
+        'Comma-separated activity types listed, with their subtypes. Default: the types a day overview draws as icons',
+      example: 'exercise,meditation',
+    }),
+    tz: tzSchema.optional().meta({
+      description: 'The timezone "today" is cut in and times are shown in; the user\'s setting when absent',
+    }),
+    window: recentActivitiesWindowSchema.default('today'),
+  })
+  .meta({ id: 'RecentActivitiesQuery' })
+
+export type RecentActivitiesQuery = z.infer<typeof recentActivitiesQuerySchema>
+
 export const widgetTypeSchema = z.enum([
   'metric_card',
   'sparkline_card',
@@ -486,6 +576,7 @@ export const widgetTypeSchema = z.enum([
   'top_list_card',
   'places_card',
   'day_overview',
+  'recent_activities',
 ])
 
 export type WidgetType = z.infer<typeof widgetTypeSchema>
@@ -575,6 +666,11 @@ export const dashboardWidgetSchema = z.discriminatedUnion('type', [
     config: dayOverviewConfigSchema,
     id: z.string().min(1).meta({ description: 'Unique widget ID' }),
     type: z.literal('day_overview'),
+  }),
+  z.object({
+    config: recentActivitiesConfigSchema,
+    id: z.string().min(1).meta({ description: 'Unique widget ID' }),
+    type: z.literal('recent_activities'),
   }),
 ])
 
@@ -708,6 +804,18 @@ export type UpdateDashboardInput = z.infer<typeof updateDashboardInputSchema>
 
 export const defaultDashboardConfig: DashboardConfig = {
   sections: [
+    {
+      id: 'today',
+      title: 'Today',
+      type: 'charts',
+      widgets: [
+        {
+          config: { limit: 5, title: 'Activities', window: 'today' },
+          id: 'recent-activities',
+          type: 'recent_activities',
+        },
+      ],
+    },
     {
       id: 'baseline',
       title: 'Your Baseline',

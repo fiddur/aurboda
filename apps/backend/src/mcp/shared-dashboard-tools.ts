@@ -117,7 +117,7 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
 
   server.tool(
     'get_dashboard_data',
-    'Get the data each widget of a dashboard renders, keyed by widget id: the home dashboard, or a shared dashboard by dashboard_id. A rolling dashboard answers each widget over its own lookback ending now, or, for a chart widget with a fixed `since` date, from that date to now (period and window are null). A calendar-period dashboard (config.period set) answers the latest finished period unless `period` is given (2026-10, 2026-W44 or 2026; it must be finished and match the granularity), with each figure compared against the previous period (previous_value, previous_* fields, trend_percent). A day overview card is answered only when its config has visible_to_visitors true, the switch that also shows it to visitors of a shared dashboard; it is null on a period dashboard.',
+    "Get the data each widget of a dashboard renders, keyed by widget id: the home dashboard, or a shared dashboard by dashboard_id. A rolling dashboard answers each widget over its own lookback ending now, or, for a chart widget with a fixed `since` date, from that date to now (period and window are null). A calendar-period dashboard (config.period set) answers the latest finished period unless `period` is given (2026-10, 2026-W44 or 2026; it must be finished and match the granularity), with each figure compared against the previous period (previous_value, previous_* fields, trend_percent). A day overview card is answered only when its config has visible_to_visitors true, the switch that also shows it to visitors of a shared dashboard; it is null on a period dashboard. A latest activities card is always answered to you, with each activity's id; visitors of a shared dashboard get it only with visible_to_visitors, and without the ids. On a period dashboard it lists the latest activities inside the period.",
     {
       dashboard_id: z
         .string()
@@ -134,7 +134,7 @@ export const registerSharedDashboardTools = (server: McpServer, user: string) =>
           : (await getSharedDashboardById(user, dashboard_id))?.config
       if (!config) return errorResponse('Shared dashboard not found')
       try {
-        return tzJsonResponse(await resolveDashboardView(user, config, period), tz)
+        return tzJsonResponse(await resolveDashboardView(user, config, period, 'owner'), tz)
       } catch (error) {
         if (error instanceof PeriodError) return errorResponse(error.message)
         throw error

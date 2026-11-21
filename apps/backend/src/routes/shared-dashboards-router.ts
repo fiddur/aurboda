@@ -114,7 +114,10 @@ export const createSharedDashboardsRouter = (
         return res.status(404).json({ error: 'Shared dashboard not found', success: false })
       }
       try {
-        res.json({ ...(await resolveDashboardView(user, record.config, req.query.period)), success: true })
+        res.json({
+          ...(await resolveDashboardView(user, record.config, req.query.period, 'owner')),
+          success: true,
+        })
       } catch (error) {
         if (error instanceof PeriodError) {
           return res.status(400).json({ error: error.message, success: false })

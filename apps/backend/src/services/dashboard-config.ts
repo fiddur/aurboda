@@ -28,11 +28,18 @@ export const dashboardConfigError = (config: DashboardConfig): string | undefine
 }
 
 /**
- * A day overview shows a whole day hour by hour, so visitors see it only when the owner opted in;
- * a stored config without the flag keeps it private.
+ * A day overview and a latest activities card show what the owner did and when, so visitors see them
+ * only when the owner opted in; a stored config without the flag keeps them private. The owner's own
+ * reads always get the latest activities card, and a day overview only with its flag.
  */
 export const isShownToVisitors = (widget: DashboardWidget): boolean =>
-  widget.type !== 'day_overview' || widget.config.visible_to_visitors === true
+  (widget.type !== 'day_overview' && widget.type !== 'recent_activities') ||
+  widget.config.visible_to_visitors === true
+
+export type DashboardViewer = 'owner' | 'visitor'
+
+export const isResolvedFor = (widget: DashboardWidget, viewer: DashboardViewer): boolean =>
+  isShownToVisitors(widget) || (viewer === 'owner' && widget.type === 'recent_activities')
 
 /**
  * Strip viewer-useless / internal fields from a config before exposing it.

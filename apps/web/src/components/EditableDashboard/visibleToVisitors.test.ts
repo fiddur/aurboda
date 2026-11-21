@@ -13,6 +13,7 @@ const config: DashboardConfig = {
       widgets: [
         { config: { metrics: ['stress_level'], window: 'today' }, id: 'day', type: 'day_overview' },
         { config: { metric: 'hrv_7day', title: 'HRV' }, id: 'mc', type: 'metric_card' },
+        { config: { limit: 5, window: 'today' }, id: 'recent', type: 'recent_activities' },
       ],
     },
   ],
@@ -32,6 +33,14 @@ describe('setVisibleToVisitors', () => {
       config: { visible_to_visitors: false },
     })
     expect(config.sections[0]?.widgets[0]?.config).not.toHaveProperty('visible_to_visitors')
+  })
+
+  it('sets the switch on a latest activities card', () => {
+    expect(setVisibleToVisitors(config, 'recent', true).sections[0]?.widgets[2]).toEqual({
+      config: { limit: 5, visible_to_visitors: true, window: 'today' },
+      id: 'recent',
+      type: 'recent_activities',
+    })
   })
 
   it('leaves other widgets alone', () => {

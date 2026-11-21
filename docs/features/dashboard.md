@@ -25,7 +25,12 @@ dismissal and the steps marked done by hand are user settings, so REST
 
 ## Default Layout
 
-New users see four sections out of the box:
+New users see five sections out of the box:
+
+### Today
+
+A full-width **Latest activities** card titled "Activities": up to five of today's activities, newest
+first (see [Latest Activities](#latest-activities)).
 
 ### Your Baseline
 
@@ -246,6 +251,50 @@ activities of the Timeline's Activity lane that start in it (their title, else t
 the type's icon and colour). The visitor's card shows hours and dates in your timezone and does not
 link to the Timeline.
 
+### Latest Activities
+
+What you have logged, as a list like Garmin Connect's "Today's Activity": one row per activity,
+newest first, with a round icon in the type's colour (its emoji or image, else the label's initial),
+the activity's title (else the type's name), a line of figures under it and the start time at the
+right. The figures line starts with the type's name when the row shows a title, then up to three of
+duration, distance, pace (running, walking and hiking types) or speed, the number of sets, average
+heart rate and calories, whichever the activity has. The time is just the clock time for today,
+"Yesterday 18:30" for yesterday and "16 Nov 18:30" before that. Each row links to the activity's
+detail page. With nothing to list it says so ("Nothing logged today", "No activities in the last
+30 days"), and the home card's empty "today" state links to **Add** ("Log an activity").
+
+**Configuration:** `window`, `today` (today so far in your timezone, default) or `latest` (the most
+recent ones looking back `lookback_days`, default 30, at most 365); `limit`, 1 to 20 (default 5);
+optional `types` and `exclude_types` (activity type names, each with its subtypes); optional
+`manual_only`; optional `title` (default "Today" with `window: today`, else "Latest activities");
+optional `visible_to_visitors` (default false).
+
+- **Which activities.** Without `types`, the card lists the types a [day overview](#day-overview)
+  draws as icons: types shown on the timeline whose display category is an activity one (sleep and
+  rest, exercise, meditation, wellness), minus sleep, naps and the sleep subtypes. So screen time,
+  music scrobbles, calendar events, location visits and the "other"-category tags stay out. With
+  `types`, exactly those types and their subtypes are listed, whatever their category or timeline
+  setting, so `types: ['sleep']` or `['coffee']` works. `exclude_types` (with subtypes) is taken out
+  in both cases. In the editor, the activity types are chips with a picker to add one; none chosen
+  means the default selection.
+- **Merged once.** A cross-source duplicate shows once, as on the Timeline; its link goes to the
+  merged activity (`merged:<id>`).
+- **Manual only.** `manual_only: true` (the editor's **Only activities logged by hand**) keeps only
+  activities logged in Aurboda itself, an uploaded FIT file included; an edit of a synced activity
+  (an override) and a merge that includes a synced activity do not count.
+- **Period dashboards.** The card applies to a period: it lists the latest `limit` activities inside
+  the shown period and ignores `window` and `lookback_days` (the editor hides both there).
+- **Visitors.** Like the day overview, visitors of a shared dashboard see the card only when you turn
+  on **Show to visitors**, with the warning that they then see each listed activity's name, start
+  time and duration, and its distance, sets, average heart rate and calories where it has them. A
+  visitor's rows carry no activity id and do not link. With the switch on, sharing a period of the
+  dashboard to your feed carries the same rows in the post. Your own reads of a dashboard's data
+  always answer the card, with the ids.
+- **API.** The card reads `GET /activities/recent` (query `limit`, `window`, `lookback_days`,
+  `types` and `exclude_types` comma-separated, `manual_only`, `tz`: the timezone "today" is cut in,
+  your setting when absent); MCP: `get_recent_activities`. On a period dashboard, and for visitors,
+  it is resolved with the rest of the dashboard's data.
+
 ### Correlation Impact
 
 Shows how a specific activity, tag, or location affects your HRV. Displays three bars: "before" (baseline), "during" (the activity), and "after" (recovery), showing the average HRV in each phase. Includes an occurrence count so you can judge the statistical weight.
@@ -285,7 +334,7 @@ Widgets are organized into sections, each with a title and a layout type:
 | Section type | Layout                                                        | Best for                                                                                            |
 | ------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | **Metrics**  | Responsive card grid (auto-fills columns, minimum 200px wide) | Metric cards, sparklines, activity summaries, record cards, activity cards, top lists, places cards |
-| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts                                                   |
+| **Charts**   | Single column, full width                                     | Trend charts, combined charts, correlation charts, day overviews, latest activities                 |
 | **Links**    | Responsive grid of smaller tiles (minimum 140px wide)         | Quick-link navigation                                                                               |
 
 Sections are collapsible -- click the section header to toggle between expanded and collapsed. On wide screens, multiple sections can appear side by side. In edit mode each section header has up and down arrows to reorder the sections.
@@ -337,6 +386,7 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night**, **Sleep debt** and **Goal progress** have no meaning for a past
   period: the widget palette hides them, and existing ones show "Not available for a period".
+  **Latest activities** does apply: it lists the latest activities inside the period.
 - **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
   `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
   (`start`/`end`, ISO) and `widget_data`; without `period` they answer the latest finished one, and
@@ -405,7 +455,7 @@ When adding a Metric Card or Sparkline Card, the metric picker shows a searchabl
 
 The dashboard works with whatever data sources you have connected. The more sources you connect, the more useful the dashboard becomes.
 
-**Cards waiting for data.** Outside edit mode, the home dashboard and your own period dashboards leave out every card whose source has never delivered anything, so a new account does not open on a wall of `No data`. One line under the last section says how many cards are waiting, with a link to **Data sources**; a card appears by itself once its source sends something. Edit mode shows every card, as before. "Never delivered" is per card: no sample of the metric at all for a metric card, sparkline, HR zones (heart rate) or a metric chart; no activity of the type or one of its subtypes for an activity card, record card, the activity summary (its shown categories), **Last night** (`sleep`) or an activity-type chart. The baseline cards read `hrv_rmssd` and `resting_heart_rate`, and Zone 2 reads `heart_rate`. A card is hidden only when none of its sources has ever delivered: one with data, just none in the current window, still shows `No data`. Tag charts, top lists, places, correlations, goals and quick links are always shown. A section left with no card goes too. Shared and public dashboards, and your own rolling dashboards other than home, show every card.
+**Cards waiting for data.** Outside edit mode, the home dashboard and your own period dashboards leave out every card whose source has never delivered anything, so a new account does not open on a wall of `No data`. One line under the last section says how many cards are waiting, with a link to **Data sources**; a card appears by itself once its source sends something. Edit mode shows every card, as before. "Never delivered" is per card: no sample of the metric at all for a metric card, sparkline, HR zones (heart rate) or a metric chart; no activity of the type or one of its subtypes for an activity card, record card, the activity summary (its shown categories), **Last night** (`sleep`) or an activity-type chart. The baseline cards read `hrv_rmssd` and `resting_heart_rate`, and Zone 2 reads `heart_rate`. A card is hidden only when none of its sources has ever delivered: one with data, just none in the current window, still shows `No data`. Tag charts, top lists, places, correlations, goals, latest activities and quick links are always shown. A section left with no card goes too. Shared and public dashboards, and your own rolling dashboards other than home, show every card.
 
 The dashboard asks this in one request for all its metrics and activity types: `GET /dashboard/data-presence?metrics=hrv_rmssd,steps&activity_types=exercise,sleep` answers `{ metrics: { hrv_rmssd: true, steps: false }, activity_types: { … } }`, and MCP has the same as `get_data_presence`.
 
