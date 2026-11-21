@@ -3,6 +3,7 @@ import type { CheckInQuestion } from '@aurboda/api-spec'
 import { addCheckInFormBodySchema } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
+import { mergeOverlappingActivities } from '../db/activities/merge.ts'
 import { fakeCheckInDeps } from './__fixtures__/check-in-deps.ts'
 import {
   addCheckInForm,
@@ -163,6 +164,16 @@ describe('logging to activities', () => {
     )
     expect(activities.get(checkIn.activities.fish_oil!.activity_id)!.data).toEqual({ substance: 'fish oil' })
     expect(activities.size).toBe(3)
+  })
+
+  test('the items of one submit read back as one activity each (#1892)', async () => {
+    const { activities, deps } = fakeCheckInDeps()
+    const form = await addRoutine(deps)
+    unwrap(await submitCheckIn(deps, USER, { answers: {}, form_id: form.id, use_defaults: true }))
+    const merged = mergeOverlappingActivities(
+      [...activities.values()].map((a) => ({ ...a, source: 'check_in' as const })),
+    )
+    expect(merged.map((a) => a.data?.substance).toSorted()).toEqual(['fish oil', 'magnesium', 'vitamin D'])
   })
 
   test('an item that cannot be logged is reported in log_errors', async () => {

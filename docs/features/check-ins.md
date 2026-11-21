@@ -115,7 +115,8 @@ field, or a required field is neither fixed nor the answer. `answer_field` is no
 Each taken answer is one activity at the check-in's `answered_at`, data source `check_in`, created
 through the same service as `add_activity`, with `fields` as its data and the answer in
 `answer_field`. **An answer of 0, no, or no answer logs nothing**, which is how one item of a stack
-is skipped. Two items of the same type at the same time stay two activities. The check-in
+is skipped. Two items of the same type at the same time stay two activities: each is its own
+row in the activity list and on the Timeline ([#1892](https://github.com/fiddur/aurboda/issues/1892)). The check-in
 remembers each in `activity_ids` (question key to activity) and answers them as `activities`, each
 `{ activity_id, logged }`:
 
