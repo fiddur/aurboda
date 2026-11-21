@@ -746,6 +746,36 @@ describe('GET /public/official-feed', () => {
     }
   })
 
+  test('leaves out an author whose database disappears after the listing', async () => {
+    const first = getTestUser()
+    const article = (user: string, title: string) =>
+      createArticlePost(user, {
+        article: { blocks: [{ markdown: 'Body', type: 'prose' }], title },
+        visibility: 'public',
+      })
+    const kept = await article(first, 'Kept')
+    await article(second, 'Gone')
+    const sensitivityFlagsVersion = async (user: string) => {
+      if (user === second) {
+        throw Object.assign(new Error(`database "${second}" does not exist`), { code: '3D000' })
+      }
+      return 'v1'
+    }
+    const { request, close } = startApp({ ...feedOf([first, second]), sensitivityFlagsVersion })
+    try {
+      const res = await request.get('/public/official-feed')
+      expect(res.status).toBe(200)
+      expect(res.body.posts.map((p: { id: string }) => p.id)).toEqual([kept.id])
+
+      const atom = await request.get('/public/official-feed.atom')
+      expect(atom.status).toBe(200)
+      expect(atom.text).toContain('<title type="text">Kept</title>')
+      expect(atom.text).not.toContain('Gone')
+    } finally {
+      await close()
+    }
+  })
+
   test('merges remote authors’ posts with the users’ by time, paging across both', async () => {
     const first = getTestUser()
     const local = [

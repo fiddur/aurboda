@@ -447,7 +447,9 @@ process died in between) is made pending again by the next list or promote.
 **Where it runs**: the `track-analyse` job, after segment timing (a fourth step); the
 `track-backfill` job, one time-limited run (20 s) over tracked activities not looked at yet,
 newest first, after its route matching; and on demand. A look marks the activity's tracks
-(`activity_tracks.segments_suggested_at`), cleared when a track is rewritten.
+(`activity_tracks.segments_suggested_at`), cleared when a track is rewritten and when the
+activity's shown type changes (a retype, or an override deleted or restored), so the next scan
+looks at it again under the new type.
 
 **Adding**: the line (trimmed to `start_km`–`end_km` along it, cut like a route) goes through
 exactly what creating a segment does (the 100 m and 50 m rules, the name from the nearest place,

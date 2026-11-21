@@ -70,6 +70,8 @@ import {
   mergeOfficialFeedPage,
   OFFICIAL_FEED_PAGE_SIZE,
   officialRemoteHandles,
+  readListedAuthor,
+  serializeOfficialFeedEntries,
 } from '../services/official-feed.ts'
 import { serializePublicTagPost } from '../services/public-tags.ts'
 import { queryMetricsBucketed } from '../services/queries/index.ts'
@@ -268,8 +270,9 @@ export const createFeedPublicRouter = ({
       )
       const settingsByUser = await settingsOf(localUsernames(page.rows))
       const flagsVersion = memoizedFlagsVersion(sensitivityFlagsVersion)
-      const posts = await Promise.all(
-        page.rows.map(async (entry): Promise<OfficialFeedEntry> => {
+      const posts = await serializeOfficialFeedEntries(
+        page.rows,
+        async (entry): Promise<OfficialFeedEntry> => {
           if (entry.origin === 'remote') return { ...serializePublicTagPost(entry.row), origin: 'remote' }
           const { row, username } = entry
           return {
@@ -277,7 +280,8 @@ export const createFeedPublicRouter = ({
             author_username: username,
             origin: 'local',
           }
-        }),
+        },
+        onMissingOfficialUser,
       )
       res.setHeader('Cache-Control', 'no-store')
       res.json({
@@ -300,24 +304,42 @@ export const createFeedPublicRouter = ({
     if (!setting) {
       return res.status(404).type('text/plain').send('Not found')
     }
-    const { rows } = await officialFeedPage(setting, ATOM_ENTRY_LIMIT)
+    const page = await officialFeedPage(setting, ATOM_ENTRY_LIMIT)
+    const articleAuthorVersions = await Promise.all(
+      [
+        ...new Set(
+          page.rows.flatMap((entry) =>
+            entry.origin === 'local' && entry.row.article ? [entry.username] : [],
+          ),
+        ),
+      ]
+        .sort()
+        .map(async (username) => ({
+          username,
+          version: await readListedAuthor(
+            username,
+            () => sensitivityFlagsVersion(username),
+            onMissingOfficialUser,
+          ),
+        })),
+    )
+    const goneAuthors = new Set(
+      articleAuthorVersions.flatMap(({ username, version }) => (version === null ? [username] : [])),
+    )
+    const rows = page.rows.filter((entry) => entry.origin === 'remote' || !goneAuthors.has(entry.username))
     const memoRows = rows.map((entry) => ({
       id: entry.origin === 'local' ? `${entry.username}/${entry.row.id}` : `@remote/${entry.row.id}`,
       updated_at: entry.row.updated_at,
     }))
-    const articleAuthors = [
-      ...new Set(
-        rows.flatMap((entry) => (entry.origin === 'local' && entry.row.article ? [entry.username] : [])),
-      ),
-    ].sort()
-    const flagsVersions = (
-      await Promise.all(articleAuthors.map(async (u) => `${u}=${await sensitivityFlagsVersion(u)}`))
-    ).join(',')
+    const flagsVersions = articleAuthorVersions
+      .flatMap(({ username, version }) => (version === null ? [] : [`${username}=${version}`]))
+      .join(',')
     // `#` is never in a username, so this scope can't meet a user's articles memo.
     const xml = await atomCache(atomMemoKey('#official', memoRows, Date.now(), flagsVersions), async () => {
       const settingsByUser = await settingsOf(localUsernames(rows))
-      const entries = await Promise.all(
-        rows.map(async (entry): Promise<OfficialFeedAtomEntry> => {
+      const entries = await serializeOfficialFeedEntries(
+        rows,
+        async (entry): Promise<OfficialFeedAtomEntry> => {
           if (entry.origin === 'remote') return { origin: 'remote', ...entry.row }
           const { row, username } = entry
           const post = await serializeFeedPost(username, row, {
@@ -342,7 +364,8 @@ export const createFeedPublicRouter = ({
             updated_at: row.updated_at,
             username,
           }
-        }),
+        },
+        onMissingOfficialUser,
       )
       return buildOfficialFeedAtom({ apiBaseUrl, entries, now: new Date(), webHost })
     })

@@ -2,7 +2,7 @@ import type { Activity } from '../db/types.ts'
 
 import { getActivityById, getOverrideForActivity } from '../db/activities/index.ts'
 import { deleteAllActivityFeatures, listTrackedActivitiesWithoutFeatures } from '../db/activity-features.ts'
-import { deletePendingSuggestionsOfOtherType } from '../db/suggested-segments.ts'
+import { deletePendingSuggestionsOfOtherType, markSuggestionsUnscanned } from '../db/suggested-segments.ts'
 import { getActivityTrack } from '../db/tracks.ts'
 import { computeAndStoreActivityFeatures, defaultActivityFeatureDeps } from './activity-features.ts'
 import { auditError, auditInfo } from './audit-log.ts'
@@ -191,6 +191,7 @@ export interface ReanalyseDeps {
   rematchRoutes: (user: string, activityIds: string[]) => Promise<unknown>
   rematchSegments: (user: string, activityIds: string[]) => Promise<unknown>
   dropStaleSuggestions: (user: string, activityIds: string[]) => Promise<unknown>
+  rescanSuggestions: (user: string, activityIds: string[]) => Promise<unknown>
   recomputeFeatures: (user: string, activityId: string) => Promise<unknown>
   getActivity: (user: string, id: string) => Promise<Activity | null>
 }
@@ -205,14 +206,15 @@ export const defaultReanalyseDeps: ReanalyseDeps = {
   },
   rematchRoutes: (user, activityIds) => rematchActivityRoute(user, activityIds, defaultRouteMatchDeps),
   rematchSegments: (user, activityIds) => rematchActivitySegments(user, activityIds, defaultSegmentDeps),
+  rescanSuggestions: markSuggestionsUnscanned,
 }
 
 /**
  * After the type the merged view shows changed (a retype, or an override deleted or restored):
  * routes and segments are matched again so a walk does not stay on a run's route or keep a
  * run's segment efforts, pending segment suggestions found on the activities under their old
- * type are dropped, and features are recomputed
- * for the rows that own a track. Failures are audited, never thrown: the edit itself succeeded.
+ * type are dropped and their tracks go back in the suggestion scan for the new type, and
+ * features are recomputed for the rows that own a track. Failures are audited, never thrown: the edit itself succeeded.
  */
 export const reanalyseActivities = async (
   user: string,
@@ -227,6 +229,9 @@ export const reanalyseActivities = async (
   )
   await attempt(user, 'Failed to drop segment suggestions after activity retype', undefined, () =>
     deps.dropStaleSuggestions(user, activityIds),
+  )
+  await attempt(user, 'Failed to queue segment suggestion after activity retype', undefined, () =>
+    deps.rescanSuggestions(user, activityIds),
   )
   for (const id of activityIds) {
     await attempt(user, 'Failed to recompute activity features after retype', id, () =>

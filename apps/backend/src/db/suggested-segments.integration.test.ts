@@ -18,6 +18,7 @@ import {
   listSuggestedSegments,
   listUnscannedTrackedActivities,
   markSuggestionsScanned,
+  markSuggestionsUnscanned,
   releaseStaleSuggestedSegmentClaims,
   settleSuggestedSegmentClaim,
   suggestedSegmentLine,
@@ -286,6 +287,20 @@ describe('Suggested segments integration', () => {
         source: 'garmin',
       })
       expect(await countUnscannedTrackedActivities(user)).toBe(2)
+    })
+
+    test('marking activities unscanned brings back only their tracks', async () => {
+      const user = getTestUser()
+      const retyped = await addTrackedActivity(EAST)
+      const other = await addTrackedActivity(EAST)
+      await markSuggestionsScanned(user, retyped)
+      await markSuggestionsScanned(user, other)
+      expect(await countUnscannedTrackedActivities(user)).toBe(0)
+
+      await markSuggestionsUnscanned(user, [retyped])
+      expect(await listUnscannedTrackedActivities(user, 10)).toEqual([{ activity_id: retyped }])
+      await markSuggestionsUnscanned(user, [])
+      expect(await countUnscannedTrackedActivities(user)).toBe(1)
     })
   })
 

@@ -17,6 +17,8 @@ import {
   processNoteAttachment,
   processNoteImage,
   restoreNoteAttachmentById,
+  hasMp4VideoTrack,
+  resizeNoteImage,
   sniffAudioMime,
 } from './note-attachments.ts'
 
@@ -50,10 +52,12 @@ const makeDeps = (overrides: Partial<NoteAttachmentDeps> = {}): NoteAttachmentDe
   getAttachment: vi.fn(async () => record()),
   getBytes: vi.fn(async () => ({ bytes: Buffer.from('stored'), kind: 'image', mime: 'image/webp' })),
   getNoteById: vi.fn(async () => entry()),
+  getStripMetadata: vi.fn(async () => false),
   getUsage: vi.fn(async () => ({ account_bytes: 0, live_count: 0, max_position: null })),
-  insert: vi.fn(async (_user, _note, position, a) =>
-    record({ height: a.height, kind: a.kind, mime: a.mime, position, size: a.bytes.length, width: a.width }),
-  ),
+  insert: vi.fn(async (_user, _note, a) => ({
+    ok: true as const,
+    value: record({ height: a.height, kind: a.kind, mime: a.mime, size: a.bytes.length, width: a.width }),
+  })),
   listDeleted: vi.fn(async () => []),
   listLive: vi.fn(async () => new Map()),
   process: vi.fn(async (buffer: Buffer) => ({
@@ -65,7 +69,7 @@ const makeDeps = (overrides: Partial<NoteAttachmentDeps> = {}): NoteAttachmentDe
   })),
   purge: vi.fn(async () => true),
   resize: vi.fn(async () => Buffer.from('small')),
-  restore: vi.fn(async () => record()),
+  restore: vi.fn(async () => ({ ok: true as const, value: record() })),
   softDelete: vi.fn(async () => true),
   toAssistantImage: vi.fn(async () => Buffer.from('jpeg')),
   ...overrides,
@@ -74,12 +78,46 @@ const makeDeps = (overrides: Partial<NoteAttachmentDeps> = {}): NoteAttachmentDe
 const solid = (width: number, height: number) =>
   sharp({ create: { background: { b: 40, g: 120, r: 200 }, channels: 3, height, width } })
 
+const GPS_IFD_TAG = Buffer.from([0x25, 0x88])
+
+/** A sideways (orientation 6) camera JPEG with a camera make and a GPS position in its EXIF. */
+const cameraJpeg = () =>
+  solid(40, 20)
+    .jpeg()
+    .withExif({
+      IFD0: { Make: 'TestCam' },
+      IFD3: {
+        GPSLatitude: '59/1 20/1 0/1',
+        GPSLatitudeRef: 'N',
+        GPSLongitude: '18/1 4/1 0/1',
+        GPSLongitudeRef: 'E',
+      },
+    })
+    .withMetadata({ orientation: 6 })
+    .toBuffer()
+
 describe('processNoteImage', () => {
-  test('applies the EXIF orientation, drops the metadata and stores WebP', async () => {
-    const jpeg = await solid(40, 20).jpeg().withMetadata({ orientation: 6 }).toBuffer()
-    expect((await sharp(jpeg).metadata()).orientation).toBe(6)
+  test('keeps the EXIF, GPS included, and stores the picture upright', async () => {
+    const jpeg = await cameraJpeg()
+    const source = await sharp(jpeg).metadata()
+    expect(source.orientation).toBe(6)
+    expect(source.exif?.includes(GPS_IFD_TAG)).toBe(true)
 
     const stored = await processNoteImage(jpeg)
+
+    expect(stored).toMatchObject({ height: 40, kind: 'image', mime: 'image/webp', width: 20 })
+    const meta = await sharp(stored.bytes).metadata()
+    expect(meta.format).toBe('webp')
+    expect([meta.width, meta.height]).toEqual([20, 40])
+    expect(meta.orientation ?? 1).toBe(1)
+    expect(meta.exif?.includes('TestCam')).toBe(true)
+    expect(meta.exif?.includes(GPS_IFD_TAG)).toBe(true)
+  })
+
+  test('applies the EXIF orientation, drops the metadata when asked and stores WebP', async () => {
+    const jpeg = await cameraJpeg()
+
+    const stored = await processNoteImage(jpeg, { stripMetadata: true })
 
     expect(stored).toMatchObject({ height: 40, kind: 'image', mime: 'image/webp', width: 20 })
     const meta = await sharp(stored.bytes).metadata()
@@ -102,6 +140,39 @@ describe('processNoteImage', () => {
   })
 })
 
+describe('previews and the assistant copy', () => {
+  test('carry none of the stored picture’s metadata', async () => {
+    const stored = (await processNoteImage(await cameraJpeg())).bytes
+    expect((await sharp(stored).metadata()).exif).toBeDefined()
+
+    expect((await sharp(await resizeNoteImage(stored, 10)).metadata()).exif).toBeUndefined()
+    expect((await sharp(await assistantNoteImage(stored)).metadata()).exif).toBeUndefined()
+  })
+})
+
+/** An MP4-family header: an `ftyp` box, then a `moov` with one track whose `hdlr` names `handler`. */
+const mp4 = (brand: string, handler: string) => {
+  const box = (type: string, body: Buffer) => {
+    const head = Buffer.alloc(8)
+    head.writeUInt32BE(8 + body.length, 0)
+    head.write(type, 4, 'latin1')
+    return Buffer.concat([head, body])
+  }
+  const hdlr = box('hdlr', Buffer.concat([Buffer.alloc(8), Buffer.from(handler, 'latin1'), Buffer.alloc(13)]))
+  return Buffer.concat([
+    box('ftyp', Buffer.from(`${brand}\0\0\0\0isommp42`, 'latin1')),
+    box('moov', box('trak', box('mdia', hdlr))),
+  ])
+}
+
+describe('hasMp4VideoTrack', () => {
+  test('finds a video handler and not a sound one', () => {
+    expect(hasMp4VideoTrack(mp4('isom', 'vide'))).toBe(true)
+    expect(hasMp4VideoTrack(mp4('M4A ', 'soun'))).toBe(false)
+    expect(hasMp4VideoTrack(Buffer.concat([mp4('M4A ', 'soun'), Buffer.from('hdlr')]))).toBe(false)
+  })
+})
+
 describe('sniffAudioMime', () => {
   const withTail = (head: number[] | string) =>
     Buffer.concat([
@@ -118,6 +189,12 @@ describe('sniffAudioMime', () => {
     ['WAV', withTail('RIFF\x24\0\0\0WAVEfmt '), 'audio/wav'],
   ])('knows %s by its first bytes', (_name, bytes, mime) => {
     expect(sniffAudioMime(bytes)).toBe(mime)
+  })
+
+  test('keeps an audio-only M4A and refuses an MP4 with a video track', () => {
+    expect(sniffAudioMime(mp4('M4A ', 'soun'))).toBe('audio/mp4')
+    expect(sniffAudioMime(mp4('isom', 'vide'))).toBeNull()
+    expect(sniffAudioMime(Buffer.concat([mp4('mp42', 'soun'), mp4('mp42', 'vide').subarray(24)]))).toBeNull()
   })
 
   test.each(['heic', 'mif1', 'avif'])('does not take a %s picture for a recording', (brand) => {
@@ -156,19 +233,32 @@ describe('assistantNoteImage', () => {
 })
 
 describe('addNoteAttachment', () => {
-  test('stores the processed file one position after the highest, deleted ones included', async () => {
-    const deps = makeDeps({
-      getUsage: vi.fn(async () => ({ account_bytes: 10, live_count: 2, max_position: 5 })),
-    })
+  test('stores the processed file through the capped insert', async () => {
+    const deps = makeDeps()
     const result = await addNoteAttachment(USER, NOTE_ID, Buffer.from('bytes'), deps)
-    expect(result).toMatchObject({ ok: true, value: { kind: 'image', mime: 'image/webp', position: 6 } })
-    expect(deps.insert).toHaveBeenCalledWith(USER, NOTE_ID, 6, expect.objectContaining({ kind: 'image' }))
+    expect(result).toMatchObject({ ok: true, value: { kind: 'image', mime: 'image/webp' } })
+    expect(deps.insert).toHaveBeenCalledWith(USER, NOTE_ID, expect.objectContaining({ kind: 'image' }))
   })
 
-  test('starts a note’s pages at 1', async () => {
-    const deps = makeDeps()
-    await addNoteAttachment(USER, NOTE_ID, Buffer.from('bytes'), deps)
-    expect(deps.insert).toHaveBeenCalledWith(USER, NOTE_ID, 1, expect.anything())
+  test('keeps a picture’s metadata unless the setting says to strip it', async () => {
+    const keeps = makeDeps()
+    await addNoteAttachment(USER, NOTE_ID, Buffer.from('bytes'), keeps)
+    expect(keeps.process).toHaveBeenCalledWith(Buffer.from('bytes'), { stripMetadata: false })
+
+    const strips = makeDeps({ getStripMetadata: vi.fn(async () => true) })
+    await addNoteAttachment(USER, NOTE_ID, Buffer.from('bytes'), strips)
+    expect(strips.getStripMetadata).toHaveBeenCalledWith(USER)
+    expect(strips.process).toHaveBeenCalledWith(Buffer.from('bytes'), { stripMetadata: true })
+  })
+
+  test('answers the cap the insert hit when a parallel upload got there first', async () => {
+    for (const reason of ['note_limit', 'account_limit'] as const) {
+      const deps = makeDeps({ insert: vi.fn(async () => ({ ok: false as const, reason })) })
+      expect(await addNoteAttachment(USER, NOTE_ID, Buffer.from('bytes'), deps)).toEqual({
+        ok: false,
+        reason,
+      })
+    }
   })
 
   test('only on a live time or day entry', async () => {
@@ -224,14 +314,6 @@ describe('addNoteAttachment', () => {
     })
     expect(full.process).not.toHaveBeenCalled()
 
-    const nearly = makeDeps({
-      getUsage: vi.fn(async () => ({ account_bytes: twoGb - 3, live_count: 0, max_position: null })),
-    })
-    expect(await addNoteAttachment(USER, NOTE_ID, Buffer.from('four'), nearly)).toEqual({
-      ok: false,
-      reason: 'account_limit',
-    })
-    expect(nearly.insert).not.toHaveBeenCalled()
     expect(noteAttachmentFailure('account_limit').status).toBe(409)
   })
 
@@ -323,13 +405,12 @@ describe('deleting and restoring', () => {
   test('a restore is refused when the entry already holds 30', async () => {
     const deps = makeDeps({
       getAttachment: vi.fn(async () => record({ deleted_at: new Date('2026-11-02T08:00:00Z') })),
-      getUsage: vi.fn(async () => ({ account_bytes: 0, live_count: 30, max_position: 31 })),
+      restore: vi.fn(async () => ({ ok: false as const, reason: 'note_limit' as const })),
     })
     expect(await restoreNoteAttachmentById(USER, NOTE_ID, randomUUID(), deps)).toEqual({
       ok: false,
       reason: 'note_limit',
     })
-    expect(deps.restore).not.toHaveBeenCalled()
   })
 
   test('a live attachment is answered as it is', async () => {

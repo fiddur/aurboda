@@ -335,6 +335,22 @@ describe('addNote — time comments and replies', () => {
     )
     expect(result.success).toBe(true)
     expect(result.data?.entity_id).toBeNull()
+    expect(result.data?.attachments).toEqual([])
+  })
+
+  test('a new day entry answers with empty attachments, a reply with none', async () => {
+    vi.mocked(db.insertNote).mockResolvedValue(
+      makeNote({ date: '2024-01-15', entity_id: null, entity_type: 'day' }),
+    )
+    const day = await addNote('user', { content: '', date: '2024-01-15', entity_type: 'day' })
+    expect(day.data?.attachments).toEqual([])
+
+    const root = makeNote({ entity_id: null, entity_type: 'time', start_time: new Date() })
+    vi.mocked(db.getNoteRoot).mockResolvedValue(root)
+    vi.mocked(db.insertNote).mockResolvedValue(makeNote({ entity_id: root.id, entity_type: 'note' }))
+    const reply = await addNote('user', { content: 'Reply', entity_id: root.id, entity_type: 'note' })
+    expect(reply.data?.attachments).toBeUndefined()
+    expect(db.getNoteAttachmentsForNoteIds).not.toHaveBeenCalled()
   })
 
   test('rejects a time comment without start_time', async () => {

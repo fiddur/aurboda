@@ -65,6 +65,21 @@ describe('hidden_pages through the settings MCP tools', () => {
   })
 })
 
+describe('journal_strip_metadata through the settings MCP tools', () => {
+  test('is false until set, true once set, and null resets it', async () => {
+    const call = setup()
+    expect((await call('get_user_settings')).journal_strip_metadata).toBe(false)
+
+    const updated = await call('update_user_settings', { journal_strip_metadata: true })
+    expect(updated.journal_strip_metadata).toBe(true)
+    expect((await call('get_user_settings')).journal_strip_metadata).toBe(true)
+
+    await call('update_user_settings', { journal_strip_metadata: null })
+    expect(store.settings).not.toHaveProperty('journal_strip_metadata')
+    expect((await call('get_user_settings')).journal_strip_metadata).toBe(false)
+  })
+})
+
 describe('tz through the settings MCP tools', () => {
   test('update_user_settings sets the time zone and null clears it', async () => {
     const call = setup()

@@ -637,4 +637,28 @@ describe('mergeOverlappingActivities — doses of a routine logged at one instan
     const merged = mergeOverlappingActivities([span, vitaminD, magnesium])
     expect(merged).toHaveLength(1)
   })
+
+  describe('a span at the instant absorbs every point there, whatever the row order', () => {
+    const span = dose('span', { notes: 'routine' }, { end_time: new Date('2026-11-21T07:30:00Z') })
+
+    test.each([
+      ['span first', [span, vitaminD, magnesium]],
+      ['span between the points', [vitaminD, span, magnesium]],
+      ['span last', [vitaminD, magnesium, span]],
+    ])('%s', (_label, rows) => {
+      const merged = mergeOverlappingActivities(rows)
+      expect(merged).toHaveLength(1)
+      expect(merged[0].id).toBe('span')
+      expect(merged[0].end_time).toEqual(span.end_time)
+      expect(merged[0].source_ids?.toSorted()).toEqual(['magnesium', 'span', 'vitamin-d'])
+    })
+
+    test('the longer of two spans at the instant leads', () => {
+      const short = dose('short', { notes: 'routine' }, { end_time: new Date('2026-11-21T07:10:00Z') })
+      const merged = mergeOverlappingActivities([vitaminD, short, magnesium, span])
+      expect(merged).toHaveLength(1)
+      expect(merged[0].id).toBe('span')
+      expect(merged[0].source_ids?.toSorted()).toEqual(['magnesium', 'short', 'span', 'vitamin-d'])
+    })
+  })
 })

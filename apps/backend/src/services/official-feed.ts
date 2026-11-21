@@ -156,6 +156,43 @@ const newestFirst = (a: { row: OfficialFeedRow }, b: { row: OfficialFeedRow }): 
   return a.row.id < b.row.id ? 1 : -1
 }
 
+/** What `read` answers for a listed author, or null when their database is gone. */
+export const readListedAuthor = async <T>(
+  username: string,
+  read: () => Promise<T>,
+  onMissingUser?: (username: string) => void,
+): Promise<T | null> => {
+  try {
+    return await read()
+  } catch (error) {
+    if (!isMissingDatabase(error)) throw error
+    onMissingUser?.(username)
+    return null
+  }
+}
+
+/**
+ * Every entry serialised, in order, except a local one whose author's database
+ * disappeared after the listing (an account deleted mid-request).
+ */
+export const serializeOfficialFeedEntries = async <
+  Row extends OfficialFeedRow,
+  Remote extends OfficialFeedRow,
+  Out,
+>(
+  rows: readonly OfficialFeedEntryRow<Row, Remote>[],
+  serialize: (entry: OfficialFeedEntryRow<Row, Remote>) => Promise<Out>,
+  onMissingUser?: (username: string) => void,
+): Promise<Out[]> => {
+  const serialized = await Promise.all(
+    rows.map(async (entry): Promise<{ value: Out } | null> => {
+      if (entry.origin === 'remote') return { value: await serialize(entry) }
+      return readListedAuthor(entry.username, async () => ({ value: await serialize(entry) }), onMissingUser)
+    }),
+  )
+  return serialized.flatMap((item) => (item ? [item.value] : []))
+}
+
 /**
  * One page of the official feed: `limit + 1` rows from every source (enough to
  * know whether anything follows the page), merged newest first on the
@@ -176,13 +213,8 @@ export const mergeOfficialFeedPage = async <
   const [perUser, remote] = await Promise.all([
     Promise.all(
       users.map(async (username): Promise<OfficialFeedEntryRow<Row, Remote>[]> => {
-        try {
-          return (await fetchUser(username, limit + 1)).map((row) => ({ origin: 'local', row, username }))
-        } catch (error) {
-          if (!isMissingDatabase(error)) throw error
-          onMissingUser?.(username)
-          return []
-        }
+        const rows = await readListedAuthor(username, () => fetchUser(username, limit + 1), onMissingUser)
+        return (rows ?? []).map((row) => ({ origin: 'local', row, username }))
       }),
     ),
     fetchRemote ? fetchRemote(limit + 1) : Promise.resolve([]),

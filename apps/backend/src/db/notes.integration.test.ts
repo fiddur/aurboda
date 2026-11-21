@@ -1073,6 +1073,17 @@ describe('Notes Integration Tests', () => {
       expect(revisions.map((r) => r.content)).toEqual(['v2', 'v1'])
     })
 
+    test('the first save of an entry created empty keeps no empty revision', async () => {
+      const user = getTestUser()
+      const created = await insertNote(user, 'time', null, '', new Date('2024-01-15T09:00:00Z'))
+      await updateNoteFields(user, created.id, { content: 'First words', title: 'A day' })
+      expect(await getNoteRevisions(user, created.id)).toEqual([])
+
+      await updateNoteFields(user, created.id, { content: 'Second words' })
+      const revisions = await getNoteRevisions(user, created.id)
+      expect(revisions.map((r) => [r.content, r.title])).toEqual([['First words', 'A day']])
+    })
+
     test('an unchanged content keeps no revision', async () => {
       const user = getTestUser()
       const created = await insertNote(user, 'time', null, 'Same', new Date('2024-01-15T09:00:00Z'))

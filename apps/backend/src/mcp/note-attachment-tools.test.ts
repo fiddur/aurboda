@@ -49,16 +49,18 @@ const makeDeps = (overrides: Partial<NoteAttachmentDeps> = {}): NoteAttachmentDe
   getAttachment: vi.fn(async () => record()),
   getBytes: vi.fn(async () => ({ bytes: Buffer.from('webp'), kind: 'image', mime: 'image/webp' })),
   getNoteById: vi.fn(async () => entry),
+  getStripMetadata: vi.fn(async () => false),
   getUsage: vi.fn(async () => ({ account_bytes: 0, live_count: 0, max_position: null })),
-  insert: vi.fn(async (_u, _n, position, a) =>
-    record({ kind: a.kind, mime: a.mime, position, size: a.bytes.length }),
-  ),
+  insert: vi.fn(async (_u, _n, a) => ({
+    ok: true as const,
+    value: record({ kind: a.kind, mime: a.mime, size: a.bytes.length }),
+  })),
   listDeleted: vi.fn(async () => [record({ deleted_at: new Date('2026-11-02T08:00:00Z') })]),
   listLive: vi.fn(async () => new Map()),
   process: vi.fn(async (bytes: Buffer) => ({ bytes, kind: 'audio' as const, mime: 'audio/ogg' })),
   purge: vi.fn(async () => true),
   resize: vi.fn(async () => Buffer.from('small')),
-  restore: vi.fn(async () => record()),
+  restore: vi.fn(async () => ({ ok: true as const, value: record() })),
   softDelete: vi.fn(async () => true),
   toAssistantImage: vi.fn(async () => Buffer.from('jpeg-bytes')),
   ...overrides,
@@ -105,7 +107,7 @@ describe('note attachment tools', () => {
       mime: 'audio/ogg',
       position: 1,
     })
-    expect(attachments.process).toHaveBeenCalledWith(Buffer.from('OggS-bytes'))
+    expect(attachments.process).toHaveBeenCalledWith(Buffer.from('OggS-bytes'), { stripMetadata: false })
   })
 
   test('add_note_attachment refuses a file over the MCP limit, a non-entry and the upload budget', async () => {

@@ -499,6 +499,7 @@ describe('addChallengeComment', () => {
       remote?: RemoteThreadBranch
       upsertFails?: boolean
       hidden?: ChallengeThreadEntryRecord
+      removed?: ChallengeThreadEntryRecord
       tops?: ChallengeThreadEntryRecord[]
       replies?: ChallengeThreadEntryRecord[]
     } = {},
@@ -518,7 +519,7 @@ describe('addChallengeComment', () => {
         created.push(input)
         return post(input)
       },
-      deleteEntry: async () => null,
+      deleteEntry: async () => over.removed ?? null,
       deletePost: async (_user, id) => {
         deleted.push(id)
       },
@@ -786,6 +787,54 @@ describe('addChallengeComment', () => {
     const edited = fakeDeps({ existing: entry({ audience: 'participants' }), members: remoteMembers })
     await followPostEditInThread(edited.deps, 'bob', reply())
     expect(edited.signals).toEqual([])
+  })
+
+  describe('a share that leaves the thread sends Remove to the verified members on other servers', () => {
+    const shareEntry = (over: Partial<ChallengeThreadEntryRecord> = {}) =>
+      entry({ in_reply_to_uri: null, kind: 'share', ...over })
+    const removeOf = (object: string) => ({
+      host: 'alice',
+      kind: 'remove',
+      object,
+      recipients: [OLA],
+      target: CHALLENGE_URI,
+    })
+
+    test.each([
+      ['deleted', (deps: ChallengeThreadDeps) => followPostDeleteInThread(deps, 'bob', sharePost())],
+      [
+        'narrowed to followers',
+        (deps: ChallengeThreadDeps) =>
+          followPostEditInThread(deps, 'bob', { ...sharePost(), visibility: 'followers' }),
+      ],
+      [
+        'edited to no note',
+        (deps: ChallengeThreadDeps) => followPostEditInThread(deps, 'bob', { ...sharePost(), message: ' ' }),
+      ],
+    ])('%s', async (_label, leave) => {
+      const { deps, pushes, signals, upserts } = fakeDeps({ members: remoteMembers, removed: shareEntry() })
+      await leave(deps)
+      expect(signals).toEqual([removeOf(shareEntry().object_uri)])
+      expect(pushes).toEqual([])
+      expect(upserts).toEqual([])
+    })
+
+    test('the result post deleted sends Remove too', async () => {
+      const { deps, signals } = fakeDeps({ members: remoteMembers, removed: shareEntry({ kind: 'result' }) })
+      await followPostDeleteInThread(deps, 'bob', sharePost())
+      expect(signals).toEqual([removeOf(shareEntry().object_uri)])
+    })
+
+    test('nothing when no entry left, it was hidden (already removed), or it was a comment', async () => {
+      const none = fakeDeps({ members: remoteMembers })
+      await followPostDeleteInThread(none.deps, 'bob', sharePost())
+      const hidden = fakeDeps({ members: remoteMembers, removed: shareEntry({ hidden_at: new Date() }) })
+      await followPostDeleteInThread(hidden.deps, 'bob', sharePost())
+      const comment = fakeDeps({ members: remoteMembers, removed: entry() })
+      await followPostDeleteInThread(comment.deps, 'bob', reply())
+      expect([...none.signals, ...hidden.signals, ...comment.signals]).toEqual([])
+      expect(comment.pushes).toEqual([{ change: 'delete', recipients: [OLA], user: 'bob' }])
+    })
   })
 
   test('an admin who is not the host reads hidden entries as the host does; a member does not', async () => {

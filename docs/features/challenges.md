@@ -495,7 +495,10 @@ host.
     for the challenge.
 - **What is not pushed.** A fediverse reply or a share (or the result) the host took in is
   not pushed itself: the host sends its verified members an `Add` of the entry, which marks
-  the copy for a fresh pull, so it arrives with the next read.
+  the copy for a fresh pull, so it arrives with the next read. A fediverse reply's `Update`
+  sends no second `Add`: only an entry new to the thread does. A share (or the result) that
+  leaves the thread — its post deleted, or a share edited to `followers` or `participants` or
+  to no note — sends the verified members a `Remove` of the entry, as hiding does.
 - **Hiding.** Hiding and unhiding happen on the host's server only (`403` elsewhere). Hiding
   sends the verified members a `Remove` of the entry: it leaves the copy at once, and the
   copy is marked for a fresh pull (which drops the replies under it too). Unhiding sends an

@@ -264,6 +264,7 @@ const reanalyseDeps = () => ({
   recomputeFeatures: vi.fn(async (_user: string, _id: string): Promise<unknown> => undefined),
   rematchRoutes: vi.fn(async (_user: string, _ids: string[]): Promise<unknown> => []),
   rematchSegments: vi.fn(async (_user: string, _ids: string[]): Promise<unknown> => undefined),
+  rescanSuggestions: vi.fn(async (_user: string, _ids: string[]): Promise<unknown> => undefined),
 })
 
 describe('reanalyseActivities', () => {
@@ -271,7 +272,7 @@ describe('reanalyseActivities', () => {
     vi.clearAllMocks()
   })
 
-  test('re-matches routes and segments, drops stale suggestions, then recomputes features for each row, auditing failures without throwing', async () => {
+  test('re-matches routes and segments, drops stale suggestions and marks the tracks for a new suggestion scan, then recomputes features for each row, auditing failures without throwing', async () => {
     const deps = {
       ...reanalyseDeps(),
       recomputeFeatures: vi.fn(async (_user: string, id: string) =>
@@ -285,6 +286,7 @@ describe('reanalyseActivities', () => {
     expect(deps.rematchRoutes).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
     expect(deps.rematchSegments).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
     expect(deps.dropStaleSuggestions).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
+    expect(deps.rescanSuggestions).toHaveBeenCalledWith('alice', ['a', 'b', 'c'])
     expect(deps.recomputeFeatures.mock.calls.map((c) => c[1])).toEqual(['a', 'b', 'c'])
     expect(auditError).toHaveBeenCalledTimes(2)
   })

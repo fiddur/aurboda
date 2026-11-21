@@ -23,7 +23,7 @@ import type {
 } from '../integrations/strava/types.ts'
 import type { Job, PgBoss } from './pg-boss.ts'
 
-import { stravaIdOf, toStravaId } from '../integrations/strava/ids.ts'
+import { stravaIdOf } from '../integrations/strava/ids.ts'
 import { processStravaActivity } from '../integrations/strava/process.ts'
 import { parseRateLimitHeaders } from '../integrations/strava/types.ts'
 import { auditError, auditInfo, auditWarn } from './audit-log.ts'
@@ -227,9 +227,8 @@ const createJobHandler = (deps: StravaQueueDeps, boss: PgBoss) => {
 
         if (request_type === 'list_activities') {
           await handleListActivities(user, token, list_params)
-        } else if (request_type === 'fetch_activity') {
-          const activityId = toStravaId(strava_activity_id)
-          if (activityId) await handleFetchActivity(user, token, activityId)
+        } else if (request_type === 'fetch_activity' && strava_activity_id) {
+          await handleFetchActivity(user, token, strava_activity_id)
         }
 
         await sleep(calculateDelay())

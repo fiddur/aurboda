@@ -307,11 +307,15 @@ export {
   getNoteAttachmentsForNoteIds,
   getNoteAttachmentUsage,
   insertNoteAttachment,
+  insertNoteAttachmentWithinLimits,
   type NewNoteAttachment,
+  type NoteAttachmentLimitResult,
+  type NoteAttachmentLimits,
   type NoteAttachmentRecord,
   type NoteAttachmentUsage,
   purgeNoteAttachment,
   restoreNoteAttachment,
+  restoreNoteAttachmentWithinLimit,
   softDeleteNoteAttachment,
 } from './note-attachments.ts'
 export {
