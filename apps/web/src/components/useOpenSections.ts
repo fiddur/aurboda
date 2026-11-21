@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks'
+import { signal } from '@preact/signals'
+import { useEffect } from 'preact/hooks'
 
 import {
   type NavSectionId,
@@ -10,11 +11,11 @@ import {
 
 const OPEN_SECTIONS_KEY = 'menu-open-sections'
 
-const readStored = (): NavSectionId[] | null => {
+const readStored = (): NavSectionId[] => {
   try {
     return parseOpenSections(localStorage.getItem(OPEN_SECTIONS_KEY))
   } catch {
-    return null
+    return []
   }
 }
 
@@ -26,27 +27,24 @@ const store = (open: readonly NavSectionId[]) => {
   }
 }
 
-/**
- * The open menu sections, kept in storage. The sidebar and the drawer are both mounted (CSS shows one),
- * so each change starts from the stored list rather than this instance's state, lest the hidden menu
- * write back a stale list.
- */
+// One list for the sidebar and the drawer, which are both mounted (CSS shows one).
+const openSections = signal<NavSectionId[]>(readStored())
+
+const update = (change: (current: NavSectionId[]) => NavSectionId[]) => {
+  const current = openSections.value
+  const next = change(current)
+  if (next.length === current.length && next.every((id, i) => id === current[i])) return
+  openSections.value = next
+  store(next)
+}
+
 export const useOpenSections = (
   url: string,
 ): { open: readonly NavSectionId[]; toggle: (id: NavSectionId) => void } => {
-  const [open, setOpen] = useState<NavSectionId[]>(() => readStored() ?? [])
-
-  const update = (change: (current: NavSectionId[]) => NavSectionId[]) =>
-    setOpen((current) => {
-      const next = change(readStored() ?? current)
-      store(next)
-      return next
-    })
-
   useEffect(() => {
     const section = sectionForUrl(url)
     if (section) update((current) => withSectionOpen(current, section))
   }, [url])
 
-  return { open, toggle: (id) => update((current) => toggleSection(current, id)) }
+  return { open: openSections.value, toggle: (id) => update((current) => toggleSection(current, id)) }
 }

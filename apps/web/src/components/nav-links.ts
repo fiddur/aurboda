@@ -136,13 +136,11 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ]
 
-/** Top links and every section link except admin-only ones, in menu order. */
 export const MENU_PAGE_LINKS: NavLink[] = [
   ...NAV_TOP_LINKS,
   ...NAV_SECTIONS.flatMap((s) => s.links.filter((l) => !l.adminOnly)),
 ]
 
-/** The URL's path without query, hash or trailing slash. */
 export const menuPath = (url: string): string => url.split(/[?#]/)[0].replace(/(.)\/+$/, '$1') || '/'
 
 export const isLinkActive = (href: string, url: string): boolean => {
