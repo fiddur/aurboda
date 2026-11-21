@@ -9,9 +9,7 @@ import {
   asNeededRoutines,
   canLeaveOut,
   hasSlots,
-  isTakenAnswer,
   itemCounts,
-  presetLine,
   routineDraft,
   routineDrafts,
   routineItems,
@@ -67,25 +65,12 @@ const form = (patch: Partial<CheckInForm>): CheckInForm => ({
   ...patch,
 })
 
-describe('presetLine', () => {
-  test('lists the preset items like the notification does, leaving out 0 and no', () => {
-    expect(
-      presetLine([vitaminD, magnesium, stretched, { ...stretched, default: false, key: 'other' }, note]),
-    ).toBe('Vitamin D 50 µg, Magnesium 200 mg, Stretched')
-    expect(presetLine([{ ...vitaminD, default: 0 }])).toBe('')
-  })
-
-  test('answersLine reads given answers the same way', () => {
+describe('answersLine', () => {
+  test('reads given answers like the notification reads presets, leaving out 0 and no', () => {
     expect(answersLine([vitaminD, magnesium], { magnesium: 150, vitamin_d: 0 })).toBe('Magnesium 150 mg')
-  })
-})
-
-describe('isTakenAnswer', () => {
-  test('0, no and blanks are not taken', () => {
-    expect(isTakenAnswer(vitaminD, 0)).toBe(false)
-    expect(isTakenAnswer(stretched, false)).toBe(false)
-    expect(isTakenAnswer(note, '  ')).toBe(false)
-    expect(isTakenAnswer(vitaminD, 25)).toBe(true)
+    expect(answersLine([stretched, note], { note: 'slept well', stretch: true })).toBe(
+      'Stretched, Note: slept well',
+    )
   })
 })
 

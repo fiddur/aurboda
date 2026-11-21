@@ -205,6 +205,13 @@ describe('createAuthMiddleware with an account gate', () => {
     accountRouter.delete('/', authMiddleware, ok)
     httpd.use('/account', accountRouter)
     httpd.delete('/webauthn/credentials/:id', authMiddleware, ok)
+    const notificationsRouter = express.Router()
+    notificationsRouter.put('/types/:type', authMiddleware, ok)
+    notificationsRouter.post('/push/subscriptions', authMiddleware, ok)
+    notificationsRouter.delete('/push/subscriptions/:id', authMiddleware, ok)
+    notificationsRouter.post('/push/test', authMiddleware, ok)
+    notificationsRouter.post('/:id/actions/:key', authMiddleware, ok)
+    httpd.use('/notifications', notificationsRouter)
     return httpd
   }
 
@@ -215,6 +222,7 @@ describe('createAuthMiddleware with an account gate', () => {
     for (const response of [
       await supertest(httpd).post('/activities').set(as('expired')),
       await supertest(httpd).patch('/user/settings').set(as('expired')),
+      await supertest(httpd).post('/notifications/abc/actions/skip').set(as('expired')),
     ]) {
       expect(response.status).toBe(402)
       expect(response.body).toEqual({ ...refusal, success: false })
@@ -227,6 +235,18 @@ describe('createAuthMiddleware with an account gate', () => {
     expect((await supertest(httpd).post('/export/dump-link').set(as('expired'))).status).toBe(200)
     expect((await supertest(httpd).delete('/account').set(as('expired'))).status).toBe(200)
     expect((await supertest(httpd).delete('/webauthn/credentials/abc').set(as('expired'))).status).toBe(200)
+  })
+
+  test('lets a read-only account manage its notification preferences and browser push', async () => {
+    const httpd = buildGatedApp()
+    for (const response of [
+      await supertest(httpd).put('/notifications/types/plan_expiring').set(as('expired')),
+      await supertest(httpd).post('/notifications/push/subscriptions').set(as('expired')),
+      await supertest(httpd).delete('/notifications/push/subscriptions/abc').set(as('expired')),
+      await supertest(httpd).post('/notifications/push/test').set(as('expired')),
+    ]) {
+      expect(response.status).toBe(200)
+    }
   })
 
   test('lets everyone else write, and never consults the gate on a read', async () => {

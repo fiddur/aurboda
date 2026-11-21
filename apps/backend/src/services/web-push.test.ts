@@ -295,7 +295,7 @@ describe('createWebPush().deliverNotification', () => {
     expect(sent[0]?.options.topic).toBeUndefined()
   })
 
-  test.each([404, 410])('a %s deletes the subscription', async (status) => {
+  test.each([403, 404, 410])('a %s deletes the subscription', async (status) => {
     const { webPush, rows } = setup({}, [subscription('s1')], async () => {
       throw statusError(status)
     })

@@ -99,7 +99,7 @@ import {
   deleteActivity,
   restoreActivity,
 } from './mutations.ts'
-import { type Notifier, notifier } from './notifications.ts'
+import { type Notifier, notifier, pingWhenMarkedRead } from './notifications.ts'
 import { getUserTimezone } from './settings.ts'
 
 const DUE_WINDOW_MS = 60 * 60 * 1000
@@ -214,7 +214,9 @@ export const checkInDeps: CheckInDeps = {
   listFormCheckInsBetween: (user, formId, from, to) => listFormCheckInsBetween(user, formId, from, to),
   listForms: (user, options) => listCheckInForms(user, options),
   listVersions: (user, formId) => listCheckInFormVersions(user, formId),
-  markDueRead: (user, formId, scheduledFor) => markCheckInDueNotificationsRead(user, formId, scheduledFor),
+  markDueRead: pingWhenMarkedRead((user, formId: string, scheduledFor: readonly string[]) =>
+    markCheckInDueNotificationsRead(user, formId, scheduledFor),
+  ),
   now: () => new Date(),
   overridesOf: (user, activityIds, deletedSince) =>
     listOverridesOfActivities(user, activityIds, deletedSince),

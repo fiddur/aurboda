@@ -7,6 +7,11 @@ export const bellLabel = (unread: number): string =>
   unread <= 0 ? 'Notifications' : `Notifications, ${unread} unread`
 
 /** A path inside this app (`/x`), never a protocol-relative `//host` one. */
+export const NOTIFICATIONS_PATH = '/notifications'
+
+/** The notifications page shows the push offer itself, so the bell's panel leaves it out there. */
+export const panelShowsPushOffer = (url: string): boolean => url !== NOTIFICATIONS_PATH
+
 export const isInAppLink = (link: string | null): link is string =>
   link !== null && link.startsWith('/') && !link.startsWith('//')
 

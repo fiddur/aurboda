@@ -70,7 +70,9 @@ unread ones only, so it also withdraws whatever has not been pushed yet, which i
 Admin-only types are listed and settable for admins only.
 
 A read-only account (see [plans and billing](../admin.md#plans-and-billing)) can still mark notifications read, since the
-reminders about its plan are addressed to exactly that account; it cannot change the switches.
+reminders about its plan are addressed to exactly that account, and it can still change the switches and manage its
+browser push (subscribe, remove a browser, send the test push), since push is how it hears that its plan needs
+renewing. Running a notification's [action](#actions) writes data, so that answers `402`.
 
 ## Actions
 
@@ -99,14 +101,18 @@ open (Web Push). Settings → **Notifications** has **Push in this browser**: **
 browser for permission and subscribes it, **Disable** unsubscribes it, **Send test** sends "Aurboda
 can reach this browser" to every subscribed browser, and the user's other subscribed browsers are
 listed with **Remove**. When the browser has blocked notifications the section says so and how to
-allow them again. The bell's dropdown offers enabling once (dismissing it is remembered in that
-browser) to a signed-in user whose browser is not subscribed. Neither is shown inside the Android
+allow them again. The bell's dropdown and the top of the Notifications page (which the bell opens on a
+narrow screen) offer enabling once (dismissing it is remembered in that browser) to a signed-in
+user whose browser is not subscribed; while the page is open the dropdown leaves it out. Neither is shown inside the Android
 app's embedded pages (the app delivers natively), in a browser without the Push API, or when the
 server does not offer push. On an iPhone or iPad, push works only for a web app added to the home
 screen, which the text says. Signing out removes the browser's subscription, and a subscription
 that the signed-in account does not list (another account used the browser, or it was removed from
 elsewhere) is dropped when the app loads and before enabling, so one account's notifications never
-show in another's session.
+show in another's session. When the app loads and the account's own subscription in this browser was
+made with another VAPID key than the server's current one (`GET /notifications/push/config`), it is
+replaced: unsubscribed and, with permission already granted, subscribed again with the current key
+and registered; if that fails it is just dropped, so the offer shows again.
 
 **Keys.** The server has one VAPID key pair, generated on first use and kept in the central
 database's `server_settings` (`web_push_vapid_keys`). The VAPID subject is the web address
@@ -129,7 +135,8 @@ so the push service cannot read it, with a TTL of one day and, for a notificatio
 key, a `Topic` derived from that key. A revised notification (such as `autoshare_pending` turning
 into "was shared") is queued again under the same topic and with the same notification id as its
 tag, so it replaces the one shown. A notification already read when the job runs is not sent.
-An answer of 404 or 410 deletes the subscription; a success stamps `last_success_at` and clears
+An answer of 404 or 410 deletes the subscription, and so does 403: the push service answers it when
+the server's VAPID key no longer matches the one the browser subscribed with; a success stamps `last_success_at` and clears
 `failure_count`; any other failure counts up, and the job is retried twice with backoff, to the
 failed browsers only. A subscription that fails 20 times in a row is deleted. A notification
 marked read elsewhere is not withdrawn from the browser.

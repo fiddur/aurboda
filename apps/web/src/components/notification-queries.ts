@@ -9,6 +9,7 @@ import {
   runNotificationAction,
 } from '../state/api'
 import { auth } from '../state/auth'
+import { refreshAfterNotificationChange } from './notification-refresh'
 import { markAllReadInPage, markReadInPage } from './notifications'
 
 export const LATEST_NOTIFICATIONS_KEY = ['notifications', 'latest'] as const
@@ -69,6 +70,6 @@ export const useRunNotificationAction = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, key }: NotificationActionVariables) => runNotificationAction(id, key),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onSettled: () => refreshAfterNotificationChange(queryClient),
   })
 }

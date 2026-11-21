@@ -18,7 +18,7 @@ import {
   type ReminderRecord,
   updateReminder,
 } from '../db/index.ts'
-import { type Notifier, notifier } from './notifications.ts'
+import { type Notifier, notifier, pingWhenMarkedRead } from './notifications.ts'
 import { getUserTimezone } from './settings.ts'
 
 const DUE_WINDOW_MS = 60 * 60 * 1000
@@ -110,7 +110,9 @@ export const reminderDeps: ReminderDeps = {
   getTimezone: (user) => getUserTimezone(user),
   insert: (user, input) => insertReminder(user, input),
   list: (user) => listReminders(user),
-  markRead: (user, reminderId, except) => markReminderNotificationsRead(user, reminderId, except),
+  markRead: pingWhenMarkedRead((user, reminderId: string, except?: string) =>
+    markReminderNotificationsRead(user, reminderId, except),
+  ),
   now: () => new Date(),
   raise: (user, input) => notifier.raiseBestEffort(user, input),
   update: (user, id, patch) => updateReminder(user, id, patch),

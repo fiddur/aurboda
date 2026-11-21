@@ -27,6 +27,7 @@ import type { AnyMiddleware } from '../typed-router.ts'
 
 import { markNotificationsReadByType, resetSyncState, upsertOAuthToken } from '../db/index.ts'
 import { auditError, auditInfo } from '../services/audit-log.ts'
+import { pingWhenMarkedRead } from '../services/notifications.ts'
 import { validateBody } from '../validation.ts'
 
 /** What the signed-in page is told when a provider's sign-in cannot be finished. */
@@ -63,7 +64,9 @@ export const registerOAuthRoutes = ({
   gravl,
   oura,
   strava,
-  markNotificationsReadByType: markReadByType = (user, type) => markNotificationsReadByType(user, type),
+  markNotificationsReadByType: markReadByType = pingWhenMarkedRead((user, type: string) =>
+    markNotificationsReadByType(user, type),
+  ),
 }: OAuthRoutesDeps): void => {
   const completeRoute = (
     path: string,

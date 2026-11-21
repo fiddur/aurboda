@@ -33,16 +33,29 @@ export const emitLiveNotify = async (user: string, kind: LiveEventKind): Promise
 /**
  * Listen for every kind of ping on one dedicated connection to the user's DB.
  * Resolves to a teardown that issues `UNLISTEN` and closes the connection. The
- * caller opens exactly one channel per user, so this doesn't refcount.
+ * caller opens exactly one channel per user, so this doesn't refcount. `onClosed`
+ * is called once if the open connection errors or ends by itself, not after the teardown.
  */
 export const openLiveChannel = async (
   user: string,
   onEvent: (kind: LiveEventKind) => void,
+  onClosed: () => void = () => {},
   makeClient: (user: string) => Client = createUserListenClient,
 ): Promise<() => Promise<void>> => {
   const client = makeClient(user)
+  let open = false
+  let finished = false
+  const dropped = () => {
+    if (!open || finished) return
+    finished = true
+    onClosed()
+  }
   // Without a listener, a dropped connection would crash the process.
-  client.on('error', (err) => console.error(`⚠️ Live LISTEN connection error for ${user}:`, err))
+  client.on('error', (err) => {
+    console.error(`⚠️ Live LISTEN connection error for ${user}:`, err)
+    dropped()
+  })
+  client.on('end', dropped)
   client.on('notification', (msg: Notification) => {
     const kind = KIND_BY_CHANNEL.get(msg.channel)
     if (kind) onEvent(kind)
@@ -54,7 +67,9 @@ export const openLiveChannel = async (
     await client.end().catch(() => {})
     throw err
   }
+  open = true
   return async () => {
+    finished = true
     // Best-effort: the connection may already be gone on shutdown.
     await client.query('UNLISTEN *').catch(() => {})
     await client.end().catch(() => {})

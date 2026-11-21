@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { useLatestNotifications, useMarkAllNotificationsRead } from './notification-queries'
 import { NotificationList } from './NotificationList'
-import { badgeText, bellLabel } from './notifications'
+import { badgeText, bellLabel, NOTIFICATIONS_PATH, panelShowsPushOffer } from './notifications'
 import { PushOffer } from './PushOffer'
 import './NotificationBell.css'
 
@@ -22,8 +22,8 @@ export function NotificationBellLink() {
   const unread = useLatestNotifications().data?.unread_count ?? 0
   return (
     <a
-      href="/notifications"
-      class={`notification-bell nav-mobile-bell${url === '/notifications' ? ' active' : ''}`}
+      href={NOTIFICATIONS_PATH}
+      class={`notification-bell nav-mobile-bell${url === NOTIFICATIONS_PATH ? ' active' : ''}`}
       aria-label={bellLabel(unread)}
     >
       <span aria-hidden="true">🛎️</span>
@@ -89,7 +89,7 @@ export function NotificationBellDropdown() {
             </button>
           </div>
           <div class="notification-panel-body">
-            <PushOffer />
+            {panelShowsPushOffer(url) && <PushOffer />}
             {isLoading ? (
               <p class="notification-empty">Loading…</p>
             ) : error ? (

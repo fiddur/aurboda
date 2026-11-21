@@ -271,7 +271,7 @@ export const createWebPush = (deps: WebPushDeps): WebPush => {
       return 'reached'
     } catch (error) {
       const status = statusCodeOf(error)
-      if (status === 404 || status === 410) {
+      if (status === 403 || status === 404 || status === 410) {
         await store.delete(user, subscription.id)
         return 'removed'
       }

@@ -278,12 +278,17 @@ their account. No new data is stored until the plan is renewed:
 - Authenticated REST writes (`POST`, `PUT`, `PATCH`, `DELETE`) answer `402` with
   `{ "success": false, "error": "This account is read-only until the plan is renewed", "payment_url": … }`
   (the `AccountReadOnlyResponse` schema in the OpenAPI document).
-  Allowed anyway: `/export/*`, `DELETE /account`, `PUT /account/email`, passkey management (`/webauthn/*`), linked sign-in providers (`/account/oidc/*`) and the
+  Allowed anyway: `/export/*`, `DELETE /account`, `PUT /account/email`, passkey management (`/webauthn/*`), linked sign-in providers (`/account/oidc/*`), marking
+  notifications read, the notification switches (`PUT /notifications/types/:type`), browser push
+  (`POST /notifications/push/subscriptions`, `DELETE /notifications/push/subscriptions/:id`,
+  `POST /notifications/push/test`: push is how the account hears that its plan needs renewing) and the
   previews that store nothing (`POST /autoshare-rules/preview`, `/deduction-rules/preview`,
   `/feed/activities/:id/preview` and `/feed/exercises/preview`).
 - MCP tools that change data (the same verbs the usage counters treat as writes) return a tool error
   with the same message and the payment link, without running; `export_data_dump`,
-  `delete_my_account` and `set_my_email` still work.
+  `delete_my_account`, `set_my_email`, `send_email_verification`, `mark_notification_read`,
+  `mark_all_notifications_read`, `set_notification_preference`, `delete_push_subscription` and
+  `send_test_push` still work (`run_notification_action` does not).
 - OwnTracks posts answer `402` with the same body.
 - Oura and Strava webhooks are acknowledged but not processed, and the background and on-demand
   pulls (Oura, Garmin, Gravl, RescueTime, Last.fm, calendars) skip the user. Strava jobs queued

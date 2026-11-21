@@ -301,15 +301,17 @@ with spaced `published_at` exercises the whole REST + web surface without any fe
 
 ### Live updates: the SSE pill (#921)
 
-`emitTimelineNotify` is `SELECT pg_notify('timeline_updates','')` on the user's database and
-`openTimelineChannel` does `LISTEN timeline_updates` on the same per-user connection, refcounted
-across tabs by `services/timeline-hub.ts`.
+`emitLiveNotify` (`db/live-notify.ts`) is `SELECT pg_notify('timeline_updates','')` (or
+`notification_updates` for the bell) on the user's database, and `openLiveChannel` does `LISTEN` on
+both channels on one dedicated per-user connection, shared across tabs by `services/live-hub.ts`.
 
-`GET /api/feed/timeline/stream` is authenticated SSE: 200 + `text/event-stream` +
+`GET /api/events/stream` is authenticated SSE: 200 + `text/event-stream` +
 `Cache-Control: no-cache, no-transform`, `: connected` immediately, `: ping` every 25 s, and
-`event: new\ndata: {}` per notify (no post content on the wire). 401 without auth. `X-Accel-Buffering: no`
+`event: timeline\ndata: {}` per timeline notify (`event: notification\ndata: {}` per bell notify; no
+post content on the wire). 401 without auth. `X-Accel-Buffering: no`
 **is** set by the app but nginx consumes it, so it is absent from the client-facing response —
-expected, not a bug.
+expected, not a bug. If the `LISTEN` connection drops (try `pg_terminate_backend` on it), the
+stream ends, and the browser reconnects to a fresh channel.
 
 **The trick**: `LISTEN/NOTIFY` is database-wide, so you do not need the ingest path at all —
 

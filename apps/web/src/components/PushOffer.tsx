@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks'
 
 import { PUSH_OFFER_DISMISSED_KEY, shouldOfferPush } from './push'
 import { usePush } from './usePush'
+import './PushOffer.css'
 
 const readDismissed = (): boolean => {
   try {
@@ -19,7 +20,7 @@ const storeDismissed = (): void => {
   }
 }
 
-/** The bell's one-time offer to turn on push in this browser. */
+/** The one-time offer to turn on push in this browser, in the bell's panel and on the notifications page. */
 export function PushOffer() {
   const push = usePush()
   const [dismissed, setDismissed] = useState(readDismissed)

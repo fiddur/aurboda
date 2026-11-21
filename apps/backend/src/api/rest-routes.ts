@@ -398,7 +398,6 @@ export const mountRestRouters = ({
     createFeedRouter(
       authMiddleware,
       feedDeliver,
-      liveHub,
       apiBaseUrl,
       retroEnrichTimeline,
       webHost,

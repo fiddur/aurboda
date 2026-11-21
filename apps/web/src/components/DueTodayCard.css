@@ -76,9 +76,29 @@
   font-weight: 600;
 }
 
-.due-today-list a.btn-primary,
-.due-today-list a.btn-secondary {
+.due-today-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.due-today-actions .btn-primary,
+.due-today-actions .btn-secondary {
   padding: 0.45rem 0.9rem;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.due-today .checkin-error {
+  margin: 0 0 0.75rem;
+  color: var(--color-danger, #dc2626);
+  font-size: 0.9rem;
+}
+
+/* Home's page stylesheet paints `.dashboard .btn-secondary` white; the card keeps the theme's. */
+section.due-today .btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }

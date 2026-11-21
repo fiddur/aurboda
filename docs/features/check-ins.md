@@ -261,7 +261,8 @@ logged and soft-deletes its activities; restoring it brings both back. `deleted=
   its preset items ("Ibuprofen 400 mg"): a tap saves it as preset and shows "Logged" with **Undo**
   for 10 seconds (Undo deletes the check-in). Then **Due today**, today's slots from `GET /due` with
   their state (due now, later today at a time, done, skipped, missed); a due slot has **Fill in** and
-  **Skip**, and a routine's also **Confirm**, which saves it as preset for that slot. **Your forms**,
+  **Skip**, and a routine's also **Confirm**, which saves it as preset for that slot; a slot later
+  today has **Fill in**, to answer it early. **Your forms**,
   each with its schedule in words ("Every day at 08:00 and 21:00"), when it was last answered (with
   the score when the form has one), **Fill in** (and **Confirm** for a routine), **Edit** and
   **Archive** (archived forms behind a switch); **New form** and **Start from a template**, which
@@ -288,7 +289,7 @@ logged and soft-deletes its activities; restoring it brings both back. `deleted=
   opens tied to the activity.
 - **`/check-ins/new`** and **`/check-ins/<form id>/edit`**: the editor. Questions are added,
   removed and moved up and down, each with its prompt, answer type and settings, **Required**, a
-  **Preset answer** (any type but several choices), and **Save the answer as**: nothing, a metric
+  **Preset answer** (for several choices, a checkbox per option; none ticked is no preset), and **Save the answer as**: nothing, a metric
   (its name), or an activity (offered for number, scale and yes/no: the type, the fixed fields of
   that type, and the number field that takes the answer). Once every required question has a preset,
   a line says the form is a routine. **Add medication or supplement** asks for the name, the dose and
@@ -302,7 +303,12 @@ logged and soft-deletes its activities; restoring it brings both back. `deleted=
   notified. A change that starts a new version says so before saving. **Delete form** deletes it,
   with **Undo** on the Check-ins page.
 - **Home** shows a **Due today** card while a live form has a schedule and Check-ins is not hidden
-  from the menu: the slots still due or coming up today, each with **Fill in**.
+  from the menu: the slots still due or coming up today. A routine's due slot has **Done** (saved
+  as preset) and **Skip**, each followed by **Undo** for 10 seconds, as on `/check-ins`; any other
+  slot has **Fill in**.
+
+Done or Skip pressed under the bell, or a notification changed on another device, refreshes an open
+Check-ins page and the Home card without a reload.
 
 The due notification's switches are in Settings → Notifications, under Reminders as **Check-ins**.
 
