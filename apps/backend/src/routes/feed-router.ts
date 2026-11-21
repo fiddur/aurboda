@@ -10,6 +10,7 @@ import {
   type CreateArticleBody,
   createArticleBodySchema,
   type CreateArticleDraftBody,
+  type PostMention,
   createArticleDraftBodySchema,
   type DashboardSharePreviewResponse,
   type FeedPostReactionsResponse,
@@ -81,7 +82,7 @@ import {
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
 import {
-  articleFlagNames,
+  articleSelectorNames,
   articleWarningsField,
   mergeArticleContent,
   validateArticleContent,
@@ -146,7 +147,8 @@ import { validateBody, validateQuery } from '../validation.ts'
  */
 export interface FeedDeliver {
   created: (user: string, post: FeedPostRecord, activity: Activity) => void
-  updated: (user: string, post: FeedPostRecord) => void
+  /** `droppedMentions` are the accounts the edit stopped mentioning, sent the `Update` as well. */
+  updated: (user: string, post: FeedPostRecord, droppedMentions?: PostMention[]) => void
   /** `stamps` are the post's FEP-044f quote approvals, read before the delete dropped them. */
   deleted: (user: string, post: FeedPostRecord, stamps: FeedQuoteAuthorizationRecord[]) => void
   createdArticle: (user: string, post: FeedPostRecord) => void
@@ -735,7 +737,7 @@ export const createFeedRouter = (
         post.article,
         // Blocks whose image would 404 (no data) get a note, not a dead link (#974).
         await renderableArticleBlocks(user, post.id, post.article),
-        await articleFlagNames(user, post.article.blocks),
+        await articleSelectorNames(user, post.article.blocks),
       )
       res.json({ markdown, success: true })
     },
@@ -791,7 +793,7 @@ export const createFeedRouter = (
       }
       // Federate the edit as an Update so followers replace the stored object.
       // Fire-and-forget: the impl resolves what it needs, so it can't 500 here.
-      deliverFeedPostEdit(deliver, user, record)
+      deliverFeedPostEdit(deliver, user, record, existing)
       await followPostEditInThread(thread, user, record)
       res.json({
         post: await serializeFeedPost(user, record, { includeStructured: true, webHost }),

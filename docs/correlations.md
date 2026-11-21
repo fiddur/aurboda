@@ -43,9 +43,11 @@ count their union of time once, an activity over midnight is split between its
 days, and an activity without an end counts nothing. Every day is known (a day
 with nobody is 0). A deleted or unknown `person_id` answers as no time on every
 day, like an unknown flag. The axis reads "Time with people (min)", or "Time
-with <name> (min)" with the name resolved when drawn. An article refuses a
-`people` selector (a `400`; a draft refuses it too): published, it would name
-the people you spend time with.
+with <name> (min)" with the name resolved when drawn. An article correlation
+block may use a `people` selector too: readers see the person's name (an archived
+person still reads by name, a deleted one as "a person"), and the article answers
+warn about it without refusing it (see
+[Sharing warnings](features/feed.md#sharing-warnings)).
 
 A `sensitivity` selector counts the meals carrying the flag, through their food
 items' flags (resolved live) or the meal's own. Its known days are exactly the

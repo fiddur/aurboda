@@ -171,9 +171,33 @@ describe('buildArticleMarkdown — meal sensitivity', () => {
       UPDATED,
       article([{ ...WINDOW, activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' }]),
       undefined,
-      { 'gluten-id': 'gluten' },
+      { flag_names: { 'gluten-id': 'gluten' } },
     )
     expect(md).toContain(`![Impact of meals with gluten](${base}/blocks/0/image.png?v=${V})`)
+  })
+})
+
+describe('buildArticleMarkdown — time with a person', () => {
+  test('labels the image with the person name', () => {
+    const md = buildArticleMarkdown(
+      'https://aurboda.example/api',
+      'fiddur',
+      'POST',
+      'public',
+      'secret-token',
+      UPDATED,
+      article([
+        {
+          ...WINDOW,
+          outcome: { kind: 'metric', metric: 'hrv' },
+          trigger: { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' },
+          type: 'correlation',
+        },
+      ]),
+      undefined,
+      { person_names: { '11111111-1111-4111-8111-111111111111': 'Anna' } },
+    )
+    expect(md).toContain(`![Time with Anna (min) vs hrv](${base}/blocks/0/image.png?v=${V})`)
   })
 })
 

@@ -66,7 +66,7 @@ describe('previewableArticle', () => {
 
 describe('previewArticle', () => {
   test('names a meal sensitivity in the figure label and warns about it', async () => {
-    const flagNames = vi.fn(async () => ({ 'gluten-id': 'gluten' }))
+    const selectorNames = vi.fn(async () => ({ flag_names: { 'gluten-id': 'gluten' } }))
     const preview = await previewArticle(
       'alice',
       body({
@@ -74,7 +74,7 @@ describe('previewArticle', () => {
         blocks: [chart, { activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' }],
         title: 'Gluten',
       }),
-      deps({ flagNames }),
+      deps({ selectorNames }),
     )
     expect(preview.publish_error).toBeNull()
     expect(preview.content).toContain('Figure 2: Impact of meals with gluten')
@@ -85,6 +85,51 @@ describe('previewArticle', () => {
           'Readers see your meal sensitivity "gluten" by name, and how your HRV, heart rate and stress moved around the meals that carried it.',
       },
     ])
+  })
+
+  test('names a person in the figure label and warns about them', async () => {
+    const selectorNames = vi.fn(async () => ({
+      person_names: { '11111111-1111-4111-8111-111111111111': 'Anna' },
+    }))
+    const preview = await previewArticle(
+      'alice',
+      body({
+        ...WINDOW,
+        blocks: [
+          {
+            outcome: { kind: 'metric', metric: 'hrv' },
+            trigger: { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' },
+            type: 'correlation',
+          },
+        ],
+        title: 'Anna',
+      }),
+      deps({ selectorNames }),
+    )
+    expect(preview.publish_error).toBeNull()
+    expect(preview.content).toContain('Figure 1: Time with Anna (min) vs hrv')
+    expect(preview.warnings).toEqual([
+      {
+        block: 0,
+        message: 'Readers see Anna by name, and how much time you spent with them on each day of the window.',
+      },
+    ])
+  })
+
+  test('does not warn about the time with anyone', async () => {
+    const preview = await previewArticle(
+      'alice',
+      body({
+        ...WINDOW,
+        blocks: [
+          { outcome: { kind: 'metric', metric: 'hrv' }, trigger: { kind: 'people' }, type: 'correlation' },
+        ],
+        title: 'Company',
+      }),
+      deps(),
+    )
+    expect(preview.publish_error).toBeNull()
+    expect(preview.warnings).toBeUndefined()
   })
 
   test('has no warnings without a sensitivity', async () => {

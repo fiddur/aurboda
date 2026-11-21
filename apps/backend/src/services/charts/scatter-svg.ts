@@ -7,9 +7,9 @@
  * attachment (the web draws the same scatter inline on a light card). Pure and
  * synchronous — unit-testable on the string; rasterize with `sharp` for the PNG.
  */
-import type { CorrelationSelector } from '@aurboda/api-spec'
+import type { CorrelationSelector, SelectorNames } from '@aurboda/api-spec'
 
-import { describeSelectorAxis, linearRegression } from '@aurboda/api-spec'
+import { describeSelectorAxis, linearRegression, selectorName } from '@aurboda/api-spec'
 
 import { maxOf, minOf } from '../numeric-extremes.ts'
 import { escapeXml, scale } from './chart-svg.ts'
@@ -46,10 +46,12 @@ export interface ScatterSvgData {
   outcome: CorrelationSelector
   /** Sensitivity flag names by id, for a sensitivity axis; a flag missing here reads generically. */
   flag_names?: Record<string, string>
+  /** Person names by id, for a one-person people axis; a person missing here reads generically. */
+  person_names?: Record<string, string>
 }
 
-export const scatterAxisLabel = (selector: CorrelationSelector, flagNames?: Record<string, string>): string =>
-  describeSelectorAxis(selector, selector.kind === 'sensitivity' ? flagNames?.[selector.flag] : undefined)
+export const scatterAxisLabel = (selector: CorrelationSelector, names?: SelectorNames): string =>
+  describeSelectorAxis(selector, selectorName(selector, names))
 
 export interface ScatterSvgOptions {
   width?: number
@@ -111,8 +113,8 @@ export const buildScatterSvg = (data: ScatterSvgData, opts: ScatterSvgOptions = 
     )
     .join('')
 
-  const xAxis = scatterAxisLabel(data.trigger, data.flag_names)
-  const yAxis = scatterAxisLabel(data.outcome, data.flag_names)
+  const xAxis = scatterAxisLabel(data.trigger, data)
+  const yAxis = scatterAxisLabel(data.outcome, data)
   const yLabelX = 24
   const yLabelY = (pad.top + (height - pad.bottom)) / 2
   const plot = `<line x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" stroke="${AXIS_COLOR}" stroke-width="2"/>

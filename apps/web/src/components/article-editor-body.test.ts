@@ -497,6 +497,35 @@ describe('editorBlockWarnings', () => {
     ])
   })
 
+  it('builds a correlation block with the time with a person and warns about them, by name', () => {
+    const corr = {
+      ...emptyCorrelationDraft(),
+      trigger: { kind: 'people' as const, person_id: '11111111-1111-4111-8111-111111111111' },
+    }
+    const editor = state({ blocks: [corr] })
+    expect(buildDraftContent(editor).blocks[0]).toMatchObject({
+      trigger: { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' },
+    })
+    expect(
+      editorBlockWarnings(editor, {
+        people: [
+          { label: 'Time with people', value: '' },
+          { label: 'Anna', value: '11111111-1111-4111-8111-111111111111' },
+        ],
+      }),
+    ).toEqual([
+      ['Readers see Anna by name, and how much time you spent with them on each day of the window.'],
+    ])
+    expect(editorBlockWarnings(editor, undefined)).toEqual([
+      ['Readers see how much time you spent with a person on each day of the window.'],
+    ])
+  })
+
+  it('does not warn about the time with anyone', () => {
+    const corr = { ...emptyCorrelationDraft(), trigger: { kind: 'people' as const } }
+    expect(editorBlockWarnings(state({ blocks: [corr] }), undefined)).toEqual([[]])
+  })
+
   it('warns generically before the flags load', () => {
     const block = { ...emptyImpactDraft(), activity: 'gluten-id', activityType: 'meal_sensitivity' as const }
     expect(editorBlockWarnings(state({ blocks: [block] }), undefined)).toEqual([

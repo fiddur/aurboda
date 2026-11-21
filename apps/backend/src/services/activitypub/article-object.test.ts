@@ -163,6 +163,8 @@ describe('renderArticleNote content', () => {
 })
 
 describe('renderArticleNote figures', () => {
+  const PERSON_ID = '11111111-1111-4111-8111-111111111111'
+
   test('labels a meal sensitivity by its flag name', () => {
     const { content, figures } = renderArticleNote(
       article([
@@ -170,13 +172,22 @@ describe('renderArticleNote figures', () => {
         { ...WINDOW, activity: 'gluten-id', activity_type: 'meal_sensitivity', type: 'impact' },
       ]),
       FIGURE_URL,
-      { 'gluten-id': 'gluten' },
+      { flag_names: { 'gluten-id': 'gluten' } },
     )
     expect(figures.map((f) => f.label)).toEqual([
       expect.stringContaining('Meals with gluten (count) vs '),
       'Impact of meals with gluten',
     ])
     expect(content).toContain('Figure 2: Impact of meals with gluten')
+  })
+
+  test('labels a people selector by the person, generically when the person is gone', () => {
+    const blocks = article([{ ...correlation, trigger: { kind: 'people', person_id: PERSON_ID } }])
+    const named = renderArticleNote(blocks, FIGURE_URL, { person_names: { [PERSON_ID]: 'Anna' } })
+    expect(named.figures[0]?.label).toEqual(expect.stringContaining('Time with Anna (min) vs '))
+    expect(renderArticleNote(blocks, FIGURE_URL).figures[0]?.label).toEqual(
+      expect.stringContaining('Time with a person (min) vs '),
+    )
   })
 
   test('a block figure points at its figure URL, sized as the chart plus the title band', () => {

@@ -946,12 +946,12 @@ const main = async () => {
     },
     // Resolve the (merged-span) activity inside the fire-and-forget boundary so a
     // lookup failure never bubbles into the (already-committed) edit's response.
-    updated: (user, post) => {
+    updated: (user, post, droppedMentions) => {
       revokeUnsharedStamps(user, post)
       void (async () => {
         if (!post.activity_id) return
         const activity = await resolveFeedActivity(user, post.activity_id)
-        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity)
+        if (activity) await deliverFeedUpdate(feedDeps, user, post, activity, droppedMentions)
       })().catch(onDeliverError('update', user, post.id))
     },
     // Articles fan out as a Create{Note}/Update{Note} built purely from stored

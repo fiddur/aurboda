@@ -14,11 +14,14 @@ activity was with are dropped from every share of that activity (the feed post, 
 payload and AS2 object, a shared dashboard's day overview, article exports). The account export
 (`pg_dump`) carries the tables like every other.
 
-The one exception is a mention you switch on when sharing an activity: a person with a fediverse
+One exception is a mention you switch on when sharing an activity: a person with a fediverse
 handle who was with you can be mentioned, which publishes their account and handle ("with
 @anna@example.social") and nothing else about them or anyone else. It is off every time, and an
 auto-share rule never mentions anyone. See
-[Mentioning people](sharing.md#mentioning-people-in-an-activity-share).
+[Mentioning people](sharing.md#mentioning-people-in-an-activity-share). The other is an article
+you write with a correlation block of the time with one person: it shows readers that person's
+name and the time you spent with them (with a warning, never a refusal; see
+[Sharing warnings](feed.md#sharing-warnings)).
 
 ## On the web
 
@@ -49,16 +52,18 @@ Sharing an activity can mention the people with a handle, off every time: see
 [Mentioning people](sharing.md#mentioning-people-in-an-activity-share). Their dates are
 markers on the [Timeline](timeline.md).
 
-The app's native Add tab has no With picker yet; add or edit the activity on the web to link
-people.
+The app's native Add tab has a With checklist of your people (see
+[Android app](../android-app.md)); it cannot add a person, so add people on the web first, and edit
+an activity's people on the web.
 
 ## In Analyze
 
 Time with people is a correlation selector (with anyone, or with one person), and **With** is a
 breakdown and filter of an activity's sessions, both private to you: see
 [Time with people](correlations.md#time-with-people). In Explore it is the **time with
-people** kind (with anyone, or a person by name), offered in Continuous mode; an article refuses
-the selector, so the article editor does not offer it.
+people** kind (with anyone, or a person by name), offered in Continuous mode. The article editor
+offers it too: a block of the time with one person names them to readers, and the editor warns
+so under the block ([Sharing warnings](feed.md#sharing-warnings)).
 
 ## A person
 
@@ -146,7 +151,8 @@ union of the links; a soft-deleted activity keeps its links and gets them back w
 A comment can be about a person: `entity_type: person` with the person's ID (see
 [Comments](comments.md)). It has no time, so it is not on the Timeline or in search; it is read
 through the person (`GET /notes?entity_type=person&entity_id=…`). A note about an unknown or
-deleted person is refused as not found.
+deleted person is refused as not found, and reading the notes of one answers an empty list, as for
+any unknown entity; the notes stay stored, and restoring the person brings them back.
 
 ## API
 

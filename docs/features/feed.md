@@ -292,10 +292,16 @@ and leave it out otherwise. Warnings are given whatever the visibility. The web 
 same sentences live under each block, as a note that does not stop **Publish**
 (`articleSharingWarnings` in `@aurboda/api-spec`, shared by the backend and the editor).
 
-A correlation block with a `people` selector (time with [people](people.md)) is the exception:
-it is refused (a `400`, in drafts as in published articles), because a published one would name
-the people the author spends time with, and the name could not be kept out of the figures,
-exports and structured payload a reader gets.
+A person is named the same way (#1895). A correlation block with a `people` selector for one
+person (time with [people](people.md)) shows readers the person's name and how much time the
+author spent with them on each day of the window, so it warns: "Readers see <name> by name, and how
+much time you spent with them on each day of the window." The person is stored by id and named at
+render time from the author's People (an archived person still reads by name; a deleted or unknown
+one reads "a person", with no time, as in Explore), in the same places as a flag's name, the
+structured payload's `person_names` included. Only the names of the people the article's blocks
+name leave the server. The public caches key on the author's live people's names too, so a rename
+or a deletion shows at once. The time with anyone (a `people` selector without `person_id`) names
+no one and gives no warning.
 
 #### Preview
 
@@ -1067,7 +1073,9 @@ id-convention path — reliable even when a typed consumer drops the in-band ext
    to its `Note` HTML (the payload's `bucket` says which was used) (#972); a correlation block's computed
    Pearson/Spearman/n, the present-vs-absent group comparison, and the aligned scatter points —
    the same `getContinuousCorrelation` call the block image uses, with `flag_names` (the names
-   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity; an
+   of the sensitivity flags its selectors use, by id) when a selector is a meal sensitivity and
+   `person_names` (the names of the people its selectors name, by id) when a selector names one
+   person; an
    impact block's `activity`, `activity_type`, `activity_label` (set for `meal_sensitivity`, as
    in "meals with gluten"), `window_minutes`, window, `occurrences`, `avg_duration_min`, `timeline`
    buckets and `hrv_effect` / `hr_effect` / `stress_effect` — the same `getActivityImpact`

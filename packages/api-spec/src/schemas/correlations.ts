@@ -1422,11 +1422,24 @@ export const selectorSchema = z
 
 export type CorrelationSelector = z.infer<typeof selectorSchema>
 
-/** An article publishes its selectors, so it refuses a `people` one, which would name a person. */
-export const isPublishableSelector = (selector: CorrelationSelector): boolean => selector.kind !== 'people'
+/**
+ * The names a published selector reads by, by id: the sensitivity flags' and the people's. Resolved
+ * at read time and never stored; an id missing here reads generically.
+ */
+export interface SelectorNames {
+  flag_names?: Record<string, string>
+  person_names?: Record<string, string>
+}
 
-export const publishableSelectorMessage =
-  'A people selector cannot be published in an article: it would name the people you spend time with'
+/** The name `names` holds for a sensitivity or a one-person people selector, if any. */
+export const selectorName = (
+  selector: CorrelationSelector,
+  names: SelectorNames = {},
+): string | undefined => {
+  if (selector.kind === 'sensitivity') return names.flag_names?.[selector.flag]
+  if (selector.kind === 'people' && selector.person_id) return names.person_names?.[selector.person_id]
+  return undefined
+}
 
 /**
  * Short axis label for a selector, including its unit where known. Shared single

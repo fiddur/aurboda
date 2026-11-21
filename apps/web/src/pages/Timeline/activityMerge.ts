@@ -145,7 +145,11 @@ export const createDurationActivityItem = (
     label: displayName,
     start: activity.start_time,
     tooltip: {
-      details: [formatDuration(activity.start_time, actEnd), ...(overlapWarning ? [overlapWarning] : [])],
+      details: [
+        formatDuration(activity.start_time, actEnd),
+        ...(overlapWarning ? [overlapWarning] : []),
+        ...[formatWithPeopleLine(activity.people)].filter((line) => line !== undefined),
+      ],
       time: `${formatTime(activity.start_time)} – ${formatTime(actEnd)}`,
       title: displayName,
     },
@@ -228,14 +232,26 @@ const buildActivityDetails = (
   const mergedLine = formatCollapsedTypesLine(a.collapsed_types)
   if (mergedLine) details.push(mergedLine)
 
+  const withLine = formatWithPeopleLine(a.people)
+  if (withLine) details.push(withLine)
+
   return details
 }
+
+/** Who an activity was with, as a tooltip line; undefined when it was with no one. */
+export const formatWithPeopleLine = (people: Activity['people']): string | undefined =>
+  people && people.length > 0 ? `With ${people.map((p) => p.name).join(', ')}` : undefined
 
 const getActivityIconKey = (a: Activity, getExerciseTypeName: (a: Activity) => string): string => {
   if (a.activity_type === 'exercise') {
     return `exercise:${getExerciseTypeName(a)}`
   }
   return `activity:${a.activity_type}`
+}
+
+const unionPeople = (a: Activity['people'] = [], b: Activity['people'] = []): Activity['people'] => {
+  const byId = new Map([...a, ...b].map((p) => [p.id, p]))
+  return [...byId.values()].sort((x, y) => x.name.localeCompare(y.name) || x.id.localeCompare(y.id))
 }
 
 export const COLLAPSE_MERGE_GAP_MS = 30 * 60 * 1000
@@ -336,7 +352,7 @@ export const rootTypeOf = (
  *
  * Pure: does not mutate inputs. The first member's id/title win; end_time
  * is extended to the max across merged members so an overlapping span from
- * a second source folds in cleanly.
+ * a second source folds in cleanly, and the bar is with everyone its members were with.
  */
 export const mergeAdjacentByKey = (
   activities: Activity[],
@@ -356,6 +372,7 @@ export const mergeAdjacentByKey = (
       current.start_time.getTime() - prev.end_time.getTime() <= mergeGapMs
     ) {
       if (current.end_time > prev.end_time) prev.end_time = current.end_time
+      if (current.people?.length) prev.people = unionPeople(prev.people, current.people)
       continue
     }
     merged.push({ ...current })

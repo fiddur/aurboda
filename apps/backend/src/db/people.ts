@@ -147,6 +147,19 @@ export const getLivePersonByActor = async (user: string, actorUri: string): Prom
   return result.rows[0] ?? null
 }
 
+/**
+ * Changes whenever a live person's name changes or a person is added, deleted, restored or purged,
+ * so a cache of anything that shows a person's name can carry it in its key.
+ */
+export const getPeopleNamesVersion = async (user: string): Promise<string> => {
+  const result = await query<{ version: string }>(
+    user,
+    `SELECT COUNT(*)::int || ':' || COALESCE(md5(string_agg(id::text || ':' || name, ',' ORDER BY id)), '') AS version
+       FROM people WHERE deleted_at IS NULL`,
+  )
+  return result.rows[0]!.version
+}
+
 /** The ids among `ids` that name a live person. */
 export const listLivePersonIds = async (user: string, ids: string[]): Promise<string[]> => {
   if (ids.length === 0) return []

@@ -1024,6 +1024,7 @@ export {
   type FollowPresentationRow,
   getLivePersonByActor,
   getPeopleForActivities,
+  getPeopleNamesVersion,
   getPerson,
   getPersonDate,
   type ImportantDateSource,

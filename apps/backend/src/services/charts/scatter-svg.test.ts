@@ -82,6 +82,14 @@ describe('buildScatterSvg', () => {
     )
   })
 
+  test('names a one-person people axis by the person, generically when the person is unknown', () => {
+    const trigger = { kind: 'people', person_id: '11111111-1111-4111-8111-111111111111' } as const
+    expect(
+      buildScatterSvg({ ...base, person_names: { '11111111-1111-4111-8111-111111111111': 'Anna' }, trigger }),
+    ).toContain('Time with Anna (min)')
+    expect(buildScatterSvg({ ...base, trigger })).toContain('Time with a person (min)')
+  })
+
   test('renders a dash for null coefficients rather than crashing', () => {
     const svg = buildScatterSvg({ ...base, pearson: null, pearson_p: null, spearman: null })
     expect(svg).toContain('r=—')

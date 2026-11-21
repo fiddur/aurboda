@@ -10,6 +10,7 @@ import {
   EXCLUDED_ACTIVITY_PREFIXES,
   EXCLUDED_ACTIVITY_SOURCES,
   formatCollapsedTypesLine,
+  formatWithPeopleLine,
   isDurationActivityLike,
   mergeAdjacentByKey,
   mergeScreentimeActivities,
@@ -167,6 +168,34 @@ describe('buildActivityColumnItems', () => {
     expect(items).toHaveLength(1)
     expect(items[0].label).toBe('Meditation')
     expect(items[0].column).toBe('Activity')
+  })
+
+  it('says who an activity was with', () => {
+    const { items } = buildActivityColumnItems(
+      [
+        makeBuiltinActivity({
+          people: [
+            { id: 'p1', name: 'Anna' },
+            { id: 'p2', name: 'Bo' },
+          ],
+        }),
+      ],
+      [makeActivity({ activity_type: 'sauna', id: 'act-2', people: [{ id: 'p1', name: 'Anna' }] })],
+      itemIcons,
+      activityColors,
+      exerciseColor,
+      getExerciseTypeName,
+      sleepMetricsByDate,
+      buildSleepDetails,
+      scrobbles,
+    )
+    expect(items[0].tooltip.details).toContain('With Anna, Bo')
+    expect(items[1].tooltip.details).toContain('With Anna')
+  })
+
+  it('has no With line for an activity with no one', () => {
+    expect(formatWithPeopleLine(undefined)).toBeUndefined()
+    expect(formatWithPeopleLine([])).toBeUndefined()
   })
 
   it('merges holosync activity into meditation activity', () => {
@@ -725,6 +754,34 @@ describe('formatCollapsedTypesLine', () => {
 describe('mergeAdjacentByKey', () => {
   const d = (h: number, m = 0) => new Date(Date.UTC(2026, 0, 1, h, m, 0))
   const byType = (a: Activity) => a.activity_type
+
+  it('a merged bar is with everyone its members were with', () => {
+    const activities: Activity[] = [
+      {
+        activity_type: 'walking',
+        end_time: d(15, 5),
+        id: 'a',
+        people: [{ id: 'p2', name: 'Bo' }],
+        start_time: d(14, 50),
+      },
+      {
+        activity_type: 'walking',
+        end_time: d(15, 10),
+        id: 'b',
+        people: [
+          { id: 'p1', name: 'Anna' },
+          { id: 'p2', name: 'Bo' },
+        ],
+        start_time: d(15, 5),
+      },
+    ]
+    const result = mergeAdjacentByKey(activities, byType, 5 * 60 * 1000)
+    expect(result[0].people).toEqual([
+      { id: 'p1', name: 'Anna' },
+      { id: 'p2', name: 'Bo' },
+    ])
+    expect(activities[0].people).toEqual([{ id: 'p2', name: 'Bo' }])
+  })
 
   it('merges adjacent activities with the same key within mergeGapMs', () => {
     const activities: Activity[] = [

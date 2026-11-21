@@ -47,7 +47,7 @@ export const postChartCaption = (chart: PostChart): string => {
     case 'race':
       return 'Standings'
     case 'scatter':
-      return `${scatterAxisLabel(chart.data.trigger, chart.data.flag_names)} vs ${scatterAxisLabel(chart.data.outcome, chart.data.flag_names)}`
+      return `${scatterAxisLabel(chart.data.trigger, chart.data)} vs ${scatterAxisLabel(chart.data.outcome, chart.data)}`
     case 'impact':
       return articleImpactLabel(chart.data)
   }

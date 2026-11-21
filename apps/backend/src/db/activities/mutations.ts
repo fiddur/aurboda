@@ -16,11 +16,12 @@ import { materializeSuperseded } from './supersession.ts'
 
 /**
  * Replace `sourceIds` with the merged activity in one transaction: the originals
- * are soft-deleted first, then the merged row is written and the originals'
- * notes re-anchored onto it; it is with everyone they were with. `idx_activities_type_time` ignores `deleted_at`, so
- * a row of the merged row's source that already holds its (type, start_time)
- * slot — the earliest original, when it was created by hand — becomes the merged
- * activity instead of colliding with a duplicate INSERT (#1251).
+ * are soft-deleted first, then the merged row is written, the originals' notes
+ * are re-anchored onto it, and it is with everyone they were with.
+ * `idx_activities_type_time` ignores `deleted_at`, so a row of the merged row's
+ * source that already holds its (type, start_time) slot — the earliest original,
+ * when it was created by hand — becomes the merged activity instead of colliding
+ * with a duplicate INSERT (#1251).
  */
 export const insertMergedActivity = async (
   user: string,

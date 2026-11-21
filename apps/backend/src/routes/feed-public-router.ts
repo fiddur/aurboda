@@ -42,6 +42,7 @@ import {
   type FeedPostRecord,
   findCoveringSharedSeriesWindow,
   getFeedPostById,
+  getPeopleNamesVersion,
   getSensitivityFlagsVersion,
   isMissingDatabase,
   listPublicFeedPostsKeyset,
@@ -60,7 +61,7 @@ import {
   postEntryTitle,
 } from '../services/article-atom.ts'
 import { renderableArticleBlocks } from '../services/article-export.ts'
-import { articleFlagNames } from '../services/article.ts'
+import { articleSelectorNames } from '../services/article.ts'
 import { resolvePublicSeries } from '../services/feed-series.ts'
 import { loadAuthorizedStructuredPost, resolveStructuredContent } from '../services/feed-structured.ts'
 import { serializeFeedPost } from '../services/feed.ts'
@@ -104,19 +105,21 @@ export interface FeedPublicRouterDeps {
   publicTags?: Pick<PublicTagActions, 'latest' | 'page'>
   /** A user's sensitivity flag set version, which keys what can show a flag's name; injectable for tests. */
   sensitivityFlagsVersion?: (user: string) => Promise<string>
+  /** A user's live people's names version, which keys what can show a person's name; injectable for tests. */
+  peopleNamesVersion?: (user: string) => Promise<string>
 }
 
 /** What the structured-payload cache may hold, in the payloads' JSON bytes. */
 export const STRUCTURED_CACHE_BYTES = 32 * 1024 * 1024
 
-const structuredKey = (username: string, postId: string, updatedAt: Date, flagsVersion?: string): string =>
-  `structured:${username}:${postId}:${updatedAt.getTime()}${flagsVersion === undefined ? '' : `:flags@${flagsVersion}`}`
+const structuredKey = (username: string, postId: string, updatedAt: Date, namesVersion?: string): string =>
+  `structured:${username}:${postId}:${updatedAt.getTime()}${namesVersion === undefined ? '' : `:names@${namesVersion}`}`
 
 /**
- * The kinds whose structured payload can name a sensitivity flag: an article's blocks
- * (`flag_names`, `activity_label`) and a dashboard's meal-sensitivity widget (`activity_label`).
- * Renaming or deleting a flag leaves the post's `updated_at` alone, so their key carries the
- * flag set's version too.
+ * The kinds whose structured payload can name a sensitivity flag or a person: an article's blocks
+ * (`flag_names`, `person_names`, `activity_label`) and a dashboard's meal-sensitivity widget
+ * (`activity_label`). Renaming or deleting a flag or a person leaves the post's `updated_at` alone,
+ * so their key carries the flag set's and the people's names version too.
  */
 const namesFlags = (kind: FeedPostRecord['kind']): boolean => kind === 'article' || kind === 'dashboard'
 
@@ -156,10 +159,13 @@ export const createFeedPublicRouter = ({
   publicTags,
   readOfficialFeed,
   renderableBlocks = renderableArticleBlocks,
+  peopleNamesVersion = getPeopleNamesVersion,
   sensitivityFlagsVersion = getSensitivityFlagsVersion,
   webHost,
 }: FeedPublicRouterDeps): TypedRouter => {
   const router = typedRouter()
+  const namesVersion = async (user: string): Promise<string> =>
+    `${await sensitivityFlagsVersion(user)}/people@${await peopleNamesVersion(user)}`
   // Caches the resolved structured payload OBJECT, shared (one key shape) by the
   // unauthenticated `/feed/:postId` endpoint and the `/posts` profile listing, so
   // either warms the other. Both routes authorize the post BEFORE consulting it,
@@ -269,7 +275,7 @@ export const createFeedPublicRouter = ({
         decodeKeysetCursor(req.query.cursor),
       )
       const settingsByUser = await settingsOf(localUsernames(page.rows))
-      const flagsVersion = memoizedFlagsVersion(sensitivityFlagsVersion)
+      const flagsVersion = memoizedFlagsVersion(namesVersion)
       const posts = await serializeOfficialFeedEntries(
         page.rows,
         async (entry): Promise<OfficialFeedEntry> => {
@@ -316,11 +322,7 @@ export const createFeedPublicRouter = ({
         .sort()
         .map(async (username) => ({
           username,
-          version: await readListedAuthor(
-            username,
-            () => sensitivityFlagsVersion(username),
-            onMissingOfficialUser,
-          ),
+          version: await readListedAuthor(username, () => namesVersion(username), onMissingOfficialUser),
         })),
     )
     const goneAuthors = new Set(
@@ -352,7 +354,7 @@ export const createFeedPublicRouter = ({
                 username,
                 { ...row, article: row.article },
                 await renderableBlocks(username, row.id, row.article),
-                await articleFlagNames(username, row.article.blocks),
+                await articleSelectorNames(username, row.article.blocks),
               )
             : postEntryHtml(post)
           return {
@@ -488,7 +490,7 @@ export const createFeedPublicRouter = ({
         const records = hasMore ? rows.slice(0, PROFILE_FEED_LIMIT) : rows
         const last = records[records.length - 1]
         const settings = await getSettings(username).catch(() => null)
-        const flagsVersion = memoizedFlagsVersion(sensitivityFlagsVersion)
+        const flagsVersion = memoizedFlagsVersion(namesVersion)
         const posts = await Promise.all(
           records.map((record) => serializePublicPost(username, record, settings, flagsVersion)),
         )
@@ -526,7 +528,7 @@ export const createFeedPublicRouter = ({
       const articles = rows.filter(
         (record): record is FeedPostPageRow & { article: ArticleContent } => record.article != null,
       )
-      const flagsVersions = articles.length > 0 ? await sensitivityFlagsVersion(username) : ''
+      const flagsVersions = articles.length > 0 ? await namesVersion(username) : ''
       const xml = await atomCache(atomMemoKey(username, articles, Date.now(), flagsVersions), async () => {
         const entries = await Promise.all(
           articles.map(async (record) => ({
@@ -536,7 +538,7 @@ export const createFeedPublicRouter = ({
               username,
               record,
               await renderableBlocks(username, record.id, record.article),
-              await articleFlagNames(username, record.article.blocks),
+              await articleSelectorNames(username, record.article.blocks),
             ),
             id: record.id,
             title: record.article.title,
@@ -572,7 +574,7 @@ export const createFeedPublicRouter = ({
           return res.status(404).json({ error: 'Not found', success: false })
         }
         const settings = await getSettings(username).catch(() => null)
-        const post = await serializePublicPost(username, record, settings, sensitivityFlagsVersion)
+        const post = await serializePublicPost(username, record, settings, namesVersion)
         res.setHeader('Cache-Control', 'no-store')
         res.json({ post, success: true })
       } catch (error) {
@@ -611,7 +613,7 @@ export const createFeedPublicRouter = ({
           username,
           postId,
           post.updated_at,
-          namesFlags(post.kind) ? await sensitivityFlagsVersion(username) : undefined,
+          namesFlags(post.kind) ? await namesVersion(username) : undefined,
         )
         const structured = await structuredCache(key, () => resolveStructuredContent(username, post))
         if (!structured) {

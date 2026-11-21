@@ -45,7 +45,7 @@ import { metricUnits } from '../schema.ts'
 import { resolveActivityScalars } from './activitypub/feed-activity.ts'
 import { declaredProseImages } from './activitypub/note-prose.ts'
 import { getArticleImpact } from './article-block-data.ts'
-import { articleFlagNames, isZeroDurationBucket } from './article.ts'
+import { articleSelectorNames, isZeroDurationBucket } from './article.ts'
 import { getContinuousCorrelation } from './correlations/explore.ts'
 import { isCapabilityAuthorized } from './feed-capability.ts'
 import { resolvePostExercises, toStructuredExercise } from './feed-exercises.ts'
@@ -138,8 +138,8 @@ export const resolveStructuredCorrelationBlock = async (
   content: ArticleContent,
   {
     correlate = getContinuousCorrelation,
-    flagNames = articleFlagNames,
-  }: { correlate?: typeof getContinuousCorrelation; flagNames?: typeof articleFlagNames } = {},
+    selectorNames = articleSelectorNames,
+  }: { correlate?: typeof getContinuousCorrelation; selectorNames?: typeof articleSelectorNames } = {},
 ): Promise<FeedStructuredArticleCorrelationBlock | null> => {
   const { end, start } = articleBlockWindow(block, content)
   if (start == null || end == null) return null
@@ -168,8 +168,9 @@ export const resolveStructuredCorrelationBlock = async (
   }
   if (block.caption !== undefined) resolved.caption = block.caption
   if (block.lag_days !== undefined) resolved.lag_days = block.lag_days
-  const names = await flagNames(user, [block])
-  if (Object.keys(names).length > 0) resolved.flag_names = names
+  const { flag_names, person_names } = await selectorNames(user, [block])
+  if (flag_names) resolved.flag_names = flag_names
+  if (person_names) resolved.person_names = person_names
   return resolved
 }
 

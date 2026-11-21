@@ -1,4 +1,4 @@
-import type { CorrelationSelector } from './schemas/correlations.ts'
+import type { CorrelationSelector, SelectorNames } from './schemas/correlations.ts'
 import type { ArticleBlock, ArticleDraftBlock, ArticleDraftContent, ArticleWarning } from './schemas/feed.ts'
 
 const trimSlashes = (s: string): string => s.replace(/\/+$/, '')
@@ -69,7 +69,7 @@ const isChosen = (selector: CorrelationSelector | undefined): boolean => {
   if (selector === undefined) return false
   if (selector.kind === 'metric') return selector.metric.trim() !== ''
   if (selector.kind === 'sensitivity') return selector.flag.trim() !== ''
-  if (selector.kind === 'people') return false
+  if (selector.kind === 'people') return true
   return selector.kind === 'nutrition' || selector.pattern.trim() !== ''
 }
 
@@ -98,39 +98,61 @@ export const isCompleteArticleBlock = (
   }
 }
 
+const correlationSelectors = (block: ArticleDraftBlock): CorrelationSelector[] =>
+  block.type === 'correlation' ? [block.trigger, block.outcome].filter((s) => s !== undefined) : []
+
 const blockFlagIds = (block: ArticleDraftBlock): string[] => {
   if (block.type === 'impact') {
     return block.activity_type === 'meal_sensitivity' && block.activity ? [block.activity] : []
   }
-  if (block.type !== 'correlation') return []
-  const ids = [block.trigger, block.outcome].flatMap((selector) =>
-    selector?.kind === 'sensitivity' && selector.flag.trim() !== '' ? [selector.flag] : [],
+  const ids = correlationSelectors(block).flatMap((selector) =>
+    selector.kind === 'sensitivity' && selector.flag.trim() !== '' ? [selector.flag] : [],
   )
   return [...new Set(ids)]
 }
+
+const blockPersonIds = (block: ArticleDraftBlock): string[] => [
+  ...new Set(
+    correlationSelectors(block).flatMap((selector) =>
+      selector.kind === 'people' && selector.person_id ? [selector.person_id] : [],
+    ),
+  ),
+]
 
 /** The sensitivity flag ids an article's blocks name, each once, in block order. */
 export const articleSensitivityFlagIds = (blocks: ArticleDraftBlock[]): string[] => [
   ...new Set(blocks.flatMap(blockFlagIds)),
 ]
 
+/** The ids of the people an article's correlation blocks name, each once, in block order. */
+export const articlePersonIds = (blocks: ArticleDraftBlock[]): string[] => [
+  ...new Set(blocks.flatMap(blockPersonIds)),
+]
+
 const sensitivityPhrase = (name: string | undefined): string =>
   name ? `your meal sensitivity "${name}"` : 'a meal sensitivity flag'
 
+const personWarning = (name: string | undefined): string =>
+  name
+    ? `Readers see ${name} by name, and how much time you spent with them on each day of the window.`
+    : 'Readers see how much time you spent with a person on each day of the window.'
+
 /**
  * What an article's blocks show readers that the author may want to think twice about: each
- * meal sensitivity, by name. A warning, never a refusal; given whatever the visibility.
+ * meal sensitivity and each person, by name ("time with anyone" names no one). A warning, never
+ * a refusal; given whatever the visibility.
  */
-export const articleSharingWarnings = (
-  blocks: ArticleDraftBlock[],
-  flagNames: Record<string, string>,
-): ArticleWarning[] =>
-  blocks.flatMap((block, index) =>
-    blockFlagIds(block).map((id) => ({
+export const articleSharingWarnings = (blocks: ArticleDraftBlock[], names: SelectorNames): ArticleWarning[] =>
+  blocks.flatMap((block, index) => [
+    ...blockFlagIds(block).map((id) => ({
       block: index,
       message:
         block.type === 'impact'
-          ? `Readers see ${sensitivityPhrase(flagNames[id])} by name, and how your HRV, heart rate and stress moved around the meals that carried it.`
-          : `Readers see ${sensitivityPhrase(flagNames[id])} by name, and how many meals carried it on each day of the window.`,
+          ? `Readers see ${sensitivityPhrase(names.flag_names?.[id])} by name, and how your HRV, heart rate and stress moved around the meals that carried it.`
+          : `Readers see ${sensitivityPhrase(names.flag_names?.[id])} by name, and how many meals carried it on each day of the window.`,
     })),
-  )
+    ...blockPersonIds(block).map((id) => ({
+      block: index,
+      message: personWarning(names.person_names?.[id]),
+    })),
+  ])

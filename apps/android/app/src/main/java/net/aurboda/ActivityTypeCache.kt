@@ -10,6 +10,7 @@ private const val TYPES_KEY = "activity_types"
 private const val CUSTOM_METRICS_KEY = "custom_metrics"
 private const val ACTIVITY_TYPE_CATALOG_KEY = "activity_type_catalog"
 private const val METRIC_CATALOG_KEY = "metric_catalog"
+private const val PEOPLE_KEY = "people"
 
 val defaultActivityTypes = listOf(
     ActivityTypeDefinition(name = "sleep", displayName = "Sleep", isBuiltin = true),
@@ -85,4 +86,21 @@ fun cacheMetricCatalog(context: Context, entries: List<CatalogMetric>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     prefs.edit().putString(METRIC_CATALOG_KEY, appJson.encodeToString(entries)).apply()
     Log.d(TAG, "Cached ${entries.size} metric catalogue entries")
+}
+
+fun getCachedPeople(context: Context): List<PersonOption> {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val json = prefs.getString(PEOPLE_KEY, null) ?: return emptyList()
+    return try {
+        appJson.decodeFromString<List<PersonOption>>(json)
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to decode cached people", e)
+        emptyList()
+    }
+}
+
+fun cachePeople(context: Context, people: List<PersonOption>) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    prefs.edit().putString(PEOPLE_KEY, appJson.encodeToString(people)).apply()
+    Log.d(TAG, "Cached ${people.size} people")
 }
