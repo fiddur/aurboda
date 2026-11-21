@@ -601,6 +601,17 @@ describe('slot rules for skips', () => {
     expect([...checkIns.values()].map((row) => row.status)).toEqual(['answered'])
   })
 
+  test('a restore of an answer that restores nothing keeps the skips of its slot', async () => {
+    const { answer, checkIns, deps, skip } = await setup()
+    const answered = await answer(SLOT)
+    await deleteCheckInById(deps, USER, answered.id)
+    await skip(SLOT)
+    expect(
+      await restoreCheckInById({ ...deps, setCheckInDeleted: async () => false }, USER, answered.id),
+    ).toMatchObject({ status: 404 })
+    expect([...checkIns.values()].map((row) => row.status).toSorted()).toEqual(['answered', 'skipped'])
+  })
+
   test('a skip moves only to an open slot of its form, and never off its slot', async () => {
     const { answer, deps, skip } = await setup()
     const skipped = await skip(SLOT)

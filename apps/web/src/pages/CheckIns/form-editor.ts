@@ -198,10 +198,11 @@ export const togglePresetOption = (preset: string, index: number, ticked: boolea
     .sort((a, b) => a - b)
     .join(',')
 
-/** The preset of a choice or multi-choice kept when its options change: the options still there. */
-export const presetWithin = (preset: string, optionCount: number): string =>
+/** The preset of a choice or multi-choice once the option at `removed` is gone: it keeps the same options. */
+export const presetWithoutOption = (preset: string, removed: number): string =>
   presetIndexes(preset)
-    .filter((index) => index < optionCount)
+    .filter((index) => index !== removed)
+    .map((index) => (index > removed ? index - 1 : index))
     .join(',')
 
 /** Whether the question has a numeric answer a score can sum. */

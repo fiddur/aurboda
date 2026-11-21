@@ -1,7 +1,7 @@
 import { trainingLoadInternalFields, trainingLoadSettingsSchema } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
-import { withStoredInternalFields } from './training-load-internal.ts'
+import { clearedTrainingLoad, withStoredInternalFields } from './training-load-internal.ts'
 
 describe('withStoredInternalFields', () => {
   const stored = {
@@ -40,5 +40,18 @@ describe('withStoredInternalFields', () => {
       .filter(([, field]) => field.meta()?.description?.startsWith('Internal:'))
       .map(([name]) => name)
     expect([...trainingLoadInternalFields].sort()).toEqual(internal.sort())
+  })
+})
+
+describe('clearedTrainingLoad', () => {
+  test('keeps only a stored lease, and nothing without one', () => {
+    const lease = { holder: 'process-a', until: '2026-11-18T12:02:00.000Z' }
+    expect(
+      clearedTrainingLoad({ impulse_dirty_rev: 2, impulse_recompute_lease: lease, tau_acute: 7 }),
+    ).toEqual({
+      impulse_recompute_lease: lease,
+    })
+    expect(clearedTrainingLoad({ impulse_dirty_rev: 2, tau_acute: 7 })).toBeUndefined()
+    expect(clearedTrainingLoad(undefined)).toBeUndefined()
   })
 })

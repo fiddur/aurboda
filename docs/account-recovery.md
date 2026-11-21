@@ -35,7 +35,8 @@ and REST only, like `/login`.
    gets at most three recovery links an hour.
 3. The mail names the account and links to `/recover?token=…`. The link works **once**, within **30
    minutes**, and only while the address it went to is still the account's verified email. Asking
-   again replaces the earlier link.
+   again replaces the earlier link. A new password that fails to save leaves the link unused, so it
+   can be tried again.
 4. On that page, either
    - **Set a new password** (typed twice), which also clears the account's failed sign-in count and
      makes the password a way in again for an account created through a

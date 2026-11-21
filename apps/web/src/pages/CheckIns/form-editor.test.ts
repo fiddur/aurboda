@@ -19,7 +19,7 @@ import {
   moveQuestion,
   newQuestion,
   presetTicks,
-  presetWithin,
+  presetWithoutOption,
   type QuestionDraft,
   startsNewVersion,
   toAddBody,
@@ -437,10 +437,13 @@ describe('a multi-choice preset', () => {
     expect(togglePresetOption('0', 0, false)).toBe('')
   })
 
-  test('keeps only the options still there when they change', () => {
-    expect(presetWithin('0,2', 2)).toBe('0')
-    expect(presetWithin('1', 2)).toBe('1')
-    expect(presetWithin('', 2)).toBe('')
+  test('follows its options when one is removed', () => {
+    expect(presetWithoutOption('0,2', 2)).toBe('0')
+    expect(presetWithoutOption('0,2', 1)).toBe('0,1')
+    expect(presetWithoutOption('2', 0)).toBe('1')
+    expect(presetWithoutOption('1', 1)).toBe('')
+    expect(presetWithoutOption('0', 1)).toBe('0')
+    expect(presetWithoutOption('', 0)).toBe('')
   })
 
   test('saves the ticked option keys as the default, and none when nothing is ticked', () => {

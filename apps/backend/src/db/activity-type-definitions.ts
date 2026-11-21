@@ -13,6 +13,7 @@ import {
   loadActivityTypeCatalog,
 } from '../services/activity-type-catalog.ts'
 import { query, withUserTransaction } from './connection.ts'
+import { markSuggestionsUnscanned } from './suggested-segments.ts'
 
 const mapRow = (row: Record<string, unknown>): ActivityTypeDefinition => ({
   aliases: (row.aliases as string[]) ?? [],
@@ -478,10 +479,14 @@ const mergeInTransaction = async (
   const activities_data_set = await fillMissingData(tx, sourceName, setData)
   const activitiesResult = await query(
     tx,
-    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING deleted_at IS NULL AS live`,
+    `UPDATE activities SET activity_type = $1 WHERE activity_type = $2 RETURNING id, deleted_at IS NULL AS live`,
     [targetName, sourceName],
   )
   const activities_reassigned = activitiesResult.rows.filter((r) => r.live === true).length
+  await markSuggestionsUnscanned(
+    tx,
+    activitiesResult.rows.map((r) => r.id as string),
+  )
 
   await query(
     tx,

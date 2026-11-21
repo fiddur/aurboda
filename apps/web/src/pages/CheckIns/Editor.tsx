@@ -37,7 +37,7 @@ import {
   newQuestion,
   type OptionDraft,
   presetTicks,
-  presetWithin,
+  presetWithoutOption,
   QUESTION_TYPES,
   type QuestionDraft,
   startsNewVersion,
@@ -483,7 +483,7 @@ function OptionsEditor({
 }: {
   options: OptionDraft[]
   withValues: boolean
-  onChange: (options: OptionDraft[]) => void
+  onChange: (options: OptionDraft[], removed?: number) => void
 }) {
   const set = (index: number, patch: Partial<OptionDraft>) =>
     onChange(options.map((option, i) => (i === index ? { ...option, ...patch } : option)))
@@ -516,7 +516,12 @@ function OptionsEditor({
             class="checkin-icon-btn"
             aria-label={`Remove option ${index + 1}`}
             disabled={options.length <= 2}
-            onClick={() => onChange(options.filter((_, i) => i !== index))}
+            onClick={() =>
+              onChange(
+                options.filter((_, i) => i !== index),
+                index,
+              )
+            }
           >
             ×
           </button>
@@ -691,11 +696,11 @@ function QuestionEditor({
         <OptionsEditor
           options={question.options}
           withValues={question.type === 'choice'}
-          onChange={(options) =>
+          onChange={(options, removed) =>
             set({
               logs: question.logs && (question.log_as === 'activity' || canLog({ ...question, options })),
               options,
-              preset: presetWithin(question.preset, options.length),
+              preset: removed === undefined ? question.preset : presetWithoutOption(question.preset, removed),
             })
           }
         />

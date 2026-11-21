@@ -95,10 +95,3 @@
   color: var(--color-danger, #dc2626);
   font-size: 0.9rem;
 }
-
-/* Home's page stylesheet paints `.dashboard .btn-secondary` white; the card keeps the theme's. */
-section.due-today .btn-secondary {
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}

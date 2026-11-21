@@ -993,20 +993,13 @@ export const deleteCheckInById = async (
     })
   })
 
-/**
- * A restored skip must find its slot still open; a restored answer to a slot replaces the skips
- * of it, as a new answer does.
- */
+/** A restored skip must find its slot still open. */
 const restoreSlotProblem = async (
   deps: CheckInDeps,
   user: string,
   existing: CheckInRecord,
 ): Promise<Outcome<CheckIn> | null> => {
-  if (!existing.scheduled_for) return null
-  if (existing.status === 'answered') {
-    await deps.deleteSkips(user, existing.form_id, existing.scheduled_for)
-    return null
-  }
+  if (!existing.scheduled_for || existing.status === 'answered') return null
   const form = await deps.getForm(user, existing.form_id)
   const slot = form ? await formSlotAt(deps, user, form, existing.scheduled_for) : null
   return slot && isClosed(slot.state) ? fail(409, `This slot is already ${slot.state}`) : null
@@ -1030,6 +1023,9 @@ const restoreCheckInLocked = async (
   const slotProblem = await restoreSlotProblem(deps, user, existing)
   if (slotProblem) return slotProblem
   if (!(await deps.setCheckInDeleted(user, existing.id, false))) return fail(404, CHECK_IN_NOT_FOUND)
+  if (existing.status === 'answered' && existing.scheduled_for) {
+    await deps.deleteSkips(user, existing.form_id, existing.scheduled_for)
+  }
   const written: Written = { activity_ids: { ...existing.activity_ids }, logged: {} }
   return storingWrittenOnFailure(deps, user, existing.id, written, async () => {
     const { log_errors, logged } = await logAnswers(
