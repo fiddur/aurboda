@@ -243,6 +243,46 @@ export const isCheckInRoutine = (questions: readonly CheckInQuestion[]): boolean
   questions.some((question) => hasAnswer(question.default)) &&
   questions.every((question) => !question.required || hasAnswer(question.default))
 
+/** Whether an answer counts as taken: given, and not 0 or no. */
+export const isTakenAnswer = (question: CheckInQuestion, value: CheckInAnswerValue | undefined): boolean => {
+  if (!hasAnswer(value)) return false
+  if (question.type === 'yes_no') return value === true
+  if (question.type === 'number' || question.type === 'scale') return typeof value === 'number' && value !== 0
+  return true
+}
+
+const optionLabel = (question: CheckInQuestion, key: string): string =>
+  'options' in question ? (question.options.find((option) => option.key === key)?.label ?? key) : key
+
+/** An answer taken, as an item of a line ("Vitamin D 50 µg"); null when it is not taken. */
+export const presetItem = (question: CheckInQuestion, value: CheckInAnswerValue): string | null => {
+  if (!isTakenAnswer(question, value)) return null
+  switch (question.type) {
+    case 'number':
+      return `${question.prompt} ${value}${question.unit ? ` ${question.unit}` : ''}`
+    case 'scale':
+      return `${question.prompt} ${value}`
+    case 'yes_no':
+      return question.prompt
+    case 'choice':
+      return `${question.prompt}: ${optionLabel(question, String(value))}`
+    case 'multi_choice':
+      return `${question.prompt}: ${(Array.isArray(value) ? value : []).map((key) => optionLabel(question, key)).join(', ')}`
+    case 'text':
+      return `${question.prompt}: ${value}`
+  }
+}
+
+/** A routine's preset items in a line: "Vitamin D 50 µg, Magnesium 200 mg". */
+export const presetLine = (questions: readonly CheckInQuestion[]): string =>
+  questions
+    .flatMap((question) => {
+      if (question.default === undefined) return []
+      const item = presetItem(question, question.default)
+      return item ? [item] : []
+    })
+    .join(', ')
+
 const scoreProblems = (questions: readonly CheckInQuestion[], score: CheckInScore): CheckInFormProblem[] => {
   const byKey = new Map(questions.map((question) => [question.key, question]))
   const problems: CheckInFormProblem[] = []

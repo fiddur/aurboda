@@ -174,6 +174,27 @@ function validateCustomMetricRange(
   return null
 }
 
+/** Enqueues the Health Connect insert of a point of a syncable metric; best-effort, it never throws. */
+export const enqueueMetricOutboundSync = async (
+  user: string,
+  point: { metric: string; time: string; unit: string; value: number },
+): Promise<void> => {
+  try {
+    if (!isHealthConnectSyncableMetric(point.metric)) return
+    const hcRecordType = metricToHealthConnectType[point.metric as keyof typeof metricToHealthConnectType]
+    if (!hcRecordType) return
+    await enqueueOutboundSync(user, {
+      entity_id: `${point.metric}|${point.time}`,
+      entity_type: 'time_series',
+      hc_record_type: hcRecordType,
+      operation: 'insert',
+      payload: point,
+    })
+  } catch (err) {
+    auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
+  }
+}
+
 export async function addMetric(
   user: string,
   input: AddMetricInput,
@@ -209,23 +230,7 @@ export async function addMetric(
   )
   if ('error' in written) return refuse(written.error, metric, unit)
 
-  // Enqueue outbound sync to Health Connect if applicable (best-effort, never fails the mutation)
-  try {
-    if (isHealthConnectSyncableMetric(metric)) {
-      const hcRecordType = metricToHealthConnectType[metric as keyof typeof metricToHealthConnectType]
-      if (hcRecordType) {
-        await enqueueOutboundSync(user, {
-          entity_id: `${metric}|${time}`,
-          entity_type: 'time_series',
-          hc_record_type: hcRecordType,
-          operation: 'insert',
-          payload: { metric, time, unit, value },
-        })
-      }
-    }
-  } catch (err) {
-    auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
-  }
+  await enqueueMetricOutboundSync(user, { metric, time, unit, value })
 
   return { entity_id: `${time}|${metric}|aurboda`, metric, success: true, time, unit, value }
 }
@@ -267,13 +272,15 @@ const prepareBulkItem = (
 }
 
 /**
- * Skips outbound Health Connect sync for bulk imports (historical data).
+ * Skips outbound Health Connect sync for bulk imports (historical data), unless `outboundSync` asks
+ * for it, as a check-in does for the points it logs.
  */
 export async function bulkAddMetrics(
   user: string,
   items: BulkMetricItem[],
   defaultSource?: string,
   catalog: StoredMetricCatalog = loadMetricCatalog(),
+  options: { outboundSync?: boolean } = {},
 ): Promise<BulkAddMetricsResult> {
   const customMetrics = [...(await getCustomMetrics(user))]
 
@@ -310,6 +317,17 @@ export async function bulkAddMetrics(
       errors: [...errors, ...refused].sort((a, b) => a.index - b.index),
       inserted: 0,
       success: true,
+    }
+  }
+
+  if (options.outboundSync) {
+    for (const { point } of validPoints) {
+      await enqueueMetricOutboundSync(user, {
+        metric: point.metric,
+        time: point.time.toISOString(),
+        unit: point.unit ?? '',
+        value: point.value,
+      })
     }
   }
 

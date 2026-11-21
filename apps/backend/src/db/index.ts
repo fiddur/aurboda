@@ -1001,6 +1001,7 @@ export {
   listCheckIns,
   type ListCheckInsOptions,
   listFormCheckInsBetween,
+  listOverridesOfActivities,
   purgeDeletedCheckIns,
   restoreCheckInForm,
   setCheckInDeleted,
@@ -1008,6 +1009,7 @@ export {
   softDeleteCheckInForm,
   updateCheckIn,
   updateCheckInForm,
+  withCheckInFormLock,
 } from './check-ins.ts'
 export {
   type ActivityPersonRef,

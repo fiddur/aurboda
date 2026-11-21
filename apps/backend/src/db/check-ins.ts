@@ -458,3 +458,61 @@ export const purgeDeletedCheckIns = async (
     const forms = await query(tx, 'DELETE FROM check_in_forms WHERE deleted_at < $1', [before])
     return { check_ins: checkIns.rowCount ?? 0, forms: forms.rowCount ?? 0 }
   })
+
+const lockTurns = new Map<string, Promise<void>>()
+
+/**
+ * One lock holder per user in this process. A waiter on the advisory lock holds a pooled
+ * connection, so waiters queued in the database could starve the holder of the connections its
+ * own statements need; queued here they hold none.
+ */
+const inUserTurn = <T>(user: string, fn: () => Promise<T>): Promise<T> => {
+  const run = (lockTurns.get(user) ?? Promise.resolve()).then(fn)
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  lockTurns.set(user, settled)
+  void settled.then(() => {
+    if (lockTurns.get(user) === settled) lockTurns.delete(user)
+  })
+  return run
+}
+
+/**
+ * Runs `fn` as the only writer of the form and its check-ins: the form's advisory lock keeps other
+ * processes out, and within this process the user's check-in writes take turns. The transaction
+ * only carries the lock: `fn`'s statements run on other pooled connections. Not re-entrant: a
+ * nested call for the same user waits forever.
+ */
+export const withCheckInFormLock = <T>(user: string, formId: string, fn: () => Promise<T>): Promise<T> =>
+  inUserTurn(user, () =>
+    withUserTransaction(user, async (tx) => {
+      await query(tx, 'SELECT pg_advisory_xact_lock(hashtext($1))', [`check_in_form:${formId}`])
+      return fn()
+    }),
+  )
+
+/**
+ * The aurboda overrides all of whose targets are among `activityIds`: the live ones, or with
+ * `deletedSince` those soft-deleted at or after it.
+ */
+export const listOverridesOfActivities = async (
+  user: string,
+  activityIds: readonly string[],
+  deletedSince?: Date,
+): Promise<string[]> => {
+  if (activityIds.length === 0) return []
+  const result = await query<{ id: string }>(
+    user,
+    `SELECT o.id FROM activities o
+     JOIN activity_override_targets t ON t.override_id = o.id
+     WHERE o.source = 'aurboda'
+       AND ${deletedSince ? 'o.deleted_at >= $2' : 'o.deleted_at IS NULL'}
+     GROUP BY o.id
+     HAVING bool_and(t.target_id = ANY($1::uuid[]))
+     ORDER BY o.id`,
+    deletedSince ? [activityIds, deletedSince] : [activityIds],
+  )
+  return result.rows.map((row) => row.id)
+}

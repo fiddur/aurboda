@@ -5,6 +5,23 @@ const OWN_TEMPLATE = {
   source: 'Aurboda',
 }
 
+const WHO_5_OPTIONS = [
+  { key: 'all', label: 'All of the time', value: 5 },
+  { key: 'most', label: 'Most of the time', value: 4 },
+  { key: 'more_than_half', label: 'More than half of the time', value: 3 },
+  { key: 'less_than_half', label: 'Less than half of the time', value: 2 },
+  { key: 'some', label: 'Some of the time', value: 1 },
+  { key: 'none', label: 'At no time', value: 0 },
+]
+
+const WHO_5_STATEMENTS = [
+  ['cheerful', 'I have felt cheerful and in good spirits'],
+  ['calm', 'I have felt calm and relaxed'],
+  ['active', 'I have felt active and vigorous'],
+  ['rested', 'I woke up feeling fresh and rested'],
+  ['interested', 'My daily life has been filled with things that interest me'],
+] as const
+
 export const checkInTemplates: readonly CheckInTemplate[] = [
   {
     ...OWN_TEMPLATE,
@@ -95,6 +112,22 @@ export const checkInTemplates: readonly CheckInTemplate[] = [
       },
     ],
     score: null,
+  },
+  {
+    description:
+      'Five statements about how you have felt over the last two weeks. The score runs from 0 to 100; higher is better.',
+    id: 'who_5',
+    licence: 'CC BY-NC-SA 3.0 IGO; wording unchanged',
+    name: 'WHO-5 Well-Being Index',
+    questions: WHO_5_STATEMENTS.map(([key, prompt]) => ({
+      key,
+      options: WHO_5_OPTIONS,
+      prompt,
+      required: true,
+      type: 'choice' as const,
+    })),
+    score: { factor: 4, metric: 'who_5', questions: WHO_5_STATEMENTS.map(([key]) => key) },
+    source: 'World Health Organization: The World Health Organization-Five Well-Being Index (WHO-5), 2024',
   },
 ]
 

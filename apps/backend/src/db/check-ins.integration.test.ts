@@ -3,6 +3,7 @@ import type { CheckInQuestion } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { insertActivity, insertOverride } from './activities/index.ts'
 import {
   deleteCheckInPoints,
   deleteSkippedCheckIns,
@@ -14,14 +15,16 @@ import {
   listCheckInFormVersions,
   listCheckIns,
   listFormCheckInsBetween,
+  listOverridesOfActivities,
   purgeDeletedCheckIns,
   restoreCheckInForm,
   setCheckInDeleted,
   softDeleteCheckInForm,
   updateCheckIn,
   updateCheckInForm,
+  withCheckInFormLock,
 } from './check-ins.ts'
-import { query } from './connection.ts'
+import { query, withUserTransaction } from './connection.ts'
 import { getNotificationById, insertNotification, markCheckInDueNotificationsRead } from './notifications.ts'
 import { insertTimeSeries } from './time-series.ts'
 
@@ -421,5 +424,93 @@ describe('Check-ins Integration Tests', () => {
     expect(await getCheckIn(user, liveCheckIn.id)).not.toBeNull()
     expect(await getCheckInForm(user, gone.id)).toBeNull()
     expect(await listCheckInFormVersions(user, gone.id)).toEqual([])
+  })
+
+  test('withCheckInFormLock runs the calls of one user one after the other', async () => {
+    const user = getTestUser()
+    const events: string[] = []
+    const hold = (form: string, name: string, ms: number) =>
+      withCheckInFormLock(user, form, async () => {
+        events.push(`${name} in`)
+        await new Promise((resolve) => setTimeout(resolve, ms))
+        events.push(`${name} out`)
+        return name
+      })
+    const results = await Promise.all([
+      hold('form-1', 'a', 100),
+      hold('form-1', 'b', 10),
+      hold('form-2', 'c', 10),
+    ])
+    expect(results).toEqual(['a', 'b', 'c'])
+    expect(events).toEqual(['a in', 'a out', 'b in', 'b out', 'c in', 'c out'])
+  })
+
+  test('withCheckInFormLock waits for another process holding the form', async () => {
+    const user = getTestUser()
+    const events: string[] = []
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let locked = () => {}
+    const hasLock = new Promise<void>((resolve) => {
+      locked = resolve
+    })
+    const other = withUserTransaction(user, async (tx) => {
+      await query(tx, 'SELECT pg_advisory_xact_lock(hashtext($1))', ['check_in_form:form-1'])
+      locked()
+      await held
+      events.push('other out')
+    })
+    await hasLock
+    const ours = withCheckInFormLock(user, 'form-1', async () => {
+      events.push('ours in')
+    })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(events).toEqual([])
+    release()
+    await Promise.all([other, ours])
+    expect(events).toEqual(['other out', 'ours in'])
+  })
+
+  test('withCheckInFormLock lets go when the call throws', async () => {
+    const user = getTestUser()
+    await expect(
+      withCheckInFormLock(user, 'form-1', async () => {
+        throw new Error('boom')
+      }),
+    ).rejects.toThrow('boom')
+    expect(await withCheckInFormLock(user, 'form-1', async () => 'next')).toBe('next')
+  })
+
+  test('listOverridesOfActivities finds the overrides all of whose targets are given', async () => {
+    const user = getTestUser()
+    const insert = (externalId: string, hour: number) =>
+      insertActivity(user, {
+        activity_type: 'strength_training',
+        external_id: externalId,
+        source: 'check_in',
+        start_time: at(`2026-11-20T0${hour}:00:00Z`),
+      })
+    const [one, two, three] = [await insert('one', 6), await insert('two', 7), await insert('three', 8)]
+    const own = await insertOverride(user, [one!], {
+      activity_type: 'strength_training',
+      start_time: at('2026-11-20T06:00:00Z'),
+    })
+    const shared = await insertOverride(user, [two!, three!], {
+      activity_type: 'strength_training',
+      start_time: at('2026-11-20T07:00:00Z'),
+    })
+    expect(await listOverridesOfActivities(user, [one!, two!])).toEqual([own!.id])
+    expect((await listOverridesOfActivities(user, [one!, two!, three!])).sort()).toEqual(
+      [own!.id, shared!.id].sort(),
+    )
+    expect(await listOverridesOfActivities(user, [])).toEqual([])
+
+    const before = new Date((await query<{ now: Date }>(user, 'SELECT NOW() AS now')).rows[0]!.now)
+    await query(user, 'UPDATE activities SET deleted_at = NOW() WHERE id = $1', [own!.id])
+    expect(await listOverridesOfActivities(user, [one!])).toEqual([])
+    expect(await listOverridesOfActivities(user, [one!], before)).toEqual([own!.id])
+    expect(await listOverridesOfActivities(user, [one!], new Date(before.getTime() + 60_000))).toEqual([])
   })
 })
