@@ -7,7 +7,6 @@ import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { CommentThread } from '../../components/CommentThread'
-import { MarkdownEditor } from '../../components/MarkdownEditor'
 import {
   addReply,
   createJournalEntry,
@@ -42,6 +41,7 @@ import {
 import {
   addTags,
   emptyEntryForm,
+  entryDay,
   type EntryForm,
   entryFormProblem,
   formFromNote,
@@ -52,7 +52,10 @@ import {
 } from './entry-form'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
+import { MentionEditor } from './MentionEditor'
 import { Recorder } from './Recorder'
+import { RelatedRow } from './Related'
+import { addLink, personLink, type RelatedLink } from './related'
 import { useTemplates } from './Templates'
 
 const UNDO_MS = 10_000
@@ -477,6 +480,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const updatedAtRef = useRef<string | undefined>(undefined)
   const creating = useRef<Promise<string> | undefined>(undefined)
   const attachmentsRef = useRef<NoteAttachment[]>([])
+  const savedRelatedRef = useRef<RelatedLink[]>([])
 
   const [loaded, setLoaded] = useState(initialId === undefined)
   const [loadError, setLoadError] = useState(false)
@@ -507,6 +511,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const accept = useCallback(
     (note: Note, sent: EntryForm) => {
       updatedAtRef.current = note.updated_at
+      savedRelatedRef.current = note.related ?? sent.related
       if (note.attachments) setAttachments(sortByPosition(note.attachments))
       setThreadRoot((current) => current ?? { ...note, replies: [] })
       clearDraftIfConfirmed(storage, draftKey(), sent)
@@ -547,7 +552,10 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         await createEntry(sent)
         return { kind: 'saved' }
       }
-      const result = await updateJournalEntry(idRef.current, formToUpdateBody(sent, updatedAtRef.current))
+      const result = await updateJournalEntry(
+        idRef.current,
+        formToUpdateBody(sent, updatedAtRef.current, savedRelatedRef.current),
+      )
       if (result.kind === 'conflict') {
         setConflict(result.note)
         return { kind: 'conflict' }
@@ -590,6 +598,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         if (cancelled) return
         const serverForm = formFromNote(note)
         updatedAtRef.current = note.updated_at
+        savedRelatedRef.current = serverForm.related
         setForm(serverForm)
         setAttachments(sortByPosition(note.attachments ?? []))
         setThreadRoot(note)
@@ -653,6 +662,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     if (!conflict) return
     const resolved = resolveConflict(choice, formRef.current, formFromNote(conflict))
     updatedAtRef.current = conflict.updated_at
+    savedRelatedRef.current = conflict.related ?? []
     if (conflict.attachments) setAttachments(sortByPosition(conflict.attachments))
     setConflict(undefined)
     formRef.current = resolved
@@ -806,15 +816,20 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
             onInput={(e) => patch({ title: e.currentTarget.value })}
             onBlur={flush}
           />
-          <MarkdownEditor
+          <MentionEditor
             value={form.content}
             onChange={(content) => patch({ content })}
-            placeholder="Write what happened, what you thought, how it felt…"
-            rows={10}
-            ariaLabel="Entry text"
+            onMention={(content, person) =>
+              patch({ content, related: addLink(formRef.current.related, personLink(person)) })
+            }
             onBlur={flush}
             attachPictures={(files) => void addFiles(files)}
-            attachHint="Paste, drop or pick pictures to add them to this entry, in order."
+          />
+
+          <RelatedRow
+            links={form.related}
+            entryDate={entryDay(form)}
+            onChange={(related) => patch({ related })}
           />
 
           <EditorFiles

@@ -11,6 +11,9 @@ import {
   entryTimeLabel,
   groupEntriesByDay,
   isLongText,
+  isUnfiltered,
+  type JournalFilters,
+  journalQueryFor,
 } from './journal-list'
 
 const local = (y: number, m: number, d: number, h = 12, min = 0) =>
@@ -105,5 +108,31 @@ describe('isLongText', () => {
     expect(isLongText('short')).toBe(false)
     expect(isLongText('x'.repeat(500))).toBe(true)
     expect(isLongText('a\nb\nc\nd\ne\nf\ng')).toBe(true)
+  })
+})
+
+describe('journalQueryFor', () => {
+  const filters: JournalFilters = { jumpTo: '', needsText: false, search: '', tags: [], withComments: false }
+
+  test('maps the filters to the search, with no related filter by default', () => {
+    expect(journalQueryFor({ ...filters, jumpTo: '2026-11-01', tags: ['lake'] }, 'walk', 'UTC')).toEqual({
+      include_comments: false,
+      needs_text: false,
+      q: 'walk',
+      related: undefined,
+      tags: ['lake'],
+      to: '2026-11-01',
+      tz: 'UTC',
+    })
+    expect(isUnfiltered(filters, '')).toBe(true)
+  })
+
+  test('related to someone, comments count too and the page is filtered', () => {
+    const related = { id: 'p1', type: 'person' as const }
+    expect(journalQueryFor({ ...filters, related }, '', undefined)).toMatchObject({
+      include_comments: true,
+      related,
+    })
+    expect(isUnfiltered({ ...filters, related }, '')).toBe(false)
   })
 })

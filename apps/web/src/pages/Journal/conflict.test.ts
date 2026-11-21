@@ -32,4 +32,13 @@ describe('resolveConflict', () => {
       title: 'Their title',
     })
   })
+
+  test('keep both keeps the links of both versions', () => {
+    const anna = { entity_id: 'a', entity_type: 'person' as const, label: 'Anna' }
+    const bo = { entity_id: 'b', entity_type: 'person' as const, label: 'Bo' }
+    const form = emptyEntryForm(new Date(2026, 10, 20, 9, 0))
+    expect(
+      resolveConflict('both', { ...form, related: [bo, anna] }, { ...form, related: [anna] }).related,
+    ).toEqual([anna, bo])
+  })
 })

@@ -1,5 +1,7 @@
 import type { EntryForm } from './entry-form'
 
+import { unionLinks } from './related'
+
 export type ConflictChoice = 'mine' | 'theirs' | 'both'
 
 export const KEEP_BOTH_DIVIDER = '\n\n---\n\n'
@@ -22,6 +24,7 @@ export const resolveConflict = (choice: ConflictChoice, mine: EntryForm, theirs:
   return {
     ...theirs,
     content: keepBothText(theirs.content, mine.content),
+    related: unionLinks(theirs.related, mine.related),
     tags: [...new Set([...theirs.tags, ...mine.tags])],
     title: theirs.title.trim() || mine.title,
   }

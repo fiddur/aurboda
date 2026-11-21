@@ -3,6 +3,7 @@ import {
   type ActivitiesQuery,
   type ActivitiesResponse,
   type ActivityFeatures,
+  type JournalEntryRef,
   type AddActivityBody,
   type AddActivityResponse,
   type ActivityTrackResponse,
@@ -104,7 +105,7 @@ export const restoreActivity = async (id: string): Promise<void> => {
 }
 
 export interface ActivityDetailResult {
-  activity: Activity & { features?: ActivityFeatures }
+  activity: Activity & { features?: ActivityFeatures; journal_entries?: JournalEntryRef[] }
   referenced_rules?: Record<string, string>
 }
 

@@ -159,6 +159,23 @@ describe('Note links Integration Tests', () => {
     expect(await linkCount(user)).toBe(0)
   })
 
+  test('a note about a deleted person is left out of the related list until the person is restored', async () => {
+    const user = getTestUser()
+    const anna = await person(user, 'Anna')
+    const walk = await insertActivity(user, '2026-11-20T17:00:00Z')
+    const note = await insertNote(user, 'person', anna.id, 'Walked with Anna', undefined, undefined, {
+      related: [{ entity_id: walk, entity_type: 'activity' }],
+    })
+    const listed = async () =>
+      (await listNotesRelatedTo(user, 'activity', [walk], 50, 'UTC')).map((n) => n.id)
+
+    expect(await listed()).toEqual([note.id])
+    await softDeletePerson(user, anna.id)
+    expect(await listed()).toEqual([])
+    await restorePerson(user, anna.id)
+    expect(await listed()).toEqual([note.id])
+  })
+
   test('listNotesRelatedTo lists live roots newest first, matching any of the ids, at most limit', async () => {
     const user = getTestUser()
     const first = await insertActivity(user, '2026-11-20T08:00:00Z')

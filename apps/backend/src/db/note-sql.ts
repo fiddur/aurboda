@@ -9,6 +9,7 @@ export const PARENT_IS_LIVE = `CASE n.entity_type
        WHEN 'productivity' THEN EXISTS (SELECT 1 FROM productivity p WHERE p.id = n.parent_id AND p.deleted_at IS NULL)
        WHEN 'meal' THEN EXISTS (SELECT 1 FROM meals m WHERE m.id = n.parent_id)
        WHEN 'report' THEN EXISTS (SELECT 1 FROM reports r WHERE r.id = n.parent_id)
+       WHEN 'person' THEN EXISTS (SELECT 1 FROM people pe WHERE pe.id = n.parent_id AND pe.deleted_at IS NULL)
        ELSE TRUE
      END`
 
