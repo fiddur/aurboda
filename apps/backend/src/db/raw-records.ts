@@ -212,3 +212,51 @@ export const getScrobbles = async (user: string, start: Date, end: Date): Promis
     track: (row.data.track as string) ?? '',
   }))
 }
+
+export interface StepRecord {
+  start: Date
+  end: Date
+  count: number
+  modified?: Date
+}
+
+const STEP_RECORD_LOOKBACK = '1 hour'
+
+const validDate = (value: unknown): Date | undefined => {
+  if (typeof value !== 'string' && !(value instanceof Date)) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+const toStepRecord = (data: Record<string, unknown>): StepRecord | null => {
+  const start = validDate(data.startTime)
+  const end = validDate(data.endTime)
+  const count = typeof data.count === 'string' ? Number(data.count) : data.count
+  if (!start || !end || typeof count !== 'number' || !Number.isFinite(count)) return null
+  const metadata = data.metadata as Record<string, unknown> | undefined
+  const modified = validDate(metadata?.lastModifiedTime)
+  return modified ? { count, end, modified, start } : { count, end, start }
+}
+
+/** The Health Connect step records one app wrote that start before `end` and at most an hour before `start`. */
+export const getHealthConnectStepRecords = async (
+  user: string,
+  dataOrigin: string,
+  start: Date,
+  end: Date,
+): Promise<StepRecord[]> => {
+  const result = await query(
+    user,
+    `SELECT data
+     FROM raw_records
+     WHERE source = 'health_connect' AND record_type = 'StepsRecord'
+       AND recorded_at >= $2::timestamptz - interval '${STEP_RECORD_LOOKBACK}' AND recorded_at < $3
+       AND data->'metadata'->>'dataOrigin' = $1
+     ORDER BY recorded_at ASC`,
+    [dataOrigin, start, end],
+  )
+  return result.rows.flatMap((row) => {
+    const record = toStepRecord(row.data as Record<string, unknown>)
+    return record ? [record] : []
+  })
+}

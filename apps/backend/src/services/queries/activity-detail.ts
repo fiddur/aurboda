@@ -18,6 +18,7 @@ import {
   blendGroupData,
   getActivityTrack,
   getDistinctMetrics,
+  getHealthConnectStepRecords,
   getLocations,
   getOverlappingActivities,
   getTimeSeries,
@@ -26,6 +27,7 @@ import {
 } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
 import { trackToGps } from '../tracks.ts'
+import { stepsFromRecords } from './activity-steps.ts'
 import { computeActivitySummaryMetrics, SUMMARY_METRICS } from './activity-summary-metrics.ts'
 
 /**
@@ -59,13 +61,39 @@ export const computeActivityDetailMetrics = async (
   ])
 
   const summary = computeActivitySummaryMetrics(activity, summarySeries)
+  const estimatedSteps =
+    summary.steps === undefined ? await healthConnectSteps(user, activity, end) : undefined
 
   const hrData = summarySeries.heart_rate ?? []
   const hr_zone_secs = hrData.length > 0 ? computeHrZoneSecs(hrData, hrZones) : undefined
   const avg_hrv =
     hrvData.length > 0 ? Math.round(hrvData.reduce((sum, [, v]) => sum + v, 0) / hrvData.length) : undefined
 
-  return { ...summary, avg_hrv, hr_zone_secs }
+  return {
+    ...summary,
+    ...(estimatedSteps === undefined ? {} : { steps: estimatedSteps, steps_estimated: true }),
+    avg_hrv,
+    hr_zone_secs,
+  }
+}
+
+const healthConnectOrigin = (data: Record<string, unknown> | undefined): string | undefined => {
+  const metadata = data?.metadata
+  if (typeof metadata !== 'object' || metadata === null) return undefined
+  const origin = (metadata as Record<string, unknown>).dataOrigin
+  return typeof origin === 'string' && origin !== '' ? origin : undefined
+}
+
+/** Steps the recording app wrote to Health Connect during an activity that came through it. */
+const healthConnectSteps = async (
+  user: string,
+  activity: { start_time: Date; data?: Record<string, unknown> },
+  end: Date,
+): Promise<number | undefined> => {
+  const origin = healthConnectOrigin(activity.data)
+  if (!origin) return undefined
+  const records = await getHealthConnectStepRecords(user, origin, activity.start_time, end)
+  return stepsFromRecords(records, activity.start_time, end)
 }
 
 export interface ActivityFullDetailOptions {
