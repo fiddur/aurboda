@@ -765,6 +765,7 @@ export {
 export {
   ackOutboundSync,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   enqueueOutboundSyncInsertsIfChanged,
   failOutboundSync,
   findHcRecordId,
@@ -774,6 +775,7 @@ export {
   reportSyncFailure,
   requeueOutboundSync,
   type EnqueueOutboundSyncInput,
+  type OutboundSyncDeleteItem,
   type OutboundSyncEntry,
   type OutboundSyncInsertItem,
   type OutboundSyncOperation,

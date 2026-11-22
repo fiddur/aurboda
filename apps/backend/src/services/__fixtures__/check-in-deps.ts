@@ -52,6 +52,7 @@ export const fakeCheckInDeps = (
   }
   const activityTypes = options.activityTypes ?? { medication: doseSchema, supplement: doseSchema }
   const points: FakePoint[] = []
+  const forgotten: { metric: string; time: string }[] = []
   const customMetrics: CustomMetricDefinition[] = []
   const raised: Parameters<CheckInDeps['raise']>[1][] = []
   const markedRead: [string, readonly string[]][] = []
@@ -125,6 +126,9 @@ export const fakeCheckInDeps = (
           checkIns.delete(id)
         }
       }
+    },
+    forgetPoints: async (_user, removed) => {
+      forgotten.push(...removed)
     },
     getCheckIn: async (_user, id) => joined(id),
     getCustomMetrics: async () => [...customMetrics],
@@ -290,6 +294,7 @@ export const fakeCheckInDeps = (
     checkIns,
     customMetrics,
     deps,
+    forgotten,
     forms,
     markedRead,
     mutated,

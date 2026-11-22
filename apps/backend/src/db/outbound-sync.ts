@@ -30,8 +30,11 @@ export interface EnqueueOutboundSyncInput {
  * Dedup behaviour by `(entity_type, entity_id)`:
  * - `update` / `delete`: supersede (mark synced) any prior pending entries,
  *   then enqueue this one.
- * - `insert`: if a pending insert already exists for the same entity,
- *   update its payload in place and return the existing id. Avoids the
+ * - `insert`: a pending delete of the entity is dropped, since the phone
+ *   writes by `clientRecordId` and the insert overwrites the record it would
+ *   delete (processed newest first, the delete would otherwise remove the
+ *   record the insert just wrote). If a pending insert already exists for the
+ *   same entity, update its payload in place and return the existing id. Avoids the
  *   duplicate-flood that otherwise occurs when the same per-minute entity
  *   (e.g. `calories_active|<ts>`) is re-enqueued on every recompute.
  *
@@ -55,6 +58,12 @@ export const enqueueOutboundSync = async (user: string, input: EnqueueOutboundSy
   }
 
   if (input.operation === 'insert') {
+    await query(
+      user,
+      `DELETE FROM outbound_sync_queue
+       WHERE entity_type = $1 AND entity_id = $2 AND status = 'pending' AND operation = 'delete'`,
+      [input.entity_type, input.entity_id],
+    )
     const existing = await query(
       user,
       `UPDATE outbound_sync_queue
@@ -86,9 +95,9 @@ export interface OutboundSyncInsertItem {
 
 /**
  * Bulk insert path for per-minute series that are recomputed over and over:
- * an item whose latest queue row (pending or synced) already carries the same
- * payload is skipped, a pending insert is updated in place (as
- * `enqueueOutboundSync` does), and only the rest get a new row. Payloads are
+ * an item whose latest queue row (a pending or synced insert) already carries
+ * the same payload is skipped, a pending delete is dropped and a pending insert
+ * updated in place (as `enqueueOutboundSync` does), and only the rest get a new row. Payloads are
  * compared as JSONB, so numbers compare by value. Resolves to the number of
  * items queued or updated.
  */
@@ -105,18 +114,27 @@ export const enqueueOutboundSyncInsertsIfChanged = async (
     `SELECT i.entity_id
      FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, payload jsonb)
      JOIN LATERAL (
-       SELECT q.status, q.payload
+       SELECT q.status, q.operation, q.payload
        FROM outbound_sync_queue q
        WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
        ORDER BY q.created_at DESC
        LIMIT 1
      ) latest ON true
-     WHERE latest.status IN ('pending', 'synced') AND latest.payload = i.payload`,
+     WHERE latest.status IN ('pending', 'synced') AND latest.operation <> 'delete' AND latest.payload = i.payload`,
     [entityType, JSON.stringify(items)],
   )
   const unchangedIds = new Set(unchanged.rows.map((row) => row.entity_id as string))
   const changed = items.filter((item) => !unchangedIds.has(item.entity_id))
   if (changed.length === 0) return 0
+
+  await query(
+    user,
+    `DELETE FROM outbound_sync_queue q
+     USING jsonb_to_recordset($2::jsonb) AS i(entity_id text)
+     WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+       AND q.status = 'pending' AND q.operation = 'delete'`,
+    [entityType, JSON.stringify(changed.map(({ entity_id }) => ({ entity_id })))],
+  )
 
   const updated = await query(
     user,
@@ -142,6 +160,66 @@ export const enqueueOutboundSyncInsertsIfChanged = async (
   }
 
   return changed.length
+}
+
+export interface OutboundSyncDeleteItem {
+  entity_id: string
+  hc_record_type: string
+}
+
+/**
+ * Takes the entities' records back off Health Connect, set-based. A pending insert or update never
+ * reached the phone, so it is dropped rather than marked synced: a synced row with the point's
+ * payload would read as "already written" to `enqueueOutboundSyncInsertsIfChanged`. Then an entity
+ * whose newest written row (a synced row with a record id, or a delete) is a record and not a
+ * delete gets a `delete` carrying that record id; an entity never written, or already deleted or
+ * being deleted, gets nothing.
+ */
+export const enqueueOutboundSyncDeletes = async (
+  user: string,
+  entityType: string,
+  items: OutboundSyncDeleteItem[],
+): Promise<{ cancelled: number; deleted: number }> => {
+  if (items.length === 0) return { cancelled: 0, deleted: 0 }
+  const result = await query(
+    user,
+    `WITH items AS (
+       SELECT DISTINCT ON (entity_id) entity_id, hc_record_type
+       FROM jsonb_to_recordset($2::jsonb) AS i(entity_id text, hc_record_type text)
+     ),
+     cancelled AS (
+       DELETE FROM outbound_sync_queue q
+       USING items i
+       WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+         AND q.status = 'pending' AND q.operation IN ('insert', 'update')
+       RETURNING q.id
+     ),
+     targets AS (
+       SELECT i.entity_id, i.hc_record_type, latest.hc_record_id
+       FROM items i
+       JOIN LATERAL (
+         SELECT q.operation, q.hc_record_id
+         FROM outbound_sync_queue q
+         WHERE q.entity_type = $1 AND q.entity_id = i.entity_id
+           AND (
+             (q.status = 'synced' AND (q.operation = 'delete' OR q.hc_record_id IS NOT NULL))
+             OR (q.status = 'pending' AND q.operation = 'delete')
+           )
+         ORDER BY q.created_at DESC
+         LIMIT 1
+       ) latest ON latest.operation <> 'delete'
+     ),
+     enqueued AS (
+       INSERT INTO outbound_sync_queue (entity_type, entity_id, operation, hc_record_type, payload)
+       SELECT $1, entity_id, 'delete', hc_record_type, jsonb_build_object('hc_record_id', hc_record_id)
+       FROM targets
+       RETURNING id
+     )
+     SELECT (SELECT COUNT(*) FROM cancelled)::int AS cancelled, (SELECT COUNT(*) FROM enqueued)::int AS deleted`,
+    [entityType, JSON.stringify(items)],
+  )
+  const row = result.rows[0] as { cancelled: number; deleted: number }
+  return { cancelled: row.cancelled, deleted: row.deleted }
 }
 
 /**
