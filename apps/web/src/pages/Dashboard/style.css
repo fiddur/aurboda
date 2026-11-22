@@ -1043,7 +1043,9 @@
 }
 
 .dashboard .metrics-grid > .last-sleep,
-.dashboard .metrics-grid > :has(> .last-sleep) {
+.dashboard .metrics-grid > :has(> .last-sleep),
+.dashboard .metrics-grid > .recent-activities,
+.dashboard .metrics-grid > :has(> .recent-activities) {
   grid-column: 1 / -1;
 }
 
