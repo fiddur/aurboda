@@ -666,10 +666,15 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     [queryClient, entityId],
   )
 
-  // Invalidate timeline queries when leaving so parent views show fresh data
+  // Invalidate timeline and dashboard list queries when leaving so parent views show fresh data
   useEffect(
     () => () =>
-      void queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('timeline-') }),
+      void queryClient.invalidateQueries({
+        predicate: (q) => {
+          const key = String(q.queryKey[0])
+          return key.startsWith('timeline-') || key === 'recent-activities'
+        },
+      }),
     [queryClient],
   )
 

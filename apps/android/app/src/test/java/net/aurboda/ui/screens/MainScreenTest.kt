@@ -32,4 +32,10 @@ class MainScreenTest {
         assertEquals(null, tabWebPath(MainTab.Sync))
         assertEquals(null, tabWebPath(MainTab.More))
     }
+
+    @Test
+    fun `a menu path that is a bottom tab maps to that tab`() {
+        assertEquals(MainTab.Feed, mainTabForPath("/feed"))
+        assertEquals(null, mainTabForPath("/journal"))
+    }
 }

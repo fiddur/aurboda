@@ -17,6 +17,7 @@ import {
   type MetricType,
   overnightStaysQuerySchema,
   placesSummaryQuerySchema,
+  recentActivitiesFilterShape,
   sleepDebtQuerySchema,
   timeRangeQuerySchema,
   timeWeightedAveragesNote,
@@ -49,6 +50,7 @@ import {
   getLocationSummary,
   getPeriodSummary,
   getPlacesSummary,
+  getRecentActivities,
   getTopApps,
   getTopMedia,
   parseActivityId,
@@ -247,6 +249,16 @@ Use cases:
         { people: true },
       )
       return tzJsonResponse({ data: activities, success: true }, tz)
+    },
+  )
+
+  server.tool(
+    'get_recent_activities',
+    "The latest activities, newest first, as short rows: type and display name, title, start and end, duration, and distance, set count, average heart rate and calories where recorded; id is the one get_activity_detail takes. Without types it lists the types a day overview draws as icons (shown on the timeline, in an activity category, not sleep), so sleep, screen time, music, calendar events and other tags are left out; types lists exactly those types and their subtypes, whatever their category. window today lists today's so far in tz, latest the most recent ones over lookback_days (default 30). manual_only keeps only activities logged by hand in Aurboda. The read behind the dashboard's latest activities card.",
+    { ...recentActivitiesFilterShape, tz: tzSchema },
+    async ({ tz, ...filter }) => {
+      const data = await getRecentActivities(user, filter, { tz })
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 

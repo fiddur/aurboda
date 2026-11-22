@@ -374,6 +374,9 @@ fun AurbodaApp(
                 scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
               },
               onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
+              onOpenTab = { tab -> appState.selectTab(tab) },
+              openSections = appState.openMenuSections,
+              onToggleSection = { id -> appState.toggleMenuSection(id) },
               unreadNotifications = appState.unreadNotifications,
               hiddenPages = appState.hiddenPages,
               webPageLinks = appState.morePageLinks,

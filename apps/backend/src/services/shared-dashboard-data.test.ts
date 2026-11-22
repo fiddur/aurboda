@@ -3,6 +3,7 @@ import type {
   DashboardConfig,
   DashboardWidget,
   DayOverviewConfig,
+  RecentActivitiesConfig,
 } from '@aurboda/api-spec'
 
 import { barChartConfigSchema, percentChange, trendChartConfigSchema } from '@aurboda/api-spec'
@@ -32,6 +33,7 @@ vi.mock('./queries/index.ts', () => ({
   getActivityTypeSummary: vi.fn(),
   getPeriodSummary: vi.fn(),
   getPlacesSummary: vi.fn(),
+  getRecentActivities: vi.fn(),
   getTopApps: vi.fn(),
   getTopMedia: vi.fn(),
   queryActivities: vi.fn(),
@@ -46,6 +48,7 @@ const {
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
+  getRecentActivities,
   getTopApps,
   getTopMedia,
   queryActivities,
@@ -1070,6 +1073,121 @@ describe('resolveDashboardData: day_overview', () => {
     })
     expect(data['day']).toEqual({ data: null, type: 'day_overview' })
     expect(queryMetricsBucketed).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveDashboardData: recent_activities', () => {
+  const recentWidget = (config: Partial<RecentActivitiesConfig> = {}): DashboardWidget => ({
+    config: { limit: 5, window: 'today', ...config },
+    id: 'recent',
+    type: 'recent_activities',
+  })
+  const now = new Date('2026-03-15T10:00:00.000Z')
+  const rows = {
+    activities: [
+      {
+        activity_type: 'running',
+        distance_m: 5000,
+        id: 'merged:a1',
+        start_time: '2026-03-15T07:00:00.000Z',
+        title: 'Morning run',
+        type_name: 'Running',
+      },
+    ],
+    tz: 'Europe/Stockholm',
+  }
+
+  beforeEach(() => {
+    vi.mocked(getRecentActivities).mockReset()
+    vi.mocked(getRecentActivities).mockResolvedValue(rows)
+  })
+
+  test('a visitor gets no entry and no query without visible_to_visitors', async () => {
+    const data = await resolveDashboardData('alice', board(recentWidget()), { now })
+
+    expect(data).toEqual({})
+    expect(getRecentActivities).not.toHaveBeenCalled()
+  })
+
+  test('a visitor of an opted-in card gets the rows without ids', async () => {
+    const data = await resolveDashboardData('alice', board(recentWidget({ visible_to_visitors: true })), {
+      now,
+    })
+
+    expect(data['recent']).toEqual({
+      data: {
+        activities: [
+          {
+            activity_type: 'running',
+            distance_m: 5000,
+            start_time: '2026-03-15T07:00:00.000Z',
+            title: 'Morning run',
+            type_name: 'Running',
+          },
+        ],
+        tz: 'Europe/Stockholm',
+      },
+      type: 'recent_activities',
+    })
+    expect(JSON.stringify(data)).not.toContain('a1')
+  })
+
+  test('the owner gets the rows with ids whatever the flag', async () => {
+    const data = await resolveDashboardData('alice', board(recentWidget({ limit: 3, types: ['exercise'] })), {
+      now,
+      viewer: 'owner',
+    })
+
+    expect(data['recent']).toEqual({ data: rows, type: 'recent_activities' })
+    expect(vi.mocked(getRecentActivities).mock.calls[0]).toEqual([
+      'alice',
+      { limit: 3, types: ['exercise'], window: 'today' },
+      { now, range: undefined, tz: 'Europe/Stockholm' },
+    ])
+  })
+
+  test('a period lists inside its inclusive range', async () => {
+    const window = { end: new Date('2026-03-01T00:00:00Z'), start: new Date('2026-02-01T00:00:00Z') }
+
+    await resolveDashboardData('alice', board(recentWidget({ lookback_days: 7, window: 'latest' })), {
+      viewer: 'owner',
+      window,
+    })
+
+    expect(vi.mocked(getRecentActivities).mock.calls[0]?.[2]).toEqual({
+      now: undefined,
+      range: { end: new Date('2026-02-28T23:59:59.999Z'), start: window.start },
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('the owner still gets no day overview without its flag', async () => {
+    const config: DashboardConfig = {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            recentWidget(),
+            { config: { metrics: ['stress_level'], window: 'today' }, id: 'day', type: 'day_overview' },
+          ],
+        },
+      ],
+      version: 1,
+    }
+
+    const data = await resolveDashboardData('alice', config, { now, viewer: 'owner' })
+
+    expect(Object.keys(data)).toEqual(['recent'])
+  })
+
+  test('resolvePeriodDashboard passes the viewer on', async () => {
+    const monthly: DashboardConfig = { ...board(recentWidget()), period: { granularity: 'month' } }
+
+    const result = await resolvePeriodDashboard('alice', monthly, '2026-02', now, 'owner')
+
+    expect(result.widget_data['recent']).toEqual({ data: rows, type: 'recent_activities' })
   })
 })
 

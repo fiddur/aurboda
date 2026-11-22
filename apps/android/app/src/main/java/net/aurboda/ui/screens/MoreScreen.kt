@@ -1,16 +1,19 @@
 package net.aurboda.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -20,13 +23,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import net.aurboda.BuildConfig
 import net.aurboda.CredentialsManager
+import net.aurboda.MainTab
 import net.aurboda.MoreDestination
+import net.aurboda.api.menu.NavLink
+import net.aurboda.api.menu.appOnlyLinks
+import net.aurboda.api.menu.helpLink
+import net.aurboda.api.menu.menuAlwaysShown
+import net.aurboda.api.menu.navSections
+import net.aurboda.api.menu.notificationsLink
+import net.aurboda.api.menu.settingsLink
 import net.aurboda.badgeText
 
-data class MoreItem(val label: String, val destination: MoreDestination)
+data class MoreItem(val label: String, val destination: MoreDestination, val icon: String? = null)
+
+data class MoreSection(val id: String, val label: String, val icon: String, val items: List<MoreItem>)
+
+data class MoreMenu(val top: List<MoreItem>, val sections: List<MoreSection>, val bottom: List<MoreItem>)
 
 /**
  * The URL an embedded page loads for a [MoreDestination.Web]: site paths are
@@ -45,98 +63,53 @@ fun embeddedPageUrl(serverUrl: String, path: String, channel: String = BuildConf
     return "$base${separator}embed=1$storeFlag$fragment"
 }
 
-data class MoreGroup(val header: String, val items: List<MoreItem>)
+private fun NavLink.toMoreItem(): MoreItem = MoreItem(label, MoreDestination.Web(href), icon)
 
-private val NOTIFICATIONS_DESTINATION = MoreDestination.Web("/notifications")
+private val NOTIFICATIONS_DESTINATION = MoreDestination.Web(notificationsLink.href)
 
 /**
- * The "More" hub contents: everything not on the bottom bar. Most entries open
- * the corresponding web page embedded; Live and Account stay native. Keep in
- * sync with the web navigation (see apps/web/src/components/nav-links.ts).
+ * The "More" hub contents: everything not on the bottom bar. The sections are the
+ * web menu's, from the shared definition (`packages/api-spec/src/menu.ts`, generated
+ * as `net.aurboda.api.menu`), without admin-only pages; around them sit the
+ * app's own entries. Web entries open the page embedded; Live and Account stay native.
  */
-val moreGroups: List<MoreGroup> = listOf(
-    MoreGroup(
-        "Inbox",
+val moreMenu: MoreMenu = MoreMenu(
+    top = listOf(notificationsLink.toMoreItem()) +
+        appOnlyLinks.filter { it.href == "/reminders" }.map { it.toMoreItem() },
+    sections = navSections.map { section ->
+        MoreSection(
+            id = section.id,
+            label = section.label,
+            icon = section.icon,
+            items = section.links.filterNot { it.adminOnly }.map { it.toMoreItem() },
+        )
+    },
+    bottom = listOf(helpLink.toMoreItem(), settingsLink.toMoreItem()) +
+        appOnlyLinks.filter { it.href != "/reminders" }.map { it.toMoreItem() } +
         listOf(
-            MoreItem("Notifications", NOTIFICATIONS_DESTINATION),
-            MoreItem("Reminders", MoreDestination.Web("/reminders")),
+            MoreItem("Live sensors", MoreDestination.Live, "📡"),
+            MoreItem("Account & server", MoreDestination.Account, "👤"),
         ),
-    ),
-    MoreGroup(
-        "Log",
-        listOf(
-            MoreItem("Journal", MoreDestination.Web("/journal")),
-            MoreItem("Meals", MoreDestination.Web("/meals")),
-            MoreItem("Check-ins", MoreDestination.Web("/check-ins")),
-            MoreItem("Reports", MoreDestination.Web("/reports")),
-            MoreItem("People", MoreDestination.Web("/people")),
-        ),
-    ),
-    MoreGroup(
-        "Training",
-        listOf(
-            MoreItem("Strength", MoreDestination.Web("/strength")),
-            MoreItem("Training load", MoreDestination.Web("/training-load")),
-            MoreItem("Routes", MoreDestination.Web("/routes")),
-            MoreItem("Segments", MoreDestination.Web("/segments")),
-        ),
-    ),
-    MoreGroup(
-        "Explore",
-        listOf(
-            MoreItem("Timeline", MoreDestination.Web("/timeline")),
-            MoreItem("Data", MoreDestination.Web("/data")),
-            MoreItem("Chart", MoreDestination.Web("/chart")),
-            MoreItem("Analyze", MoreDestination.Web("/correlations")),
-            MoreItem("Goals", MoreDestination.Web("/goals")),
-            MoreItem("Places", MoreDestination.Web("/places")),
-        ),
-    ),
-    MoreGroup(
-        "Sharing",
-        listOf(
-            MoreItem("Dashboards", MoreDestination.Web("/dashboards")),
-            MoreItem("Challenges", MoreDestination.Web("/challenges")),
-        ),
-    ),
-    MoreGroup(
-        "Setup",
-        listOf(
-            MoreItem("Data sources", MoreDestination.Web("/data-sources")),
-            MoreItem("Activity types", MoreDestination.Web("/activity-types")),
-            MoreItem("Rules", MoreDestination.Web("/deduction-rules")),
-            MoreItem("Settings", MoreDestination.Web("/settings")),
-            MoreItem("Audit log", MoreDestination.Web("/audit-log")),
-        ),
-    ),
-    MoreGroup(
-        "Device & account",
-        listOf(
-            MoreItem("Live sensors", MoreDestination.Live),
-            MoreItem("Account & server", MoreDestination.Account),
-            MoreItem("Help & support", MoreDestination.Web("/help")),
-        ),
-    ),
 )
 
-/** Menu paths never hidden, whatever `hidden_pages` says, and everything under /admin; twin of the web's MENU_ALWAYS_SHOWN. */
-val MENU_ALWAYS_SHOWN: List<String> = listOf("/", "/settings", "/help", "/notifications", "/admin")
-
 fun isPageHidden(path: String, hiddenPages: Collection<String>): Boolean =
-    path !in MENU_ALWAYS_SHOWN && !path.startsWith("/admin/") && path in hiddenPages
+    path !in menuAlwaysShown && !path.startsWith("/admin/") && path in hiddenPages
 
-/** [groups] without the web pages in [hiddenPages] and without groups left empty; native screens always stay. */
-fun visibleMoreGroups(groups: List<MoreGroup>, hiddenPages: Collection<String>): List<MoreGroup> =
-    groups
-        .map { group ->
-            group.copy(
-                items = group.items.filterNot { item ->
-                    val destination = item.destination
-                    destination is MoreDestination.Web && isPageHidden(destination.path, hiddenPages)
-                },
-            )
-        }
-        .filter { it.items.isNotEmpty() }
+private fun List<MoreItem>.withoutHidden(hiddenPages: Collection<String>): List<MoreItem> =
+    filterNot { item ->
+        val destination = item.destination
+        destination is MoreDestination.Web && isPageHidden(destination.path, hiddenPages)
+    }
+
+/** [menu] without the web pages in [hiddenPages] and without sections left empty; native screens always stay. */
+fun visibleMoreMenu(menu: MoreMenu, hiddenPages: Collection<String>): MoreMenu =
+    MoreMenu(
+        top = menu.top.withoutHidden(hiddenPages),
+        sections = menu.sections
+            .map { it.copy(items = it.items.withoutHidden(hiddenPages)) }
+            .filter { it.items.isNotEmpty() },
+        bottom = menu.bottom.withoutHidden(hiddenPages),
+    )
 
 /**
  * The "More" tab: a hub listing every screen not on the bottom bar. Selecting an
@@ -161,6 +134,9 @@ fun MoreScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenWebPage: (String) -> Unit = {},
+    onOpenTab: (MainTab) -> Unit = {},
+    openSections: Set<String> = emptySet(),
+    onToggleSection: (String) -> Unit = {},
     unreadNotifications: Int = 0,
     hiddenPages: List<String> = emptyList(),
     webPageLinks: Int = 0,
@@ -178,6 +154,9 @@ fun MoreScreen(
         null ->
             MoreHub(
                 onSelect = onSelect,
+                onOpenTab = onOpenTab,
+                openSections = openSections,
+                onToggleSection = onToggleSection,
                 unreadNotifications = unreadNotifications,
                 hiddenPages = hiddenPages,
                 modifier = modifier,
@@ -209,42 +188,86 @@ fun MoreScreen(
 @Composable
 private fun MoreHub(
     onSelect: (MoreDestination) -> Unit,
+    onOpenTab: (MainTab) -> Unit,
+    openSections: Set<String>,
+    onToggleSection: (String) -> Unit,
     unreadNotifications: Int,
     hiddenPages: List<String>,
     modifier: Modifier = Modifier,
 ) {
+    val menu = visibleMoreMenu(moreMenu, hiddenPages)
+    val openItem: (MoreItem) -> Unit = { item ->
+        val destination = item.destination
+        val tab = (destination as? MoreDestination.Web)?.let { mainTabForPath(it.path) }
+        if (tab != null) onOpenTab(tab) else onSelect(destination)
+    }
+    val badge = { item: MoreItem ->
+        if (item.destination == NOTIFICATIONS_DESTINATION && unreadNotifications > 0) unreadNotifications else 0
+    }
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState()),
     ) {
-        visibleMoreGroups(moreGroups, hiddenPages).forEach { group ->
-            Text(
-                text = group.header,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-            )
-            group.items.forEach { item ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelect(item.destination) }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = item.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (item.destination == NOTIFICATIONS_DESTINATION && unreadNotifications > 0) {
-                        Badge(modifier = Modifier.padding(end = 8.dp)) { Text(badgeText(unreadNotifications)) }
-                    }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-                }
-                HorizontalDivider()
+        menu.top.forEach { item -> MoreRow(item.icon, item.label, badge(item)) { openItem(item) } }
+        HorizontalDivider()
+        menu.sections.forEach { section ->
+            val isOpen = section.id in openSections
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggleSection(section.id) }
+                    .semantics { stateDescription = if (isOpen) "Expanded" else "Collapsed" }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconSlot(section.icon)
+                Text(
+                    text = section.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (isOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                )
             }
+            if (isOpen) {
+                section.items.forEach { item -> MoreRow(null, item.label, badge(item)) { openItem(item) } }
+            }
+        }
+        HorizontalDivider()
+        menu.bottom.forEach { item -> MoreRow(item.icon, item.label, badge(item)) { openItem(item) } }
+    }
+}
+
+@Composable
+private fun IconSlot(icon: String?) {
+    Text(
+        text = icon ?: "",
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.width(40.dp).clearAndSetSemantics {},
+    )
+}
+
+@Composable
+private fun MoreRow(icon: String?, label: String, badgeCount: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconSlot(icon)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        if (badgeCount > 0) {
+            Badge(modifier = Modifier.padding(end = 8.dp)) { Text(badgeText(badgeCount)) }
         }
     }
 }

@@ -108,12 +108,15 @@ render — never the owner's broader data API. This is enforced server-side:
 3. Each widget resolver returns a **minimal projection** — just the values the
    widget displays (aggregated buckets, averages, trend points). Raw rows with
    notes or locations are never included, and titles of activities only for a
-   [day overview](./dashboard.md#day-overview) the owner showed to visitors, which
-   serves the name and start time of each activity it draws.
+   [day overview](./dashboard.md#day-overview) or a
+   [latest activities](./dashboard.md#latest-activities) card the owner showed to
+   visitors: the day overview serves the name and start time of each activity it
+   draws, the latest activities card the name, start time, duration, distance, sets,
+   average heart rate and calories of each activity it lists, without its id.
 4. Quick-link widgets are neutralized (their hrefs point into the owner's private
-   app and are stripped), day overview widgets are left out of the served config
-   with no data resolved unless the owner turned on **Show to visitors**
-   (`visible_to_visitors`), and unknown widgets resolve to no data.
+   app and are stripped), day overview and latest activities widgets are left out of
+   the served config with no data resolved unless the owner turned on **Show to
+   visitors** (`visible_to_visitors`), and unknown widgets resolve to no data.
 
 So even a crafted request with extra query parameters cannot widen the exposed data
 beyond the saved widgets.

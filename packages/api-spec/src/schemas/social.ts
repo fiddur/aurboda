@@ -18,7 +18,7 @@ import { z } from 'zod'
 import { activityRecordSchema, activityTypeSummarySchema } from './activity-sessions.ts'
 import { challengeSpecSchema } from './challenges.ts'
 import { chartDataBreakdownBucketSchema, chartDataBucketSchema } from './chart-data.ts'
-import { baseResponseSchema } from './common.ts'
+import { baseResponseSchema, createDataResponseSchema } from './common.ts'
 import { dashboardConfigSchema, dashboardPresetSchema, periodKeySchema } from './dashboard.ts'
 import { goalProgressSchema } from './goals.ts'
 import { placesSummaryNightsSchema, placesSummarySchema } from './locations.ts'
@@ -330,6 +330,45 @@ export const dayOverviewDataSchema = z
   })
   .meta({ description: 'Exactly what a day overview card draws', id: 'DayOverviewData' })
 
+export const recentActivitySchema = z
+  .object({
+    activity_type: z.string().meta({ description: 'The activity type name' }),
+    avg_hr: z.number().optional().meta({ description: 'Average heart rate (bpm), when recorded' }),
+    calories: z.number().optional().meta({ description: 'Calories (kcal), when recorded' }),
+    color: z.string().optional().meta({ description: "The activity type's colour, when set" }),
+    distance_m: z.number().optional().meta({ description: 'Distance in metres, when recorded' }),
+    duration_minutes: z
+      .number()
+      .optional()
+      .meta({ description: 'Duration in whole minutes, when it has an end' }),
+    end_time: z.string().optional().meta({ description: 'End time (ISO 8601), when it has one' }),
+    icon: z.string().optional().meta({ description: "The activity type's icon, when set" }),
+    id: z.string().optional().meta({
+      description:
+        'The id for the activity detail page (merged:<id> for a merged activity, as query_activities returns it); left out for visitors of a shared dashboard',
+    }),
+    set_count: z.number().optional().meta({ description: 'Number of sets, when it has any' }),
+    start_time: z.string().meta({ description: 'Start time (ISO 8601)' }),
+    title: z.string().optional().meta({ description: "The activity's title, when set" }),
+    type_name: z.string().meta({ description: "The activity type's display name" }),
+  })
+  .meta({ id: 'RecentActivity' })
+
+export const recentActivitiesDataSchema = z
+  .object({
+    activities: z.array(recentActivitySchema).meta({ description: 'The listed activities, newest first' }),
+    tz: z.string().meta({ description: 'The IANA timezone "today" was cut in and times should be shown in' }),
+  })
+  .meta({ description: 'Exactly what a latest activities card lists', id: 'RecentActivitiesData' })
+
+export const recentActivitiesResponseSchema = createDataResponseSchema(recentActivitiesDataSchema).meta({
+  id: 'RecentActivitiesResponse',
+})
+
+export type RecentActivity = z.infer<typeof recentActivitySchema>
+export type RecentActivitiesData = z.infer<typeof recentActivitiesDataSchema>
+export type RecentActivitiesResponse = z.infer<typeof recentActivitiesResponseSchema>
+
 /**
  * Aggregated activity stats — exactly the figures the ActivitySummary widget
  * renders. Each category is null when its visibility toggle is off, so a public
@@ -425,6 +464,7 @@ export const widgetDataSchema = z
     z.object({ data: topListCardDataSchema.nullable(), type: z.literal('top_list_card') }),
     z.object({ data: placesCardDataSchema.nullable(), type: z.literal('places_card') }),
     z.object({ data: dayOverviewDataSchema.nullable(), type: z.literal('day_overview') }),
+    z.object({ data: recentActivitiesDataSchema.nullable(), type: z.literal('recent_activities') }),
   ])
   .meta({ id: 'WidgetData' })
 

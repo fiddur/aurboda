@@ -43,6 +43,7 @@ export const createDashboardRouter = (authMiddleware: RequestHandler): TypedRout
           user,
           settings.dashboard ?? defaultDashboardConfig,
           req.query.period,
+          'owner',
         )
         res.json({ ...view, success: true })
       } catch (error) {

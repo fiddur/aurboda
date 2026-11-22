@@ -17,7 +17,11 @@ import type { TargetedDragEvent } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { DashboardEditor } from '../DashboardEditor'
-import { VisibleToVisitorsField } from '../DashboardEditor/VisibleToVisitorsField'
+import {
+  DAY_OVERVIEW_VISITOR_WARNING,
+  RECENT_ACTIVITIES_VISITOR_WARNING,
+  VisibleToVisitorsField,
+} from '../DashboardEditor/VisibleToVisitorsField'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
 import { useCustomMetricDefinitions } from '../widgets/useMetricBetter'
 import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
@@ -171,6 +175,26 @@ function SectionMoveButtons({ onMove }: { onMove: { down?: () => void; up?: () =
 export const withPeriod = (config: DashboardConfig, granularity: '' | PeriodGranularity): DashboardConfig => {
   const { period: _period, ...rest } = config
   return granularity ? { ...rest, period: { granularity } } : rest
+}
+
+/** The in-place "Show to visitors" switch of the cards kept from visitors unless the owner opts in. */
+function VisitorSwitch({
+  onChange,
+  widget,
+}: {
+  onChange: (visible: boolean) => void
+  widget: DashboardWidget
+}) {
+  if (widget.type !== 'day_overview' && widget.type !== 'recent_activities') return null
+  return (
+    <VisibleToVisitorsField
+      checked={widget.config.visible_to_visitors === true}
+      onChange={onChange}
+      warning={
+        widget.type === 'day_overview' ? DAY_OVERVIEW_VISITOR_WARNING : RECENT_ACTIVITIES_VISITOR_WARNING
+      }
+    />
+  )
 }
 
 function DashboardSectionComponent({
@@ -373,9 +397,9 @@ function DashboardSectionComponent({
                   </button>
                 </div>
               )}
-              {isEditing && boardId !== 'home' && widget.type === 'day_overview' && (
-                <VisibleToVisitorsField
-                  checked={widget.config.visible_to_visitors === true}
+              {isEditing && boardId !== 'home' && (
+                <VisitorSwitch
+                  widget={widget}
                   onChange={(visible) => onSetVisibleToVisitors?.(widget.id, visible)}
                 />
               )}
@@ -390,6 +414,7 @@ function DashboardSectionComponent({
                   data={widgetData[widget.id]}
                   periodLabel={periodLabel}
                   customMetrics={customMetrics}
+                  ownerNote={boardId !== 'home' ? 'Only you see this card' : undefined}
                 />
               ) : (
                 <WidgetRenderer widget={widget} boardId={boardId} sectionId={section.id} />

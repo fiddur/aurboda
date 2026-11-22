@@ -51,7 +51,7 @@ describe('GET /dashboard/data', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ ...view, success: true })
-    expect(resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2026-09')
+    expect(resolveDashboardView).toHaveBeenCalledWith('alice', monthly, '2026-09', 'owner')
   })
 
   test('a malformed period is a 400 before resolving', async () => {

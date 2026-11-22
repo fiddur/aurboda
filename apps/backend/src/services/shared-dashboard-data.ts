@@ -6,7 +6,8 @@
  * with parameters taken EXCLUSIVELY from the stored widget config. No viewer
  * input ever reaches these calls, and each resolver returns only the minimal
  * fields the widget renders (never raw rows with notes or locations). Activity
- * titles are served only by a day overview the owner opted in to show visitors.
+ * titles reach visitors only through a day overview or a latest activities card
+ * the owner opted in to show them.
  *
  * The result is keyed by widget id so a public viewer (and, later, a single
  * embeddable chart) can match data to the widget it belongs to.
@@ -51,7 +52,7 @@ import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
 import { humanizeName } from './correlations/utils.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
-import { isShownToVisitors } from './dashboard-config.ts'
+import { type DashboardViewer, isResolvedFor } from './dashboard-config.ts'
 import { dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { getGoalsProgress } from './goals.ts'
 import { getLatestSleep } from './latest-sleep.ts'
@@ -68,6 +69,7 @@ import {
   getActivityTypeSummary,
   getPeriodSummary,
   getPlacesSummary,
+  getRecentActivities,
   getTopApps,
   getTopMedia,
   type MetricBucket,
@@ -105,6 +107,8 @@ export interface ResolveWindow {
 export interface ResolveOptions {
   now?: Date
   previous?: ResolveWindow
+  /** Who the data is for; the owner's own reads also get the cards kept from visitors. Default visitor. */
+  viewer?: DashboardViewer
   window?: ResolveWindow
 }
 
@@ -683,6 +687,26 @@ const resolveDayOverview = async (
   }
 }
 
+const resolveRecentActivities = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'recent_activities' }>['config'],
+  tz: string,
+  options: ResolveOptions,
+): Promise<WidgetData> => {
+  const data = await getRecentActivities(user, config, {
+    now: options.now,
+    range: options.window ? inclusiveRange(options.window) : undefined,
+    tz,
+  })
+  return {
+    data:
+      (options.viewer ?? 'visitor') === 'owner'
+        ? data
+        : { ...data, activities: data.activities.map(({ id: _id, ...row }) => row) },
+    type: 'recent_activities',
+  }
+}
+
 interface SummaryVisibility {
   showMeditation: boolean
   showSleep: boolean
@@ -836,6 +860,8 @@ const resolveWidget = async (
       return { data: null, type: 'quick_link' }
     case 'day_overview':
       return resolveDayOverview(user, widget.config, tz, options)
+    case 'recent_activities':
+      return resolveRecentActivities(user, widget.config, tz, options)
   }
 }
 
@@ -877,6 +903,8 @@ const nullData = (type: DashboardWidget['type']): WidgetData => {
       return { data: null, type }
     case 'day_overview':
       return { data: null, type }
+    case 'recent_activities':
+      return { data: null, type }
   }
 }
 
@@ -898,7 +926,10 @@ export const resolveDashboardData = async (
   config: DashboardConfig,
   options: ResolveOptions = {},
 ): Promise<WidgetDataMap> => {
-  const allWidgets = config.sections.flatMap((section) => section.widgets).filter(isShownToVisitors)
+  const viewer = options.viewer ?? 'visitor'
+  const allWidgets = config.sections
+    .flatMap((section) => section.widgets)
+    .filter((widget) => isResolvedFor(widget, viewer))
   if (allWidgets.length > MAX_RESOLVED_WIDGETS) {
     console.warn(
       `Dashboard for ${user} has ${allWidgets.length} widgets; resolving only the first ${MAX_RESOLVED_WIDGETS}.`,
@@ -930,6 +961,7 @@ export const resolvePeriodDashboard = async (
   config: DashboardConfig,
   periodKey?: string,
   now: Date = new Date(),
+  viewer: DashboardViewer = 'visitor',
 ): Promise<PeriodDashboardData> => {
   if (!config.period) throw new Error('resolvePeriodDashboard needs a period dashboard')
   const { granularity } = config.period
@@ -943,6 +975,7 @@ export const resolvePeriodDashboard = async (
   const window = periodWindow(period, tz)
   const widget_data = await resolveDashboardData(user, config, {
     previous: previousWindow(period, tz),
+    viewer,
     window,
   })
   return {
@@ -963,7 +996,8 @@ export const resolveDashboardView = async (
   user: string,
   config: DashboardConfig,
   periodKey?: string,
+  viewer: DashboardViewer = 'visitor',
 ): Promise<DashboardView> =>
   config.period
-    ? resolvePeriodDashboard(user, config, periodKey)
-    : { period: null, widget_data: await resolveDashboardData(user, config), window: null }
+    ? resolvePeriodDashboard(user, config, periodKey, new Date(), viewer)
+    : { period: null, widget_data: await resolveDashboardData(user, config, { viewer }), window: null }

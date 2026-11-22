@@ -44,7 +44,7 @@ export { getPeriodSummary } from './period-summary.ts'
 
 export { queryTags } from './tags.ts'
 
-export { isExerciseLike, parseDataFilter, queryActivities } from './activities.ts'
+export { activityResultId, isExerciseLike, parseDataFilter, queryActivities } from './activities.ts'
 
 export {
   type ActivitySessionsOptions,
@@ -54,6 +54,12 @@ export {
 
 export { queryActivityFieldValues } from './activity-field-values.ts'
 export { type ActivityTypeSummaryDeps, getActivityTypeSummary } from './activity-type-summary.ts'
+export {
+  getRecentActivities,
+  type RecentActivitiesDeps,
+  type RecentActivitiesFilter,
+  type RecentActivitiesOptions,
+} from './recent-activities.ts'
 export { getActivityNeighbors } from './activity-neighbors.ts'
 export { queryActivityItemHistory } from './activity-item-history.ts'
 export { queryMuscleGroupHistory, queryMuscleGroupOverview } from './muscle-group-history.ts'

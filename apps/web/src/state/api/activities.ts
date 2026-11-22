@@ -4,6 +4,9 @@ import {
   type ActivitiesResponse,
   type ActivityFeatures,
   type JournalEntryRef,
+  type RecentActivitiesData,
+  type RecentActivitiesQuery,
+  type RecentActivitiesResponse,
   type AddActivityBody,
   type AddActivityResponse,
   type ActivityTrackResponse,
@@ -45,6 +48,17 @@ export const fetchActivities = async (
     end_time: activity.end_time ? new Date(activity.end_time) : undefined,
     start_time: new Date(activity.start_time),
   }))
+}
+
+export const fetchRecentActivities = async (
+  params: Partial<RecentActivitiesQuery>,
+): Promise<RecentActivitiesData | null> => {
+  const { token } = auth.value
+  const response = await axios.get<RecentActivitiesResponse>(`${API_URL}/activities/recent`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params,
+  })
+  return response.data.data ?? null
 }
 
 /**

@@ -45,6 +45,8 @@ Rules:
   file a GitHub issue tracking the gap rather than letting them silently diverge.
 - A native screen that duplicates web functionality is a candidate to **replace
   with an embedded web view** unless it has a device-API reason to stay native.
+- **The menu is one definition**, `packages/api-spec/src/menu.ts`, read by the web
+  menu and (through `pnpm generate`) the Android More tab; change it there.
 
 ## Shared Schemas and Types (`packages/api-spec`)
 

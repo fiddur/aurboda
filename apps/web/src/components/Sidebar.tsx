@@ -8,6 +8,7 @@ import {
   NAV_TOP_LINKS,
   type NavSection,
   type NavSectionId,
+  SETTINGS_LINK,
   visibleLinks,
   visibleSections,
 } from './nav-links'
@@ -243,12 +244,12 @@ function SidebarFooter(props: { url: string; collapsed: boolean }) {
         collapsed={collapsed}
       />
       <a
-        href="/settings"
-        class={`sidebar-link${isLinkActive('/settings', url) ? ' active' : ''}`}
-        title={collapsed ? `Settings (${auth.value.user})` : undefined}
+        href={SETTINGS_LINK.href}
+        class={`sidebar-link${isLinkActive(SETTINGS_LINK.href, url) ? ' active' : ''}`}
+        title={collapsed ? `${SETTINGS_LINK.label} (${auth.value.user})` : undefined}
       >
-        <span class="sidebar-icon">⚙</span>
-        <span class="sidebar-label">Settings</span>
+        <span class="sidebar-icon">{SETTINGS_LINK.icon}</span>
+        <span class="sidebar-label">{SETTINGS_LINK.label}</span>
         <span class="sidebar-user">{auth.value.user}</span>
       </a>
       <SidebarLink

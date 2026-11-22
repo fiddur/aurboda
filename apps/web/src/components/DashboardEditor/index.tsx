@@ -13,8 +13,9 @@ import { getMetricDisplayName } from '../../utils/metricLabels'
 import { ActivityTypePicker } from '../ActivityTypePicker'
 import { MetricPicker } from '../MetricPicker'
 import { offeredWidgetTypes } from './periodWidgets'
+import { RecentActivitiesConfigForm } from './RecentActivitiesConfigForm'
 import { blankRequiredFields } from './requiredConfig'
-import { VisibleToVisitorsField } from './VisibleToVisitorsField'
+import { DAY_OVERVIEW_VISITOR_WARNING, VisibleToVisitorsField } from './VisibleToVisitorsField'
 import './style.css'
 
 interface DashboardEditorProps {
@@ -160,6 +161,13 @@ const widgetTemplates: WidgetTemplate[] = [
     description: 'Stress, Body Battery, sleep and activities of one day on one time axis',
     label: 'Day overview',
     type: 'day_overview',
+  },
+  {
+    allowedSections: ['metrics', 'charts'],
+    defaultConfig: () => ({ limit: 5, window: 'today' }),
+    description: "Your latest activities: today's, or the most recent ones",
+    label: 'Latest activities',
+    type: 'recent_activities',
   },
   {
     allowedSections: ['charts'],
@@ -791,11 +799,22 @@ export function DashboardEditor({
               <VisibleToVisitorsField
                 checked={configValues.visible_to_visitors === true}
                 onChange={(checked) => updateConfig('visible_to_visitors', checked)}
+                warning={DAY_OVERVIEW_VISITOR_WARNING}
               />
             )}
           </div>
         )
       }
+
+      case 'recent_activities':
+        return (
+          <RecentActivitiesConfigForm
+            configValues={configValues}
+            periodMode={periodMode}
+            setConfigValues={setConfigValues}
+            sharedBoard={sharedBoard}
+          />
+        )
 
       case 'quick_link':
         return (
