@@ -174,6 +174,8 @@ Press **Escape**, scroll, or click elsewhere to dismiss the menu.
 
 - **Scroll wheel / pinch** to zoom in and out on the time axis.
 - **Click and drag** to pan forward and backward in time.
+- On touch, a pan or pinch can start anywhere on the chart, on a bar, icon or label as well as
+  on empty space, and follows the fingers for the whole gesture.
 - **Double-click** to reset the view to today.
 - Data loads automatically as you pan or zoom beyond the current window.
 

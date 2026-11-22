@@ -2,7 +2,7 @@ import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
-import { dropWidget, moveSection, moveWidget } from './moveWidget'
+import { dropWidget, moveSection, moveWidget, replaceWidget } from './moveWidget'
 
 const widget = (id: string): DashboardWidget => ({
   config: { href: `/${id}`, label: id },
@@ -144,5 +144,27 @@ describe('moveSection', () => {
   it('does not mutate the input', () => {
     moveSection(sectionsConfig, 'b', 'up')
     expect(sectionIds(sectionsConfig)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('replaceWidget', () => {
+  const edited: DashboardWidget = { config: { href: '/sleep', label: 'Sleep' }, id: 'a2', type: 'quick_link' }
+
+  it('replaces the widget in its place in its section', () => {
+    const next = replaceWidget(config(), edited)
+    expect(ids(next)).toEqual(ids(config()))
+    expect(next.sections[0]?.widgets[1]).toBe(edited)
+  })
+
+  it('leaves the other sections as they were', () => {
+    const before = config()
+    const next = replaceWidget(before, edited)
+    expect(next.sections[1]).toBe(before.sections[1])
+    expect(next.sections[2]).toBe(before.sections[2])
+  })
+
+  it('returns the same config for an unknown widget id', () => {
+    const before = config()
+    expect(replaceWidget(before, { ...edited, id: 'gone' })).toBe(before)
   })
 })
