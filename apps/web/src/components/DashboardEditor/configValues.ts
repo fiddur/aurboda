@@ -12,7 +12,6 @@ export const withConfigValue = (config: ConfigValues, key: string, value: unknow
   return empty ? rest : { ...rest, [key]: value }
 }
 
-/** The form's starting values for an existing card: its config over the template defaults, so a field added since it was saved has its default. */
 export const editConfigValues = (defaults: ConfigValues, config: ConfigValues): ConfigValues => ({
   ...defaults,
   ...config,

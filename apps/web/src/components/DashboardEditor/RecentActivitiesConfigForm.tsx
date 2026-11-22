@@ -1,3 +1,4 @@
+import { RECENT_ACTIVITIES_LIMIT_RANGE, RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
@@ -9,10 +10,6 @@ import { RECENT_ACTIVITIES_VISITOR_WARNING, VisibleToVisitorsField } from './Vis
 import './RecentActivitiesConfigForm.css'
 
 type SetConfigValues = (update: (prev: ConfigValues) => ConfigValues) => void
-
-// The bounds of recentActivitiesConfigSchema, which rejects a save outside them.
-const LIMIT_RANGE = [1, 20] as const
-const LOOKBACK_DAYS_RANGE = [1, 365] as const
 
 // Clamped on blur, not per keystroke (compat turns onChange into onInput), so the field can be
 // cleared and retyped; a field left blank drops the key and shows the default again.
@@ -126,7 +123,7 @@ export function RecentActivitiesConfigForm({
           <ClampedNumberInput
             value={configValues.lookback_days as number | undefined}
             defaultValue={30}
-            range={LOOKBACK_DAYS_RANGE}
+            range={RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE}
             onCommit={(value) => set('lookback_days', value)}
           />
         </div>
@@ -136,7 +133,7 @@ export function RecentActivitiesConfigForm({
         <ClampedNumberInput
           value={configValues.limit as number | undefined}
           defaultValue={5}
-          range={LIMIT_RANGE}
+          range={RECENT_ACTIVITIES_LIMIT_RANGE}
           onCommit={(value) => set('limit', value)}
         />
       </div>

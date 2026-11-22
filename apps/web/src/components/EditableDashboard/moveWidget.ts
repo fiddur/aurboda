@@ -78,7 +78,6 @@ export const moveSection = (
   return { ...config, sections }
 }
 
-/** The config with the widget of the same id replaced by `widget`, in its place; an unknown id leaves the config as it is. */
 export const replaceWidget = (config: DashboardConfig, widget: DashboardWidget): DashboardConfig =>
   config.sections.some((s) => s.widgets.some((w) => w.id === widget.id))
     ? {
