@@ -479,8 +479,8 @@ describe('Hierarchical activity types', () => {
       )
       const suggested = await query(
         user,
-        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count)
-         VALUES ('yinyoga', ${line}, 500, 3)
+        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count, status, decided_at)
+         VALUES ('yinyoga', ${line}, 500, 3, 'dismissed', NOW())
          RETURNING id`,
       )
 
@@ -500,6 +500,32 @@ describe('Hierarchical activity types', () => {
         [suggested.rows[0].id],
       )
       expect(movedSuggestion.rows[0]?.activity_type).toBe('yoga')
+    })
+
+    test('drops the pending suggestions of the source type and keeps the target type and decided ones', async () => {
+      const user = getTestUser()
+      await seed(user, 'yin')
+      const line = `ST_GeomFromText('LINESTRING(18.07 59.3, 18.08 59.3)', 4326)`
+      await query(
+        user,
+        `INSERT INTO suggested_segments (activity_type, geom, length_m, activity_count, status, decided_at)
+         VALUES ('yinyoga', ${line}, 500, 3, 'pending', NULL),
+                ('yinyoga', ${line}, 500, 4, 'dismissed', NOW()),
+                ('yinyoga', ${line}, 500, 5, 'promoted', NOW()),
+                ('yoga', ${line}, 500, 6, 'pending', NULL)`,
+      )
+
+      await mergeActivityTypeDefinition(user, 'yinyoga', 'yoga')
+
+      const left = await query(
+        user,
+        `SELECT activity_type, status, activity_count FROM suggested_segments ORDER BY activity_count`,
+      )
+      expect(left.rows).toEqual([
+        { activity_count: 4, activity_type: 'yoga', status: 'dismissed' },
+        { activity_count: 5, activity_type: 'yoga', status: 'promoted' },
+        { activity_count: 6, activity_type: 'yoga', status: 'pending' },
+      ])
     })
 
     test('puts the moved tracks back in the segment suggestion scan', async () => {

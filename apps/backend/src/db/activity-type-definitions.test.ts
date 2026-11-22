@@ -456,7 +456,9 @@ describe('activity-type-definitions db', () => {
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       // 10. Retype segments of the source
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
-      // 11. Retype suggested segments of the source
+      // 11. Drop the pending suggested segments of the source
+      .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 0, rows: [] })
+      // 11b. Retype the decided suggested segments of the source
       .mockResolvedValueOnce({ command: 'UPDATE', fields: [], oid: 0, rowCount: 0, rows: [] })
       // 12. Delete source
       .mockResolvedValueOnce({ command: 'DELETE', fields: [], oid: 0, rowCount: 1, rows: [] })

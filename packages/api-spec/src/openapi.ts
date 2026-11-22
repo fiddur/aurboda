@@ -79,6 +79,23 @@ import {
   metricTypeSchema,
   timeWeightedAveragesNote,
 } from './schemas/common.ts'
+import {
+  activityImpactQuerySchema,
+  activityImpactResponseSchema,
+  baselineQuerySchema,
+  baselineResponseSchema,
+  continuousCorrelationBodySchema,
+  continuousCorrelationResponseSchema,
+  correlationSelectorsResponseSchema,
+  eventProbabilityBodySchema,
+  eventProbabilityResponseSchema,
+  genericCorrelationBodySchema,
+  genericCorrelationResponseSchema,
+  hrvActivitiesQuerySchema,
+  hrvActivitiesResponseSchema,
+  impactMetricsQuerySchema,
+  impactMetricsResponseSchema,
+} from './schemas/correlations.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { recentActivitiesQuerySchema } from './schemas/dashboard.ts'
 import {
@@ -104,6 +121,33 @@ import {
   publicTagPostsQuerySchema,
   publicTagPostsResponseSchema,
 } from './schemas/feed.ts'
+import {
+  addFoodItemPortionBodySchema,
+  deleteFoodItemPortionResponseSchema,
+  foodItemPortionResponseSchema,
+  foodItemPortionsResponseSchema,
+  setDefaultFoodItemPortionBodySchema,
+  updateFoodItemPortionBodySchema,
+} from './schemas/food-item-portions.ts'
+import {
+  addFoodItemBodySchema,
+  deleteFoodItemResponseSchema,
+  findFoodByBarcodeBodySchema,
+  foodItemDetailResponseSchema,
+  foodItemResponseSchema,
+  foodItemsQuerySchema,
+  foodItemsResponseSchema,
+  mergeFoodItemsBodySchema,
+  mergeFoodItemsPreviewResponseSchema,
+  mergeFoodItemsQuerySchema,
+  mergeFoodItemsResponseSchema,
+  resnapshotMealsResponseSchema,
+  setFoodItemIngredientsBodySchema,
+  setFoodItemReferenceBodySchema,
+  setSharedFoodItemOverrideBodySchema,
+  sharedFoodItemOverrideResponseSchema,
+  updateFoodItemBodySchema,
+} from './schemas/food-items.ts'
 import {
   goalHistoryQuerySchema,
   goalHistoryResponseSchema,
@@ -268,6 +312,17 @@ import {
   updateReminderBodySchema,
 } from './schemas/reminders.ts'
 import {
+  addReportBodySchema,
+  deleteReportResponseSchema,
+  importReportsBodySchema,
+  importReportsResponseSchema,
+  reportResponseSchema,
+  reportsQuerySchema,
+  reportsResponseSchema,
+  updateReportBodySchema,
+  updateReportResponseSchema,
+} from './schemas/reports.ts'
+import {
   mergeRoutesBodySchema,
   mergeRoutesResponseSchema,
   routeDetailResponseSchema,
@@ -289,6 +344,7 @@ import {
   suggestedSegmentsResponseSchema,
   updateSegmentBodySchema,
 } from './schemas/segments.ts'
+import { setFoodItemSensitivitiesBodySchema } from './schemas/sensitivities.ts'
 import { updateSettingsInputSchema, userSettingsResponseSchema } from './schemas/settings.ts'
 import { latestSleepResponseSchema, sleepDebtQuerySchema, sleepDebtResponseSchema } from './schemas/sleep.ts'
 import { recentActivitiesResponseSchema } from './schemas/social.ts'
@@ -357,6 +413,20 @@ const deleteResponseSchema = z
 const activityTypeNamePathSchema = z.object({
   name: z.string().meta({ description: 'Activity type name, e.g. strength_training' }),
 })
+
+const foodItemIdPathSchema = z.object({
+  id: z.string().uuid().meta({ description: 'Food item ID, of a per-user or a shared library item' }),
+})
+
+const foodItemPortionPathSchema = foodItemIdPathSchema.extend({
+  portionId: z.string().uuid().meta({ description: 'Portion ID' }),
+})
+
+const activityImpactPathSchema = z.object({
+  activity: z.string().meta({ description: 'Activity type, tag or event pattern' }),
+})
+
+const reportIdPathSchema = z.object({ id: z.string().uuid().meta({ description: 'Report ID' }) })
 
 const openApiDocument = createDocument({
   components: {
@@ -1480,6 +1550,798 @@ const openApiDocument = createDocument({
         security: [{ bearerAuth: [] }],
         summary: 'Merge routes',
         tags: ['Routes'],
+      },
+    },
+    '/food-items': {
+      get: {
+        description:
+          "Search the food library (the user's own items and the shared library merged) by name, or list the user's items when no query is given.",
+        requestParams: { query: foodItemsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Search food items',
+        tags: ['Food items'],
+      },
+      post: {
+        description:
+          'Add a per-user food item, or update the one with the same name (or the same source and source ID).',
+        requestBody: { content: { 'application/json': { schema: addFoodItemBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemResponseSchema } },
+            description: 'The stored food item',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add food item',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/by-barcode': {
+      post: {
+        description:
+          'Find a food by its barcode in the library, else look it up at Open Food Facts and add it to the shared library.',
+        requestBody: { content: { 'application/json': { schema: findFoodByBarcodeBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The food item with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a valid barcode (8 to 14 digits)',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No food with this barcode',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Open Food Facts could not be reached',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Too many barcode lookups at once',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Find food by barcode',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}': {
+      get: {
+        description:
+          'A food item with its ingredients, derived nutrients, reference, portions and sensitivities.',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The food item with its detail',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get food item',
+        tags: ['Food items'],
+      },
+      patch: {
+        description:
+          'Update a per-user food item; fields left out stay as they are. Shared library items are refused.',
+        requestBody: { content: { 'application/json': { schema: updateFoodItemBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The updated food item with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update food item',
+        tags: ['Food items'],
+      },
+      delete: {
+        description:
+          'Delete a per-user food item. Refused for shared library items and for an item used as an ingredient of a recipe.',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteFoodItemResponseSchema } },
+            description: 'Deleted',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The item is an ingredient of a recipe',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete food item',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/duplicate': {
+      post: {
+        description: 'Copy a food item, per-user or shared, into a new per-user item named "<name> (copy)".',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The copy with its detail',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Duplicate food item',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/ingredients': {
+      put: {
+        description:
+          'Replace the ingredients of a per-user item, making it a recipe whose nutrients are derived from them.',
+        requestBody: { content: { 'application/json': { schema: setFoodItemIngredientsBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The recipe with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The ingredients would make a cycle, or a portion does not belong to its ingredient',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set food item ingredients',
+        tags: ['Food items'],
+      },
+      delete: {
+        description: 'Clear the ingredients of a per-user item, so it is an atomic item again.',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The item with its detail',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Clear food item ingredients',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/reference': {
+      put: {
+        description:
+          'Point a per-user atomic item at another (per-user or shared, not a recipe) whose nutrients fill the ones it lacks. Null clears it.',
+        requestBody: { content: { 'application/json': { schema: setFoodItemReferenceBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The item with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The reference is the item itself, a recipe, missing, or the item is a recipe',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set food item reference',
+        tags: ['Food items'],
+      },
+      delete: {
+        description: 'Clear the reference of a per-user item.',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The item with its detail',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: only per-user items are edited this way',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Clear food item reference',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/merge-preview': {
+      get: {
+        description:
+          'What merging source_id into this item would re-point (meals, recipes, portions) and which empty fields of this item the source could fill.',
+        requestParams: { path: foodItemIdPathSchema, query: mergeFoodItemsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeFoodItemsPreviewResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An item is missing or the two cannot be merged',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview food item merge',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/merge': {
+      post: {
+        description:
+          "Merge source_id into this item: its references are re-pointed here and the source is deleted, optionally filling this item's empty fields from it.",
+        requestBody: { content: { 'application/json': { schema: mergeFoodItemsBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeFoodItemsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'An item is missing or the two cannot be merged',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Merge food items',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/sensitivities': {
+      put: {
+        description: 'Replace the sensitivity flags on a food item, per-user or shared.',
+        requestBody: { content: { 'application/json': { schema: setFoodItemSensitivitiesBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The item with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A sensitivity flag does not exist',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set food item sensitivities',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/resnapshot-meals': {
+      post: {
+        description: "Store the item's current nutrient values on every meal that contains it.",
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: resnapshotMealsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Re-snapshot meals for food item',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/override': {
+      get: {
+        description:
+          "The user's override (icon, default portion and quantity) of a shared library item; no data when there is none.",
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sharedFoodItemOverrideResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A per-user item, which has no override layer',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get shared food item override',
+        tags: ['Food items'],
+      },
+      put: {
+        description: "Set the user's override of a shared library item.",
+        requestBody: { content: { 'application/json': { schema: setSharedFoodItemOverrideBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sharedFoodItemOverrideResponseSchema } },
+            description: 'The stored override',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A per-user item, or a default portion that is missing or not of this item',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set shared food item override',
+        tags: ['Food items'],
+      },
+      delete: {
+        description: "Clear the user's override of a shared library item.",
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sharedFoodItemOverrideResponseSchema } },
+            description: 'Cleared',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A per-user item, which has no override layer',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Clear shared food item override',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/portions': {
+      get: {
+        description: 'The named portions of a food item, per-user or shared.',
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemPortionsResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List food item portions',
+        tags: ['Food items'],
+      },
+      post: {
+        description: 'Add a named portion (label unit and its base-unit equivalent) to a food item.',
+        requestBody: { content: { 'application/json': { schema: addFoodItemPortionBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemPortionResponseSchema } },
+            description: 'The new portion',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add food item portion',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/portions/{portionId}': {
+      patch: {
+        description: 'Update a portion of this food item.',
+        requestBody: { content: { 'application/json': { schema: updateFoodItemPortionBodySchema } } },
+        requestParams: { path: foodItemPortionPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemPortionResponseSchema } },
+            description: 'The updated portion',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Portion not found on this food item',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update food item portion',
+        tags: ['Food items'],
+      },
+      delete: {
+        description: 'Delete a portion of this food item.',
+        requestParams: { path: foodItemPortionPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteFoodItemPortionResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Portion not found on this food item',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete food item portion',
+        tags: ['Food items'],
+      },
+    },
+    '/food-items/{id}/default-portion': {
+      put: {
+        description:
+          'Set the portion and quantity preselected when logging a per-user item; a null portion is the base unit. For a shared item this lives on the override.',
+        requestBody: { content: { 'application/json': { schema: setDefaultFoodItemPortionBodySchema } } },
+        requestParams: { path: foodItemIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: foodItemDetailResponseSchema } },
+            description: 'The item with its detail',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The portion is missing or not of this item',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A shared library item: use the override',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Food item not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Set default food item portion',
+        tags: ['Food items'],
+      },
+    },
+    '/reports': {
+      get: {
+        description: 'List reports, optionally of one type and within a date range.',
+        requestParams: { query: reportsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reportsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Query reports',
+        tags: ['Reports'],
+      },
+      post: {
+        description: 'Add a report: a dated set of entries of one report type.',
+        requestBody: { content: { 'application/json': { schema: addReportBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reportResponseSchema } },
+            description: 'The new report',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Add report',
+        tags: ['Reports'],
+      },
+    },
+    '/reports/import': {
+      post: {
+        description:
+          'Import lab results from a spreadsheet table (pasted or a CSV file) with a column mapping: one report per date, results already imported are skipped; dry_run previews without writing.',
+        requestBody: { content: { 'application/json': { schema: importReportsBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: importReportsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The text or the mapping cannot be imported',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Import reports',
+        tags: ['Reports'],
+      },
+    },
+    '/reports/{id}': {
+      get: {
+        description: 'Get one report.',
+        requestParams: { path: reportIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: reportResponseSchema } },
+            description: 'Successful response',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Report not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get report',
+        tags: ['Reports'],
+      },
+      patch: {
+        description: 'Update a report; fields left out stay as they are.',
+        requestBody: { content: { 'application/json': { schema: updateReportBodySchema } } },
+        requestParams: { path: reportIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: updateReportResponseSchema } },
+            description: 'The updated report',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Report not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update report',
+        tags: ['Reports'],
+      },
+      delete: {
+        description: 'Delete a report.',
+        requestParams: { path: reportIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteReportResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Report not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete report',
+        tags: ['Reports'],
+      },
+    },
+    '/correlations/baseline': {
+      get: {
+        description:
+          '7- and 30-day averages of HRV, resting heart rate and stress up to the reference date (today by default), with the trend against the 30 days before.',
+        requestParams: { query: baselineQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baselineResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get physiological baseline',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/hrv-activities': {
+      get: {
+        description:
+          'How heart rate, HRV and stress during and after each activity type compare with the baseline, over the last period_days.',
+        requestParams: { query: hrvActivitiesQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: hrvActivitiesResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request or extra metrics',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Correlate HRV with activities',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/activity-impact/{activity}': {
+      get: {
+        description:
+          'How metrics before, during and after occurrences of an activity, tag or event compare with the baseline, optionally broken down by a dimension and bucketed by duration or time of day.',
+        requestParams: { path: activityImpactPathSchema, query: activityImpactQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: activityImpactResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid period, metrics, buckets, breakdown or filters',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get activity impact',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/impact-metrics': {
+      get: {
+        description:
+          'The metrics with data in the last period_days that an activity impact can be measured on.',
+        requestParams: { query: impactMetricsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: impactMetricsResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List impact metrics',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/event-probability': {
+      post: {
+        description:
+          'How likely an outcome tag is within each lag window after a trigger, against its base rate.',
+        requestBody: { content: { 'application/json': { schema: eventProbabilityBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: eventProbabilityResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get event probability',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/generic': {
+      post: {
+        description: 'Correlate triggers (all must hold) with an outcome over lag windows.',
+        requestBody: { content: { 'application/json': { schema: genericCorrelationBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: genericCorrelationResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get generic correlation',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/continuous': {
+      post: {
+        description:
+          'Correlate the daily values of a trigger dimension with those of an outcome dimension, at a lag in days.',
+        requestBody: { content: { 'application/json': { schema: continuousCorrelationBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: continuousCorrelationResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid request',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get continuous correlation',
+        tags: ['Correlations'],
+      },
+    },
+    '/correlations/selectors': {
+      get: {
+        description:
+          "What correlation triggers and outcomes can be picked from: the user's activity types, tags, metrics, nutrients, productivity categories, people and sensitivities.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: correlationSelectorsResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List correlation selectors',
+        tags: ['Correlations'],
       },
     },
     '/segments': {
@@ -4908,6 +5770,15 @@ const openApiDocument = createDocument({
     { description: 'Time series health metrics', name: 'Metrics' },
     { description: 'Daily and period summaries', name: 'Summary' },
     { description: 'Sleep, exercise, meditation sessions', name: 'Activities' },
+    {
+      description: 'The food library: per-user and shared items, recipes, portions and overrides',
+      name: 'Food items',
+    },
+    { description: 'Lab and other dated reports, and their import from spreadsheets', name: 'Reports' },
+    {
+      description: 'Baselines, activity impact and correlations between data dimensions',
+      name: 'Correlations',
+    },
     { description: 'Media plays (videos, music, podcasts)', name: 'Media' },
     { description: 'Federated challenges: hosted, joined, and public standings', name: 'Challenges' },
     { description: 'Social feed: posts, timeline and public tag pages', name: 'Feed' },

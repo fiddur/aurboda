@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   defaultRouteMatchDeps,
   defaultRouteOps,
+  isNotReversed,
   matchActivityRoute,
   matchUnroutedTracks,
   rematchActivityRoute,
@@ -46,7 +47,12 @@ const M_PER_DEG_LON = M_PER_DEG_LAT * Math.cos((LAT0 * Math.PI) / 180)
 type Xy = [number, number]
 
 /** Metres east/north of the origin → [lon, lat]. */
-const toLonLat = ([x, y]: Xy): Xy => [LON0 + x / M_PER_DEG_LON, LAT0 + y / M_PER_DEG_LAT]
+const toLonLat =
+  (lat0: number) =>
+  ([x, y]: Xy): Xy => [
+    LON0 + x / (M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180)),
+    lat0 + y / M_PER_DEG_LAT,
+  ]
 
 /** Points every `step` metres along straight legs between the corners. */
 const densify = (corners: Xy[], step = 20): Xy[] => {
@@ -75,9 +81,9 @@ const jitter = (points: Xy[]): Xy[] =>
     return [x + r * Math.cos(a), y + r * Math.sin(a)]
   })
 
-const ewkt = (points: Xy[]): string =>
+const ewkt = (points: Xy[], lat0 = LAT0): string =>
   `SRID=4326;LINESTRING ZM(${points
-    .map(toLonLat)
+    .map(toLonLat(lat0))
     .map(([lon, lat], i) => `${lon.toFixed(7)} ${lat.toFixed(7)} 0 ${i * 5}`)
     .join(', ')})`
 
@@ -115,7 +121,11 @@ let day = 0
 
 const addTrackedActivity = async (
   points: Xy[],
-  { activityType = 'running', source = 'garmin' }: { activityType?: string; source?: string } = {},
+  {
+    activityType = 'running',
+    lat0 = LAT0,
+    source = 'garmin',
+  }: { activityType?: string; lat0?: number; source?: string } = {},
 ): Promise<string> => {
   const user = getTestUser()
   day++
@@ -129,7 +139,12 @@ const addTrackedActivity = async (
     start_time: start,
     title: `Run ${day}`,
   })
-  await upsertActivityTrack(user, { activity_id: id, ewkt: ewkt(points), full_resolution: true, source })
+  await upsertActivityTrack(user, {
+    activity_id: id,
+    ewkt: ewkt(points, lat0),
+    full_resolution: true,
+    source,
+  })
   return id
 }
 
@@ -339,6 +354,45 @@ describe('Routes integration', () => {
       const fractions = await trackDirectionFractions(user, b, a)
       expect(fractions.length).toBeGreaterThanOrEqual(20)
       expect(fractions[0]!).toBeGreaterThan(fractions.at(-1)!)
+    })
+  })
+
+  describe('direction at 65°N', () => {
+    /** Down a 45° leg to the corner, then 1 km north: a narrow V. */
+    const vShape = densify([
+      [1000, 1000],
+      [0, 0],
+      [0, 1000],
+    ])
+    /**
+     * North from near the corner, inside the V, nearer the north leg in metres (and within its
+     * buffer) but nearer the 45° leg in degrees, where an east-west metre counts 2.4 times a
+     * north-south one.
+     */
+    const insideTheV = densify(
+      [
+        [1.75, 5],
+        [21, 60],
+      ],
+      5,
+    )
+
+    test('a track along the north leg is projected onto it, by distance in metres', async () => {
+      const user = getTestUser()
+      const routeActivity = await addTrackedActivity(vShape, { lat0: 65 })
+      const routeId = (await createRouteWithPair(user, {
+        canonical: { activity_id: routeActivity, name: 'V' },
+      }))!
+      const id = await addTrackedActivity(insideTheV, { lat0: 65 })
+
+      const fractions = await routeDirectionFractions(user, id, routeId)
+      expect(fractions.length).toBeGreaterThanOrEqual(20)
+      expect(fractions.every((f, i) => i === 0 || f >= fractions[i - 1]!)).toBe(true)
+      expect(isNotReversed(fractions)).toBe(true)
+
+      const againstTrack = await trackDirectionFractions(user, id, routeActivity)
+      expect(againstTrack.length).toBeGreaterThanOrEqual(20)
+      expect(isNotReversed(againstTrack)).toBe(true)
     })
   })
 

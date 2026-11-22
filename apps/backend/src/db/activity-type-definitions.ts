@@ -535,6 +535,11 @@ const mergeInTransaction = async (
     targetName,
     sourceName,
   ])
+  // The moved tracks are scanned again under the target, so what was found under the source would
+  // be listed twice; decided ones move, so a dismissal still keeps the stretch out.
+  await query(tx, `DELETE FROM suggested_segments WHERE activity_type = $1 AND status = 'pending'`, [
+    sourceName,
+  ])
   await query(tx, `UPDATE suggested_segments SET activity_type = $1 WHERE activity_type = $2`, [
     targetName,
     sourceName,

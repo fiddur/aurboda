@@ -705,9 +705,9 @@ const main = async () => {
     mailer,
     pruneAuditLog: async (user) => pruneAuditLog(user, await centralDb.getAuditLogRetentionDays()),
     recoveryLimiter: createTokenBucketLimiter(RATE_LIMITS.recovery_mails, Date.now),
-    setPassword: async (user, password) => {
+    setPassword: async (user, password, accounts) => {
       await setUserPassword(userDb, user, password)
-      await centralDb.setPasswordLogin(user, true)
+      await accounts.setPasswordLogin(user, true)
     },
     verificationLimiter: createTokenBucketLimiter(RATE_LIMITS.verification_mails, Date.now),
     webHost,

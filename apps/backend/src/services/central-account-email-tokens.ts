@@ -1,5 +1,7 @@
 import type { Queryable } from '../db/pool.ts'
 
+import { createUserAccountsApi, type UserAccountsApi } from './central-user-accounts.ts'
+
 export type AccountEmailTokenPurpose = 'verify' | 'reset'
 
 /** Only the SHA-256 of a token is stored: the token itself exists only in the mail. */
@@ -32,6 +34,9 @@ export interface ConsumedAccountEmailToken {
   email: string
 }
 
+/** The account reads and writes a token's `use` makes, on the transaction that holds the token. */
+export type AccountsInTokenTransaction = Pick<UserAccountsApi, 'getUserAccount' | 'setPasswordLogin'>
+
 export interface AccountEmailTokensApi {
   /**
    * Stores a token, dropping the user's earlier unused tokens of the same purpose and every
@@ -42,12 +47,13 @@ export interface AccountEmailTokensApi {
    * Marks the token used, once, while it is unexpired and of the given purpose. Resolves to whom
    * and which address it was for, or null for an unknown, used, expired or other-purpose token.
    * `use` runs first, holding the token's row: it is marked used only when `use` succeeds, and a
-   * second consumer waits for the first and then finds it used.
+   * second consumer waits for the first and then finds it used. `accounts` runs on that same
+   * connection, so a consume takes one central connection however much `use` reads and writes.
    */
   consumeAccountEmailToken: (
     tokenHash: string,
     purpose: AccountEmailTokenPurpose,
-    use?: (consumed: ConsumedAccountEmailToken) => Promise<void>,
+    use?: (consumed: ConsumedAccountEmailToken, accounts: AccountsInTokenTransaction) => Promise<void>,
   ) => Promise<ConsumedAccountEmailToken | null>
 }
 
@@ -65,7 +71,10 @@ export const createAccountEmailTokensApi = (
       )
       const consumed = result.rows[0]
       if (!consumed) return null
-      await use?.(consumed)
+      await use?.(
+        consumed,
+        createUserAccountsApi(async () => tx),
+      )
       await tx.query('UPDATE account_email_tokens SET used_at = NOW() WHERE token_hash = $1', [tokenHash])
       return consumed
     }),
