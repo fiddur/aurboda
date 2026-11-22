@@ -1,4 +1,4 @@
-import type { DashboardConfig } from '@aurboda/api-spec'
+import type { DashboardConfig, DashboardWidget } from '@aurboda/api-spec'
 
 /**
  * The config with `widgetId` taken out of its section and inserted at `targetIndex` in
@@ -77,3 +77,16 @@ export const moveSection = (
   sections.splice(to, 0, section)
   return { ...config, sections }
 }
+
+/** The config with the widget of the same id replaced by `widget`, in its place; an unknown id leaves the config as it is. */
+export const replaceWidget = (config: DashboardConfig, widget: DashboardWidget): DashboardConfig =>
+  config.sections.some((s) => s.widgets.some((w) => w.id === widget.id))
+    ? {
+        ...config,
+        sections: config.sections.map((section) =>
+          section.widgets.some((w) => w.id === widget.id)
+            ? { ...section, widgets: section.widgets.map((w) => (w.id === widget.id ? widget : w)) }
+            : section,
+        ),
+      }
+    : config

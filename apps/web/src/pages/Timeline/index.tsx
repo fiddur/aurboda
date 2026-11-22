@@ -294,7 +294,7 @@ export const Timeline = () => {
     [todayKey],
   )
 
-  const { currentScaleRef, attachZoom } = useTimelineZoom({
+  const { currentScaleRef, attachZoom, parkTouchTargets } = useTimelineZoom({
     containerRef,
     drawRef,
     onResetToToday: handleResetToToday,
@@ -1149,6 +1149,7 @@ export const Timeline = () => {
       currentScaleRef.current ??
       d3.scaleTime().domain([effectiveViewStart, effectiveViewEnd]).range([0, chartDimension])
     drawRef.current?.(scale)
+    parkTouchTargets()
   }, [
     orientation,
     resizeKey,
@@ -1178,6 +1179,7 @@ export const Timeline = () => {
     screentimeCategoriesQuery.data,
     barBucketSize,
     attachZoom,
+    parkTouchTargets,
     dailySeries,
     navigationSeq,
   ])

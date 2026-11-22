@@ -16,7 +16,7 @@ import type { TargetedDragEvent } from 'preact'
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 
-import { DashboardEditor } from '../DashboardEditor'
+import { DashboardEditor, widgetHasSettings } from '../DashboardEditor'
 import {
   DAY_OVERVIEW_VISITOR_WARNING,
   RECENT_ACTIVITIES_VISITOR_WARNING,
@@ -24,7 +24,7 @@ import {
 } from '../DashboardEditor/VisibleToVisitorsField'
 import { PublicWidgetRenderer, WidgetRenderer } from '../widgets'
 import { useCustomMetricDefinitions } from '../widgets/useMetricBetter'
-import { dropWidget, type DropTarget, moveSection, moveWidget } from './moveWidget'
+import { dropWidget, type DropTarget, moveSection, moveWidget, replaceWidget } from './moveWidget'
 import { useVisibleSections } from './useWaitingWidgets'
 import { setVisibleToVisitors } from './visibleToVisitors'
 
@@ -36,6 +36,11 @@ const periodOptions: { label: string; value: '' | PeriodGranularity }[] = [
   { label: 'Monthly', value: 'month' },
   { label: 'Yearly', value: 'year' },
 ]
+
+interface EditingWidget {
+  sectionId: string
+  widget: DashboardWidget
+}
 
 const WIDGET_MIME = 'application/x-aurboda-widget'
 
@@ -177,7 +182,6 @@ export const withPeriod = (config: DashboardConfig, granularity: '' | PeriodGran
   return granularity ? { ...rest, period: { granularity } } : rest
 }
 
-/** The in-place "Show to visitors" switch of the cards kept from visitors unless the owner opts in. */
 function VisitorSwitch({
   onChange,
   widget,
@@ -197,6 +201,55 @@ function VisitorSwitch({
   )
 }
 
+function EditSettingsButton({
+  onEdit,
+  periodMode,
+  widget,
+}: {
+  onEdit: () => void
+  periodMode: boolean
+  widget: DashboardWidget
+}) {
+  if (!widgetHasSettings(widget.type, periodMode)) return null
+  return (
+    <button class="widget-move-btn" onClick={onEdit} title="Edit settings" aria-label="Edit settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+      </svg>
+    </button>
+  )
+}
+
+function WidgetSettingsEditor({
+  boardId,
+  config,
+  editing,
+  onChange,
+  onClose,
+}: {
+  boardId: string
+  config: DashboardConfig
+  editing: EditingWidget
+  onChange: (next: DashboardConfig) => void
+  onClose: () => void
+}) {
+  return (
+    <DashboardEditor
+      sectionId={editing.sectionId}
+      sectionType={config.sections.find((s) => s.id === editing.sectionId)?.type ?? 'metrics'}
+      periodMode={Boolean(config.period)}
+      sharedBoard={boardId !== 'home'}
+      widget={editing.widget}
+      onSaveWidget={(widget) => {
+        onChange(replaceWidget(config, widget))
+        onClose()
+      }}
+      onClose={onClose}
+    />
+  )
+}
+
 function DashboardSectionComponent({
   section,
   isEditing,
@@ -204,7 +257,9 @@ function DashboardSectionComponent({
   widgetData,
   widgetDataLoading,
   periodLabel,
+  periodMode,
   customMetrics,
+  onEditWidget,
   onRemoveWidget,
   onMoveWidget,
   onSetVisibleToVisitors,
@@ -221,7 +276,9 @@ function DashboardSectionComponent({
   widgetData?: WidgetDataMap
   widgetDataLoading?: boolean
   periodLabel?: string
+  periodMode: boolean
   customMetrics?: CustomMetricDefinition[]
+  onEditWidget?: (widget: DashboardWidget) => void
   onRemoveWidget?: (widgetId: string) => void
   onSetVisibleToVisitors?: (widgetId: string, visible: boolean) => void
   onMoveWidget?: (widgetId: string, direction: 'up' | 'down') => void
@@ -379,6 +436,11 @@ function DashboardSectionComponent({
                       </svg>
                     </button>
                   )}
+                  <EditSettingsButton
+                    widget={widget}
+                    periodMode={periodMode}
+                    onEdit={() => onEditWidget?.(widget)}
+                  />
                   <button
                     class="widget-remove-btn"
                     onClick={() => onRemoveWidget?.(widget.id)}
@@ -553,6 +615,7 @@ export function EditableDashboard({
   hideWaiting,
 }: EditableDashboardProps) {
   const [showWidgetPicker, setShowWidgetPicker] = useState<string | null>(null) // section id or null
+  const [editingWidget, setEditingWidget] = useState<EditingWidget | null>(null)
   const customMetrics = useCustomMetricDefinitions(widgetData !== undefined)
   const { sections, waitingCount } = useVisibleSections(config, !isEditing && hideWaiting === true)
   const [showAddSection, setShowAddSection] = useState(false)
@@ -719,7 +782,9 @@ export function EditableDashboard({
           widgetData={widgetData}
           widgetDataLoading={widgetDataLoading}
           periodLabel={periodLabel}
+          periodMode={Boolean(config.period)}
           customMetrics={customMetrics}
+          onEditWidget={(widget) => setEditingWidget({ sectionId: section.id, widget })}
           onRemoveWidget={(widgetId) => handleRemoveWidget(section.id, widgetId)}
           onSetVisibleToVisitors={(widgetId, visible) =>
             onChange(setVisibleToVisitors(config, widgetId, visible))
@@ -771,6 +836,16 @@ export function EditableDashboard({
           sharedBoard={boardId !== 'home'}
           onAddWidget={(widget) => handleAddWidget(showWidgetPicker, widget)}
           onClose={() => setShowWidgetPicker(null)}
+        />
+      )}
+
+      {editingWidget && (
+        <WidgetSettingsEditor
+          boardId={boardId}
+          config={config}
+          editing={editingWidget}
+          onChange={onChange}
+          onClose={() => setEditingWidget(null)}
         />
       )}
     </div>

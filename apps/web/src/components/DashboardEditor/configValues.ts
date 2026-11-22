@@ -11,3 +11,13 @@ export const withConfigValue = (config: ConfigValues, key: string, value: unknow
     (Array.isArray(value) && value.length === 0)
   return empty ? rest : { ...rest, [key]: value }
 }
+
+/** The form's starting values for an existing card: its config over the template defaults, so a field added since it was saved has its default. */
+export const editConfigValues = (defaults: ConfigValues, config: ConfigValues): ConfigValues => ({
+  ...defaults,
+  ...config,
+})
+
+/** A whole number within [min, max]; NaN, a cleared field, stays NaN so `withConfigValue` drops the key. */
+export const clampInt = (value: number, min: number, max: number): number =>
+  Number.isNaN(value) ? value : Math.min(max, Math.max(min, Math.trunc(value)))
