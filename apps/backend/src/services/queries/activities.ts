@@ -10,8 +10,10 @@ import {
   getHrZoneSecsForWindows,
   getTimeSeries,
   getTimeSeriesMultiMetric,
+  listLinkedActivityIds,
 } from '../../db/index.ts'
-import { activityRowIds, peopleOfActivities } from '../activity-people.ts'
+import { httpError } from '../../http-error.ts'
+import { activityPeopleError, activityRowIds, peopleOfActivities } from '../activity-people.ts'
 import { getEffectiveHrZones, type HrZoneSecs } from '../settings.ts'
 import { computeSleepMinutes } from '../sleep-duration.ts'
 import {
@@ -127,8 +129,28 @@ function enrichActivity(
   return result
 }
 
+/** Throws a 400 naming `personId` unless it is a live person. */
+const assertLivePerson = async (user: string, personId: string): Promise<void> => {
+  const error = await activityPeopleError(user, [personId])
+  if (error) throw httpError(400, error)
+}
+
+/** The activities with any row linked to the person (all of them without one). */
+const withPerson = async <T extends { id?: string; source_ids?: string[]; override_target_ids?: string[] }>(
+  user: string,
+  activities: T[],
+  personId: string | undefined,
+  start: Date,
+  end: Date,
+): Promise<T[]> => {
+  if (personId === undefined) return activities
+  const linked = new Set(await listLinkedActivityIds(user, personId, start, end))
+  return activities.filter((a) => activityRowIds(a).some((id) => id !== undefined && linked.has(id)))
+}
+
 /**
  * @param sync Optional sync provider to auto-refresh stale data before querying
+ * @param options.person_id Keeps the activities with any row linked to the person; a 400 when it is not a live person.
  */
 export async function queryActivities(
   user: string,
@@ -140,8 +162,10 @@ export async function queryActivities(
   deductionRuleId?: string,
   routeId?: string,
   category?: string,
-  options: { people?: boolean } = {},
+  options: { people?: boolean; person_id?: string } = {},
 ): Promise<ActivityResult[]> {
+  if (options.person_id !== undefined) await assertLivePerson(user, options.person_id)
+
   // Fire-and-forget: trigger background sync so activity data is fresh for the next request
   if (sync) {
     const promises: Promise<void>[] = []
@@ -153,16 +177,22 @@ export async function queryActivities(
 
   const categoryMap = await buildCategoryMap(user)
   const expandedTypes = (await expandActivityTypes(user, types)) as ActivityType[]
-  const activities = await getActivities(
+  const activities = await withPerson(
     user,
-    expandedTypes,
+    await getActivities(
+      user,
+      expandedTypes,
+      start,
+      end,
+      dataFilters,
+      deductionRuleId,
+      categoryMap,
+      routeId,
+      category,
+    ),
+    options.person_id,
     start,
     end,
-    dataFilters,
-    deductionRuleId,
-    categoryMap,
-    routeId,
-    category,
   )
 
   // Determine which time-series we'll need based on the activity types present.

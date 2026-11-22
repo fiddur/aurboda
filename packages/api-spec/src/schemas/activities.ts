@@ -302,6 +302,10 @@ export const activitiesQuerySchema = timeRangeQuerySchema
     category: runCategoryFilterSchema.optional().meta({
       description: 'Filter to activities carrying this run category (data.run_categories)',
     }),
+    person_id: z.string().optional().meta({
+      description:
+        'Filter to the activities the person was with (any row of a merged activity linked counts). An unknown or deleted person is a 400.',
+    }),
   })
   .meta({ id: 'ActivitiesQuery' })
 

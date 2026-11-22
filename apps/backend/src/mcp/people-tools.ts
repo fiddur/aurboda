@@ -3,6 +3,7 @@ import {
   addPersonDateBodySchema,
   importantDatesQuerySchema,
   peopleQuerySchema,
+  personActivitiesQuerySchema,
   personPostsQuerySchema,
   personRelationshipSuggestions,
   updatePersonBodySchema,
@@ -18,6 +19,7 @@ import {
   getPersonDetail,
   listImportantDates,
   listPeopleView,
+  listPersonActivities,
   listPersonPosts,
   PERSON_NOT_FOUND,
   type PeopleDeps,
@@ -54,11 +56,23 @@ export const registerPeopleTools = (server: McpServer, user: string, deps: Peopl
 
   server.tool(
     'get_person',
-    'One person by ID with their dates, the latest activities they were with and the journal entries related to them (journal_entries, newest first). Their notes are read with get_notes (entity_type person).',
+    'One person by ID with their dates, the 20 latest activities they were with, how many there are in all (activity_count) and by type (activity_types, most frequent first), and the journal entries related to them (journal_entries, newest first). All their activities are read with list_person_activities; their notes with get_notes (entity_type person).',
     { id: personId },
     async ({ id }) => {
       const person = await getPersonDetail(deps, user, id)
       return person ? jsonResponse({ person, success: true }) : errorResponse(PERSON_NOT_FOUND)
+    },
+  )
+
+  server.tool(
+    'list_person_activities',
+    'The activities a person was with, newest first, a page at a time (limit default 50, at most 200): pass next_cursor as before for the next page. A merged activity appears once, under the id get_activity_detail takes. types (comma separated, subtypes included), start and end narrow the list; total counts what matches over all pages.',
+    { id: z.string().uuid().describe('The person ID'), ...personActivitiesQuerySchema.shape },
+    async ({ id, ...query }) => {
+      const parsed = personActivitiesQuerySchema.safeParse(query)
+      if (!parsed.success) return errorResponse(issues(parsed.error))
+      const result = await listPersonActivities(deps, user, id, parsed.data)
+      return result.ok ? jsonResponse({ ...result.value, success: true }) : errorResponse(result.error)
     },
   )
 

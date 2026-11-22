@@ -12,6 +12,9 @@ import {
   type PeopleQuery,
   peopleQuerySchema,
   type PeopleResponse,
+  type PersonActivitiesQuery,
+  personActivitiesQuerySchema,
+  type PersonActivitiesResponse,
   personRelationshipSuggestions,
   type PersonDateResponse,
   type PersonDatesResponse,
@@ -34,6 +37,7 @@ import {
   getPersonDetail,
   listImportantDates,
   listPeopleView,
+  listPersonActivities,
   listPersonDatesById,
   listPersonPosts,
   PERSON_NOT_FOUND,
@@ -114,6 +118,17 @@ export const createPeopleRouter = (authMiddleware: AnyMiddleware, deps: PeopleDe
     if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
     res.json({ person: result.value, success: true })
   })
+
+  router.get<{ id: string }, PersonActivitiesResponse, unknown, PersonActivitiesQuery>(
+    '/:id/activities',
+    authMiddleware,
+    validateQuery(personActivitiesQuerySchema),
+    async (req, res) => {
+      const result = await listPersonActivities(deps, req.user!, req.params.id, req.query)
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ ...result.value, success: true })
+    },
+  )
 
   router.get<{ id: string }, PersonPostsResponse, unknown, PersonPostsQuery>(
     '/:id/posts',

@@ -1,8 +1,14 @@
-import type { PersonDate, PersonDateKind, PersonDetail } from '@aurboda/api-spec'
+import type { PersonActivitiesResponse, PersonDate, PersonDateKind, PersonDetail } from '@aurboda/api-spec'
 
 import { PERSON_DATE_LABEL_MAX, personDateKinds } from '@aurboda/api-spec'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import {
+  type InfiniteData,
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
@@ -13,6 +19,7 @@ import {
   deletePersonDate,
   fetchPeople,
   fetchPerson,
+  fetchPersonActivities,
   fetchPersonPosts,
   followActor,
   PEOPLE_KEY,
@@ -36,6 +43,13 @@ import {
   timeWithHref,
 } from './people-view'
 import { PersonAvatar } from './PeopleList'
+import {
+  activitiesHeading,
+  activityPages,
+  activityWhen,
+  PERSON_ACTIVITIES_PAGE_SIZE,
+  typeChips,
+} from './person-activities-view'
 import { PersonForm } from './PersonForm'
 import { offerUndo, UndoBar } from './undo'
 
@@ -344,36 +358,90 @@ function PersonJournal({ person }: { person: PersonDetail }) {
   )
 }
 
-function RecentActivities({ person }: { person: PersonDetail }) {
+function PersonActivities({ person }: { person: PersonDetail }) {
+  const [type, setType] = useState<string | null>(null)
+  const query = useInfiniteQuery<
+    PersonActivitiesResponse,
+    Error,
+    InfiniteData<PersonActivitiesResponse>,
+    readonly unknown[],
+    string | undefined
+  >({
+    enabled: person.activity_count > 0,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    initialPageParam: undefined,
+    placeholderData: keepPreviousData,
+    queryFn: ({ pageParam }) =>
+      fetchPersonActivities(person.id, {
+        limit: PERSON_ACTIVITIES_PAGE_SIZE,
+        ...(pageParam ? { before: pageParam } : {}),
+        ...(type ? { types: type } : {}),
+      }),
+    queryKey: [...personKey(person.id), 'activities', type],
+  })
+  const loaded = activityPages(query.data?.pages ?? [])
+  const activities = query.data ? loaded.activities : person.recent_activities
+  const chips = typeChips(person.activity_types, type)
+  const now = new Date()
   return (
     <section class="people-section">
       <div class="people-section-head">
-        <h2>Activities together</h2>
-        {person.recent_activities.length > 0 && (
+        <h2>{activitiesHeading(person.activity_count)}</h2>
+        {person.activity_count > 0 && (
           <a class="people-analyze" href={timeWithHref(person.id)}>
             Time with {person.name} in Analyze
           </a>
         )}
       </div>
-      {person.recent_activities.length === 0 ? (
+      {chips.length > 0 && (
+        <div class="people-chips" role="group" aria-label="Activity type">
+          {chips.map((chip) => (
+            <button
+              key={chip.type ?? ''}
+              type="button"
+              class={`people-chip${chip.active ? ' active' : ''}`}
+              aria-pressed={chip.active}
+              onClick={() => setType(chip.type)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {activities.length === 0 ? (
         <p class="people-muted">
           None yet. Choose {person.name} under “With” when you add or edit an activity.
         </p>
       ) : (
         <ul class="people-card people-list">
-          {person.recent_activities.map((activity) => (
+          {activities.map((activity) => (
             <li key={activity.id} class="people-row">
               <a class="people-row-link" href={`/detail/activity/${encodeURIComponent(activity.id ?? '')}`}>
                 <span class="people-row-main">
                   <strong>{activity.title || toDisplayName(activity.activity_type)}</strong>
-                  <span class="people-muted">
-                    {format(new Date(activity.start_time), 'EEE d MMM yyyy, HH:mm')}
-                  </span>
+                  <span class="people-muted">{activityWhen(new Date(activity.start_time), now)}</span>
                 </span>
               </a>
             </li>
           ))}
         </ul>
+      )}
+      {loaded.hasMore && (
+        <div class="people-more">
+          <button
+            type="button"
+            class="btn-secondary"
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            {query.isFetchingNextPage ? 'Loading…' : 'Show more'}
+          </button>
+        </div>
+      )}
+      {query.error && (
+        <p class="people-error" role="alert">
+          Couldn’t load the activities. Please try again.
+        </p>
       )}
     </section>
   )
@@ -497,7 +565,7 @@ export function PersonPage({ id }: { id: string }) {
         <NotesSection entityType="person" entityId={person.id} title="Notes" />
       </section>
       <PersonJournal person={person} />
-      <RecentActivities person={person} />
+      <PersonActivities person={person} />
       <RecentPosts person={person} />
       <p class="people-private">
         Only you can see this page: nothing about {person.name} is shared or federated.

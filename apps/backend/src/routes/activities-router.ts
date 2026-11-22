@@ -234,6 +234,7 @@ export const createActivitiesRouter = (
         deduction_rule_id: deductionRuleId,
         route_id: routeId,
         category,
+        person_id: personId,
       } = req.query
       const user = req.user!
 
@@ -255,7 +256,7 @@ export const createActivitiesRouter = (
         deductionRuleId,
         routeId,
         category,
-        { people: true },
+        { people: true, person_id: personId },
       )
       res.json({ data: activities, success: true })
     },

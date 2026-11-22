@@ -475,22 +475,137 @@ export const copyActivityPeopleIn = async (
   )
 }
 
-/** The latest live activities the person was with, newest first. */
-export const listRecentActivitiesForPerson = async (
+export interface PersonActivityFilter {
+  types?: string[]
+  start?: Date
+  end?: Date
+}
+
+/** A position in a person's activities: the start in epoch microseconds (exact, unlike a Date) and the id. */
+export interface PersonActivityCursor {
+  start_us: string
+  id: string
+}
+
+export interface PersonActivityGroup extends PersonActivityCursor {
+  activity_type: string
+}
+
+/**
+ * The person's activities as merge groups, one row per group: a linked row stands for the live
+ * row that supersedes it, so a synced row and its override, or the members of a cross-source
+ * merge, count once whichever of them carries the link.
+ */
+const personActivityGroupsSql = (filter: PersonActivityFilter, params: unknown[]): string => {
+  const clauses: string[] = []
+  if (filter.types) {
+    params.push(filter.types)
+    clauses.push(`g.activity_type = ANY($${params.length}::text[])`)
+  }
+  if (filter.start) {
+    params.push(filter.start)
+    clauses.push(`g.start_time >= $${params.length}`)
+  }
+  if (filter.end) {
+    params.push(filter.end)
+    clauses.push(`g.start_time <= $${params.length}`)
+  }
+  return `WITH group_ids AS (
+      SELECT DISTINCT COALESCE(w.id, a.id) AS id
+        FROM activity_people ap
+        JOIN activities a ON a.id = ap.activity_id AND a.deleted_at IS NULL
+        LEFT JOIN activities w ON w.id = a.superseded_by AND w.deleted_at IS NULL
+       WHERE ap.person_id = $1
+    ), groups AS (
+      SELECT g.id, g.activity_type, (extract(epoch FROM g.start_time) * 1000000)::bigint AS start_us
+        FROM group_ids JOIN activities g ON g.id = group_ids.id
+       ${clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''}
+    )`
+}
+
+/** A page of the person's activity groups, newest first, after `before` when given. */
+export const listPersonActivityGroups = async (
   user: string,
   personId: string,
-  limit: number,
-): Promise<Activity[]> => {
+  filter: PersonActivityFilter,
+  page: { before?: PersonActivityCursor; limit: number },
+): Promise<PersonActivityGroup[]> => {
+  const params: unknown[] = [personId]
+  const groups = personActivityGroupsSql(filter, params)
+  let after = ''
+  if (page.before) {
+    params.push(page.before.start_us, page.before.id)
+    after = `WHERE (start_us, id) < ($${params.length - 1}::bigint, $${params.length}::uuid)`
+  }
+  params.push(page.limit)
+  const result = await query<PersonActivityGroup>(
+    user,
+    `${groups}
+     SELECT id, activity_type, start_us::text AS start_us FROM groups ${after}
+      ORDER BY start_us DESC, id DESC
+      LIMIT $${params.length}`,
+    params,
+  )
+  return result.rows
+}
+
+export const countPersonActivityGroups = async (
+  user: string,
+  personId: string,
+  filter: PersonActivityFilter,
+): Promise<number> => {
+  const params: unknown[] = [personId]
+  const result = await query<{ count: number }>(
+    user,
+    `${personActivityGroupsSql(filter, params)} SELECT COUNT(*)::int AS count FROM groups`,
+    params,
+  )
+  return result.rows[0]!.count
+}
+
+/** The person's activity groups counted by type, most frequent first. */
+export const countPersonActivityGroupsByType = async (
+  user: string,
+  personId: string,
+): Promise<{ activity_type: string; count: number }[]> => {
+  const params: unknown[] = [personId]
+  const result = await query<{ activity_type: string; count: number }>(
+    user,
+    `${personActivityGroupsSql({}, params)}
+     SELECT activity_type, COUNT(*)::int AS count FROM groups
+      GROUP BY activity_type ORDER BY count DESC, activity_type`,
+    params,
+  )
+  return result.rows
+}
+
+/** The live rows of each group in `groupIds`: the group's own row and the rows it supersedes. */
+export const listActivityGroupMembers = async (user: string, groupIds: string[]): Promise<Activity[]> => {
+  if (groupIds.length === 0) return []
   const result = await query(
     user,
-    `SELECT ${activityColumns('a')}
-       FROM activities a JOIN activity_people ap ON ap.activity_id = a.id
-      WHERE ap.person_id = $1 AND a.deleted_at IS NULL
-      ORDER BY a.start_time DESC, a.id
-      LIMIT $2`,
-    [personId, limit],
+    `SELECT ${activityColumns('a')} FROM activities a
+      WHERE a.deleted_at IS NULL AND (a.id = ANY($1::uuid[]) OR a.superseded_by = ANY($1::uuid[]))
+      ORDER BY a.start_time`,
+    [groupIds],
   )
   return result.rows.map(mapActivityRow)
+}
+
+/** The live activity rows linked to the person that start in [start, end]. */
+export const listLinkedActivityIds = async (
+  user: string,
+  personId: string,
+  start: Date,
+  end: Date,
+): Promise<string[]> => {
+  const result = await query<{ id: string }>(
+    user,
+    `SELECT a.id FROM activity_people ap JOIN activities a ON a.id = ap.activity_id
+      WHERE ap.person_id = $1 AND a.deleted_at IS NULL AND a.start_time >= $2 AND a.start_time <= $3`,
+    [personId, start, end],
+  )
+  return result.rows.map((row) => row.id)
 }
 
 export interface TimeInterval {

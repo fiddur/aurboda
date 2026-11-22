@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { insertMergedActivity } from './activities/mutations.ts'
+import { insertMergedActivity, insertOverride } from './activities/mutations.ts'
 import { query } from './connection.ts'
 import { getNoteById, insertNote } from './notes.ts'
 import {
   addActivityPeople,
+  countPersonActivityGroups,
+  countPersonActivityGroupsByType,
   deletePersonDate,
   getLivePersonByActor,
   getPeopleForActivities,
@@ -14,15 +16,17 @@ import {
   getPersonDate,
   insertPerson,
   insertPersonDate,
+  listActivityGroupMembers,
   listActivityIntervalsWithPeople,
   listActorPresentations,
   listDeletedPeople,
   listImportantDateSources,
+  listLinkedActivityIds,
   listLivePersonIds,
   listPeople,
   listPeopleWithActivities,
+  listPersonActivityGroups,
   listPersonDates,
-  listRecentActivitiesForPerson,
   pruneDeletedPeople,
   purgePerson,
   restorePerson,
@@ -38,12 +42,23 @@ const CONTAINER_TIMEOUT = 120_000
 const MISSING = '99999999-9999-4999-8999-999999999999'
 const ACTOR = 'https://example.social/users/anna'
 
-const insertActivity = async (user: string, start: string, deleted = false): Promise<string> => {
+const insertActivity = async (
+  user: string,
+  start: string,
+  deleted = false,
+  options: { source?: string; type?: string } = {},
+): Promise<string> => {
   const result = await query<{ id: string }>(
     user,
     `INSERT INTO activities (source, activity_type, start_time, end_time, deleted_at)
-     VALUES ('aurboda', 'walking', $1, $2, $3) RETURNING id`,
-    [start, new Date(new Date(start).getTime() + 3_600_000), deleted ? new Date() : null],
+     VALUES ($4, $5, $1, $2, $3) RETURNING id`,
+    [
+      start,
+      new Date(new Date(start).getTime() + 3_600_000),
+      deleted ? new Date() : null,
+      options.source ?? 'aurboda',
+      options.type ?? 'walking',
+    ],
   )
   return result.rows[0]!.id
 }
@@ -255,10 +270,100 @@ describe('People Integration Tests', () => {
     expect(linked.has(later)).toBe(false)
 
     await setActivityPeople(user, later, [anna.id])
-    expect((await listRecentActivitiesForPerson(user, anna.id, 20)).map((a) => a.id)).toEqual([later])
+    expect((await listPersonActivityGroups(user, anna.id, {}, { limit: 20 })).map((a) => a.id)).toEqual([
+      later,
+    ])
     await softDeletePerson(user, bo.id)
     expect((await getPeopleForActivities(user, [walk])).has(walk)).toBe(false)
     expect(await getPeopleForActivities(user, [])).toEqual(new Map())
+  })
+
+  describe("a person's activities as merge groups", () => {
+    test('pages newest first across equal start times, with every row once', async () => {
+      const user = getTestUser()
+      const anna = await insertPerson(user, { name: 'Anna' })
+      const ids: string[] = []
+      for (const type of ['walking', 'running', 'yoga']) {
+        ids.push(await insertActivity(user, '2026-11-01T10:00:00Z', false, { type }))
+      }
+      ids.push(await insertActivity(user, '2026-11-02T10:00:00Z'))
+      for (const id of ids) await addActivityPeople(user, id, [anna.id])
+
+      const first = await listPersonActivityGroups(user, anna.id, {}, { limit: 2 })
+      const second = await listPersonActivityGroups(user, anna.id, {}, { before: first.at(-1)!, limit: 2 })
+      const third = await listPersonActivityGroups(user, anna.id, {}, { before: second.at(-1)!, limit: 2 })
+      const paged = [...first, ...second, ...third].map((g) => g.id)
+      expect(paged[0]).toBe(ids[3])
+      expect(paged.toSorted()).toEqual(ids.toSorted())
+      expect(third).toHaveLength(0)
+      expect(first[0]!.start_us).toBe(String(Date.parse('2026-11-02T10:00:00Z') * 1000))
+      expect(await countPersonActivityGroups(user, anna.id, {})).toBe(4)
+    })
+
+    test('total and the page follow the type and period filters', async () => {
+      const user = getTestUser()
+      const anna = await insertPerson(user, { name: 'Anna' })
+      const walk = await insertActivity(user, '2026-11-01T10:00:00Z')
+      const run = await insertActivity(user, '2026-11-02T10:00:00Z', false, { type: 'running' })
+      const laterWalk = await insertActivity(user, '2026-11-03T10:00:00Z')
+      for (const id of [walk, run, laterWalk]) await addActivityPeople(user, id, [anna.id])
+
+      expect(await countPersonActivityGroups(user, anna.id, { types: ['walking'] })).toBe(2)
+      expect(
+        await countPersonActivityGroups(user, anna.id, {
+          end: new Date('2026-11-02T23:00:00Z'),
+          start: new Date('2026-11-01T12:00:00Z'),
+        }),
+      ).toBe(1)
+      expect(
+        (await listPersonActivityGroups(user, anna.id, { types: ['walking'] }, { limit: 10 })).map(
+          (g) => g.id,
+        ),
+      ).toEqual([laterWalk, walk])
+      expect(await countPersonActivityGroupsByType(user, anna.id)).toEqual([
+        { activity_type: 'walking', count: 2 },
+        { activity_type: 'running', count: 1 },
+      ])
+    })
+
+    test('a synced row and its override, both linked, are one group under the override', async () => {
+      const user = getTestUser()
+      const anna = await insertPerson(user, { name: 'Anna' })
+      const synced = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'garmin' })
+      const override = await insertOverride(user, [synced], {
+        activity_type: 'walking',
+        end_time: new Date('2026-11-01T11:00:00Z'),
+        start_time: new Date('2026-11-01T10:00:00Z'),
+        title: 'Stroll',
+      })
+      await addActivityPeople(user, synced, [anna.id])
+      await addActivityPeople(user, override!.id!, [anna.id])
+
+      const groups = await listPersonActivityGroups(user, anna.id, {}, { limit: 10 })
+      expect(groups.map((g) => g.id)).toEqual([override!.id])
+      expect(await countPersonActivityGroups(user, anna.id, {})).toBe(1)
+      expect((await listActivityGroupMembers(user, [override!.id!])).map((a) => a.id).toSorted()).toEqual(
+        [synced, override!.id].toSorted(),
+      )
+    })
+
+    test('deleted activities are left out, and only linked live rows are listed by id', async () => {
+      const user = getTestUser()
+      const anna = await insertPerson(user, { name: 'Anna' })
+      const live = await insertActivity(user, '2026-11-01T10:00:00Z')
+      const gone = await insertActivity(user, '2026-11-02T10:00:00Z', true)
+      await addActivityPeople(user, live, [anna.id])
+      await addActivityPeople(user, gone, [anna.id])
+
+      expect((await listPersonActivityGroups(user, anna.id, {}, { limit: 10 })).map((g) => g.id)).toEqual([
+        live,
+      ])
+      expect(await countPersonActivityGroups(user, anna.id, {})).toBe(1)
+      expect(await listActivityGroupMembers(user, [gone])).toEqual([])
+      expect(
+        await listLinkedActivityIds(user, anna.id, new Date('2026-10-01'), new Date('2026-12-01')),
+      ).toEqual([live])
+    })
   })
 
   test('a merged activity is with everyone its sources were with', async () => {
