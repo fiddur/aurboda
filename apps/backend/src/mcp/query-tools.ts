@@ -36,6 +36,7 @@ import {
   getMediaPlayById,
   getMediaPlays,
 } from '../db/index.ts'
+import { isHttpError } from '../http-error.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
 import { activityPeopleOf } from '../services/activity-people.ts'
 import { getActivityRecords } from '../services/activity-records.ts'
@@ -216,7 +217,7 @@ Use cases:
 
   server.tool(
     'query_activities',
-    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, `people` (who it was with, when anyone) and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
+    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, `people` (who it was with, when anyone) and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category). person_id keeps the activities with that person (list_people gives the ids).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
@@ -233,23 +234,29 @@ Use cases:
         ),
       route_id: activitiesQuerySchema.shape.route_id,
       category: activitiesQuerySchema.shape.category,
+      person_id: activitiesQuerySchema.shape.person_id,
       tz: tzSchema,
     },
-    async ({ category, data_filter, end, route_id, start, types, tz }) => {
+    async ({ category, data_filter, end, person_id, route_id, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
-      const activities = await queryActivities(
-        user,
-        requestedTypes,
-        new Date(start),
-        new Date(end),
-        sync,
-        parseDataFilter(data_filter),
-        undefined,
-        route_id,
-        category,
-        { people: true },
-      )
-      return tzJsonResponse({ data: activities, success: true }, tz)
+      try {
+        const activities = await queryActivities(
+          user,
+          requestedTypes,
+          new Date(start),
+          new Date(end),
+          sync,
+          parseDataFilter(data_filter),
+          undefined,
+          route_id,
+          category,
+          { people: true, person_id },
+        )
+        return tzJsonResponse({ data: activities, success: true }, tz)
+      } catch (err) {
+        if (isHttpError(err) && err.status === 400) return errorResponse(err.message)
+        throw err
+      }
     },
   )
 

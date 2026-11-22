@@ -41,6 +41,7 @@ describe('people tools', () => {
       'get_person',
       'list_important_dates',
       'list_people',
+      'list_person_activities',
       'list_person_posts',
       'restore_person',
       'update_person',
@@ -103,5 +104,29 @@ describe('people tools', () => {
     expect(
       await call('add_person_date', { day: 30, label: 'x', month: 2, person_id: person.id }),
     ).toHaveProperty('error')
+  })
+
+  test("list_person_activities pages a person's activities with the total", async () => {
+    const { call, fake } = setup()
+    const { person } = await call('add_person', { name: 'Anna' })
+    fake.activities.set(
+      person.id,
+      [1, 2, 3].map((n) => ({
+        activity_type: 'walking',
+        id: `00000000-0000-4000-9000-00000000000${n}`,
+        source: 'aurboda',
+        start_time: new Date(Date.UTC(2026, 10, n)),
+      })),
+    )
+    const first = await call('list_person_activities', { id: person.id, limit: 2 })
+    expect(first).toMatchObject({ success: true, total: 3 })
+    expect(first.data.map((a: { id: string }) => a.id)).toEqual([
+      '00000000-0000-4000-9000-000000000003',
+      '00000000-0000-4000-9000-000000000002',
+    ])
+    const rest = await call('list_person_activities', { before: first.next_cursor, id: person.id })
+    expect(rest.data).toHaveLength(1)
+    expect(rest.next_cursor).toBeUndefined()
+    expect(await call('list_person_activities', { before: 'x', id: person.id })).toHaveProperty('error')
   })
 })

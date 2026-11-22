@@ -2403,7 +2403,13 @@ describe('MCP Server', () => {
       const parsed = parseSSEResponse(response.text) as { result: { tools: { name: string }[] } }
       const names = parsed.result.tools.map((t) => t.name)
 
-      for (const name of ['list_people', 'add_person', 'list_important_dates', 'list_person_posts']) {
+      for (const name of [
+        'list_people',
+        'add_person',
+        'list_important_dates',
+        'list_person_posts',
+        'list_person_activities',
+      ]) {
         expect(names).toContain(name)
       }
     })

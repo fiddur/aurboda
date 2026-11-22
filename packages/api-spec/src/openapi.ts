@@ -233,6 +233,8 @@ import {
   importantDatesResponseSchema,
   peopleQuerySchema,
   peopleResponseSchema,
+  personActivitiesQuerySchema,
+  personActivitiesResponseSchema,
   personDateResponseSchema,
   personDatesResponseSchema,
   personDetailResponseSchema,
@@ -846,6 +848,10 @@ const openApiDocument = createDocument({
               .uuid()
               .optional()
               .meta({ description: 'Only activities matched to this route' }),
+            person_id: z.string().optional().meta({
+              description:
+                'Only the activities the person was with (any row of a merged activity linked counts)',
+            }),
             types: z.string().optional().meta({ description: 'Comma-separated activity types' }),
           }),
         },
@@ -855,6 +861,10 @@ const openApiDocument = createDocument({
               'application/json': { schema: activitiesResponseSchema },
             },
             description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query, or a person_id that is not a live person',
           },
         },
         security: [{ bearerAuth: [] }],
@@ -3378,7 +3388,8 @@ const openApiDocument = createDocument({
         tags: ['People'],
       },
       get: {
-        description: 'A person with their dates and the 20 latest activities they were with.',
+        description:
+          'A person with their dates, the 20 latest activities they were with, how many there are in all (`activity_count`) and by type (`activity_types`). Merged activities count once.',
         requestParams: { path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }) },
         responses: {
           200: {
@@ -3442,6 +3453,33 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Restore a person',
+        tags: ['People'],
+      },
+    },
+    '/people/{id}/activities': {
+      get: {
+        description:
+          'The activities the person was with, newest first, a page at a time: pass `next_cursor` as `before` for the next. A merged activity (synced rows, an override, a cross-source group) appears once, under the id its detail page takes; it is with the person when any of its rows is. `types` (with subtypes), `start` and `end` narrow the list, and `total` counts what matches over all pages.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }),
+          query: personActivitiesQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personActivitiesResponseSchema } },
+            description: 'A page of activities',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query or cursor',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a person's activities",
         tags: ['People'],
       },
     },
