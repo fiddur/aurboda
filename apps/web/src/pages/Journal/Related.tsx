@@ -3,6 +3,7 @@ import type { Person } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
 
+import { IconPreview } from '../../components/IconPreview'
 import { fetchActivities, fetchActivityTypeDefinitions, fetchPeople, PEOPLE_KEY } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import {
@@ -12,51 +13,92 @@ import {
   dayActivityOptions,
   dayActivityWindow,
   hasLink,
+  linkKey,
   mentionOptions,
+  offeredPeople,
   personLink,
   type RelatedLink,
   relatedHref,
   removeLink,
 } from './related'
 
-/** Every person, archived ones included: an entry may well be about someone no longer in the list. */
+/** Every person, archived ones included, for the names of the links they already have. */
 export const usePeople = () =>
   useQuery({ queryFn: () => fetchPeople({ archived: true }), queryKey: [...PEOPLE_KEY, { archived: true }] })
 
-const useTypeName = (): ((type: string) => string) => {
-  const definitions = useQuery({
+const useTypeDefinitions = () =>
+  useQuery({
     queryFn: fetchActivityTypeDefinitions,
     queryKey: ['activityTypeDefinitions'],
     staleTime: 5 * 60_000,
   })
+
+const useTypeName = (): ((type: string) => string) => {
+  const definitions = useTypeDefinitions()
   return useMemo(() => {
     const names = new Map((definitions.data ?? []).map((d) => [d.name, d.display_name]))
     return (type: string) => names.get(type) ?? toDisplayName(type)
   }, [definitions.data])
 }
 
-/** The links as chips that open the person's or the activity's page; with `onRemove`, each has a ×. */
+const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
+  const definitions = useTypeDefinitions()
+  return useMemo(() => {
+    const icons = new Map((definitions.data ?? []).map((d) => [d.name, d.icon ?? undefined]))
+    return (type: string | undefined) => (type ? icons.get(type) : undefined)
+  }, [definitions.data])
+}
+
+const ChipIcon = ({ link, typeIcon }: { link: RelatedLink; typeIcon: string | undefined }) =>
+  link.entity_type === 'person' ? (
+    <span aria-hidden="true">👤</span>
+  ) : typeIcon ? (
+    <span aria-hidden="true" class="journal-related-chip-icon">
+      <IconPreview icon={typeIcon} size={16} />
+    </span>
+  ) : (
+    <span aria-hidden="true">🏃</span>
+  )
+
+/**
+ * The links as chips that open the person's or the activity's page; with `onRemove`, each has a ×.
+ * A chip whose key is in `gone` is marked as removed since it was linked.
+ */
 export const RelatedChips = ({
   links,
   onRemove,
+  gone,
 }: {
   links: readonly RelatedLink[]
   onRemove?: (link: RelatedLink) => void
-}) => (
-  <ul class="journal-related-chips" aria-label="Related">
-    {links.map((link) => (
-      <li key={`${link.entity_type}:${link.entity_id}`} class={`journal-related-chip is-${link.entity_type}`}>
-        <span aria-hidden="true">{link.entity_type === 'person' ? '👤' : '🏃'}</span>
-        <a href={relatedHref(link)}>{link.label}</a>
-        {onRemove && (
-          <button type="button" aria-label={`Remove ${link.label}`} onClick={() => onRemove(link)}>
-            ×
-          </button>
-        )}
-      </li>
-    ))}
-  </ul>
-)
+  gone?: ReadonlySet<string>
+}) => {
+  const typeIcon = useTypeIcon()
+  return (
+    <ul class="journal-related-chips" aria-label="Related">
+      {links.map((link) => {
+        const isGone = gone?.has(linkKey(link)) ?? false
+        const goneTitle = `This ${link.entity_type} was removed. Remove the link to save the entry.`
+        return (
+          <li
+            key={linkKey(link)}
+            class={`journal-related-chip is-${link.entity_type}${isGone ? ' is-gone' : ''}`}
+            title={isGone ? goneTitle : undefined}
+          >
+            <ChipIcon link={link} typeIcon={typeIcon(link.activity_type)} />
+            {isGone ? <span>{link.label}</span> : <a href={relatedHref(link)}>{link.label}</a>}
+            {isGone && <small class="journal-related-gone">removed</small>}
+            {onRemove && (
+              <button type="button" aria-label={`Remove ${link.label}`} onClick={() => onRemove(link)}>
+                ×
+              </button>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
 
 const PeopleOptions = ({
   links,
@@ -67,7 +109,7 @@ const PeopleOptions = ({
 }) => {
   const people = usePeople()
   const [query, setQuery] = useState('')
-  const list = (people.data?.people ?? []).filter((p) => !hasLink(links, personLink(p)))
+  const list = offeredPeople(people.data?.people ?? []).filter((p) => !hasLink(links, personLink(p)))
   const shown = query.trim() ? mentionOptions(list, query) : list
   return (
     <div class="journal-related-options">
@@ -81,7 +123,7 @@ const PeopleOptions = ({
       {people.isLoading && <p class="journal-muted">Loading…</p>}
       {!people.isLoading && shown.length === 0 && (
         <p class="journal-muted">
-          {(people.data?.people ?? []).length === 0 ? (
+          {offeredPeople(people.data?.people ?? []).length === 0 ? (
             <>
               No people yet. <a href="/people">Add someone</a>.
             </>
@@ -171,10 +213,12 @@ export const RelatedRow = ({
   links,
   entryDate,
   onChange,
+  gone,
 }: {
   links: readonly RelatedLink[]
   entryDate: string
   onChange: (links: RelatedLink[]) => void
+  gone?: ReadonlySet<string>
 }) => {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'person' | 'activity'>('person')
@@ -183,7 +227,7 @@ export const RelatedRow = ({
     <div class="journal-field journal-related">
       <span>Related</span>
       <div class="journal-related-line">
-        <RelatedChips links={links} onRemove={(link) => onChange(removeLink(links, link))} />
+        <RelatedChips links={links} gone={gone} onRemove={(link) => onChange(removeLink(links, link))} />
         <button
           type="button"
           class="btn-secondary journal-related-add"

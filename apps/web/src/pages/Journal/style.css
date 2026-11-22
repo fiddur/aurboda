@@ -742,6 +742,33 @@
   cursor: pointer;
 }
 
+.journal-related-chip-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.journal-related-chip-icon .icon-preview {
+  display: inline-flex;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.journal-related-chip.is-gone {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.journal-related-chip.is-gone button {
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  .journal-related-chip.is-gone {
+    border-color: #ff8a80;
+    color: #ff8a80;
+  }
+}
+
 .journal-related-add {
   padding: 0.15rem 0.7rem;
   font-size: 0.85rem;

@@ -158,3 +158,24 @@ export const APP_ONLY_LINKS: NavLink[] = [
 
 /** Menu paths that are never hidden, whatever `hidden_pages` says; everything under `/admin` too. */
 export const MENU_ALWAYS_SHOWN = ['/', '/settings', '/help', '/notifications', '/admin'] as const
+
+const isAlwaysShownPath = (path: string): boolean =>
+  (MENU_ALWAYS_SHOWN as readonly string[]).includes(path) || path.startsWith('/admin/')
+
+/**
+ * The paths `hidden_pages` can hold: every menu link the web menu or the app's More tab can leave
+ * out. A path no longer in a menu has no switch to clear it, so it is dropped when settings are saved.
+ */
+export const HIDEABLE_MENU_PATHS: readonly string[] = [
+  ...NAV_TOP_LINKS,
+  ...NAV_SECTIONS.flatMap((section) => section.links),
+  ...APP_ONLY_LINKS,
+]
+  .map((link) => link.href)
+  .filter((path) => !isAlwaysShownPath(path))
+
+/** `paths` without the ones that are not hideable menu paths, and without repeats. */
+export const keepHideableMenuPaths = (paths: readonly string[]): string[] => {
+  const hideable = new Set(HIDEABLE_MENU_PATHS)
+  return [...new Set(paths)].filter((path) => hideable.has(path))
+}

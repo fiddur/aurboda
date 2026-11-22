@@ -90,3 +90,10 @@
 .strength-score-more p {
   margin-top: 0.25rem;
 }
+
+.strength-score-retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}

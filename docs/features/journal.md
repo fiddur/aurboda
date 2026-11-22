@@ -57,6 +57,13 @@ optional end time, or **No time of day** with a date. It opens on "now".
   deleted for 30 days. An entry left completely empty is removed when you leave it.
 - **Replies**: comments on an entry (the same thread the Timeline shows) are listed
   under it.
+- **Related**: chips for the people and activities the entry is about, an
+  activity's with its type's icon. **+ Add** picks a person, or an activity of the
+  entry's day (last night's sleep listed, and labelled, under the morning it ended);
+  typing `@` offers people too. Archived people are not offered for a new link, but
+  an entry that already links one keeps the chip. If a save is refused because a
+  linked person or activity was removed since (a draft kept from before, say), the
+  chip turns red and says so; remove it and the entry saves.
 
 ## On the Timeline
 
@@ -130,7 +137,8 @@ nothing about it in the text.
   `updated_at` but keeps no text revision.
 - **Where it shows.** Every thread root in an answer carries `related`: each target's
   `entity_type`, `entity_id` and a `label` -- the person's name, or the activity's title
-  (else its type's name) with its local date, "Evening walk, 2026-11-20". `GET /people/:id`
+  (else its type's name) with its local date, "Evening walk, 2026-11-20" (a sleep is dated
+  by the morning it ended), and for an activity its `activity_type`. `GET /people/:id`
   (MCP `get_person`) and the activity detail (`GET /activities/:id`,
   `GET /activities/:id/full`, MCP `get_activity_detail`) carry `journal_entries`: the
   related entries newest first, at most 50, each with `id`, `title`, `entity_type`,
@@ -142,7 +150,9 @@ nothing about it in the text.
   `related_id`, both or neither, and combines them with every other filter. An activity
   is matched by the id given.
 - **Deleted targets.** A link to a soft-deleted person or activity is hidden while its
-  target is deleted and back on restore; it goes when the target is removed for good.
+  target is deleted and back on restore; it goes when the target is removed for good
+  (for an activity a database trigger removes it, whatever removes the activity: a
+  purge, a source's delete, a rule's regeneration or an orphaned override).
   Replacing an entry's links only touches the visible ones, so a hidden link survives
   an edit and comes back with its target.
   A deleted entry's links are out of sight with it and come back with it.

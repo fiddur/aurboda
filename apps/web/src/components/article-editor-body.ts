@@ -17,6 +17,7 @@ import type {
   FeedPostVisibility,
   FeedVisibility,
   HrvActivitiesData,
+  Person,
   PreviewArticleBody,
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
@@ -387,17 +388,22 @@ export const draftUpdateBody = (state: ArticleEditorState): UpdateArticleDraftBo
 
 /**
  * Each block's sharing warnings, in block order, from the blocks as the editor would save them:
- * a meal sensitivity and a person are named from the discovered selectors. Never blocks publishing.
+ * a meal sensitivity and a person are named from the discovered selectors, and a person the
+ * selectors leave out (an archived one) from `people`. Never blocks publishing.
  */
 export const editorBlockWarnings = (
   state: ArticleEditorState,
   selectors: Partial<Pick<CorrelationSelectorsData, 'people' | 'sensitivities'>> | undefined,
+  people: readonly Pick<Person, 'id' | 'name'>[] = [],
 ): string[][] => {
   const byValue = (options: { label: string; value: string }[] = []) =>
     Object.fromEntries(options.map((o) => [o.value, o.label]))
   const warnings = articleSharingWarnings(buildDraftContent(state).blocks, {
     flag_names: byValue(selectors?.sensitivities),
-    person_names: byValue(selectors?.people),
+    person_names: {
+      ...Object.fromEntries(people.map((p) => [p.id, p.name])),
+      ...byValue(selectors?.people),
+    },
   })
   return state.blocks.map((_, i) => warnings.filter((w) => w.block === i).map((w) => w.message))
 }

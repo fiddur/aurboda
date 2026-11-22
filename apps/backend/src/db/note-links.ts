@@ -19,6 +19,8 @@ export interface NoteLinkRecord {
   name: string
   /** An activity's start; null for a person. */
   start_time: Date | null
+  end_time: Date | null
+  activity_type: string | null
 }
 
 /** A note related to a target, with what a journal entry reference shows. */
@@ -87,11 +89,13 @@ export const getNoteLinksForNoteIds = async (
     entity_id: string
     name: string
     start_time: Date | null
+    end_time: Date | null
+    activity_type: string | null
   }>(
     user,
     `SELECT l.note_id, l.entity_type, l.entity_id::text AS entity_id,
             COALESCE(p.name, NULLIF(a.title, ''), d.display_name, a.activity_type) AS name,
-            a.start_time
+            a.start_time, a.end_time, a.activity_type
        FROM note_links l
        LEFT JOIN people p ON l.entity_type = 'person' AND p.id = l.entity_id AND p.deleted_at IS NULL
        LEFT JOIN activities a ON l.entity_type = 'activity' AND a.id = l.entity_id AND a.deleted_at IS NULL
@@ -103,6 +107,8 @@ export const getNoteLinksForNoteIds = async (
   const byNote = new Map<string, NoteLinkRecord[]>()
   for (const row of result.rows) {
     byNote.getOrInsert(row.note_id, []).push({
+      activity_type: row.activity_type,
+      end_time: row.end_time === null ? null : new Date(row.end_time),
       entity_id: row.entity_id,
       entity_type: row.entity_type,
       name: row.name,

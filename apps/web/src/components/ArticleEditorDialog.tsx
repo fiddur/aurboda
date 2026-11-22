@@ -21,9 +21,11 @@ import {
   createArticleDraft,
   fetchCorrelationSelectors,
   fetchHrvActivitiesCorrelation,
+  fetchPeople,
   fetchUserSettings,
   listChallenges,
   listMyChallengeParticipations,
+  PEOPLE_KEY,
   publishArticleDraft,
   updateArticle,
   updateArticleDraft,
@@ -541,6 +543,13 @@ const withStoredTags = (state: ArticleEditorState, stored: string[] | undefined)
 const editorDialogClass = (wide: boolean): string =>
   wide ? 'share-dialog article-editor article-editor--wide' : 'share-dialog article-editor'
 
+/** Every person, archived ones included: a block may name someone the selectors no longer list. */
+const usePeopleWithArchived = () =>
+  useQuery({
+    queryFn: () => fetchPeople({ archived: true }),
+    queryKey: [...PEOPLE_KEY, { archived: true }],
+  }).data?.people
+
 /**
  * The article composer. With a published `post` it edits that article (PATCH)
  * as before. Otherwise it works on a draft: `draft` reopens a saved one, and
@@ -566,6 +575,7 @@ export const ArticleEditorDialog = ({
     queryKey: ['correlationSelectors'],
     staleTime: 5 * 60 * 1000,
   })
+  const people = usePeopleWithArchived()
 
   const [title, setTitle] = useState(initial.title)
   const [defaultStart, setDefaultStart] = useState(initial.defaultStart)
@@ -593,7 +603,7 @@ export const ArticleEditorDialog = ({
   })
   const dirty = !editing && draftSnapshot(editorState()) !== savedSnapshot
   const previewState = withStoredTags(editorState(), storedTags)
-  const blockWarnings = editorBlockWarnings(editorState(), selectors)
+  const blockWarnings = editorBlockWarnings(editorState(), selectors, people)
 
   const patchBlock = (i: number, patch: BlockPatch) =>
     setBlocks((bs) =>
