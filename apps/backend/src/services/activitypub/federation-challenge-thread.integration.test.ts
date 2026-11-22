@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import type { RaiseNotificationInput } from '../notifications.ts'
 
+import { setChallengePostFollow } from '../../db/challenge-post-follows.ts'
 import {
   getThreadCopyEntryByObjectUri,
   listThreadCopy,
@@ -233,11 +234,14 @@ describe('Inbound challenge thread comments', () => {
       countEntries: oneDb(real.countEntries),
       deleteEntriesByActor: oneDb(real.deleteEntriesByActor),
       deleteEntry: oneDb(real.deleteEntry),
+      followChoices: oneDb(real.followChoices),
       getChallengeById: oneDb(real.getChallengeById),
+      getEntryById: oneDb(real.getEntryById),
       getEntryByObjectUri: oneDb(real.getEntryByObjectUri),
       getFeedPost: oneDb(real.getFeedPost),
       getTimelineEntry: oneDb(real.getTimelineEntry),
       listMembers: oneDb(real.listMembers),
+      listReplies: oneDb(real.listReplies),
       loadChallenge: oneDb(real.loadChallenge),
       notify: async (user, input) => {
         notified.push({ input, user })
@@ -258,7 +262,7 @@ describe('Inbound challenge thread comments', () => {
       in_reply_to_uri: memberComment,
       root_entry_id: parent.id,
     })
-    expect(notified.map((n) => n.user).sort()).toEqual([host, member].sort())
+    expect(notified.map((n) => [n.user, n.input.type])).toEqual([[member, 'challenge_reply']])
     expect(await notificationTypes(member)).toEqual([])
     expect((await listTimelineEntries(member, 10)).map((e) => e.object_uri)).toEqual([CAROL_NOTE])
   })
@@ -305,6 +309,7 @@ describe('Host signals for a challenge joined on another server', () => {
     await updateParticipationThreadState(user, participation.id, {
       challenge_object_uri: OBJECT_URI,
       host_actor_uri: HOST_ACTOR,
+      thread_attendees: [HOST_ACTOR, CAROL],
       thread_synced_at: new Date(),
     })
     await upsertThreadCopyEntry(user, participation.id, {
@@ -344,6 +349,70 @@ describe('Host signals for a challenge joined on another server', () => {
     await handleInboundAdd(inboxCtx(user), new Add({ ...fromHost, id: new URL(`${HOST_ACTOR}#adds/1`) }))
     expect(await listThreadCopy(user, participation.id)).toHaveLength(1)
     expect(await syncedAt(user, participation.id)).toBeNull()
+  })
+
+  describe('a reply pushed into the copy notifies only when I follow its post', () => {
+    const MINE = 'https://aurboda.example/users/{user}/feed/11111111-1111-4111-8111-111111111111'
+    let n = 10
+    const pushReply = async (user: string, target: string) => {
+      n++
+      const note = new Note({
+        attribution: new URL(CAROL),
+        content: `<p>Reply ${n}</p>`,
+        contexts: [new URL(OBJECT_URI)],
+        id: new URL(`https://third.example/notes/${n}`),
+        published: dateToTemporalInstant(new Date('2026-11-11T10:00:00Z')),
+        replyTarget: new URL(target),
+        tos: [new URL(`${ORIGIN}/users/${user}`)],
+      })
+      await handleInboundCreate(
+        inboxCtx(user),
+        new Create({ actor: new URL(CAROL), id: new URL(`${note.id!.href}#create`), object: note }),
+        ORIGIN,
+      )
+    }
+    const ownTop = async (user: string, participationId: string) => {
+      const uri = MINE.replace('{user}', user)
+      await upsertThreadCopyEntry(user, participationId, {
+        actor_uri: `${ORIGIN}/users/${user}`,
+        audience: 'participants',
+        avatar_url: null,
+        content: '<p>Mine</p>',
+        display_name: null,
+        edited_at: null,
+        handle: null,
+        images: [],
+        in_reply_to_uri: OBJECT_URI,
+        kind: 'comment',
+        object_uri: uri,
+        published_at: new Date('2026-11-10T11:00:00Z'),
+        url: null,
+      })
+      return uri
+    }
+
+    test('a reply to my own post raises challenge_reply, and nothing else', async () => {
+      const { participation, user } = await joined()
+      await pushReply(user, await ownTop(user, participation.id))
+      expect(await notificationTypes(user)).toEqual(['challenge_reply'])
+    })
+
+    test('a reply to a post I do not follow raises nothing, until I follow it', async () => {
+      const { user } = await joined()
+      await pushReply(user, CAROL_NOTE)
+      expect(await notificationTypes(user)).toEqual([])
+      await setChallengePostFollow(user, CAROL_NOTE, true)
+      await pushReply(user, CAROL_NOTE)
+      expect(await notificationTypes(user)).toEqual(['challenge_reply'])
+    })
+
+    test('with the root missing from the copy, the direct parent decides', async () => {
+      const { user } = await joined()
+      await pushReply(user, 'https://third.example/notes/404')
+      expect(await notificationTypes(user)).toEqual([])
+      await pushReply(user, MINE.replace('{user}', user))
+      expect(await notificationTypes(user)).toEqual(['challenge_reply'])
+    })
   })
 
   test('a Remove or Add from anyone else, or of another target, is ignored', async () => {

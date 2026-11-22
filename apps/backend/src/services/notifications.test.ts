@@ -522,6 +522,7 @@ describe('listNotificationTypeSettings', () => {
       'feed_boost',
       'feed_post',
       'challenge_comment',
+      'challenge_reply',
       'autoshare_pending',
       'garmin_key_expiring',
       'reminder',

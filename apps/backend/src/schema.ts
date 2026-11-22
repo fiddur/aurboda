@@ -207,6 +207,7 @@ export const tableCreationOrder = [
   'challenge_participations_host_checked_column',
   'challenge_participations_thread_columns',
   'challenge_thread_copies',
+  'challenge_post_follows',
   'challenge_left',
   'challenge_left_token_column',
   'challenge_thread_entries',

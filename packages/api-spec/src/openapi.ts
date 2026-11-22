@@ -34,6 +34,8 @@ import {
 import { skipAutoshareBodySchema, skipAutoshareResponseSchema } from './schemas/autoshare-rules.ts'
 import {
   challengeCommentBodySchema,
+  challengePostFollowBodySchema,
+  challengePostFollowResponseSchema,
   challengeThreadEntryResponseSchema,
   challengeThreadHideBodySchema,
   challengeThreadHideQuerySchema,
@@ -621,6 +623,36 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Hide a thread entry',
+        tags: ['Challenges'],
+      },
+    },
+    '/challenges/thread/entries/{entryId}/following': {
+      put: {
+        description:
+          'Follow or stop following the replies under a top-level post of a challenge thread: one hosted on this instance, or one on another server that you joined. A reply under a post you follow raises `challenge_reply` for you. Without a choice you follow a post you wrote or replied under. The host and members only.',
+        requestBody: { content: { 'application/json': { schema: challengePostFollowBodySchema } } },
+        requestParams: { path: z.object({ entryId: z.string().meta({ description: 'Thread entry ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: challengePostFollowResponseSchema } },
+            description: 'Whether you now follow the post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              'Not a challenge page URL, or the entry is a reply (only a top-level post is followed)',
+          },
+          403: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not the host or a member of the challenge',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such challenge or entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Follow the replies under a challenge post',
         tags: ['Challenges'],
       },
     },

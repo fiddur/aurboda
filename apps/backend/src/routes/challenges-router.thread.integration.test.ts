@@ -112,7 +112,9 @@ describe('challenge thread routes (integration)', () => {
 
   beforeEach(async () => {
     await cleanTestDb()
-    for (const pool of extraPools) await pool.query('TRUNCATE feed_posts, notifications CASCADE')
+    for (const pool of extraPools) {
+      await pool.query('TRUNCATE feed_posts, notifications, challenge_post_follows CASCADE')
+    }
   })
 
   test('members talk among themselves, visitors see the public part, the host moderates', async () => {
@@ -171,7 +173,7 @@ describe('challenge thread routes (integration)', () => {
     expect(contents(anonymous.body.entries)).toEqual([{ content: '<p>Go team</p>', replies: [] }])
 
     expect(await notificationTypes(host)).toEqual(['challenge_comment', 'challenge_comment'])
-    expect(await notificationTypes(MEMBER)).toEqual(['challenge_comment', 'challenge_comment'])
+    expect(await notificationTypes(MEMBER)).toEqual(['challenge_reply', 'challenge_comment'])
     expect(await notificationTypes(VISITOR)).toEqual([])
 
     const listing = await request.get(`/public/${MEMBER}/posts`)
@@ -234,6 +236,81 @@ describe('challenge thread routes (integration)', () => {
     const afterShare = (await thread(VISITOR)).body.entries as ChallengeThreadEntry[]
     expect(afterShare[0]).toMatchObject({ audience: 'public', kind: 'share' })
     expect(afterShare[0]?.content.trim()).toBe('<p>Join us</p>')
+  })
+
+  test('a post notifies every participant, a reply only those who follow its post', async () => {
+    const host = getTestUser()
+    const challenge = await newChallenge(host, true)
+    const challengeUrl = `${WEB_HOST}/u/${host}/${challenge.slug}`
+    for (const user of [MEMBER, VISITOR]) {
+      await upsertChallengeMember(host, challenge.id, {
+        display_name: user,
+        identity_base_url: `${API_BASE}/public/${user}`,
+        kind: 'local',
+        local_user: user,
+      })
+    }
+    const SECOND = VISITOR
+    const { request } = app
+    const comment = async (user: string, message: string, inReplyToId?: string) => {
+      const res = await request
+        .post('/challenges/thread/comments')
+        .set('x-test-user', user)
+        .send({
+          audience: 'participants',
+          challenge_url: challengeUrl,
+          message,
+          ...(inReplyToId == null ? {} : { in_reply_to_id: inReplyToId }),
+        })
+      expect(res.status).toBe(201)
+      return res.body.entry as ChallengeThreadEntry
+    }
+    const follow = (user: string, entryId: string, following: boolean) =>
+      request
+        .put(`/challenges/thread/entries/${entryId}/following`)
+        .set('x-test-user', user)
+        .send({ challenge_url: challengeUrl, following })
+    const followingOf = async (user: string) =>
+      (
+        (
+          await request
+            .get('/challenges/thread')
+            .set('x-test-user', user)
+            .query({ challenge_url: challengeUrl })
+        ).body.entries as ChallengeThreadEntry[]
+      ).map((entry) => [entry.following, entry.replies.map((reply) => 'following' in reply)])
+
+    const post = await comment(MEMBER, 'Day one')
+    expect(await notificationTypes(host)).toEqual(['challenge_comment'])
+    expect(await notificationTypes(SECOND)).toEqual(['challenge_comment'])
+
+    await comment(SECOND, 'Nice', post.id)
+    expect(await notificationTypes(MEMBER)).toEqual(['challenge_reply'])
+    expect(await notificationTypes(host)).toEqual(['challenge_comment'])
+
+    expect(await followingOf(MEMBER)).toEqual([[true, [false]]])
+    expect(await followingOf(SECOND)).toEqual([[true, [false]]])
+    expect(await followingOf(host)).toEqual([[false, [false]]])
+
+    const off = await follow(SECOND, post.id, false)
+    expect(off.status).toBe(200)
+    expect(off.body).toEqual({ following: false, success: true })
+    expect((await follow(host, post.id, true)).body).toEqual({ following: true, success: true })
+    expect(await followingOf(SECOND)).toEqual([[false, [false]]])
+
+    await comment(MEMBER, 'Thanks', post.id)
+    expect(await notificationTypes(host)).toEqual(['challenge_comment', 'challenge_reply'])
+    expect(await notificationTypes(SECOND)).toEqual(['challenge_comment'])
+
+    const reply = (
+      await request
+        .get('/challenges/thread')
+        .set('x-test-user', MEMBER)
+        .query({ challenge_url: challengeUrl })
+    ).body.entries[0].replies[0] as ChallengeThreadEntry
+    expect((await follow(MEMBER, reply.id, true)).status).toBe(400)
+    expect((await follow(MEMBER, '99999999-9999-4999-8999-999999999999', true)).status).toBe(404)
+    expect((await follow('threadstranger', post.id, true)).status).toBe(403)
   })
 
   test('an unlisted challenge keeps every entry among the participants', async () => {

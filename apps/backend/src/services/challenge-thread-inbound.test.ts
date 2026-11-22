@@ -138,14 +138,21 @@ const fakeDeps = (world: World = {}) => {
     deleteEntry: async (host, objectUri, actorUri) => {
       deleted.push(`${host}:${objectUri}:${actorUri}`)
     },
+    followChoices: async () => new Map(),
     getChallengeById: async (user, id) =>
       Object.entries(challenges).find(([key, c]) => key.startsWith(`${user}/`) && c.id === id)?.[1] ?? null,
+    getEntryById: async (host, id) =>
+      [...entries.entries()].find(([key, e]) => key.startsWith(`${host}:`) && e.id === id)?.[1] ?? null,
     getEntryByObjectUri: async (host, objectUri) => entries.get(`${host}:${objectUri}`) ?? null,
     getFeedPost: async (user, postId) =>
       (world.posts?.[`${user}/${postId}`] as FeedPostRecord | undefined) ?? null,
     getTimelineEntry: async (user, objectUri) =>
       (world.timeline?.[`${user}:${objectUri}`] as TimelineEntryRecord | undefined) ?? null,
     listMembers: async () => world.members ?? [member({ local_user: 'bob' })],
+    listReplies: async (host, rootIds) =>
+      [...entries.entries()]
+        .filter(([key, e]) => key.startsWith(`${host}:`) && rootIds.includes(e.root_entry_id ?? ''))
+        .map(([, e]) => e),
     loadChallenge: async (host, slug) => challenges[`${host}/${slug}`] ?? null,
     notify: async (user, input) => {
       notified.push({ input, user })

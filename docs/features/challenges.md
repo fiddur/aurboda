@@ -444,8 +444,10 @@ The rules:
 4. The host or an admin can **hide** an entry: it is then shown only to the host and
    admins, and a hidden entry hides the replies under it. Hiding is undone by unhiding.
 5. A thread holds at most 2,000 entries, hidden ones included (`409` after that).
-6. A new comment raises `challenge_comment` (see [Notifications](./notifications.md)) for
-   the host and every local member except its author.
+6. A new top-level comment raises `challenge_comment` (see
+   [Notifications](./notifications.md)) for the host and every local member except its
+   author. A new reply raises `challenge_reply` only for those of them who **follow** the
+   top-level post it hangs under (see _Following a post_).
 7. A challenge hosted on another server is read and commented on from here by its
    members (see _Members on other servers_). Anyone else gets `403`.
 
@@ -459,7 +461,9 @@ is a participant. The rules above apply as for a local comment (an unlisted chal
 takes nothing from a non-member), and someone who is not a participant adds at most 30
 entries a day to one thread. An `Update` of the Note rewrites the entry and a `Delete` from
 its author removes it. The same Note may also become a timeline card for the recipient; it
-then raises no second notification beside `challenge_comment`. A reply to a commenter on
+then raises no second notification beside the thread's (`challenge_comment`, or
+`challenge_reply` for a follower of the post; a participant who does not follow the post
+gets nothing for a reply under it). A reply to a commenter on
 another server only reaches the thread when it is delivered to the host's inbox (Mastodon
 does so when the reply keeps the host's mention).
 
@@ -491,8 +495,11 @@ host.
     marks the copy for a fresh pull instead, at most once a minute.
   - A comment of the member's own that the host has not taken in yet stays in the copy
     through a pull for ten minutes; after that it goes (the host refused or removed it).
-  - A comment pushed into the copy raises `challenge_comment`, linking to the member's page
-    for the challenge.
+  - A top-level comment pushed into the copy raises `challenge_comment`, linking to the
+    member's page for the challenge. A reply raises `challenge_reply` only when the member
+    follows its top-level post, judged from the copy: the post the reply's chain leads to,
+    or, when that post is not in the copy, the reply's direct parent (followed when the
+    member wrote it or chose to follow it).
 - **What is not pushed.** A fediverse reply or a share (or the result) the host took in is
   not pushed itself: the host sends its verified members an `Add` of the entry, which marks
   the copy for a fresh pull, so it arrives with the next read. A fediverse reply's `Update`
@@ -510,20 +517,38 @@ The member's page for a joined challenge reads `GET /challenges/participations/:
 host can be read, the challenge and standings as the host's page shows them. When the host
 cannot be read, those two are left out.
 
+**Following a post.** Like on Facebook, replies notify the people who follow the
+top-level post they are under, not everyone in the challenge. You follow a top-level post
+(a comment, a share's note or the result) when:
+
+- you chose to, with the bell on the post, `PUT /challenges/thread/entries/:entryId/following`
+  or `set_challenge_post_follow`: your choice wins, either way;
+- otherwise, when you wrote it or a visible reply under it.
+
+The choice is kept on your own server (`challenge_post_follows`, keyed by the post's Note
+id, which is the same on the host's server and in a member's copy) and never federates. It
+is the host's or a member's only (`403` for anyone else); only a top-level entry can be
+followed (`400` for a reply). The author of a reply is never notified of it. A reply under
+a post you stopped following notifies you of nothing, not even through the timeline.
+
 A page lists 20 top-level entries newest first, each with up to 200 replies oldest first
 (of those the viewer sees: hidden replies do not count),
 with an opaque `next_cursor`, the `total` the viewer can see and `viewer`: the viewer's
 `role` (`host`, `member` or `visitor`), the audiences they may comment with and
 `can_comment`. An entry the viewer wrote carries `own_post_id` and `message` (the markdown
-source).
+source). For the host and members each top-level entry carries `following`, whether they
+follow it (their choice, else whether they wrote it or replied under it); visitors and
+replies have none.
 
 API: `GET /challenges/thread?challenge_url=<page url>[&cursor=]`,
 `POST /challenges/thread/comments` (`{ challenge_url, audience, message, in_reply_to_id? }`,
 `201` with the entry), `POST /challenges/thread/entries/:entryId/hidden` (body
-`{ challenge_url }`) and `DELETE /challenges/thread/entries/:entryId/hidden?challenge_url=`.
+`{ challenge_url }`), `DELETE /challenges/thread/entries/:entryId/hidden?challenge_url=` and
+`PUT /challenges/thread/entries/:entryId/following` (body `{ challenge_url, following }`,
+answering `{ following }`; also for a thread hosted on another server that you joined).
 The logged-out view is `GET /public/<user>/challenges/<slug>/thread[?cursor=]` (public
 entries only). MCP: `get_challenge_thread`, `add_challenge_comment`,
-`hide_challenge_comment`, `unhide_challenge_comment`.
+`hide_challenge_comment`, `unhide_challenge_comment`, `set_challenge_post_follow`.
 
 On the web, the challenge page (`/u/<user>/<slug>`, embedded as is by the Android app)
 shows the thread in a **Comments** section (`#comments`, where notifications link) under
@@ -531,7 +556,9 @@ the leaderboard: a composer, then the top-level entries newest first with "Show 
 each with its replies indented under it. An entry shows its author, time, an "edited"
 mark, a "🔒 People in the challenge" badge on `participants` entries (public ones carry
 none) and a label on a share or the result; Reply, Edit and Delete (own entries) and Hide
-/ Unhide (the host, who sees a hidden entry dimmed) act on it. The composer offers both
+/ Unhide (the host, who sees a hidden entry dimmed) act on it. For the host and members a
+top-level entry also has a bell, "Follow replies" or "Following replies", which switches
+following the post at once (and switches back if the server refuses). The composer offers both
 audiences only when the viewer has both, defaulting to _People in the challenge_ and
 remembering the last choice in the browser; with one, it says which. A reply to a
 `participants` entry is `participants`. Signed out, a "Sign in to comment" link stands in
