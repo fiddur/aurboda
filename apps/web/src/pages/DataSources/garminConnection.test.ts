@@ -139,6 +139,23 @@ describe('garminConnectionFlags', () => {
     expect(garminConnectionFlags({ garmin_session_connected: true }).canPull).toBe(true)
     expect(garminConnectionFlags({ garmin_personal_key: key }).canPull).toBe(true)
   })
+
+  it('cannot pull with only a refused or expired key, but still reports the key', () => {
+    const today = '2026-11-22'
+    const refused = { ...key, refused: true }
+    const expired = { ...key, expires_at: '2026-11-21' }
+    for (const personalKey of [refused, expired]) {
+      const flags = garminConnectionFlags({ garmin_personal_key: personalKey }, today)
+      expect(flags.canPull).toBe(false)
+      expect(flags.personalKey).toBe(personalKey)
+    }
+    expect(garminConnectionFlags({ garmin_personal_key: { ...key, expires_at: today } }, today).canPull).toBe(
+      true,
+    )
+    expect(
+      garminConnectionFlags({ garmin_personal_key: expired, garmin_session_connected: true }, today).canPull,
+    ).toBe(true)
+  })
 })
 
 describe('garminDataTypeNote', () => {

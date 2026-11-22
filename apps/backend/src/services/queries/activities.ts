@@ -86,7 +86,6 @@ interface EnrichmentContext {
   commentsMap: Map<string, CommentSummary[]>
 }
 
-/** The id the activity detail page takes: `merged:<id>` for a merged row. */
 export const activityResultId = (a: { id?: string; source_ids?: string[] }): string | undefined =>
   a.source_ids ? `merged:${a.id}` : a.id
 

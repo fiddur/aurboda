@@ -13,6 +13,7 @@ import {
   findActivityByGarminActivityId,
   findAdjacentActivity,
   findDeletedActivityByExternalId,
+  findSameInstantManualActivities,
   getActivities,
   getActivityFieldValues,
   getActivityById,
@@ -239,6 +240,40 @@ describe('Activities Integration Tests', () => {
       })
       expect(await insertActivity(user, activity)).toBeUndefined()
       expect(await getActivityById(user, id)).toBeNull()
+    })
+  })
+
+  describe('findSameInstantManualActivities', () => {
+    const start = new Date('2024-02-01T08:00:00Z')
+    const point = (data: Record<string, unknown>, extra: Partial<Activity> = {}): Activity => ({
+      activity_type: 'meditation',
+      data,
+      source: 'aurboda',
+      start_time: start,
+      ...extra,
+    })
+
+    test('lists the plain row first, then the live manual: rows at the same key', async () => {
+      const user = getTestUser()
+      const plain = await insertActivity(user, point({ substance: 'zinc' }))
+      const manual = await insertActivity(user, point({ substance: 'iron' }, { external_id: 'manual:a' }))
+      const gone = await insertActivity(user, point({ substance: 'iodine' }, { external_id: 'manual:b' }))
+      await deleteActivity(user, gone)
+      await insertActivity(user, point({ substance: 'magnesium' }, { external_id: 'check_in:x' }))
+      await insertActivity(user, point({ substance: 'zinc' }, { source: 'check_in' }))
+      await insertActivity(user, point({ substance: 'zinc' }, { activity_type: 'exercise' }))
+      await insertActivity(
+        user,
+        point({ substance: 'zinc' }, { start_time: new Date('2024-02-01T08:01:00Z') }),
+      )
+
+      const rows = await findSameInstantManualActivities(user, point({}))
+      expect(rows.map((r) => r.id)).toEqual([plain, manual])
+      expect(rows[1]).toMatchObject({ data: { substance: 'iron' }, external_id: 'manual:a' })
+    })
+
+    test('answers none when nothing is logged at the instant', async () => {
+      expect(await findSameInstantManualActivities(getTestUser(), point({}))).toEqual([])
     })
   })
 

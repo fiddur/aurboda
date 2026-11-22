@@ -58,7 +58,7 @@ import {
   listUserNames,
 } from '../db/index.ts'
 import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
-import { resyncActivityDetail } from '../integrations/garmin/sync.ts'
+import { garminDetailResync } from '../integrations/garmin/sync.ts'
 import { gravlRedirectUri } from '../integrations/gravl/client.ts'
 import { createAccountRecoveryRouter } from '../routes/account-recovery-router.ts'
 import { createAccountRouter } from '../routes/account-router.ts'
@@ -342,13 +342,7 @@ export const mountRestRouters = ({
       authMiddleware,
       syncProvider,
       activityNotifier,
-      (user, activityId, garminActivityId, activitySpan, activityStart) =>
-        resyncActivityDetail(
-          user,
-          garmin,
-          { activityId, activitySpan, activityStart, garminActivityId },
-          { onDetailSynced: onActivityDetailSynced, onTrackWritten },
-        ),
+      garminDetailResync(garmin, { onDetailSynced: onActivityDetailSynced, onTrackWritten }),
     ),
   )
   httpd.use('/productivity', createProductivityRouter(authMiddleware, syncProvider))

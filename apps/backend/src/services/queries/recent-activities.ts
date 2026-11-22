@@ -3,6 +3,7 @@ import type {
   RecentActivitiesData,
   RecentActivitiesWindow,
   RecentActivity,
+  RecentActivitySummaryField,
 } from '@aurboda/api-spec'
 
 import { ACTIVITY_LANE_CATEGORIES, isSleepType } from '@aurboda/api-spec'
@@ -49,14 +50,30 @@ const defaultTypes = (definitions: ActivityTypeDefinition[]): string[] =>
     )
     .map((d) => d.name)
 
-const rangeOf = (filter: RecentActivitiesFilter, options: RecentActivitiesOptions) => {
-  if (options.range) return options.range
+interface ListedRange {
+  end: Date
+  start: Date
+  /** List what overlaps the range, not only what starts in it. */
+  overlap: boolean
+}
+
+const rangeOf = (filter: RecentActivitiesFilter, options: RecentActivitiesOptions): ListedRange => {
+  if (options.range) return { ...options.range, overlap: true }
   const now = options.now ?? new Date()
   if ((filter.window ?? 'today') === 'today') {
-    return { end: now, start: dayStartInTz(dayKey(now, options.tz), options.tz) }
+    return { end: now, overlap: true, start: dayStartInTz(dayKey(now, options.tz), options.tz) }
   }
-  return { end: now, start: new Date(now.getTime() - (filter.lookback_days ?? 30) * DAY_MS) }
+  return { end: now, overlap: false, start: new Date(now.getTime() - (filter.lookback_days ?? 30) * DAY_MS) }
 }
+
+/**
+ * The read selects by start, so an activity still running into the range is read from a day
+ * earlier; one that started more than a day before the range is not listed.
+ */
+const OVERLAP_LOOK_BACK_MS = DAY_MS
+
+const overlapsFrom = (a: MergedActivity, start: Date): boolean =>
+  a.start_time >= start || (a.end_time !== undefined && a.end_time > start)
 
 const mergedFromSynced = (a: MergedActivity): boolean => {
   const sources = a.data?.merged_from
@@ -74,6 +91,49 @@ const isManual = (a: MergedActivity): boolean =>
 const positiveNumber = (v: unknown): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
 
+const FIGURE_FIELDS = new Set(['average_hr', 'calories', 'distance', 'sets'])
+
+const summaryValue = (v: unknown): string | number | undefined => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+  if (typeof v === 'string') return v.trim() === '' ? undefined : v
+  return undefined
+}
+
+type SchemaField = NonNullable<ActivityTypeDefinition['data_schema']>['fields'][number]
+
+const UNIT_SUFFIX = '_unit'
+
+/** A flagged `<x>_unit` beside a numeric `<x>` reads as one figure ("10 mg"), not as a bare unit. */
+const measuredBy = (
+  field: SchemaField,
+  fields: SchemaField[],
+  data: Record<string, unknown>,
+): SchemaField | undefined => {
+  if (!field.name.endsWith(UNIT_SUFFIX)) return undefined
+  const amount = fields.find((f) => f.name === field.name.slice(0, -UNIT_SUFFIX.length))
+  return amount && typeof data[amount.name] === 'number' ? amount : undefined
+}
+
+const labelOf = (field: SchemaField): string => field.label ?? humanizeName(field.name)
+
+export const summaryFields = (
+  data: Record<string, unknown>,
+  definition: ActivityTypeDefinition | undefined,
+): RecentActivitySummaryField[] => {
+  const fields = definition?.data_schema?.fields ?? []
+  const flagged = fields.filter((f) => f.show_in_summary && f.type !== 'list' && !FIGURE_FIELDS.has(f.name))
+  const amounts = new Map(flagged.map((f) => [f, measuredBy(f, fields, data)]))
+  const paired = new Set([...amounts.values()].filter((a) => a !== undefined))
+  return flagged.flatMap((field) => {
+    if (paired.has(field)) return []
+    const amount = amounts.get(field)
+    const value = summaryValue(data[(amount ?? field).name])
+    if (value === undefined) return []
+    const unit = amount ? summaryValue(data[field.name]) : field.unit
+    return [{ label: labelOf(amount ?? field), ...(unit ? { unit: String(unit) } : {}), value }]
+  })
+}
+
 const toRow = (a: MergedActivity, definition: ActivityTypeDefinition | undefined): RecentActivity => {
   const data = a.data ?? {}
   const id = activityResultId(a)
@@ -87,6 +147,7 @@ const toRow = (a: MergedActivity, definition: ActivityTypeDefinition | undefined
       : undefined,
     set_count: Array.isArray(sets) && sets.length > 0 ? sets.length : undefined,
   }
+  const summary = summaryFields(data, definition)
   return {
     activity_type: a.activity_type,
     ...(definition?.color ? { color: definition.color } : {}),
@@ -95,6 +156,7 @@ const toRow = (a: MergedActivity, definition: ActivityTypeDefinition | undefined
     ...(id ? { id } : {}),
     ...Object.fromEntries(Object.entries(figures).filter(([, v]) => v !== undefined)),
     start_time: a.start_time.toISOString(),
+    ...(summary.length > 0 ? { summary_fields: summary } : {}),
     ...(a.title ? { title: a.title } : {}),
     type_name: definition?.display_name ?? humanizeName(a.activity_type),
   }
@@ -121,12 +183,14 @@ export const getRecentActivities = async (
   const types = included.filter((t) => !excludedSet.has(t))
   if (types.length === 0) return { activities: [], tz }
 
-  const { end, start } = rangeOf(filter, options)
+  const { end, overlap, start } = rangeOf(filter, options)
+  const readStart = overlap ? new Date(start.getTime() - OVERLAP_LOOK_BACK_MS) : start
   const categoryMap = new Map(definitions.map((d) => [d.name, d.display_category]))
-  const activities = await deps.getActivities(user, types, start, end, undefined, undefined, categoryMap)
+  const activities = await deps.getActivities(user, types, readStart, end, undefined, undefined, categoryMap)
   const byName = new Map(definitions.map((d) => [d.name, d]))
   return {
     activities: activities
+      .filter((a) => overlapsFrom(a, start))
       .filter((a) => !filter.manual_only || isManual(a))
       .toSorted((a, b) => b.start_time.getTime() - a.start_time.getTime())
       .slice(0, filter.limit ?? 5)

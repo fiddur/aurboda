@@ -319,9 +319,7 @@ const bridgesTouch = (a: Activity, b: Activity): boolean =>
 const isPointInTime = (a: Activity): boolean => !a.end_time || a.end_time.getTime() === a.start_time.getTime()
 
 /** Some key both carry, other than `_`-prefixed markers, holds a different value in each. */
-const dataConflicts = (a: Activity, b: Activity): boolean => {
-  const { data: da } = a
-  const { data: db } = b
+export const dataConflicts = (da: Activity['data'], db: Activity['data']): boolean => {
   if (!da || !db) return false
   return Object.keys(da).some(
     (key) => !key.startsWith('_') && Object.hasOwn(db, key) && !isDeepStrictEqual(da[key], db[key]),
@@ -378,7 +376,7 @@ const clusterSameInstantPoints = (
     }
     const target =
       clusters.find((c) => c.members.some((m) => isOverrideLinked(m, a))) ??
-      clusters.find((c) => !dataConflicts(c.row, a))
+      clusters.find((c) => !dataConflicts(c.row.data, a.data))
     if (target) {
       absorbInto(target.row, a)
       target.ids.push(...memberIds(a))

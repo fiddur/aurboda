@@ -2,15 +2,10 @@ import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { chartFilterFieldSchema } from './chart-data.ts'
-import {
-  activityTypeSchema,
-  baseResponseSchema,
-  dataFieldPathSchema,
-  queryBooleanSchema,
-  tzSchema,
-} from './common.ts'
+import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, queryBooleanSchema } from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
 import { mediaPlaySourceSchema } from './media.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
@@ -549,7 +544,7 @@ export const recentActivitiesQuerySchema = z
         'Comma-separated activity types listed, with their subtypes. Default: the types a day overview draws as icons',
       example: 'exercise,meditation',
     }),
-    tz: tzSchema.optional().meta({
+    tz: ianaTimezoneSchema.optional().meta({
       description: 'The timezone "today" is cut in and times are shown in; the user\'s setting when absent',
     }),
     window: recentActivitiesWindowSchema.default('today'),

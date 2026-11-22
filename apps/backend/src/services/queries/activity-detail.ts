@@ -54,15 +54,17 @@ export const computeActivityDetailMetrics = async (
   const end = activity.end_time
   if (!end) return {}
 
-  const [{ zones: hrZones }, summarySeries, hrvData] = await Promise.all([
+  const storedSteps = activity.data?.steps
+  const stepsMissing = typeof storedSteps !== 'number' || !Number.isFinite(storedSteps)
+  const [{ zones: hrZones }, summarySeries, hrvData, healthConnectStepCount] = await Promise.all([
     getEffectiveHrZones(user),
     getTimeSeriesMultiMetric(user, [...SUMMARY_METRICS], activity.start_time, end),
     getTimeSeries(user, 'hrv_rmssd', activity.start_time, end),
+    stepsMissing ? healthConnectSteps(user, activity, end) : undefined,
   ])
 
   const summary = computeActivitySummaryMetrics(activity, summarySeries)
-  const estimatedSteps =
-    summary.steps === undefined ? await healthConnectSteps(user, activity, end) : undefined
+  const estimatedSteps = summary.steps === undefined ? healthConnectStepCount : undefined
 
   const hrData = summarySeries.heart_rate ?? []
   const hr_zone_secs = hrData.length > 0 ? computeHrZoneSecs(hrData, hrZones) : undefined

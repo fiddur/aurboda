@@ -1,4 +1,9 @@
-import type { RecentActivitiesConfig, RecentActivitiesQuery, RecentActivity } from '@aurboda/api-spec'
+import type {
+  RecentActivitiesConfig,
+  RecentActivitiesQuery,
+  RecentActivity,
+  RecentActivitySummaryField,
+} from '@aurboda/api-spec'
 
 import { suggestEmoji } from '../../utils/emojiLookup'
 import {
@@ -110,7 +115,10 @@ const paceOrSpeed = (a: RecentActivity): string | undefined => {
     : formatSpeed(km / (seconds / 3600))
 }
 
-/** The type name when the label is a title, then up to three figures the row has. */
+const summaryText = ({ unit, value }: RecentActivitySummaryField): string =>
+  unit ? `${value} ${unit}` : String(value)
+
+/** The type name when the label is a title, up to three figures the row has, then its type's summary fields. */
 export const rowFigures = (a: RecentActivity): string => {
   const figures = [
     a.duration_minutes ? formatHoursMinutes(a.duration_minutes) : undefined,
@@ -123,7 +131,8 @@ export const rowFigures = (a: RecentActivity): string => {
     .filter((f): f is string => f !== undefined)
     .slice(0, MAX_FIGURES)
   const typeName = a.title && a.title !== a.type_name ? [a.type_name] : []
-  return [...typeName, ...figures].join(' · ')
+  const summary = (a.summary_fields ?? []).map(summaryText)
+  return [...typeName, ...figures, ...summary].join(' · ')
 }
 
 export const emptyMessage = (config: RecentActivitiesCardConfig, period: boolean): string => {

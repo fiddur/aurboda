@@ -317,6 +317,25 @@ const findLiveConflictingId = async (user: string, activity: Activity): Promise<
   return result.rows[0]?.id as string | undefined
 }
 
+/**
+ * The live hand-logged rows at one instant: the one the `(source, activity_type, start_time)`
+ * index holds (`external_id` NULL) and the separate same-instant events stored under `manual:`.
+ */
+export const findSameInstantManualActivities = async (
+  user: string,
+  key: Pick<Activity, 'source' | 'activity_type' | 'start_time'>,
+): Promise<Activity[]> => {
+  const result = await query(
+    user,
+    `SELECT ${activityColumns()} FROM activities
+     WHERE source = $1 AND activity_type = $2 AND start_time = $3
+       AND (external_id IS NULL OR external_id LIKE 'manual:%') AND deleted_at IS NULL
+     ORDER BY external_id NULLS FIRST, id`,
+    [key.source, key.activity_type, key.start_time],
+  )
+  return result.rows.map(mapActivityRow)
+}
+
 export const insertActivity = async (
   user: string,
   activity: Activity,

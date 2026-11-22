@@ -356,6 +356,69 @@ describe('updateActivity on a merged view (integration)', () => {
     ])
   })
 
+  describe('hand-logged points at one instant (#1921)', () => {
+    const start = new Date('2026-11-21T08:00:00Z')
+    const dose = (data: Record<string, unknown>, end_time?: Date) =>
+      addActivity(getTestUser(), { activity_type: 'supplement', data, end_time, start_time: start })
+    const zinc = { dose: 10, dose_unit: 'mg', substance: 'zinc' }
+    const iron = { dose: 14, dose_unit: 'mg', substance: 'iron' }
+    const stored = async () =>
+      (
+        await query<{ external_id: string | null; data: Record<string, unknown> }>(
+          getTestUser(),
+          `SELECT external_id, data FROM activities
+            WHERE activity_type = 'supplement' AND deleted_at IS NULL ORDER BY external_id NULLS FIRST`,
+        )
+      ).rows
+
+    test('a second, different dose is its own row', async () => {
+      const first = await dose(zinc)
+      const second = await dose(iron)
+      expect(first.success && second.success).toBe(true)
+      expect(second.id).not.toBe(first.id)
+      const rows = await stored()
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toMatchObject({ data: zinc, external_id: null })
+      expect(rows[1].data).toMatchObject(iron)
+      expect(rows[1].external_id).toMatch(/^manual:/)
+      expect((await getActivityById(getTestUser(), second.id!))?.source).toBe('aurboda')
+    })
+
+    test('the same dose posted twice is one row with one id', async () => {
+      const first = await dose(zinc)
+      const again = await dose(zinc)
+      expect(again.id).toBe(first.id)
+      expect(await stored()).toHaveLength(1)
+    })
+
+    test('the second dose posted twice after the first stays two rows', async () => {
+      await dose(zinc)
+      const second = await dose(iron)
+      const retried = await dose(iron)
+      expect(retried).toMatchObject({ id: second.id, success: true })
+      expect(await stored()).toHaveLength(2)
+    })
+
+    test('complementary data still merges into one row', async () => {
+      const first = await dose({ substance: 'zinc' })
+      const more = await dose({ dose: 10, substance: 'zinc' })
+      expect(more.id).toBe(first.id)
+      const rows = await stored()
+      expect(rows).toHaveLength(1)
+      expect(rows[0].data).toMatchObject({ dose: 10, substance: 'zinc' })
+    })
+
+    test('an activity with a duration keeps the upsert', async () => {
+      const end = new Date('2026-11-21T08:30:00Z')
+      const first = await dose(zinc, end)
+      const second = await dose(iron, end)
+      expect(second.id).toBe(first.id)
+      const rows = await stored()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ data: iron, external_id: null })
+    })
+  })
+
   test('activityWriteSchema resolves a catalogue type without adopting it', async () => {
     const user = getTestUser()
     const target = await activityWriteSchema(user, 'medication')

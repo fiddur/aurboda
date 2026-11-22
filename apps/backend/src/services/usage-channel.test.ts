@@ -36,6 +36,7 @@ describe('isMutatingMcpTool', () => {
     'merge_routes',
     'sync_garmin',
     'reprocess_garmin_pushes',
+    'resync_garmin_activity_detail',
     'start_livsmedelsverket_import',
     'ack_outbound_sync',
     'unfollow_actor',

@@ -250,10 +250,10 @@ export const getHealthConnectStepRecords = async (
     `SELECT data
      FROM raw_records
      WHERE source = 'health_connect' AND record_type = 'StepsRecord'
-       AND recorded_at >= $2::timestamptz - interval '${STEP_RECORD_LOOKBACK}' AND recorded_at < $3
+       AND recorded_at >= $2::timestamptz - $4::interval AND recorded_at < $3
        AND data->'metadata'->>'dataOrigin' = $1
      ORDER BY recorded_at ASC`,
-    [dataOrigin, start, end],
+    [dataOrigin, start, end, STEP_RECORD_LOOKBACK],
   )
   return result.rows.flatMap((row) => {
     const record = toStepRecord(row.data as Record<string, unknown>)

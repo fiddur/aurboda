@@ -33,14 +33,14 @@ import {
   type UpdateActivityResponse,
 } from '@aurboda/api-spec'
 
-import type { ResyncDetailResult } from '../integrations/garmin/sync.ts'
-import type { ActivitySpan } from '../integrations/gps-precedence.ts'
+import type { ResyncActivityDetailFn } from '../integrations/garmin/sync.ts'
 import type { ActivityNotifier } from '../services/deduction-queue.ts'
 
 import { singleUpload } from '../api/upload.ts'
 import {
   blendGroupData,
   getActivityById,
+  activityHasTrack,
   getActivityTrack,
   getAllActivityTypeNames,
   getDeductionRule,
@@ -55,6 +55,7 @@ import { httpError } from '../http-error.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
 import { activityPeopleOf } from '../services/activity-people.ts'
 import { parseFitBuffer } from '../services/fit-parser.ts'
+import { resyncDetailAnswer, resyncGarminActivityDetail } from '../services/garmin-resync-detail.ts'
 import {
   addActivity,
   deleteActivity,
@@ -210,13 +211,7 @@ export const createActivitiesRouter = (
   authMiddleware: AnyMiddleware,
   syncProvider?: SyncProvider,
   onActivityMutated?: ActivityNotifier,
-  resyncActivityDetail?: (
-    user: string,
-    activityId: string,
-    garminActivityId: number,
-    activitySpan: ActivitySpan | null,
-    activityStart: Date,
-  ) => Promise<ResyncDetailResult>,
+  resyncActivityDetail?: ResyncActivityDetailFn,
 ): TypedRouter => {
   const router = typedRouter()
 
@@ -566,12 +561,15 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
-    const activityMetrics = await computeActivityDetailMetrics(user, activity)
+    const [activityMetrics, hasTrack] = await Promise.all([
+      computeActivityDetailMetrics(user, activity),
+      activityHasTrack(user, realId),
+    ])
 
     if (isMerged && !activity.deleted_at) {
       const data = await buildMergedResponse(user, activity, activityMetrics)
       return res.json({
-        data,
+        data: { ...data, has_track: hasTrack },
         referenced_rules: await resolveReferencedRules(user, data.data),
         success: true,
       })
@@ -598,6 +596,7 @@ export const createActivitiesRouter = (
         deleted_at: activity.deleted_at?.toISOString(),
         end_time: activity.end_time?.toISOString(),
         features,
+        has_track: hasTrack,
         id: activity.id,
         journal_entries: journalEntries,
         override_target_ids: activity.override_target_ids,
@@ -629,7 +628,7 @@ export const createActivitiesRouter = (
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [activityMetrics, fullDetail, features, segmentEfforts, people, journalEntries] =
+      const [activityMetrics, fullDetail, features, segmentEfforts, people, journalEntries, hasTrack] =
         await Promise.all([
           computeActivityDetailMetrics(user, window),
           getActivityFullDetail(
@@ -644,6 +643,7 @@ export const createActivitiesRouter = (
           activitySegmentEfforts(user, trackOwnerIds),
           activityPeopleOf(user, trackOwnerIds),
           listJournalEntryRefs(user, 'activity', trackOwnerIds),
+          activityHasTrack(user, id),
         ])
 
       res.json({
@@ -655,6 +655,7 @@ export const createActivitiesRouter = (
           deleted_at: activity.deleted_at?.toISOString(),
           end_time: activity.end_time?.toISOString(),
           features,
+          has_track: hasTrack,
           id: activity.id,
           journal_entries: journalEntries,
           override_target_ids: activity.override_target_ids,
@@ -702,86 +703,9 @@ export const createActivitiesRouter = (
     '/activities/:id/resync-detail',
     authMiddleware,
     async (req, res) => {
-      const user = req.user!
-      const { id } = req.params
-
-      if (!resyncActivityDetail) {
-        res.status(501).json({ points: 0, success: false, error: 'Garmin sync not configured' })
-        return
-      }
-
-      const activity = await getActivityById(user, id)
-      if (!activity) {
-        res.status(404).json({ points: 0, success: false, error: 'Activity not found' })
-        return
-      }
-
-      const getData = (a: { data?: Record<string, unknown> }): number | undefined => {
-        const garminId = a.data?.garmin_activity_id
-        return typeof garminId === 'number' ? garminId : undefined
-      }
-
-      let garminActivityId = getData(activity)
-      let garminSourceId = activity.id!
-      let garminSource = activity
-
-      if (!garminActivityId) {
-        const overlapping = await getOverlappingActivities(user, activity)
-        for (const src of overlapping) {
-          const gid = getData(src)
-          if (gid) {
-            garminActivityId = gid
-            garminSourceId = src.id!
-            garminSource = src
-            break
-          }
-        }
-      }
-
-      if (!garminActivityId) {
-        res.status(400).json({
-          points: 0,
-          success: false,
-          error: 'No Garmin activity ID found in activity or its merged sources',
-        })
-        return
-      }
-
-      // Span of the row that supplied the Garmin id — for a merged activity that
-      // is the Garmin source, not the merge wrapper. Null without an end_time,
-      // so the track's own range is used rather than a start-only span.
-      const result = await resyncActivityDetail(
-        user,
-        garminSourceId,
-        garminActivityId,
-        garminSource.end_time ? { end: garminSource.end_time, start: garminSource.start_time } : null,
-        garminSource.start_time,
-      )
-      switch (result.status) {
-        case 'synced':
-          res.json({ points: result.points, success: true })
-          return
-        case 'no_connection':
-          res.status(409).json({
-            points: 0,
-            success: false,
-            error:
-              'Re-syncing needs the Garmin Connect login or a Personal API key that Garmin accepts. Connect with Garmin only receives what Garmin sends, so it cannot fetch an activity again.',
-          })
-          return
-        case 'no_file':
-          res
-            .status(404)
-            .json({ points: 0, success: false, error: 'Garmin has no activity file for this activity.' })
-          return
-        case 'failed':
-          res.status(502).json({
-            points: 0,
-            success: false,
-            error: 'Garmin did not return the activity. The audit log has the reason.',
-          })
-          return
-      }
+      const outcome = await resyncGarminActivityDetail(req.user!, req.params.id, resyncActivityDetail)
+      const { body, http_status } = resyncDetailAnswer(outcome)
+      res.status(http_status).json(body)
     },
   )
 

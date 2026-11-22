@@ -109,6 +109,8 @@ export interface Activity extends Omit<ApiActivity, 'start_time' | 'end_time'> {
   route?: ActivityRouteSummary
   /** The activity's timed passes over segments (activity detail only). */
   segment_efforts?: ActivitySegmentEffort[]
+  /** Whether a stored GPS track exists for this id (activity detail only). */
+  has_track?: boolean
   /**
    * Provenance of activities that were folded into this one by
    * `collapseToParentType`. Set only on the synthetic survivor; never on

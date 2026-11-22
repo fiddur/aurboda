@@ -539,6 +539,7 @@ const ActivityDetailContent = ({
           />
           <ActivityMapWithSegmentCreator
             activityId={activity.id}
+            hasTrack={activity.has_track === true}
             activityStart={activity.start_time}
             start={displayStart}
             end={displayEnd}
@@ -666,7 +667,7 @@ const ActivityContent = ({ entityId }: { entityId: string }) => {
     [queryClient, entityId],
   )
 
-  // Invalidate timeline and dashboard list queries when leaving so parent views show fresh data
+  // Invalidate timeline queries when leaving so parent views show fresh data
   useEffect(
     () => () =>
       void queryClient.invalidateQueries({

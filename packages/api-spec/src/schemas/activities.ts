@@ -255,6 +255,10 @@ export const activityDetailSchema = activitySchema
     features: activityFeaturesSchema.optional().meta({
       description: 'Computed run features, when the activity has been analysed',
     }),
+    has_track: z.boolean().optional().meta({
+      description:
+        'Whether GET /activities/{id}/track answers a stored GPS track for this activity; when false the track request would answer 404',
+    }),
     journal_entries: journalEntryRefsSchema.optional(),
     merged_end_time: iso8601DateTimeSchema
       .optional()

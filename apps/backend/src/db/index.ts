@@ -163,6 +163,7 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  findSameInstantManualActivities,
   softDeleteActivityByExternalId,
   findActivityByExternalId,
   findAdjacentActivity,
@@ -929,6 +930,7 @@ export {
 } from './segments.ts'
 
 export {
+  activityHasTrack,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
