@@ -412,6 +412,9 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 ### In edit mode, you can:
 
 - **Add a widget**: Click the "+ Add Widget" placeholder in any section. A dialog opens showing the widget types compatible with that section. Select a type, configure it (e.g., pick a metric, set a lookback period), and confirm.
+- **Change a widget's settings**: Click the pencil on the widget. The same settings form it was added
+  with opens, filled with its current settings; **Save** keeps the widget in its place and section.
+  Widgets without settings (the bar and combined charts, which the Chart page edits) have no pencil.
 - **Remove a widget**: Click the X button on any widget.
 - **Move widgets**: On a desktop (a mouse or trackpad), grab a widget by its grip handle and drop it
   where it should go: an accent bar shows whether it lands before or after the card under the pointer

@@ -1,13 +1,50 @@
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'preact/hooks'
 
 import { fetchActivityTypeDefinitions } from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
 import { ActivityTypePicker } from '../ActivityTypePicker'
-import { type ConfigValues, withConfigValue } from './configValues'
+import { clampInt, type ConfigValues, withConfigValue } from './configValues'
 import { RECENT_ACTIVITIES_VISITOR_WARNING, VisibleToVisitorsField } from './VisibleToVisitorsField'
 import './RecentActivitiesConfigForm.css'
 
 type SetConfigValues = (update: (prev: ConfigValues) => ConfigValues) => void
+
+// The bounds of recentActivitiesConfigSchema, which rejects a save outside them.
+const LIMIT_RANGE = [1, 20] as const
+const LOOKBACK_DAYS_RANGE = [1, 365] as const
+
+// Clamped on blur, not per keystroke (compat turns onChange into onInput), so the field can be
+// cleared and retyped; a field left blank drops the key and shows the default again.
+function ClampedNumberInput({
+  defaultValue,
+  onCommit,
+  range: [min, max],
+  value,
+}: {
+  defaultValue: number
+  onCommit: (value: number) => void
+  range: readonly [number, number]
+  value: number | undefined
+}) {
+  const shown = String(value ?? defaultValue)
+  const [draft, setDraft] = useState(shown)
+  useEffect(() => setDraft(shown), [shown])
+  return (
+    <input
+      type="number"
+      value={draft}
+      onInput={(e) => setDraft(e.currentTarget.value)}
+      onBlur={() => {
+        const next = clampInt(parseInt(draft, 10), min, max)
+        setDraft(String(Number.isNaN(next) ? defaultValue : next))
+        onCommit(next)
+      }}
+      min={min}
+      max={max}
+    />
+  )
+}
 
 function TypeChips({ onChange, types }: { onChange: (types: string[]) => void; types: string[] }) {
   const { data: defs = [] } = useQuery({
@@ -86,23 +123,21 @@ export function RecentActivitiesConfigForm({
       {!periodMode && window === 'latest' && (
         <div class="form-group">
           <label>Look back (days)</label>
-          <input
-            type="number"
-            value={(configValues.lookback_days as number | undefined) ?? 30}
-            onChange={(e) => set('lookback_days', parseInt((e.target as HTMLInputElement).value, 10))}
-            min={1}
-            max={365}
+          <ClampedNumberInput
+            value={configValues.lookback_days as number | undefined}
+            defaultValue={30}
+            range={LOOKBACK_DAYS_RANGE}
+            onCommit={(value) => set('lookback_days', value)}
           />
         </div>
       )}
       <div class="form-group">
         <label>Limit</label>
-        <input
-          type="number"
-          value={(configValues.limit as number | undefined) ?? 5}
-          onChange={(e) => set('limit', parseInt((e.target as HTMLInputElement).value, 10))}
-          min={1}
-          max={20}
+        <ClampedNumberInput
+          value={configValues.limit as number | undefined}
+          defaultValue={5}
+          range={LIMIT_RANGE}
+          onCommit={(value) => set('limit', value)}
         />
       </div>
       <div class="form-group">

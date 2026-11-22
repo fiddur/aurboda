@@ -1,6 +1,5 @@
 import type { DashboardConfig } from '@aurboda/api-spec'
 
-/** The config with one day overview's or latest activities card's `visible_to_visitors` set; any other widget id leaves it as it is. */
 export const setVisibleToVisitors = (
   config: DashboardConfig,
   widgetId: string,
