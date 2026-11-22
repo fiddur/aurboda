@@ -120,7 +120,10 @@ highest lower coverage wins.
 
 **Direction matters**: reverse direction is a different route (uphill one way, downhill
 the other), and no direction flag is stored. After the coverage test, 24 points evenly
-spaced along T that fall inside R's buffer are projected onto R (`ST_LineLocatePoint`);
+spaced along T that fall inside R's buffer are projected onto R (`ST_LineLocatePoint`, both in
+Web Mercator so the nearest point and the spacing are by distance, not by degrees, which away
+from the equator weigh east-west less than north-south and can put a point near a corner on the
+wrong leg);
 the run is rejected as reversed when at least 80 % of consecutive projections decrease
 (and when fewer than four samples fall inside). A reversed run decreases almost everywhere.
 A loop started elsewhere on it wraps once and passes. An out-and-back course, whose legs
@@ -432,10 +435,12 @@ those passed by the most activities first. A stretch whose ends are less than 50
 dropped, as it could not be timed.
 
 **Storing**: a stretch similar to a stored one (same type, each line at least 80 % inside the
-other's 25 m buffer, same direction) is not stored again: a similar segment, or a dismissed or
+other's 25 m buffer, same direction, both located in Web Mercator) is not stored again: a similar segment, or a dismissed or
 promoted suggestion, keeps it out (so a dismissed stretch stays dismissed, also after the segment
 made from it is deleted); a similar pending one takes the larger activity count. Merging an
-activity type moves its suggestions with it; deleting one deletes them, pending and decided.
+activity type deletes its pending suggestions (the moved tracks are looked at again under the
+target type) and moves its dismissed and promoted ones with it; deleting one deletes them, pending
+and decided.
 Retyping an activity (an edit, an override, or a deduction rule) drops the pending suggestions
 found on it under the type it no longer has; decided ones stay.
 Promoting claims the suggestion first (it is marked promoted before the segment is made, and

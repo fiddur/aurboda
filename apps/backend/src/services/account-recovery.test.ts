@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest'
 import type {
   AccountEmailTokenIssue,
   AccountEmailTokenPurpose,
+  AccountsInTokenTransaction,
   ConsumedAccountEmailToken,
 } from './central-account-email-tokens.ts'
 import type { UserAccount } from './central-user-accounts.ts'
@@ -44,20 +45,24 @@ const setup = ({
   const tokens: StoredToken[] = []
   let counter = 0
   const sent: { to: string; message: MailMessage; kind: string }[] = []
+  const txAccounts = {
+    getUserAccount: vi.fn(async (username: string) => rows.get(username) ?? null),
+    setPasswordLogin: vi.fn(async (_username: string, _enabled: boolean) => true),
+  }
 
   const centralDb = {
     consumeAccountEmailToken: vi.fn(
       async (
         hash: string,
         purpose: AccountEmailTokenPurpose,
-        use?: (consumed: ConsumedAccountEmailToken) => Promise<void>,
+        use?: (consumed: ConsumedAccountEmailToken, accounts: AccountsInTokenTransaction) => Promise<void>,
       ) => {
         const token = tokens.find(
           (t) => t.token_hash === hash && t.purpose === purpose && !t.used && t.expires_at.getTime() > clock,
         )
         if (!token) return null
         const consumed = { email: token.email, username: token.username }
-        await use?.(consumed)
+        await use?.(consumed, txAccounts)
         token.used = true
         return consumed
       },
@@ -83,7 +88,9 @@ const setup = ({
       return true
     }),
   }
-  const setPassword = vi.fn(async (_username: string, _password: string) => {})
+  const setPassword = vi.fn(
+    async (_username: string, _password: string, _accounts: AccountsInTokenTransaction) => {},
+  )
   const clearFailedLogins = vi.fn()
   const audit = vi.fn(async () => {})
   const pruneAuditLog = vi.fn(async (_username: string) => {})
@@ -125,6 +132,7 @@ const setup = ({
     sent,
     setPassword,
     tokens,
+    txAccounts,
   }
 }
 
@@ -271,13 +279,22 @@ describe('completeRecovery', () => {
       token: 'session-for-alice',
       username: 'alice',
     })
-    expect(setPassword).toHaveBeenCalledWith('alice', 'new secret')
+    expect(setPassword).toHaveBeenCalledWith('alice', 'new secret', expect.anything())
     expect(clearFailedLogins).toHaveBeenCalledWith('alice')
     expect(audit).toHaveBeenCalledWith('alice', 'Password reset by email')
     expect(pruneAuditLog).toHaveBeenCalledWith('alice')
     await vi.waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0]).toMatchObject({ kind: 'recovery_notice', to: 'alice@example.com' })
     expect(sent[0].message.subject).toBe('Your Aurboda password was reset')
+  })
+
+  test('reads the account and sets the password on the transaction holding the token', async () => {
+    const { centralDb, recovery, setPassword, txAccounts } = await requested()
+    centralDb.getUserAccount.mockClear()
+    expect((await recovery.completeRecovery('token-1', 'new secret')).ok).toBe(true)
+    expect(txAccounts.getUserAccount).toHaveBeenCalledWith('alice')
+    expect(centralDb.getUserAccount).not.toHaveBeenCalled()
+    expect(setPassword.mock.calls[0][2]).toBe(txAccounts)
   })
 
   test('without a password: signs in and changes nothing about the password', async () => {

@@ -144,7 +144,8 @@ export const upsertSuggestion = async (
                / NULLIF(ST_Length(n.g::geography), 0) >= $5
          AND ST_Length(ST_Intersection(c.geom, ST_Buffer(n.g::geography, $4)::geometry)::geography)
                / NULLIF(ST_Length(c.geom::geography), 0) >= $5
-         AND ST_LineLocatePoint(c.geom, ST_StartPoint(n.g)) < ST_LineLocatePoint(c.geom, ST_EndPoint(n.g))`,
+         AND ST_LineLocatePoint(ST_Transform(c.geom, 3857), ST_Transform(ST_StartPoint(n.g), 3857))
+           < ST_LineLocatePoint(ST_Transform(c.geom, 3857), ST_Transform(ST_EndPoint(n.g), 3857))`,
       [input.activity_type, input.wkt, BBOX_EXPAND_DEG, SEGMENT_BUFFER_M, SUGGESTION_SIMILARITY],
     )
     if (similar.rows.some((r) => r.kind === 'segment' || r.status !== 'pending')) return 'skipped'
