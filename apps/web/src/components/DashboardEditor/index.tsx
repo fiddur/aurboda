@@ -50,7 +50,7 @@ interface WidgetTemplate {
   description: string
   defaultConfig: () => DashboardWidget['config']
   allowedSections: SectionType[]
-  /** False for a card whose settings are not chosen here (a chart edited on the Chart page). */
+  /** Charts are edited on the Chart page. */
   hasSettings?: false
 }
 
@@ -234,7 +234,6 @@ const widgetTemplates: WidgetTemplate[] = [
 
 const templateOf = (type: DashboardWidget['type']) => widgetTemplates.find((t) => t.type === type)
 
-/** Whether a card has settings to edit in place: a known type with a settings form, offered on this kind of dashboard. */
 export const widgetHasSettings = (type: DashboardWidget['type'], periodMode: boolean): boolean => {
   const template = templateOf(type)
   return (

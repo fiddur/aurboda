@@ -35,7 +35,6 @@ export interface UseTimelineZoomResult {
     viewEnd: Date,
     chartDimension: number,
   ) => void
-  /** Call after any redraw that can run during a touch gesture. */
   parkTouchTargets: () => void
 }
 

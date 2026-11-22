@@ -15,6 +15,8 @@ export const PERSON_NOTIFY_DAYS_MAX = 60
 export const DELETED_PERSON_RETENTION_DAYS = 30
 
 export const PERSON_RECENT_ACTIVITIES_LIMIT = 20
+export const PERSON_ACTIVITIES_DEFAULT_LIMIT = 50
+export const PERSON_ACTIVITIES_MAX_LIMIT = 200
 export const PERSON_POSTS_DEFAULT_LIMIT = 20
 export const PERSON_POSTS_MAX_LIMIT = 50
 
@@ -184,12 +186,28 @@ export const personDateSchema = z
 
 export type PersonDate = z.infer<typeof personDateSchema>
 
+export const personActivityTypeCountSchema = z
+  .object({
+    activity_type: z.string(),
+    count: z.number().int().meta({ description: 'Activities of the type with the person' }),
+    type_name: z.string().meta({ description: 'Display name of the type' }),
+  })
+  .meta({ id: 'PersonActivityTypeCount' })
+
+export type PersonActivityTypeCount = z.infer<typeof personActivityTypeCountSchema>
+
 export const personDetailSchema = personSchema
   .extend({
+    activity_count: z.number().int().meta({
+      description: 'How many activities the person was with, merged activities counted once',
+    }),
+    activity_types: z.array(personActivityTypeCountSchema).meta({
+      description: 'The types of those activities with their counts, most frequent first',
+    }),
     dates: z.array(personDateSchema).meta({ description: "The person's dates, by month and day" }),
     journal_entries: journalEntryRefsSchema.optional(),
     recent_activities: z.array(activitySchema).meta({
-      description: `The ${PERSON_RECENT_ACTIVITIES_LIMIT} latest activities the person was with, newest first`,
+      description: `The ${PERSON_RECENT_ACTIVITIES_LIMIT} latest activities the person was with, newest first; the first page of \`GET /people/{id}/activities\``,
     }),
   })
   .meta({ id: 'PersonDetail' })
@@ -391,3 +409,48 @@ export const personPostsResponseSchema = baseResponseSchema
   .meta({ id: 'PersonPostsResponse' })
 
 export type PersonPostsResponse = z.infer<typeof personPostsResponseSchema>
+
+export const personActivitiesQuerySchema = z
+  .object({
+    before: z.string().optional().meta({
+      description: 'The `next_cursor` of the previous page; absent for the first page',
+    }),
+    end: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Only activities starting at or before this time' }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(PERSON_ACTIVITIES_MAX_LIMIT)
+      .optional()
+      .meta({
+        description: `How many activities (default ${PERSON_ACTIVITIES_DEFAULT_LIMIT}, at most ${PERSON_ACTIVITIES_MAX_LIMIT})`,
+      }),
+    start: iso8601DateTimeSchema
+      .optional()
+      .meta({ description: 'Only activities starting at or after this time' }),
+    types: z.string().optional().meta({
+      description: 'Comma-separated activity types to include, with their subtypes',
+      example: 'walking,running',
+    }),
+  })
+  .meta({ id: 'PersonActivitiesQuery' })
+
+export type PersonActivitiesQuery = z.infer<typeof personActivitiesQuerySchema>
+
+export const personActivitiesResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(activitySchema).optional().meta({
+      description: 'The activities, newest first; a merged activity once, under the id its detail page takes',
+    }),
+    next_cursor: z.string().optional().meta({
+      description: 'Pass as `before` for the next page; absent on the last page',
+    }),
+    total: z.number().int().optional().meta({
+      description: 'How many activities match the filter, over all pages',
+    }),
+  })
+  .meta({ id: 'PersonActivitiesResponse' })
+
+export type PersonActivitiesResponse = z.infer<typeof personActivitiesResponseSchema>

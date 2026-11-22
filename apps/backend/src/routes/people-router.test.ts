@@ -4,6 +4,7 @@ import express from 'express'
 import supertest from 'supertest'
 import { describe, expect, test } from 'vitest'
 
+import type { Activity } from '../db/types.ts'
 import type { PeopleDeps } from '../services/people.ts'
 
 import { fakePeopleDeps } from '../test/fake-people-deps.ts'
@@ -74,6 +75,8 @@ describe('/people', () => {
     const detail = await http.get(`/people/${id}`)
     expect(detail.body.person).toMatchObject({
       dates: [{ label: 'Wedding' }],
+      activity_count: 0,
+      activity_types: [],
       journal_entries: [],
       recent_activities: [],
     })
@@ -141,5 +144,51 @@ describe('/people', () => {
     expect((await http.get(`/people/${withHandle.id}/posts?limit=5`)).body.entries).toEqual([{ id: 'p1' }])
     expect((await http.get(`/people/${without.id}/posts`)).status).toBe(404)
     expect((await http.get(`/people/${withHandle.id}/posts?limit=51`)).status).toBe(400)
+  })
+
+  test('GET /:id/activities pages with a cursor to the end, with the total; bad cursors and people are refused', async () => {
+    const { activities, http } = setup()
+    const { id } = (await http.post('/people').send({ name: 'Anna' })).body.person
+    const at = (n: number, type: string): Activity => ({
+      activity_type: type,
+      id: `00000000-0000-4000-9000-${String(n).padStart(12, '0')}`,
+      source: 'aurboda',
+      start_time: new Date(Date.UTC(2026, 10, 1 + (n % 3))),
+    })
+    activities.set(
+      id,
+      Array.from({ length: 7 }, (_, n) => at(n, n < 5 ? 'walking' : 'running')),
+    )
+
+    const seen: string[] = []
+    let before: string | undefined
+    for (let pages = 0; pages < 5; pages++) {
+      const res = await http
+        .get(`/people/${id}/activities`)
+        .query({ limit: 3, ...(before ? { before } : {}) })
+      expect(res.status).toBe(200)
+      expect(res.body.total).toBe(7)
+      seen.push(...res.body.data.map((a: { id: string }) => a.id))
+      before = res.body.next_cursor
+      if (!before) break
+    }
+    expect(seen).toHaveLength(7)
+    expect(new Set(seen).size).toBe(7)
+
+    const walking = await http.get(`/people/${id}/activities?types=walking`)
+    expect(walking.body).toMatchObject({ success: true, total: 5 })
+    expect(walking.body.next_cursor).toBeUndefined()
+
+    const detail = (await http.get(`/people/${id}`)).body.person
+    expect(detail.activity_count).toBe(7)
+    expect(detail.activity_types).toEqual([
+      { activity_type: 'walking', count: 5, type_name: 'Walking' },
+      { activity_type: 'running', count: 2, type_name: 'Running' },
+    ])
+
+    expect((await http.get(`/people/${id}/activities?before=nope`)).status).toBe(400)
+    expect((await http.get(`/people/${id}/activities?limit=201`)).status).toBe(400)
+    expect((await http.get('/people/99999999-9999-4999-8999-999999999999/activities')).status).toBe(404)
+    expect((await http.get('/people/nope/activities')).status).toBe(404)
   })
 })

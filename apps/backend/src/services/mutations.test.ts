@@ -38,6 +38,7 @@ vi.mock('../db', async () => ({
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
   fetchCategoryMap: vi.fn().mockResolvedValue(new Map()),
   findHcRecordId: vi.fn().mockResolvedValue(null),
+  findSameInstantManualActivities: vi.fn().mockResolvedValue([]),
   findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
   getActivitySourcesByIds: vi.fn().mockResolvedValue([]),

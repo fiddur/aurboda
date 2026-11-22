@@ -35,6 +35,7 @@ import {
   type DetailSyncedCallback,
   type TrackWrittenCallback,
   type GarminDataType,
+  garminDetailResync,
   hasGarminConnection,
   syncAllGarminData,
 } from '../integrations/garmin/sync.ts'
@@ -45,6 +46,7 @@ import { syncAllOuraData } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { syncStrava } from '../integrations/strava/sync.ts'
 import { getCentralDb } from '../services/central-db.ts'
+import { resyncDetailAnswer, resyncGarminActivityDetail } from '../services/garmin-resync-detail.ts'
 import { listHomeAssistantEntities } from '../services/home-assistant.ts'
 import { getSettings } from '../services/settings.ts'
 import { getVisibleSyncStates } from '../services/sync-states.ts'
@@ -150,6 +152,21 @@ export const registerSyncTools = (
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })
       }
+    },
+  )
+
+  server.tool(
+    'resync_garmin_activity_detail',
+    "Fetch one activity's Garmin detail (per-second metrics, GPS track) again, through the Garmin Connect login or a Personal API key that Garmin accepts; Connect with Garmin only receives what Garmin sends, so it cannot. The activity, or a source merged with it, must carry a Garmin activity id. Answers the number of points synced, or why it could not: not connected that way, no activity file at Garmin, no Garmin id, not found, or Garmin refused.",
+    { id: z.string().describe('Activity ID (a "merged:" prefix is accepted and stripped)') },
+    async ({ id }) => {
+      const outcome = await resyncGarminActivityDetail(
+        user,
+        id.replace(/^merged:/, ''),
+        garmin && garminDetailResync(garmin, { onDetailSynced, onTrackWritten }),
+      )
+      const { body } = resyncDetailAnswer(outcome)
+      return body.success ? jsonResponse(body) : errorResponse(body.error ?? 'Re-sync failed')
     },
   )
 

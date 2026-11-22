@@ -57,7 +57,10 @@ export interface GarminConnectionFlags {
   /** A key and no login: the types and details only the login serves are missing. */
   keyOnly: boolean
   oauth: GarminOAuthStatus
-  /** A login or a key: the connections the pull sync runs on. Connect with Garmin only receives pushes. */
+  /**
+   * A login or a usable key (not refused, not expired): the connections the pull sync runs on.
+   * Connect with Garmin only receives pushes.
+   */
   canPull: boolean
 }
 
@@ -101,11 +104,13 @@ export const garminConnectionFlags = (
         garmin_oauth?: GarminOAuthStatus
       }
     | undefined,
+  today: string = localIsoDate(new Date()),
 ): GarminConnectionFlags => {
   const sessionConnected = settings?.garmin_session_connected ?? false
   const personalKey = settings?.garmin_personal_key
+  const keyUsable = personalKey?.connected === true && keyExpiryState(personalKey, today) !== 'error'
   return {
-    canPull: sessionConnected || (personalKey?.connected ?? false),
+    canPull: sessionConnected || keyUsable,
     isConnected: settings?.garmin_connected ?? false,
     keyOnly: !sessionConnected && (personalKey?.connected ?? false),
     oauth: settings?.garmin_oauth ?? NO_OAUTH,

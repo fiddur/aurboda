@@ -5,6 +5,8 @@ import type {
   ImportantDatesResponse,
   PeopleResponse,
   Person,
+  PersonActivitiesQuery,
+  PersonActivitiesResponse,
   PersonDate,
   PersonDateResponse,
   PersonDetail,
@@ -81,6 +83,17 @@ export const restorePerson = (id: string): Promise<Person | undefined> =>
     )
     return response.data.person
   }, 'Couldn’t restore. Please try again.')
+
+export const fetchPersonActivities = async (
+  id: string,
+  query: PersonActivitiesQuery = {},
+): Promise<PersonActivitiesResponse> => {
+  const response = await axios.get<PersonActivitiesResponse>(`${personUrl(id)}/activities`, {
+    headers: authHeaders(),
+    params: query,
+  })
+  return response.data
+}
 
 export const fetchPersonPosts = async (id: string, limit?: number): Promise<TimelineEntry[]> => {
   const response = await axios.get<PersonPostsResponse>(`${personUrl(id)}/posts`, {

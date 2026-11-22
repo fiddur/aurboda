@@ -390,6 +390,28 @@ export type ResyncDetailResult =
   | { status: 'no_file' }
   | { status: 'failed' }
 
+export type ResyncActivityDetailFn = (
+  user: string,
+  activityId: string,
+  garminActivityId: number,
+  activitySpan: ActivitySpan | null,
+  activityStart: Date,
+) => Promise<ResyncDetailResult>
+
+/** `resyncActivityDetail` bound to a client and the callbacks a written detail notifies. */
+export const garminDetailResync =
+  (
+    garmin: GarminClient,
+    callbacks: { onDetailSynced?: DetailSyncedCallback; onTrackWritten?: TrackWrittenCallback },
+  ): ResyncActivityDetailFn =>
+  (user, activityId, garminActivityId, activitySpan, activityStart) =>
+    resyncActivityDetail(
+      user,
+      garmin,
+      { activityId, activitySpan, activityStart, garminActivityId },
+      callbacks,
+    )
+
 /** One activity's detail, fetched again on request through whichever connection can pull it. */
 export const resyncActivityDetail = async (
   user: string,

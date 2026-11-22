@@ -10,6 +10,7 @@ import {
 } from './common.ts'
 import { bucketSizeSchema } from './metrics.ts'
 import { commentSchema } from './notes.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 export const productivityRecordSchema = z
   .object({
@@ -133,7 +134,7 @@ export type ScreentimeBucket = z.infer<typeof screentimeBucketSchema>
 export const screentimeBucketedQuerySchema = timeRangeQuerySchema
   .extend({
     bucket: bucketSizeSchema,
-    tz: z.string().optional().meta({
+    tz: ianaTimezoneSchema.optional().meta({
       description: 'IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). Defaults to UTC.',
       example: 'Europe/Stockholm',
     }),

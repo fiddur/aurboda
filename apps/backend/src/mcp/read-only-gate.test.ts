@@ -36,6 +36,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'get_person',
     'list_important_dates',
     'list_person_posts',
+    'list_person_activities',
   ])('allows %s', (name) => expect(isToolAllowedWhenReadOnly(name)).toBe(true))
 
   test.each([

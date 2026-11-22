@@ -135,12 +135,12 @@ describe('getRecentActivities: type selection', () => {
 })
 
 describe('getRecentActivities: range', () => {
-  test('today runs from local midnight in tz to now', async () => {
+  test('today reads from a day before local midnight in tz to now', async () => {
     const d = deps()
 
     await getRecentActivities('u', { window: 'today' }, { now, tz }, d)
 
-    expect(queriedRange(d)).toEqual({ end: now, start: new Date('2026-11-20T23:00:00Z') })
+    expect(queriedRange(d)).toEqual({ end: now, start: new Date('2026-11-19T23:00:00Z') })
   })
 
   test('today is the default window', async () => {
@@ -148,7 +148,33 @@ describe('getRecentActivities: range', () => {
 
     await getRecentActivities('u', {}, { now: new Date('2026-11-21T23:30:00Z'), tz }, d)
 
-    expect(queriedRange(d).start).toEqual(new Date('2026-11-21T23:00:00Z'))
+    expect(queriedRange(d).start).toEqual(new Date('2026-11-20T23:00:00Z'))
+  })
+
+  test('today lists what overlaps the local day, sorted by start', async () => {
+    const d = deps([
+      activity('2026-11-20T21:00:00Z', { end_time: new Date('2026-11-20T22:30:00Z'), id: 'ended-yesterday' }),
+      activity('2026-11-20T22:00:00Z', {
+        end_time: new Date('2026-11-20T23:00:00Z'),
+        id: 'ended-at-midnight',
+      }),
+      activity('2026-11-20T22:30:00Z', { end_time: new Date('2026-11-21T00:30:00Z'), id: 'into-today' }),
+      activity('2026-11-20T22:45:00Z', { id: 'point-yesterday' }),
+      activity('2026-11-21T08:00:00Z', { id: 'point-today' }),
+      activity('2026-11-21T09:00:00Z', { end_time: new Date('2026-11-21T09:00:00Z'), id: 'zero-today' }),
+    ])
+
+    const result = await getRecentActivities('u', { limit: 10 }, { now, tz }, d)
+
+    expect(result.activities.map((a) => a.id)).toEqual(['zero-today', 'point-today', 'into-today'])
+  })
+
+  test('latest lists what starts in the look-back only', async () => {
+    const d = deps()
+
+    await getRecentActivities('u', { lookback_days: 1, window: 'latest' }, { now, tz }, d)
+
+    expect(queriedRange(d).start).toEqual(new Date('2026-11-20T15:00:00Z'))
   })
 
   test('latest looks back 30 days by default', async () => {
@@ -167,13 +193,26 @@ describe('getRecentActivities: range', () => {
     expect(queriedRange(d)).toEqual({ end: now, start: new Date('2026-11-14T15:00:00Z') })
   })
 
-  test('a fixed range wins over window and lookback_days', async () => {
+  test('a fixed range wins over window and lookback_days, read from a day earlier', async () => {
     const d = deps()
     const range = { end: new Date('2026-10-31T22:59:59.999Z'), start: new Date('2026-09-30T22:00:00Z') }
 
     await getRecentActivities('u', { lookback_days: 7, window: 'latest' }, { now, range, tz }, d)
 
-    expect(queriedRange(d)).toEqual(range)
+    expect(queriedRange(d)).toEqual({ end: range.end, start: new Date('2026-09-29T22:00:00Z') })
+  })
+
+  test('a fixed range lists what overlaps it', async () => {
+    const range = { end: new Date('2026-10-31T22:59:59.999Z'), start: new Date('2026-09-30T22:00:00Z') }
+    const d = deps([
+      activity('2026-09-30T20:00:00Z', { end_time: new Date('2026-09-30T21:00:00Z'), id: 'before' }),
+      activity('2026-09-30T21:30:00Z', { end_time: new Date('2026-09-30T22:30:00Z'), id: 'across-start' }),
+      activity('2026-10-10T08:00:00Z', { id: 'inside' }),
+    ])
+
+    const result = await getRecentActivities('u', {}, { now, range, tz }, d)
+
+    expect(result.activities.map((a) => a.id)).toEqual(['inside', 'across-start'])
   })
 })
 
@@ -296,6 +335,81 @@ describe('getRecentActivities: rows', () => {
     const [row] = (await getRecentActivities('u', {}, { now, tz }, d)).activities
 
     expect(row?.id).toBe('merged:w1')
+  })
+
+  test("lists the type's show_in_summary fields the activity has, not the figures", async () => {
+    const supplement = def('supplement', 'intake', {
+      data_schema: {
+        fields: [
+          { name: 'substance', show_in_summary: true, type: 'string' },
+          { name: 'dose', show_in_summary: true, type: 'number', unit: 'mg' },
+          { label: 'Brand', name: 'brand_name', show_in_summary: true, type: 'string' },
+          { name: 'note', type: 'string' },
+          { name: 'calories', show_in_summary: true, type: 'number' },
+          { name: 'empty', show_in_summary: true, type: 'string' },
+        ],
+      },
+    })
+    const d = deps([
+      activity(
+        '2026-11-21T07:00:00Z',
+        { data: { calories: 5, dose: 10, empty: ' ', note: 'with food', substance: 'Zinc' }, id: 's1' },
+        'supplement',
+      ),
+    ])
+    vi.mocked(d.listActivityTypeDefinitions).mockResolvedValue([...definitions, supplement])
+
+    const [row] = (await getRecentActivities('u', { types: ['supplement'] }, { now, tz }, d)).activities
+
+    expect(row?.calories).toBe(5)
+    expect(row?.summary_fields).toEqual([
+      { label: 'Substance', value: 'Zinc' },
+      { label: 'Dose', unit: 'mg', value: 10 },
+    ])
+  })
+
+  test('reads a flagged unit field beside its amount as one figure', async () => {
+    const supplement = def('supplement', 'intake', {
+      data_schema: {
+        fields: [
+          { name: 'substance', show_in_summary: true, type: 'string' },
+          { name: 'dose', type: 'number' },
+          { label: 'Unit', name: 'dose_unit', show_in_summary: true, type: 'string' },
+        ],
+      },
+    })
+    const d = deps([
+      activity(
+        '2026-11-21T07:00:00Z',
+        { data: { dose: 10, dose_unit: 'mg', substance: 'zinc' }, id: 's1' },
+        'supplement',
+      ),
+      activity(
+        '2026-11-21T06:00:00Z',
+        { data: { dose_unit: 'mg', substance: 'iron' }, id: 's2' },
+        'supplement',
+      ),
+    ])
+    vi.mocked(d.listActivityTypeDefinitions).mockResolvedValue([...definitions, supplement])
+
+    const rows = (await getRecentActivities('u', { types: ['supplement'] }, { now, tz }, d)).activities
+
+    expect(rows[0]?.summary_fields).toEqual([
+      { label: 'Substance', value: 'zinc' },
+      { label: 'Dose', unit: 'mg', value: 10 },
+    ])
+    expect(rows[1]?.summary_fields).toEqual([
+      { label: 'Substance', value: 'iron' },
+      { label: 'Unit', value: 'mg' },
+    ])
+  })
+
+  test('leaves summary_fields out when there are none', async () => {
+    const d = deps([activity('2026-11-21T07:00:00Z', { data: { calories: 5 } })])
+
+    const [row] = (await getRecentActivities('u', {}, { now, tz }, d)).activities
+
+    expect(row).not.toHaveProperty('summary_fields')
   })
 
   test('humanizes the name of a type without a definition', async () => {

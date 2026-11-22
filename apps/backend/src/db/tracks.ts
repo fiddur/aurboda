@@ -84,6 +84,20 @@ export const getActivityTrack = async (
   }
 }
 
+/** Whether `getActivityTrack` would answer a track for this id. */
+export const activityHasTrack = async (user: string, activityId: string): Promise<boolean> => {
+  if (!UUID_RE.test(activityId)) return false
+  const result = await query(
+    user,
+    `SELECT 1 FROM activity_tracks t
+     JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
+     WHERE t.activity_id = $1
+     LIMIT 1`,
+    [activityId],
+  )
+  return result.rows.length > 0
+}
+
 export const hasActivityTrack = async (
   user: string,
   activityId: string,
