@@ -73,7 +73,8 @@ The page auto-refreshes every 60 seconds.
 The bar is scaled to the maximum when the goal has one, else to the minimum:
 
 - **Min only** (Steps ≥ 70,000): the bar is full at the minimum.
-- **Max only**: the bar is full at the maximum.
+- **Max only**: the bar is full at the maximum. At 0 the bar is empty though the goal is kept, so
+  the value reads "★ 0" in green instead (also with a minimum of 0).
 - **Min and max** (Zone 5, 5-10 min): the bar is full at the maximum, with a marker at the minimum.
 
 A value past 100 % starts a second bar under the first that shows the overflow (85,000 of a 70,000
@@ -143,7 +144,8 @@ Goals can be **drag-reordered** -- the order determines how they appear on the G
 The Android home screen widget shows the same goal progress as the web page. Each goal appears as a row with the metric label, current value, progress bar, and "losing tomorrow" amount. The widget:
 
 - Updates after each background sync (every 15 minutes)
-- Uses the same color coding (gray/green/red) and overflow bar
+- Uses the same color coding (gray/green/red) and overflow bar, and the same green "★ 0" for a max
+  goal kept at 0
 - Respects the drag order from the web settings
 - Is resizable; it lists the goals in a scrolling list, so a taller widget shows more of them at once
 - Tapping it opens the Goals page in the app

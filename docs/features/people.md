@@ -173,7 +173,10 @@ A comment can be about a person: `entity_type: person` with the person's ID (see
 [Comments](comments.md)). It has no time, so it is not on the Timeline or in search; it is read
 through the person (`GET /notes?entity_type=person&entity_id=…`). A note about an unknown or
 deleted person is refused as not found, and reading the notes of one answers an empty list, as for
-any unknown entity; the notes stay stored, and restoring the person brings them back.
+any unknown entity; the notes stay stored, and restoring the person brings them back. The reads
+that check a comment's parent (the Timeline's range read, journal search, the related-entries lists)
+treat a deleted person as they treat a deleted activity: the notes about them are left out until
+the person is restored.
 
 ## API
 

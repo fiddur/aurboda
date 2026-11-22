@@ -211,4 +211,4 @@ export const strongestAndWeakestLabel = ({
 }: {
   strongest: ScoredGroup
   weakest: ScoredGroup
-}): string => `${strongest.name} ${strongest.score} · ${weakest.name} ${weakest.score}`
+}): [string, string] => [`${strongest.name} ${strongest.score}`, `${weakest.name} ${weakest.score}`]

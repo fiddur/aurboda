@@ -4,7 +4,7 @@ import { useRef, useState } from 'preact/hooks'
 
 import { MarkdownEditor } from '../../components/MarkdownEditor'
 import { MentionMenu, usePeople } from './Related'
-import { insertMention, mentionAt, mentionOptions, moveChoice } from './related'
+import { insertMention, mentionAt, mentionOptions, moveChoice, offeredPeople } from './related'
 
 /**
  * The entry's text, where typing `@` offers the user's people: arrow keys and Enter (or a tap) pick
@@ -23,7 +23,7 @@ export const MentionEditor = ({
   onBlur: () => void
   attachPictures: (files: File[]) => void
 }) => {
-  const people = usePeople().data?.people ?? []
+  const people = offeredPeople(usePeople().data?.people ?? [])
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [caret, setCaret] = useState<number | undefined>(undefined)
   const [choice, setChoice] = useState(0)

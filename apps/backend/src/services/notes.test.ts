@@ -15,6 +15,7 @@ import {
   journalExcerpt,
   listDeletedNotes,
   listJournalEntryRefs,
+  noteRelatedLabel,
   onThisDayFilter,
   restoreNoteById,
   searchNotesForUser,
@@ -1536,8 +1537,17 @@ describe('related people and activities', () => {
   const WALK = randomUUID()
   const annaLink = { entity_id: ANNA, entity_type: 'person' as const }
   const walkLink = { entity_id: WALK, entity_type: 'activity' as const }
-  const annaRecord = { entity_id: ANNA, entity_type: 'person' as const, name: 'Anna', start_time: null }
+  const annaRecord = {
+    activity_type: null,
+    end_time: null,
+    entity_id: ANNA,
+    entity_type: 'person' as const,
+    name: 'Anna',
+    start_time: null,
+  }
   const walkRecord = {
+    activity_type: 'walking',
+    end_time: new Date('2026-11-21T00:30:00Z'),
     entity_id: WALK,
     entity_type: 'activity' as const,
     name: 'Evening walk',
@@ -1571,8 +1581,30 @@ describe('related people and activities', () => {
     expect(vi.mocked(db.insertNote).mock.calls[0]![6]).toMatchObject({ related: [annaLink, walkLink] })
     expect(result.data?.related).toEqual([
       { entity_id: ANNA, entity_type: 'person', label: 'Anna' },
-      { entity_id: WALK, entity_type: 'activity', label: 'Evening walk, 2026-11-21' },
+      {
+        activity_type: 'walking',
+        entity_id: WALK,
+        entity_type: 'activity',
+        label: 'Evening walk, 2026-11-21',
+      },
     ])
+  })
+
+  test('a sleep is labelled with the day it ended, other activities with the day they started', () => {
+    const sleep = {
+      activity_type: 'sleep',
+      end_time: new Date('2026-11-20T06:30:00Z'),
+      name: 'Sleep',
+      start_time: new Date('2026-11-19T22:30:00Z'),
+    }
+    expect(noteRelatedLabel(sleep, 'UTC')).toBe('Sleep, 2026-11-20')
+    expect(noteRelatedLabel({ ...sleep, end_time: null }, 'UTC')).toBe('Sleep, 2026-11-19')
+    expect(noteRelatedLabel({ ...sleep, activity_type: 'walking', name: 'Walk' }, 'UTC')).toBe(
+      'Walk, 2026-11-19',
+    )
+    expect(noteRelatedLabel({ ...sleep, start_time: null, activity_type: null, name: 'Anna' }, 'UTC')).toBe(
+      'Anna',
+    )
   })
 
   test('without related a new entry answers an empty list and writes no links', async () => {

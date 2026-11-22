@@ -147,6 +147,33 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links (entity_type, entity_id)
   `,
 
+  // entity_id has no foreign key (it targets two tables), so an activity removed for good takes
+  // its links with it here, whichever path deletes it. Statement-level, so a source-wide delete
+  // costs one statement rather than one per row.
+  note_links_activity_delete_trigger: `
+    CREATE OR REPLACE FUNCTION delete_note_links_of_deleted_activities() RETURNS TRIGGER AS $$
+    BEGIN
+      DELETE FROM note_links l
+       USING deleted_activities d
+       WHERE l.entity_type = 'activity' AND l.entity_id = d.id;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+         WHERE event_object_table = 'activities'
+           AND trigger_name = 'activities_delete_note_links'
+      ) THEN
+        CREATE TRIGGER activities_delete_note_links
+          AFTER DELETE ON activities
+          REFERENCING OLD TABLE AS deleted_activities
+          FOR EACH STATEMENT EXECUTE FUNCTION delete_note_links_of_deleted_activities();
+      END IF;
+    END $$
+  `,
+
   note_templates: `
     CREATE TABLE IF NOT EXISTS note_templates (
       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

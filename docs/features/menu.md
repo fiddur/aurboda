@@ -60,6 +60,10 @@ The setting is `hidden_pages` in the user settings: `GET /user/settings` returns
 when nothing is hidden) and `PATCH /user/settings { "hidden_pages": ["/meals", "/strength"] }`
 replaces it; `null` or `[]` shows every page again. The MCP tools `get_user_settings` and
 `update_user_settings` carry the same field. Each entry is a menu path starting with `/`, at most 200
-characters, and the list holds at most 200. The server keeps the list as given, unknown paths
-included, so a page that is renamed or added later never loses a choice; the clients ignore paths
-they do not know and the never-hidden ones.
+characters, and the list holds at most 200. When the list is saved, the server drops each path that
+no menu offers a switch for any more (a page that left the menus, such as the per-source data-source
+pages, or a never-hidden one) and any repeat, without refusing the update, so an older client that
+still sends one is not turned away and a stale choice cannot linger with no switch to clear it. The
+hideable paths are `HIDEABLE_MENU_PATHS` in `packages/api-spec/src/menu.ts`: the top links, the
+section links and the app-only pages, less the never-hidden ones. A list stored before this rule is
+cleaned at its next save; until then the clients ignore paths they do not know.

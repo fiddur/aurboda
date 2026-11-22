@@ -3,6 +3,7 @@ import {
   defaultGoals,
   type Goal,
   isKnownTimezone,
+  keepHideableMenuPaths,
   type HrZoneSecs,
   type HrZoneSource,
   type HrZoneThresholds,
@@ -422,6 +423,7 @@ const storedUpdates = (
   if (input.tz === null) clear.push('device_timezone')
   else if (input.tz !== undefined) updates.device_timezone = input.tz
   if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
+  if (updates.hidden_pages) updates.hidden_pages = keepHideableMenuPaths(updates.hidden_pages)
   const haUrl = updates.home_assistant_url
   if (haUrl) updates.home_assistant_url = normalizeHomeAssistantUrl(haUrl)
   return { clear, updates }

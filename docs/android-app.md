@@ -354,7 +354,8 @@ Two `AppWidgetProvider`s live in `widget/`:
 
 - **HR Zones** (`HrZoneWidgetProvider` + `GoalsWidgetService`): the goal
   progress bars from `GET /goals/progress/widget`, one row per goal in the web
-  order, with the same colours and overflow bar as the web Goals page (see
+  order, with the same colours, overflow bar and green "★ 0" for a max goal
+  kept at 0 as the web Goals page (see
   [Goals: Android Widget](features/goals.md#android-widget)). It is resizable and
   its rows scroll. Tapping it opens the Goals page.
 - **Challenge** (`ChallengeWidgetProvider`, min 2×2, resizable): the race chart

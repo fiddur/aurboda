@@ -19,7 +19,6 @@ export interface NoteExtras {
   tags?: string[]
   hashtags?: string[]
   date?: string | null
-  /** The people and activities the new note is related to, written in the same transaction. */
   related?: NoteLinkInput[]
 }
 
@@ -393,7 +392,6 @@ export interface NotesSearchParams {
   cursor?: NotesSearchCursor
   /** Only entries with a live picture and no text. */
   needs_text?: boolean
-  /** Only entries with a visible link to this person or activity. */
   related?: NoteLinkInput
 }
 

@@ -16,7 +16,7 @@ import { filterPeople } from '../People/people-view'
 /** A link as the editor holds it: the target and the label its chip shows. */
 export type RelatedLink = NoteRelated
 
-const linkKey = (link: Pick<NoteRelated, 'entity_type' | 'entity_id'>) =>
+export const linkKey = (link: Pick<NoteRelated, 'entity_type' | 'entity_id'>) =>
   `${link.entity_type}:${link.entity_id.toLowerCase()}`
 
 export const hasLink = (
@@ -45,6 +45,27 @@ export const unionLinks = (first: readonly RelatedLink[], second: readonly Relat
 export const linksToInput = (links: readonly RelatedLink[]): NoteRelatedInput[] =>
   links.map(({ entity_id, entity_type }) => ({ entity_id, entity_type }))
 
+const isSleep = (activity: Pick<Activity, 'activity_type'>) => activity.activity_type === 'sleep'
+
+/** The people offered for a new link: an archived person keeps the links they have, but gets no new ones. */
+export const offeredPeople = <T extends Pick<Person, 'archived'>>(people: readonly T[]): T[] =>
+  people.filter((p) => !p.archived)
+
+/**
+ * The keys of the links in `links` that a save refused as no longer there: the ids an
+ * `Unknown person: <ids>` or `Unknown activity: <ids>` answer names.
+ */
+export const refusedLinkKeys = (message: string, links: readonly RelatedLink[]): Set<string> => {
+  const match = /^Unknown (person|activity): (.+)$/.exec(message.trim())
+  if (!match) return new Set()
+  const named = new Set(
+    match[2]!
+      .split(',')
+      .map((id) => linkKey({ entity_id: id.trim(), entity_type: match[1] as NoteRelatedEntityType })),
+  )
+  return new Set(links.map(linkKey).filter((key) => named.has(key)))
+}
+
 export const relatedHref = (link: Pick<NoteRelated, 'entity_type' | 'entity_id'>): string =>
   link.entity_type === 'person'
     ? `/people/${encodeURIComponent(link.entity_id)}`
@@ -70,17 +91,20 @@ export const personLink = (person: Pick<Person, 'id' | 'name'>): RelatedLink => 
 export const activityRowId = (activity: Pick<Activity, 'id'>): string =>
   (activity.id ?? '').replace(/^merged:/, '')
 
-/** Its title, else its type's name, and its local date: as the server labels it. */
+/** Its title, else its type's name, and its local date (a sleep's, the morning it ended): as the server labels it. */
 export const activityLabel = (
-  activity: Pick<Activity, 'title' | 'activity_type' | 'start_time'>,
+  activity: Pick<Activity, 'title' | 'activity_type' | 'start_time' | 'end_time'>,
   typeName: (type: string) => string = toDisplayName,
-): string =>
-  `${activity.title?.trim() || typeName(activity.activity_type)}, ${format(activity.start_time, 'yyyy-MM-dd')}`
+): string => {
+  const dated = isSleep(activity) && activity.end_time ? activity.end_time : activity.start_time
+  return `${activity.title?.trim() || typeName(activity.activity_type)}, ${format(dated, 'yyyy-MM-dd')}`
+}
 
 export const activityLink = (
-  activity: Pick<Activity, 'id' | 'title' | 'activity_type' | 'start_time'>,
+  activity: Pick<Activity, 'id' | 'title' | 'activity_type' | 'start_time' | 'end_time'>,
   typeName?: (type: string) => string,
 ): RelatedLink => ({
+  activity_type: activity.activity_type,
   entity_id: activityRowId(activity),
   entity_type: 'activity',
   label: activityLabel(activity, typeName),
@@ -93,8 +117,6 @@ export const dayActivityWindow = (date: string): { start: Date; end: Date } => {
   start.setHours(12, 0, 0, 0)
   return { end: addDays(day, 1), start }
 }
-
-const isSleep = (activity: Pick<Activity, 'activity_type'>) => activity.activity_type === 'sleep'
 
 /**
  * The activities of `date` for the picker: the sleep that ended that morning first, then those
