@@ -61,9 +61,14 @@ an activity's people on the web.
 Time with people is a correlation selector (with anyone, or with one person), and **With** is a
 breakdown and filter of an activity's sessions, both private to you: see
 [Time with people](correlations.md#time-with-people). In Explore it is the **time with
-people** kind (with anyone, or a person by name), offered in Continuous mode. The article editor
+people** kind (with anyone, or a person by name), offered in both modes. The article editor
 offers it too: a block of the time with one person names them to readers, and the editor warns
 so under the block ([Sharing warnings](feed.md#sharing-warnings)).
+
+In Explore's **Event onset** mode, **time with people** is a trigger as well: with anyone or a
+person, and optionally "at least N minutes" that day, so "what happens on days I meet Anna" can be
+asked there. The result reads "Trigger: Time with Anna" (or "Time with anyone"); see
+[People triggers](../correlations.md#people-triggers).
 
 ## A person
 
@@ -145,6 +150,13 @@ resolved when read (a renamed person shows their new name), and leave it out whe
 merged view is with everyone its sources were with. Merging activities gives the merged one the
 union of the links; a soft-deleted activity keeps its links and gets them back when restored.
 `GET /people/{id}` lists the 20 latest live activities the person was with.
+
+### Added by a rule
+
+A [deduction rule](deduction-rules.md#adding-people-output_people) can add people too: its
+`output_people` are added to the With field of each activity it creates, enriches or retypes. A rule
+only ever adds people, never removes them, so taking a person off the rule leaves the activities it
+already touched as they are.
 
 ## Journal entries
 

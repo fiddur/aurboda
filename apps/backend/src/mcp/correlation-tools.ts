@@ -18,6 +18,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  genericTriggersError,
   getActivityImpact,
   getBaseline,
   getContinuousCorrelation,
@@ -167,6 +168,7 @@ export const registerCorrelationTools = (server: McpServer, user: string, sync?:
 - Multiple trigger conditions with AND logic (e.g., "exercise 3x AND fatcoffee 5x in a week")
 - Different outcome types: activity types, metrics (weight, body_fat, etc.), or productivity time
 - Rolling windows for trigger counting
+- Daily-value triggers, which need an "event" outcome: nutrition (a nutrient's daily total) and people (minutes per UTC day with person_id, or with anyone when it is omitted, overlapping activities counted once); threshold turns the value into a trigger day (default > 0, e.g. { op: "gte", value: 60 } for at least an hour with them). An unknown or deleted person_id is refused.
 For a metric outcome, sample_count counts the raw samples; ${timeWeightedAveragesNote} Their mean and stddev are taken over the bins, counted in bin_count.
 For an event outcome, event_outcome.per_lag[] has p_value (raw, for that lag alone) and p_value_adjusted (Benjamini–Hochberg over the event_outcome.comparisons lags); call a lag notable only from p_value_adjusted < 0.05.
 Examples:
@@ -185,6 +187,12 @@ ${flaggedWindowsNote} Activities, app time and samples in a flagged window are d
       triggers,
       tz,
     }) => {
+      const triggersError = await genericTriggersError(
+        user,
+        triggers as TriggerCondition[],
+        outcome as OutcomeConfig,
+      )
+      if (triggersError) return errorResponse(triggersError)
       const result = await getGenericCorrelation(
         user,
         triggers as TriggerCondition[],

@@ -884,9 +884,10 @@ export const thresholdSpecSchema = z
 export type ThresholdSpec = z.infer<typeof thresholdSpecSchema>
 
 export const triggerConditionTypeSchema = z
-  .enum(['activity', 'tag', 'productivity_category', 'productivity_app', 'nutrition'])
+  .enum(['activity', 'tag', 'productivity_category', 'productivity_app', 'nutrition', 'people'])
   .meta({
-    description: 'Type of trigger event',
+    description:
+      'Type of trigger event. nutrition and people are daily values (grams or kcal; minutes with people, overlapping activities counted once) turned into an event by threshold, and need an "event" outcome.',
     example: 'tag',
     id: 'TriggerConditionType',
   })
@@ -903,12 +904,17 @@ export const triggerConditionSchema = z
     nutrient: nutrientKeySchema.optional().meta({ description: 'Nutrient to use when type is "nutrition"' }),
     pattern: z.string().optional().meta({
       description:
-        'Pattern to match (regex for tags, exact match for activity types). Omit for nutrition triggers.',
+        'Pattern to match (regex for tags, exact match for activity types). Omit for nutrition and people triggers.',
       example: 'meditation',
     }),
-    threshold: thresholdSpecSchema
-      .optional()
-      .meta({ description: 'Threshold turning a daily value into a trigger (default: value > 0)' }),
+    person_id: z.string().uuid().optional().meta({
+      description:
+        "Person to use when type is 'people'; omit for time with anyone. An unknown or deleted person is refused.",
+    }),
+    threshold: thresholdSpecSchema.optional().meta({
+      description:
+        'Threshold turning a daily value into a trigger (default: value > 0). For people the value is minutes, e.g. { op: "gte", value: 60 } for at least an hour.',
+    }),
     type: triggerConditionTypeSchema,
     window_days: z.number().int().optional().meta({
       description: 'Rolling window in days for counting occurrences (default: 1)',

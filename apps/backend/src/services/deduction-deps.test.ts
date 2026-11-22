@@ -6,6 +6,7 @@ vi.mock('../db/index', () => ({
   getMediaPlays: vi.fn().mockResolvedValue([]),
   getOverrideForActivity: vi.fn().mockResolvedValue(null),
   insertDeductionRuleRun: vi.fn(),
+  listLivePersonIds: vi.fn(),
   upsertActivity: vi.fn().mockResolvedValue({ changed: true, id: 'new-id' }),
 }))
 

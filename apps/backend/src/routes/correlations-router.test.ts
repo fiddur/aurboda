@@ -8,6 +8,12 @@ import { createCorrelationsRouter } from './correlations-router.ts'
 vi.mock('../services/correlations/activity-impact.ts', () => ({ getActivityImpact: vi.fn() }))
 vi.mock('../services/correlations/hrv-activities.ts', () => ({ getHrvActivitiesCorrelation: vi.fn() }))
 vi.mock('../services/correlations/impact-metrics.ts', () => ({ getImpactMetrics: vi.fn() }))
+vi.mock('../services/activity-people.ts', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  activityPeopleError: vi.fn(async (_user: string, ids?: string[]) =>
+    ids?.length ? `Unknown people: ${ids.join(', ')}` : null,
+  ),
+}))
 
 const { getActivityImpact } = await import('../services/correlations/activity-impact.ts')
 const { getHrvActivitiesCorrelation } = await import('../services/correlations/hrv-activities.ts')
@@ -242,5 +248,26 @@ describe('period_days', () => {
       expect(res.status).toBe(400)
       expect(JSON.stringify(res.body.error)).toContain('period_days')
     }
+  })
+})
+
+describe('POST /correlations/generic with a people trigger', () => {
+  const GONE = '22222222-2222-4222-8222-222222222222'
+  const outcome = { metric: 'headache', source: 'metric', type: 'event' }
+
+  test('400 naming an unknown or deleted person', async () => {
+    const res = await supertest(buildApp())
+      .post('/correlations/generic')
+      .send({ outcome, triggers: [{ person_id: GONE, type: 'people' }] })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe(`Unknown people: ${GONE}`)
+  })
+
+  test('400 with an outcome that is not an event', async () => {
+    const res = await supertest(buildApp())
+      .post('/correlations/generic')
+      .send({ outcome: { pattern: 'x', type: 'tag' }, triggers: [{ type: 'people' }] })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('"event" outcome')
   })
 })

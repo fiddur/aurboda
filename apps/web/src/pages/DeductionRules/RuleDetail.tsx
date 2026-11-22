@@ -14,6 +14,7 @@ import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ConditionBuilder } from '../../components/ConditionBuilder'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
+import { WithPicker } from '../../components/WithPicker'
 import {
   createDeductionRule,
   deleteDeductionRule,
@@ -145,6 +146,12 @@ function OutputDataEditor({
       </button>
     </div>
   )
+}
+
+const modeVerb: Record<DeductionRuleMode, string> = {
+  create: 'creates',
+  enrich: 'enriches',
+  retype: 'retypes',
 }
 
 // eslint-disable-next-line complexity -- unified form handling create + edit modes
@@ -314,6 +321,24 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               autoSave({ output_data: Object.keys(data).length > 0 ? data : null })
             }}
           />
+
+          <div class="rule-field">
+            <label class="rule-field-label" for="rule-with-picker">
+              With
+            </label>
+            <WithPicker
+              id="rule-with-picker"
+              value={fields.people}
+              onChange={(ids) => {
+                updateField('people', ids)
+                autoSave({ output_people: ids.length > 0 ? ids : null })
+              }}
+            />
+          </div>
+          <p class="rule-field-hint">
+            Adds these people to each activity the rule {modeVerb[fields.mode]}. People are only ever added:
+            removing one here does not take them off activities the rule already touched.
+          </p>
 
           {fields.mode === 'enrich' && (
             <>

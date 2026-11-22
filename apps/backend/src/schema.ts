@@ -271,6 +271,7 @@ export const tableCreationOrder = [
   'deduction_rules',
   'deduction_rules_indexes',
   'deduction_rules_output_category',
+  'deduction_rules_output_people',
   'deduction_rule_runs',
   'deduction_rule_runs_indexes',
   'webauthn_credentials',

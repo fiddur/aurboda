@@ -106,11 +106,13 @@ export interface ThresholdSpec {
 }
 
 export interface TriggerCondition {
-  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app' | 'nutrition'
-  /** Pattern to match (omitted for nutrition triggers). */
+  type: 'activity' | 'tag' | 'productivity_category' | 'productivity_app' | 'nutrition' | 'people'
+  /** Pattern to match (omitted for nutrition and people triggers). */
   pattern?: string
   /** Nutrient to use when type is 'nutrition'. */
   nutrient?: NutrientKey
+  /** Person to use when type is 'people'; absent for time with anyone. */
+  person_id?: string
   /** Threshold turning a daily value into a trigger (default: value > 0). */
   threshold?: ThresholdSpec
   /**

@@ -86,6 +86,7 @@ export interface DeductionRule {
   output_media_field?: OutputMediaField
   output_title_field?: string
   output_category?: NonNullable<ApiDeductionRule['output_category']>
+  output_people?: string[]
   created_at?: string
 }
 
