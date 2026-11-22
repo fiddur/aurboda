@@ -97,6 +97,7 @@ import {
   addActivity,
   bulkAddMetrics,
   deleteActivity,
+  enqueueMetricOutboundDelete,
   restoreActivity,
 } from './mutations.ts'
 import { type Notifier, notifier, pingWhenMarkedRead } from './notifications.ts'
@@ -151,6 +152,8 @@ export interface CheckInDeps {
   ) => Promise<SlotCheckInRecord[]>
   deleteSkips: (user: string, formId: string, scheduledFor: Date) => Promise<unknown>
   deletePoints: (user: string, points: readonly CheckInLoggedPoint[]) => Promise<unknown>
+  /** Takes points the check-in no longer has off Health Connect; best-effort, it never throws. */
+  forgetPoints: (user: string, points: readonly CheckInLoggedPoint[]) => Promise<unknown>
   writePoints: (user: string, items: BulkMetricItem[]) => Promise<BulkAddMetricsResult>
   getCustomMetrics: (user: string) => Promise<CustomMetricDefinition[]>
   createMetric: (user: string, definition: CustomMetricDefinition) => Promise<unknown>
@@ -204,6 +207,7 @@ export const checkInDeps: CheckInDeps = {
   },
   deletePoints: (user, points) => deleteCheckInPoints(user, points),
   deleteSkips: (user, formId, scheduledFor) => deleteSkippedCheckIns(user, formId, scheduledFor),
+  forgetPoints: (user, points) => enqueueMetricOutboundDelete(user, points),
   getCheckIn: (user, id) => getCheckIn(user, id),
   getCustomMetrics: (user) => getCustomMetrics(user),
   getForm: (user, id) => getCheckInForm(user, id),
@@ -906,6 +910,18 @@ const movedSkipProblem = async (
   return null
 }
 
+/**
+ * A point rewritten at the same metric and time is overwritten on Health Connect by its insert (the
+ * record is keyed by both), so only the others are taken off it.
+ */
+const pointsNoLongerLogged = (
+  old: readonly CheckInLoggedPoint[],
+  logged: Record<string, CheckInLoggedPoint>,
+): CheckInLoggedPoint[] => {
+  const kept = new Set(Object.values(logged).map(({ metric, time }) => `${metric}|${time}`))
+  return old.filter(({ metric, time }) => !kept.has(`${metric}|${time}`))
+}
+
 export const updateCheckInById = async (
   deps: CheckInDeps,
   user: string,
@@ -939,22 +955,27 @@ const updateCheckInLocked = async (
   const outcome = await storingWrittenOnFailure(deps, user, existing.id, written, async () => {
     let logErrors: LogErrors = []
     if (relogs) {
-      await deps.deletePoints(user, Object.values(existing.logged))
+      const old = Object.values(existing.logged)
+      await deps.deletePoints(user, old)
       written.logged = {}
-      await deleteActivities(deps, user, existing.activity_ids, (key) => {
-        delete written.activity_ids[key]
-      })
-      const result = await logEverything(
-        deps,
-        user,
-        { formName: existing.form_name, questions: existing.questions, score: existing.score_definition },
-        answers,
-        answeredAt,
-        written,
-      )
-      patch.logged = result.logged
-      patch.activity_ids = result.activity_ids
-      logErrors = result.log_errors
+      try {
+        await deleteActivities(deps, user, existing.activity_ids, (key) => {
+          delete written.activity_ids[key]
+        })
+        const result = await logEverything(
+          deps,
+          user,
+          { formName: existing.form_name, questions: existing.questions, score: existing.score_definition },
+          answers,
+          answeredAt,
+          written,
+        )
+        patch.logged = result.logged
+        patch.activity_ids = result.activity_ids
+        logErrors = result.log_errors
+      } finally {
+        await deps.forgetPoints(user, pointsNoLongerLogged(old, written.logged))
+      }
     }
     return { logErrors, record: await deps.updateCheckIn(user, existing.id, patch) }
   })
@@ -979,8 +1000,10 @@ export const deleteCheckInById = async (
     if (existing.deleted_at) return null
     const written: Written = { activity_ids: { ...existing.activity_ids }, logged: { ...existing.logged } }
     return storingWrittenOnFailure(deps, user, id, written, async () => {
-      await deps.deletePoints(user, Object.values(existing.logged))
+      const old = Object.values(existing.logged)
+      await deps.deletePoints(user, old)
       written.logged = {}
+      await deps.forgetPoints(user, old)
       if (!(await deps.setCheckInDeleted(user, id, true))) {
         await deps.updateCheckIn(user, id, { logged: {} })
         return null

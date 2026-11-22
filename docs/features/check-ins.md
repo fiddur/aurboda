@@ -95,7 +95,10 @@ check-in remembers what it wrote in `logged` (per question key the metric and ti
 - deleting it removes them, and restoring it writes them again.
 
 A point of a metric that syncs to Health Connect (weight, say) is queued for the Android app's
-outbound sync, as `add_metric` does; a point a check-in removes is not deleted from Health Connect.
+outbound sync, as `add_metric` does. A point an edit or delete removes is taken off Health Connect
+again (or dropped from the queue if the phone has not written it yet); a point an edit keeps at the
+same metric and time is just overwritten, and a restore queues the points again. See
+[Health Connect](../health-connect.md#write-back-of-metric-points) for what is not covered.
 When a step of an edit, delete or restore fails halfway, `logged` and `activity_ids` are written as
 they stand at that moment, so they never claim a point or activity that is gone.
 

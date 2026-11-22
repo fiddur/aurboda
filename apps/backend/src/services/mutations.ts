@@ -32,7 +32,10 @@ import {
   replaceUserNotes,
   updateActivity as dbUpdateActivity,
   upsertActivity as dbUpsertActivity,
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   ensureActivityType,
   findHcRecordId,
   getSourceFilter,
@@ -53,7 +56,12 @@ import {
   loadActivityTypeCatalog,
 } from './activity-type-catalog.ts'
 import { auditError } from './audit-log.ts'
-import { getCustomMetrics, writeWithCatalogAdoption } from './custom-metrics.ts'
+import {
+  type DeleteMetricDataResult,
+  type DeleteMetricResult,
+  getCustomMetrics,
+  writeWithCatalogAdoption,
+} from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
@@ -174,6 +182,8 @@ function validateCustomMetricRange(
   return null
 }
 
+const healthConnectEntityId = (metric: string, time: string): string => `${metric}|${time}`
+
 /** Enqueues the Health Connect insert of a point of a syncable metric; best-effort, it never throws. */
 export const enqueueMetricOutboundSync = async (
   user: string,
@@ -184,7 +194,7 @@ export const enqueueMetricOutboundSync = async (
     const hcRecordType = metricToHealthConnectType[point.metric as keyof typeof metricToHealthConnectType]
     if (!hcRecordType) return
     await enqueueOutboundSync(user, {
-      entity_id: `${point.metric}|${point.time}`,
+      entity_id: healthConnectEntityId(point.metric, point.time),
       entity_type: 'time_series',
       hc_record_type: hcRecordType,
       operation: 'insert',
@@ -192,6 +202,67 @@ export const enqueueMetricOutboundSync = async (
     })
   } catch (err) {
     auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
+  }
+}
+
+/**
+ * Takes the points back off Health Connect: a point the phone wrote gets a queued delete, one still
+ * waiting to be written is dropped from the queue. Best-effort, it never throws.
+ */
+export const enqueueMetricOutboundDelete = async (
+  user: string,
+  points: readonly { metric: string; time: string | Date }[],
+): Promise<void> => {
+  try {
+    const items = points.flatMap(({ metric, time }) => {
+      const hcRecordType = metricToHealthConnectType[metric as keyof typeof metricToHealthConnectType]
+      if (!hcRecordType) return []
+      const iso = typeof time === 'string' ? new Date(time).toISOString() : time.toISOString()
+      return [{ entity_id: healthConnectEntityId(metric, iso), hc_record_type: hcRecordType }]
+    })
+    if (items.length === 0) return
+    await enqueueOutboundSyncDeletes(user, 'time_series', items)
+  } catch (err) {
+    auditError(user, 'data', 'Failed to enqueue outbound sync delete for metric', { error: String(err) })
+  }
+}
+
+/**
+ * The sources whose points Aurboda itself queues for Health Connect. The queue's entity id has no
+ * source, so deleting another source's point at the same instant must not take Aurboda's record.
+ */
+const OUTBOUND_SOURCES: ReadonlySet<string> = new Set(['aurboda', 'aurboda_gap_fill', 'check_in'])
+
+/** Soft-deletes one measurement by metric, time and source. */
+export async function deleteMetric(
+  user: string,
+  metric: string,
+  time: Date,
+  source: string,
+): Promise<DeleteMetricResult> {
+  const deleted = await deleteTimeSeriesPoint(user, metric, time, source)
+  if (deleted && OUTBOUND_SOURCES.has(source)) await enqueueMetricOutboundDelete(user, [{ metric, time }])
+
+  return {
+    deleted,
+    metric,
+    success: deleted,
+    time: time.toISOString(),
+  }
+}
+
+/** Soft-deletes all user-created measurements of a metric. */
+export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
+  const deleted = await deleteTimeSeriesMetric(user, metric)
+  await enqueueMetricOutboundDelete(
+    user,
+    deleted.filter(({ source }) => OUTBOUND_SOURCES.has(source)).map(({ time }) => ({ metric, time })),
+  )
+
+  return {
+    deletedCount: deleted.length,
+    metric,
+    success: true,
   }
 }
 
@@ -539,8 +610,6 @@ export async function addActivity(
 export {
   addCustomMetric,
   deleteCustomMetric,
-  deleteMetric,
-  deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
 } from './custom-metrics.ts'

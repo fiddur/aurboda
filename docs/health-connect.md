@@ -151,6 +151,33 @@ An `ExerciseSessionRecord` carries no step count. When an activity that came thr
 - Re-syncing an HC record is idempotent: the same `(entity_id, source='health_connect')` row is upserted, not duplicated.
 - An empty `notes` value, or the literal string `"null"` (which Waking Up writes for a session without notes), is not stored as a note.
 
+### Write-back of metric points
+
+A point Aurboda itself writes of a metric Health Connect takes (`weight`, `steps`, `heart_rate` and the
+others of `metricToHealthConnectType`) is queued for the app's outbound sync: `add_metric`, a
+[check-in](features/check-ins.md#answers-logged-as-metrics)'s answers, and the computed active calories. The app
+writes it with `clientRecordId` `aurboda-sync-<metric>|<time>`, so writing the same metric at the
+same instant again overwrites the record.
+
+Removing such a point takes it back off Health Connect ([#1904](https://github.com/fiddur/aurboda/issues/1904)):
+`delete_metric` of an `aurboda` or `check_in` point, `delete_metric_data`, and deleting or editing a
+check-in (an edit that keeps a point's metric and time just overwrites it). A point the phone already
+wrote gets a `delete` entry carrying the record id the app acknowledged; a point still waiting in the
+queue is dropped from it, so the phone never writes it; a point that was never queued is left alone.
+A later write of the same point (restoring the check-in, say) drops a pending delete of it and is queued
+as a fresh insert.
+
+Not covered:
+
+- A point whose insert was acknowledged more than 14 days ago: synced time-series queue rows are pruned
+  then, and with them the record id the delete needs.
+- An acknowledged insert the app wrote without returning a record id (skipped for a missing
+  permission, say): there is nothing to delete.
+- `ActiveCaloriesBurnedRecord`: the app does not know that type for a delete and acknowledges the entry
+  without deleting anything. Calorie recomputes only rewrite minutes, they never delete one.
+- Points removed by a source's own sync or by the rebuild paths (calorie and training-load recomputes),
+  which are not points Aurboda queued for writing or are rewritten right after.
+
 ### Chunking
 
 HeartRateRecord data (which can contain thousands of samples) is sent in chunks of 10 records per request to avoid HTTP 413 errors.

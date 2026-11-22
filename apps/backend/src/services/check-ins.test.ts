@@ -316,6 +316,78 @@ describe('editing, deleting and restoring check-ins', () => {
   })
 })
 
+describe('Health Connect forgets the points a check-in no longer has', () => {
+  const submit = async (fake: ReturnType<typeof fakeCheckInDeps>) => {
+    const form = await addForm(fake.deps)
+    return unwrap(
+      await submitCheckIn(fake.deps, USER, {
+        answered_at: '2026-11-20T07:00:00.000Z',
+        answers: { dose: 200, rested: 4 },
+        form_id: form.id,
+      }),
+    )
+  }
+  const at7 = '2026-11-20T07:00:00.000Z'
+
+  test('deleting a check-in forgets all its points, and restoring forgets none', async () => {
+    const fake = fakeCheckInDeps()
+    const checkIn = await submit(fake)
+    await deleteCheckInById(fake.deps, USER, checkIn.id)
+    expect(fake.forgotten).toEqual(
+      expect.arrayContaining([
+        { metric: 'rested', time: at7 },
+        { metric: 'ibuprofen_mg', time: at7 },
+      ]),
+    )
+    expect(fake.forgotten).toHaveLength(2)
+    fake.forgotten.length = 0
+    unwrap(await restoreCheckInById(fake.deps, USER, checkIn.id))
+    expect(fake.forgotten).toEqual([])
+    expect(fake.points).toHaveLength(2)
+  })
+
+  test('an edit at the same time forgets only the answer it removed', async () => {
+    const fake = fakeCheckInDeps()
+    const checkIn = await submit(fake)
+    unwrap(await updateCheckInById(fake.deps, USER, checkIn.id, { answers: { rested: 2 } }))
+    expect(fake.forgotten).toEqual([{ metric: 'ibuprofen_mg', time: at7 }])
+  })
+
+  test('an edit that moves the time forgets every old point', async () => {
+    const fake = fakeCheckInDeps()
+    const checkIn = await submit(fake)
+    unwrap(
+      await updateCheckInById(fake.deps, USER, checkIn.id, {
+        answered_at: '2026-11-20T07:30:00.000Z',
+        answers: { dose: 200, rested: 4 },
+      }),
+    )
+    expect(fake.forgotten).toHaveLength(2)
+    expect(fake.forgotten.every(({ time }) => time === at7)).toBe(true)
+  })
+
+  test('editing only the note forgets nothing', async () => {
+    const fake = fakeCheckInDeps()
+    const checkIn = await submit(fake)
+    unwrap(await updateCheckInById(fake.deps, USER, checkIn.id, { note: 'x' }))
+    expect(fake.forgotten).toEqual([])
+  })
+
+  test('an edit whose points fail to write forgets every old point', async () => {
+    const fake = fakeCheckInDeps()
+    const checkIn = await submit(fake)
+    const failingWrite: CheckInDeps['writePoints'] = async () => {
+      throw new Error('points')
+    }
+    await expect(
+      updateCheckInById({ ...fake.deps, writePoints: failingWrite }, USER, checkIn.id, {
+        answers: { rested: 2 },
+      }),
+    ).rejects.toThrow('points')
+    expect(fake.forgotten).toHaveLength(2)
+  })
+})
+
 describe('queryCheckIns', () => {
   test('pages newest first with a cursor and filters by form', async () => {
     const fake = fakeCheckInDeps()

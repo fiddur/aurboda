@@ -463,13 +463,19 @@ export const deleteTimeSeriesPoint = async (
   return (result.rowCount ?? 0) > 0
 }
 
-export const deleteTimeSeriesMetric = async (user: string, metric: string): Promise<number> => {
-  const result = await query(
+/** Soft-deletes the metric's user-created points; resolves to those it deleted. */
+export const deleteTimeSeriesMetric = async (
+  user: string,
+  metric: string,
+): Promise<Array<{ source: string; time: Date }>> => {
+  const result = await query<{ source: string; time: Date }>(
     user,
-    `UPDATE time_series SET deleted_at = NOW() WHERE metric = $1 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill') AND deleted_at IS NULL`,
+    `UPDATE time_series SET deleted_at = NOW()
+     WHERE metric = $1 AND source IN ('manual', 'aurboda', 'aurboda_gap_fill') AND deleted_at IS NULL
+     RETURNING source, time`,
     [metric],
   )
-  return result.rowCount ?? 0
+  return result.rows.map((row) => ({ source: row.source, time: new Date(row.time) }))
 }
 
 /**
