@@ -189,6 +189,18 @@ const outputTitleFieldDescription =
 const outputCategoryDescription =
   "Enrich mode only: add this category to data.run_categories of each matched activity of output_activity_type (with the feature conditions as reasons), and remove it again from activities the rule no longer matches; a category listed in the activity's run_categories_excluded is never added."
 
+const outputPeopleDescription =
+  'People to add to the With field of each activity the rule creates, enriches or retypes. People are only ever added: a person already on the activity stays, and the rule never removes anyone.'
+
+export const outputPeopleSchema = z
+  .array(z.string().uuid())
+  .min(1)
+  .max(20)
+  .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
+    message: 'output_people must not repeat a person',
+  })
+  .meta({ description: outputPeopleDescription })
+
 const outputCategorySchema = runCategoryNameSchema.meta({ description: outputCategoryDescription })
 
 const outputTitleFieldSchema = dataFieldNameSchema.meta({ description: outputTitleFieldDescription })
@@ -230,6 +242,7 @@ export const deductionRuleSchema = z
         'Static data fields to set on created activities; enrich and retype only fill missing fields',
     }),
     output_media_field: outputMediaFieldSchema.optional(),
+    output_people: outputPeopleSchema.optional(),
     output_title_field: outputTitleFieldSchema.optional(),
     output_title: z.string().optional().meta({
       description:
@@ -275,6 +288,7 @@ export const addDeductionRuleBodySchema = z
       description: 'Static data fields for created activities; enrich and retype only fill missing fields',
     }),
     output_media_field: outputMediaFieldSchema.optional(),
+    output_people: outputPeopleSchema.optional(),
     output_title_field: outputTitleFieldSchema.optional(),
     output_title: z.string().optional().meta({
       description:
@@ -319,6 +333,10 @@ export const updateDeductionRuleBodySchema = z
       .nullable()
       .optional()
       .meta({ description: 'New play-title enrichment (null to clear)' }),
+    output_people: outputPeopleSchema
+      .nullable()
+      .optional()
+      .meta({ description: `${outputPeopleDescription} Null to clear.` }),
     output_title_field: dataFieldNameSchema
       .nullable()
       .optional()

@@ -20,6 +20,7 @@ const d = (h: number, m = 0) =>
   new Date(`2024-01-15T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`)
 
 const makeDeps = (): DeductionEngineDeps => ({
+  addActivityPeople: vi.fn().mockResolvedValue([]),
   deleteStaleRuleActivities: vi.fn().mockResolvedValue(0),
   enrichActivities: vi.fn().mockResolvedValue([]),
   getActivities: vi.fn().mockResolvedValue([]),
@@ -30,12 +31,14 @@ const makeDeps = (): DeductionEngineDeps => ({
   getActivityFeatures: vi.fn().mockResolvedValue(null),
   getCategorisableActivities: vi.fn().mockResolvedValue([]),
   getEarliestActivityTime: vi.fn().mockResolvedValue(null),
+  getEnrichTargets: vi.fn().mockResolvedValue([]),
   getLocationVisits: vi.fn().mockResolvedValue([]),
   getMediaPlays: vi.fn().mockResolvedValue([]),
   getScrobbles: vi.fn().mockResolvedValue([]),
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue({ changed: true, id: undefined }),
   insertRuleRun: vi.fn().mockResolvedValue(undefined),
+  listLivePersonIds: vi.fn(async (_user: string, ids: string[]) => ids),
   patchActivityData: vi.fn().mockResolvedValue(true),
   retitleActivities: vi.fn().mockResolvedValue([]),
   retypeActivity: vi.fn().mockResolvedValue(true),
@@ -1425,5 +1428,118 @@ describe('evaluateAllRules with a failing rule', () => {
       expect.objectContaining({ rule_id: 'broken' }),
     )
     expect(deps.insertRuleRun).toHaveBeenCalledOnce()
+  })
+})
+
+describe('output_people', () => {
+  const user = 'testuser'
+  const window = { end: d(23), start: d(0) }
+  const anna = '11111111-1111-4111-8111-111111111111'
+  const bo = '22222222-2222-4222-8222-222222222222'
+  const baseRule: DeductionRule = {
+    conditions: [
+      { activity_type: 'fika', field: 'with_whom', kind: 'activity_data', operator: 'eq', value: 'Anna' },
+    ],
+    enabled: true,
+    id: 'rule-people',
+    mode: 'enrich',
+    name: 'Fika with Anna',
+    output_activity_type: 'fika',
+    output_people: [anna],
+    priority: 0,
+  }
+  let deps: DeductionEngineDeps
+
+  beforeEach(() => {
+    deps = makeDeps()
+    vi.mocked(deps.getActivitiesWithData).mockResolvedValue([{ end: d(11), start: d(10) }])
+  })
+
+  test('create mode links the people on the created activity', async () => {
+    vi.mocked(deps.insertActivity).mockResolvedValue({ changed: false, id: 'created-1' })
+    vi.mocked(deps.addActivityPeople).mockResolvedValue(['created-1'])
+
+    const result = await evaluateRule(user, { ...baseRule, mode: undefined }, window, deps)
+
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['created-1'], [anna], false)
+    expect(result.activities_created).toBe(1)
+  })
+
+  test('an enrich rule with only output_people links and counts', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1', 'a2'])
+    vi.mocked(deps.addActivityPeople).mockResolvedValue(['a1'])
+
+    const result = await evaluateRule(user, baseRule, window, deps)
+
+    expect(deps.getEnrichTargets).toHaveBeenCalledWith(user, 'fika', [{ end: d(11), start: d(10) }])
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1', 'a2'], [anna], false)
+    expect(result).toMatchObject({ activities_created: 1, affected_ids: ['a1'] })
+  })
+
+  test('an activity that already has the people is not affected', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1'])
+    vi.mocked(deps.addActivityPeople).mockResolvedValue([])
+
+    const result = await evaluateRule(user, baseRule, window, deps)
+
+    expect(result).toMatchObject({ activities_created: 0, affected_ids: [] })
+  })
+
+  test('a person deleted since the rule was saved is skipped', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1'])
+    vi.mocked(deps.listLivePersonIds).mockResolvedValue([bo])
+
+    await evaluateRule(user, { ...baseRule, output_people: [anna, bo] }, window, deps)
+
+    expect(deps.listLivePersonIds).toHaveBeenCalledWith(user, [anna, bo])
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1'], [bo], false)
+  })
+
+  test('no live people means no link at all', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1'])
+    vi.mocked(deps.listLivePersonIds).mockResolvedValue([])
+
+    const result = await evaluateRule(user, baseRule, window, deps)
+
+    expect(deps.addActivityPeople).not.toHaveBeenCalled()
+    expect(result.activities_created).toBe(0)
+  })
+
+  test('the dry run counts the activities that would gain a person', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1', 'a2', 'a3'])
+    vi.mocked(deps.addActivityPeople).mockResolvedValue(['a1', 'a3'])
+
+    const result = await evaluateRule(user, baseRule, window, deps, true)
+
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1', 'a2', 'a3'], [anna], true)
+    expect(result.would_affect).toBe(2)
+    expect(deps.enrichActivities).not.toHaveBeenCalled()
+  })
+
+  test('retype mode links the people on the retyped activities', async () => {
+    const rule: DeductionRule = {
+      ...baseRule,
+      conditions: [{ activity_type: 'other', kind: 'activity', title: 'fika' }],
+      mode: 'retype',
+    }
+    vi.mocked(deps.findActivities).mockResolvedValue([
+      { end: d(11), id: 'r1', start: d(10) },
+      { end: d(13), id: 'r2', start: d(12) },
+    ])
+    vi.mocked(deps.retypeActivity).mockImplementation(async (_u, id) => id === 'r1')
+
+    await evaluateRule(user, rule, window, deps)
+
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['r1'], [anna], false)
+  })
+
+  test('a rule without people never touches them', async () => {
+    vi.mocked(deps.getEnrichTargets).mockResolvedValue(['a1'])
+
+    await evaluateRule(user, { ...baseRule, output_data: { x: 1 }, output_people: undefined }, window, deps)
+
+    expect(deps.getEnrichTargets).not.toHaveBeenCalled()
+    expect(deps.listLivePersonIds).not.toHaveBeenCalled()
+    expect(deps.addActivityPeople).not.toHaveBeenCalled()
   })
 })

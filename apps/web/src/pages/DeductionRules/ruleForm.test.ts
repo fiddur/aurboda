@@ -8,6 +8,7 @@ import {
   isOutputCategoryInvalid,
   modeChangeBody,
   ruleToFields,
+  rulePeopleSummary,
   toOutputCategory,
   toOutputTitleField,
 } from './ruleForm'
@@ -107,5 +108,40 @@ describe('modeChangeBody', () => {
     expect(modeChangeBody('enrich', rule({ mode: 'create', output_title_field: 'x' }))).toEqual({
       mode: 'enrich',
     })
+  })
+})
+
+describe('output_people form mapping', () => {
+  test('round-trips the people through the form, in every mode', () => {
+    for (const mode of ['create', 'enrich', 'retype'] as const) {
+      const fields = ruleToFields(rule({ mode, output_people: ['p1', 'p2'] }))
+      expect(fields.people).toEqual(['p1', 'p2'])
+      expect(fieldsToBuildBody(fields).output_people).toEqual(['p1', 'p2'])
+    }
+  })
+
+  test('no people sends none', () => {
+    expect(ruleToFields(rule()).people).toEqual([])
+    expect(fieldsToBuildBody(defaultFields).output_people).toBeUndefined()
+  })
+})
+
+describe('rulePeopleSummary', () => {
+  const people = [
+    { id: 'p1', name: 'Anna' },
+    { id: 'p2', name: 'Bo' },
+  ]
+
+  test('names the people in the rule order', () => {
+    expect(rulePeopleSummary(['p2', 'p1'], people)).toBe('with Bo, Anna')
+  })
+
+  test('an id the list no longer has is a removed person', () => {
+    expect(rulePeopleSummary(['p1', 'gone'], people)).toBe('with Anna, a removed person')
+  })
+
+  test('nothing without people', () => {
+    expect(rulePeopleSummary(undefined, people)).toBeNull()
+    expect(rulePeopleSummary([], people)).toBeNull()
   })
 })

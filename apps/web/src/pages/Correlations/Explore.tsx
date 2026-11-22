@@ -6,7 +6,6 @@ import type {
   GenericCorrelationData,
   GroupComparison,
   LagExposureResultData,
-  TriggerCondition,
 } from '@aurboda/api-spec'
 
 import { batch, signal } from '@preact/signals'
@@ -20,6 +19,7 @@ import {
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { comparisonsNote, SIGNIFICANCE_LEVEL } from './effects'
+import { eventTriggerLabel, toTriggerCondition } from './eventTrigger'
 import { describeCompleteness, fiveNumberSummary, linearRegression, selectorAxisLabel } from './exploreCharts'
 import {
   describeCorrelationStrength,
@@ -55,6 +55,8 @@ const denominator = signal<Denominator>(initial.denominator)
 const periodStart = signal(initial.start)
 const periodEnd = signal(initial.end)
 const periodDays = signal(initial.days)
+// Event mode, time with people: "at least N minutes" a day (blank: any time).
+const peopleMinMinutes = signal('')
 // Bumped on each Run to trigger the query.
 const runToken = signal(0)
 
@@ -67,15 +69,11 @@ const EVENT_TRIGGER_KINDS: CorrelationSelector['kind'][] = [
   'nutrition',
   'productivity_category',
   'productivity_app',
-]
-
-// Every selector kind (continuous mode allows a metric, a meal sensitivity or the time with people on either side).
-const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = [
-  'metric',
-  ...EVENT_TRIGGER_KINDS,
-  'sensitivity',
   'people',
 ]
+
+// Every selector kind (continuous mode allows a metric or a meal sensitivity on either side too).
+const ALL_SELECTOR_KINDS: CorrelationSelector['kind'][] = ['metric', ...EVENT_TRIGGER_KINDS, 'sensitivity']
 
 /** Switch mode, clamping the trigger to a kind valid in the new mode. */
 const setMode = (next: ExploreMode) => {
@@ -195,16 +193,7 @@ const PRESETS: { label: string; apply: () => void }[] = [
 
 const buildRequest = () => {
   if (mode.value === 'event') {
-    const trigger = triggerSelector.value
-    const triggerCondition: TriggerCondition =
-      trigger.kind === 'nutrition'
-        ? { nutrient: trigger.nutrient, type: 'nutrition' }
-        : trigger.kind === 'metric'
-          ? { pattern: '', type: 'activity' } // metric not valid as a trigger; fall back to empty activity
-          : {
-              pattern: 'pattern' in trigger ? trigger.pattern : '',
-              type: trigger.kind === 'activity' ? 'activity' : (trigger.kind as TriggerCondition['type']),
-            }
+    const triggerCondition = toTriggerCondition(triggerSelector.value, peopleMinMinutes.value)
     const outcome: EventOutcome =
       eventOutcomeSource.value === 'metric'
         ? { metric: eventOutcomeValue.value, source: 'metric', type: 'event' }
@@ -253,7 +242,7 @@ function RrBars({ perLag }: { perLag: LagExposureResultData[] }) {
   )
 }
 
-function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
+function EventOutcomeResults({ data, triggerLabel }: { data: GenericCorrelationData; triggerLabel: string }) {
   const eo = data.event_outcome
   if (!eo) return <p class="explore-empty">No event-outcome result.</p>
 
@@ -262,6 +251,9 @@ function EventOutcomeResults({ data }: { data: GenericCorrelationData }) {
 
   return (
     <div class="explore-results">
+      <p class="explore-trigger-label">
+        Trigger: <strong>{triggerLabel}</strong>
+      </p>
       <p class="explore-summary">
         {eo.onsets} onsets (from {eo.outcome_days} event days) · {eo.trigger_days} trigger days ·{' '}
         {eo.known_days} known days · denominator: {eo.denominator}
@@ -527,7 +519,7 @@ function ContinuousResults({ data, selectors }: ContinuousProps) {
 }
 
 type ExploreResult =
-  | { kind: 'event'; data: GenericCorrelationData }
+  | { kind: 'event'; data: GenericCorrelationData; trigger: CorrelationSelector; minMinutes: string }
   | { kind: 'continuous'; data: ContinuousCorrelationData }
 
 /** Run the active-mode correlation request. Extracted to keep ExploreTab simple. */
@@ -546,7 +538,7 @@ const runExplore = async (): Promise<ExploreResult> => {
       outcome: { ...built.outcome, collapse_gap_days: collapseGapDays.value },
       triggers: [built.triggerCondition],
     })
-    return { kind: 'event', data }
+    return { data, kind: 'event', minMinutes: peopleMinMinutes.value, trigger: triggerSelector.value }
   }
   const data = await fetchContinuousCorrelation({
     ...period,
@@ -623,6 +615,22 @@ export function ExploreTab() {
             allowedKinds={mode.value === 'event' ? EVENT_TRIGGER_KINDS : ALL_SELECTOR_KINDS}
           />
         </div>
+
+        {mode.value === 'event' && triggerSelector.value.kind === 'people' && (
+          <div class="explore-row">
+            <label for="explore-people-min">At least</label>
+            <input
+              id="explore-people-min"
+              type="number"
+              min={1}
+              class="period-days-input"
+              value={peopleMinMinutes.value}
+              onInput={(e) => (peopleMinMinutes.value = (e.target as HTMLInputElement).value)}
+              placeholder="any"
+            />
+            <span class="regime-hint">minutes that day (blank: any time with them)</span>
+          </div>
+        )}
 
         <div class="explore-row">
           <label>Outcome</label>
@@ -796,7 +804,12 @@ export function ExploreTab() {
 
       {resultQuery.isFetching && <div class="loading">Analyzing…</div>}
       {resultQuery.isError && <div class="explore-error">Analysis failed. Check the inputs and retry.</div>}
-      {result?.kind === 'event' && <EventOutcomeResults data={result.data} />}
+      {result?.kind === 'event' && (
+        <EventOutcomeResults
+          data={result.data}
+          triggerLabel={eventTriggerLabel(result.trigger, selectors, result.minMinutes)}
+        />
+      )}
       {result?.kind === 'continuous' && <ContinuousResults data={result.data} selectors={selectors} />}
     </div>
   )

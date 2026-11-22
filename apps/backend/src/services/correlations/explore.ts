@@ -103,10 +103,12 @@ export const getContinuousCorrelation = async (
   }
 }
 
-const triggerConditionToSelector = (cond: TriggerCondition): Selector => {
+export const triggerConditionToSelector = (cond: TriggerCondition): Selector => {
   switch (cond.type) {
     case 'nutrition':
       return { kind: 'nutrition', nutrient: cond.nutrient!, threshold: cond.threshold }
+    case 'people':
+      return { kind: 'people', person_id: cond.person_id, threshold: cond.threshold }
     case 'activity':
       return { kind: 'activity', pattern: cond.pattern ?? '' }
     case 'productivity_category':

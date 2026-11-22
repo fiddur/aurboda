@@ -33,6 +33,7 @@ import {
 import type { SyncProvider } from '../services/queries/index.ts'
 
 import {
+  genericTriggersError,
   getActivityImpact,
   getBaseline,
   getContinuousCorrelation,
@@ -207,6 +208,8 @@ export const createCorrelationsRouter = (
         include_flagged,
       } = req.body
       const user = req.user!
+      const triggersError = await genericTriggersError(user, triggers, outcome)
+      if (triggersError) return res.status(400).json({ error: triggersError, success: false })
 
       const result = await getGenericCorrelation(
         user,
