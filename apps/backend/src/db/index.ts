@@ -445,6 +445,8 @@ export {
   upsertThreadCopyEntry,
 } from './challenge-thread-copy.ts'
 
+export { getChallengePostFollows, setChallengePostFollow } from './challenge-post-follows.ts'
+
 export {
   type ChallengeBanner,
   deleteChallengeBanner,

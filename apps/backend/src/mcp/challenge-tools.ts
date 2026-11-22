@@ -1,6 +1,7 @@
 /** Mirrors the REST `/challenges` capability. */
 import {
   challengeCommentBodySchema,
+  challengePostFollowBodySchema,
   challengePreviewQuerySchema,
   challengeThreadHideBodySchema,
   challengeThreadQuerySchema,
@@ -31,6 +32,7 @@ import { createThreadDeps, type ThreadFederation } from '../services/challenge-t
 import {
   addChallengeComment,
   readChallengeThread,
+  setChallengePostFollowing,
   setChallengeThreadEntryHidden,
 } from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
@@ -253,7 +255,7 @@ export const registerChallengeTools = (
 
   server.tool(
     'get_challenge_thread',
-    'Read the comment thread of a challenge, by its page URL: one hosted on this instance, or one on another server that you joined (read from a copy pulled from the host at most five minutes ago). top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host and admins. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
+    'Read the comment thread of a challenge, by its page URL: one hosted on this instance, or one on another server that you joined (read from a copy pulled from the host at most five minutes ago). top-level entries (comments, share notes, the result post) newest first, 20 a page, each with its replies oldest first. Entries for `participants` show only to the host and members; hidden entries only to the host and admins. Your own entries carry `own_post_id` (edit or delete them with update_feed_post / delete_feed_post). For the host and members each top-level entry carries `following`: whether a reply under it notifies you (`challenge_reply`), by your own choice (set_challenge_post_follow), else because you wrote it or replied under it. `viewer` says your role and the audiences you may comment with. Pass `cursor` from `next_cursor` to page.',
     { ...challengeThreadQuerySchema.shape },
     async ({ challenge_url, cursor }) => {
       if (!thread) return errorResponse('Federation is not configured on this server')
@@ -278,6 +280,20 @@ export const registerChallengeTools = (
       if (!thread) return errorResponse('Federation is not configured on this server')
       const result = await addChallengeComment(thread, user, body)
       return result.ok ? jsonResponse(result.entry) : errorResponse(result.error)
+    },
+  )
+
+  server.tool(
+    'set_challenge_post_follow',
+    "Follow (`following` true) or stop following the replies under a top-level post of a challenge's thread (by the challenge's page URL: one hosted on this instance, or one on another server that you joined). A reply under a post you follow raises a `challenge_reply` notification; without a choice you follow the posts you wrote or replied under. The host and members only; a reply cannot be followed. Returns whether you now follow it.",
+    {
+      entry_id: z.string().uuid().describe('Top-level thread entry ID'),
+      ...challengePostFollowBodySchema.shape,
+    },
+    async ({ challenge_url, entry_id, following }) => {
+      if (!thread) return errorResponse('Federation is not configured on this server')
+      const result = await setChallengePostFollowing(thread, user, challenge_url, entry_id, following)
+      return result.ok ? jsonResponse({ following: result.following }) : errorResponse(result.error)
     },
   )
 

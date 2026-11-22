@@ -2,10 +2,16 @@ import type { ChallengeThreadEntry, ChallengeThreadReply, ChallengeThreadViewer 
 
 import { feedPostMessageMaxLength } from '@aurboda/api-spec'
 import { formatDistanceToNow } from 'date-fns'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { ConfirmButton } from '../../components/ConfirmButton'
-import { apiErrorMessage, deleteFeedPost, setChallengeCommentHidden, updateFeedPost } from '../../state/api'
+import {
+  apiErrorMessage,
+  deleteFeedPost,
+  setChallengeCommentHidden,
+  setChallengePostFollowing,
+  updateFeedPost,
+} from '../../state/api'
 import { ActorName } from '../Feed/ActorName'
 import { FALLBACK_AVATAR } from '../Feed/TimelineEntryHead'
 import {
@@ -13,7 +19,9 @@ import {
   audienceBadge,
   type EntryActions,
   entryActions,
+  followToggle,
   kindLabel,
+  shownFollowing,
 } from './challenge-thread-view'
 import { ChallengeCommentComposer } from './ChallengeCommentComposer'
 
@@ -105,6 +113,50 @@ function EntryEditor({
   )
 }
 
+function FollowButton({
+  entryId,
+  challengeUrl,
+  following,
+}: {
+  entryId: string
+  challengeUrl: string
+  following: boolean | undefined
+}) {
+  const [pending, setPending] = useState<boolean | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (pending !== null && following === pending) setPending(null)
+  }, [following, pending])
+  const shown = shownFollowing(following, pending)
+  const toggle = followToggle(shown)
+  if (toggle == null) return null
+
+  const flip = () => {
+    const next = !toggle.pressed
+    setError(null)
+    setPending(next)
+    setChallengePostFollowing(challengeUrl, entryId, next).catch((cause: Error) => {
+      setPending(!next)
+      setError(cause.message)
+    })
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        class={`challenge-comment-action challenge-comment-follow${toggle.pressed ? ' is-on' : ''}`}
+        aria-pressed={toggle.pressed}
+        title={toggle.title}
+        onClick={flip}
+      >
+        <span aria-hidden="true">{toggle.pressed ? '🔔' : '🔕'}</span> {toggle.label}
+      </button>
+      {error && <span class="challenge-comment-error">{error}</span>}
+    </>
+  )
+}
+
 function EntryActionsRow({
   entry,
   actions,
@@ -112,6 +164,7 @@ function EntryActionsRow({
   onChanged,
   onEdit,
   onReply,
+  following,
 }: {
   entry: ChallengeThreadReply
   actions: EntryActions
@@ -119,6 +172,7 @@ function EntryActionsRow({
   onChanged: () => void
   onEdit: () => void
   onReply: (entry: ChallengeThreadReply) => void
+  following?: boolean
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -171,6 +225,7 @@ function EntryActionsRow({
             {actions.hide ? 'Hide' : 'Unhide'}
           </button>
         )}
+        <FollowButton entryId={entry.id} challengeUrl={challengeUrl} following={following} />
       </div>
       {error && <p class="challenge-comment-error">{error}</p>}
     </>
@@ -183,12 +238,14 @@ function EntryBody({
   challengeUrl,
   onChanged,
   onReply,
+  following,
 }: {
   entry: ChallengeThreadReply
   viewer: ChallengeThreadViewer | undefined
   challengeUrl: string
   onChanged: () => void
   onReply: (entry: ChallengeThreadReply) => void
+  following?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const actions = viewer ? entryActions(entry, viewer) : null
@@ -221,6 +278,7 @@ function EntryBody({
           onChanged={onChanged}
           onEdit={() => setEditing(true)}
           onReply={onReply}
+          following={following}
         />
       )}
     </div>
@@ -247,6 +305,7 @@ export function ChallengeThreadItem({
         challengeUrl={challengeUrl}
         onChanged={onChanged}
         onReply={setReplyTo}
+        following={entry.following}
       />
       {(entry.replies.length > 0 || replyTo) && (
         <ul class="challenge-comment-replies">
