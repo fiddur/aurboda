@@ -609,6 +609,15 @@
   text-decoration: underline;
 }
 
+.challenge-comment-follow {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.challenge-comment-follow.is-on {
+  color: var(--color-accent);
+}
+
 .challenge-comment-action:disabled {
   opacity: 0.6;
   cursor: default;

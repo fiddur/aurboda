@@ -24,6 +24,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
+import { activityPeopleError } from '../services/activity-people.ts'
 import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
 import { evaluateAllRules } from '../services/deduction-engine.ts'
@@ -63,6 +64,7 @@ export const createDeductionRulesRouter = (
         output_category,
         output_data,
         output_media_field,
+        output_people,
         output_title_field,
       } = req.body
 
@@ -74,6 +76,8 @@ export const createDeductionRulesRouter = (
 
       const ruleShapeError = validateRuleShape(req.body)
       if (ruleShapeError) return res.status(400).json({ error: ruleShapeError, success: false })
+      const peopleError = await activityPeopleError(user, output_people)
+      if (peopleError) return res.status(400).json({ error: peopleError, success: false })
 
       const rule = await insertDeductionRule(user, {
         conditions,
@@ -85,6 +89,7 @@ export const createDeductionRulesRouter = (
         output_category,
         output_data: output_data as Record<string, unknown> | undefined,
         output_media_field,
+        output_people,
         output_title,
         output_title_field,
         priority,
@@ -125,6 +130,10 @@ export const createDeductionRulesRouter = (
           .status(400)
           .json({ error: ruleShapeError, sample_days: 0, success: false, would_affect: 0 })
       }
+      const peopleError = await activityPeopleError(user, req.body.output_people)
+      if (peopleError) {
+        return res.status(400).json({ error: peopleError, sample_days: 0, success: false, would_affect: 0 })
+      }
 
       const tempRule = {
         conditions: req.body.conditions,
@@ -137,6 +146,7 @@ export const createDeductionRulesRouter = (
         output_category: req.body.output_category,
         output_data: req.body.output_data as Record<string, unknown> | undefined,
         output_media_field: req.body.output_media_field,
+        output_people: req.body.output_people,
         output_title: req.body.output_title,
         output_title_field: req.body.output_title_field,
         priority: req.body.priority ?? 0,
@@ -169,6 +179,8 @@ export const createDeductionRulesRouter = (
       }
       const ruleShapeError = validateRuleShape(mergeRuleUpdate(existing, req.body))
       if (ruleShapeError) return res.status(400).json({ error: ruleShapeError, success: false })
+      const peopleError = await activityPeopleError(user, req.body.output_people ?? undefined)
+      if (peopleError) return res.status(400).json({ error: peopleError, success: false })
 
       const updated = await updateDeductionRule(user, id, req.body)
       if (!updated) {

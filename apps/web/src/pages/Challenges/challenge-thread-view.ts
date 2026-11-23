@@ -74,6 +74,28 @@ export const entryActions = (
   }
 }
 
+export interface FollowToggle {
+  pressed: boolean
+  label: string
+  title: string
+}
+
+/** The bell on a top-level post: shown to the host and members only (the read carries `following` for them). */
+export const followToggle = (following: boolean | undefined): FollowToggle | null => {
+  if (following === undefined) return null
+  return following
+    ? {
+        label: 'Following replies',
+        pressed: true,
+        title: 'You are notified of replies under this post. Click to stop.',
+      }
+    : { label: 'Follow replies', pressed: false, title: 'Get notified of replies under this post' }
+}
+
+/** What the bell shows: a change still on its way, else what the server said. */
+export const shownFollowing = (server: boolean | undefined, pending: boolean | null): boolean | undefined =>
+  server === undefined ? undefined : (pending ?? server)
+
 export const kindLabel = (kind: ChallengeThreadEntryKind): string | null =>
   kind === 'share' ? 'shared the challenge' : kind === 'result' ? 'result' : null
 

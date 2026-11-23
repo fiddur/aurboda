@@ -178,7 +178,7 @@ export interface InboundThreadNote {
 export interface InboundThreadAdmission {
   host: string
   challenge_id: string
-  /** `me` already gets `challenge_comment` for this entry: the timeline must not notify again. */
+  /** The thread notifies `me` of this entry (or, for a reply under a post they do not follow, deliberately not): the timeline must not notify again. */
   quiet: boolean
 }
 

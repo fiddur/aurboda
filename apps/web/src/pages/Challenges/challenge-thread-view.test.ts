@@ -11,9 +11,11 @@ import {
   defaultAudience,
   entryActions,
   flattenThreadPages,
+  followToggle,
   kindLabel,
   readRememberedAudience,
   rememberAudience,
+  shownFollowing,
 } from './challenge-thread-view'
 
 const viewer = (over: Partial<ChallengeThreadViewer> = {}): ChallengeThreadViewer => ({
@@ -182,5 +184,24 @@ describe('remembered audience', () => {
     }
     expect(readRememberedAudience(blocked)).toBeNull()
     expect(() => rememberAudience(blocked, 'public')).not.toThrow()
+  })
+})
+
+describe('the follow bell', () => {
+  test('absent without `following` (a visitor, or a reply)', () => {
+    expect(followToggle(undefined)).toBeNull()
+  })
+
+  test('off reads "Follow replies", on "Following replies", pressed accordingly', () => {
+    expect(followToggle(false)).toMatchObject({ label: 'Follow replies', pressed: false })
+    expect(followToggle(true)).toMatchObject({ label: 'Following replies', pressed: true })
+    expect(followToggle(true)?.title).toMatch(/stop/)
+  })
+
+  test('a change on its way shows over the server value; a failure rolls back to it', () => {
+    expect(shownFollowing(false, null)).toBe(false)
+    expect(shownFollowing(false, true)).toBe(true)
+    expect(shownFollowing(true, false)).toBe(false)
+    expect(shownFollowing(undefined, true)).toBeUndefined()
   })
 })

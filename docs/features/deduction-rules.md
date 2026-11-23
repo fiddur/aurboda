@@ -224,6 +224,48 @@ with a custom "Sex" profile — which Garmin reports as its base sport, `other` 
   that activity is not retyped and an audit-log warning names it. Supply them in `output_data`.
 - Deleting or disabling the rule does not change retyped activities back; edit them like any other activity.
 
+## Adding people (`output_people`)
+
+In every mode, `output_people` (person ids, 1 to 20, unique) adds those [people](people.md) to the
+**With** field of each activity the rule creates, enriches or retypes. Use it with a free-text field naming who an
+activity was with: an enrich rule with an `activity_data` condition on that field and only `output_people` is a valid
+rule, and links the person to every matching activity, old and new.
+
+```json
+{
+  "name": "Fika with Anna",
+  "mode": "enrich",
+  "conditions": [
+    {
+      "kind": "activity_data",
+      "activity_type": "fika",
+      "field": "with_whom",
+      "operator": "eq",
+      "value": "Anna"
+    }
+  ],
+  "output_activity_type": "fika",
+  "output_people": ["<Anna's person id>"]
+}
+```
+
+- People are only ever **added**: a person already on the activity stays, and the rule never removes anyone.
+  Removing a person from the rule (or clearing `output_people`) does not take them off the activities it already
+  enriched or retyped. Activities the rule _created_ are deleted and re-created when the rule is edited, so they
+  carry the rule's people as they are after the edit.
+- A person taken off an enriched activity by hand while still on the rule comes back the next time the rule runs.
+- Enrich links the people to the rows the data enrichment reads (every row of `output_activity_type` overlapping a
+  match, synced or not); a link never creates an override, as with a manual people-only edit. Retype links them to
+  the activities it retypes in that run.
+- Saving a rule with an unknown, deleted or malformed id is a `400` naming it. A person deleted after the rule was
+  saved is skipped when it runs; the rule keeps the id, and the rule list shows it as "a removed person".
+- Re-running a rule on activities that already have its people changes nothing and counts nothing; the preview
+  (`would_affect`) counts the activities that would gain at least one person. Adding people fires no change
+  notification, and `output_people` does not change which activity types a rule references, so it never re-triggers
+  rule evaluation.
+- The web rule editor has a **With** picker (the one the activity forms use) in every mode; the rule list shows
+  "with Anna, Bo" after the output type.
+
 ## Merge Gap
 
 When `merge_gap_seconds` is set, nearby matching time ranges are coalesced into a single activity. For example, with a 10-minute merge gap, two sauna tags 5 minutes apart produce one sauna activity spanning the full period.
@@ -286,7 +328,9 @@ When a rule is created or updated, it is immediately evaluated against the last 
 - `DELETE /deduction-rules/:id` -- Delete a rule and its generated activities
 - `POST /deduction-rules/evaluate` -- Manually trigger full re-evaluation
 
-MCP tools: `list_deduction_rules`, `add_deduction_rule`, `update_deduction_rule`, `delete_deduction_rule`, `evaluate_deduction_rules`.
+- `POST /deduction-rules/preview` -- Dry-run a rule definition over the last 90 days
+
+MCP tools: `list_deduction_rules`, `add_deduction_rule`, `preview_deduction_rule`, `update_deduction_rule`, `delete_deduction_rule`, `evaluate_deduction_rules`.
 
 ## Technical Details
 

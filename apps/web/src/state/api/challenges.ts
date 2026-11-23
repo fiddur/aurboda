@@ -8,6 +8,7 @@ import type {
   ChallengeResponse,
   ChallengesResponse,
   ChallengeCommentBody,
+  ChallengePostFollowResponse,
   ChallengeStanding,
   ChallengeStandingsResponse,
   ChallengeThreadEntry,
@@ -239,4 +240,24 @@ export const setChallengeCommentHidden = async (
   }
   if (!res.data.entry) throw new Error(res.data.error ?? 'No entry returned')
   return res.data.entry
+}
+
+/** Follow or stop following the replies under a top-level post; the new value. */
+export const setChallengePostFollowing = async (
+  challengeUrl: string,
+  entryId: string,
+  following: boolean,
+): Promise<boolean> => {
+  let res
+  try {
+    res = await axios.put<ChallengePostFollowResponse>(
+      `${API_URL}/challenges/thread/entries/${encodeURIComponent(entryId)}/following`,
+      { challenge_url: challengeUrl, following },
+      { headers: authHeaders() },
+    )
+  } catch (error) {
+    throw new Error(apiErrorMessage(error, 'Couldn’t change following that post.'))
+  }
+  if (res.data.following === undefined) throw new Error(res.data.error ?? 'No answer returned')
+  return res.data.following
 }

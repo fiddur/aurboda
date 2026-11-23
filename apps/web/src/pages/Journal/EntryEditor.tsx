@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { CommentThread } from '../../components/CommentThread'
 import {
   addReply,
+  apiErrorMessage,
   createJournalEntry,
   deleteComment,
   deleteJournalEntry,
@@ -55,7 +56,7 @@ import { JOURNAL_KEY } from './JournalList'
 import { MentionEditor } from './MentionEditor'
 import { Recorder } from './Recorder'
 import { RelatedRow } from './Related'
-import { addLink, personLink, type RelatedLink } from './related'
+import { addLink, personLink, type RelatedLink, refusedLinkKeys } from './related'
 import { useTemplates } from './Templates'
 
 const UNDO_MS = 10_000
@@ -491,6 +492,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const [threadRoot, setThreadRoot] = useState<Note | undefined>(undefined)
   const [status, setStatus] = useState<AutosaveStatus>('saved')
   const [saveProblem, setSaveProblem] = useState<string | undefined>(undefined)
+  const [goneLinks, setGoneLinks] = useState<ReadonlySet<string>>(new Set())
   const [conflict, setConflict] = useState<Note | undefined>(undefined)
   const [offer, setOffer] = useState<EntryDraft | undefined>(undefined)
   const [showHistory, setShowHistory] = useState(false)
@@ -512,6 +514,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     (note: Note, sent: EntryForm) => {
       updatedAtRef.current = note.updated_at
       savedRelatedRef.current = note.related ?? sent.related
+      setGoneLinks((current) => (current.size === 0 ? current : new Set()))
       if (note.attachments) setAttachments(sortByPosition(note.attachments))
       setThreadRoot((current) => current ?? { ...note, replies: [] })
       clearDraftIfConfirmed(storage, draftKey(), sent)
@@ -547,21 +550,30 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       const problem = entryFormProblem(sent)
       setSaveProblem(problem)
       if (problem) throw new Error(problem)
-      if (!idRef.current) {
-        if (isEntryEmpty(sent, attachmentsRef.current.length)) return { kind: 'saved' }
-        await createEntry(sent)
+      try {
+        if (!idRef.current) {
+          if (isEntryEmpty(sent, attachmentsRef.current.length)) return { kind: 'saved' }
+          await createEntry(sent)
+          return { kind: 'saved' }
+        }
+        const result = await updateJournalEntry(
+          idRef.current,
+          formToUpdateBody(sent, updatedAtRef.current, savedRelatedRef.current),
+        )
+        if (result.kind === 'conflict') {
+          setConflict(result.note)
+          return { kind: 'conflict' }
+        }
+        accept(result.note, sent)
         return { kind: 'saved' }
+      } catch (error) {
+        const refused = refusedLinkKeys(apiErrorMessage(error, ''), sent.related)
+        if (refused.size > 0) {
+          setGoneLinks(refused)
+          setSaveProblem('a related person or activity was removed. Remove the marked link.')
+        }
+        throw error
       }
-      const result = await updateJournalEntry(
-        idRef.current,
-        formToUpdateBody(sent, updatedAtRef.current, savedRelatedRef.current),
-      )
-      if (result.kind === 'conflict') {
-        setConflict(result.note)
-        return { kind: 'conflict' }
-      }
-      accept(result.note, sent)
-      return { kind: 'saved' }
     },
     [accept, createEntry],
   )
@@ -828,6 +840,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
 
           <RelatedRow
             links={form.related}
+            gone={goneLinks}
             entryDate={entryDay(form)}
             onChange={(related) => patch({ related })}
           />

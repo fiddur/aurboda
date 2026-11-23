@@ -10,7 +10,6 @@ export interface JournalQuery {
   on_this_day?: string
   needs_text?: boolean
   include_comments?: boolean
-  /** Only entries related to this person or activity. */
   related?: { type: 'person' | 'activity'; id: string }
   cursor?: string
   limit?: number

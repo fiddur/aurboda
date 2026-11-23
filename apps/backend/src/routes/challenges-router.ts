@@ -18,6 +18,9 @@ import {
   type ChallengeStandingsResponse,
   type ChallengeCommentBody,
   challengeCommentBodySchema,
+  type ChallengePostFollowBody,
+  challengePostFollowBodySchema,
+  type ChallengePostFollowResponse,
   type ChallengeThreadEntryResponse,
   type ChallengeThreadHideBody,
   challengeThreadHideBodySchema,
@@ -73,6 +76,7 @@ import { createThreadDeps, type ThreadFederation } from '../services/challenge-t
 import {
   addChallengeComment,
   readChallengeThread,
+  setChallengePostFollowing,
   setChallengeThreadEntryHidden,
 } from '../services/challenge-thread.ts'
 import { LOCKED_MESSAGES, updateHostedChallenge } from '../services/challenge-update.ts'
@@ -252,6 +256,23 @@ export const createChallengesRouter = (
       )
       if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
       res.json({ entry: result.entry, success: true })
+    },
+  )
+
+  router.put<{ entryId: string }, ChallengePostFollowResponse, ChallengePostFollowBody>(
+    '/thread/entries/:entryId/following',
+    authMiddleware,
+    validateBody(challengePostFollowBodySchema),
+    async (req, res) => {
+      const result = await setChallengePostFollowing(
+        thread,
+        req.user!,
+        req.body.challenge_url,
+        req.params.entryId,
+        req.body.following,
+      )
+      if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
+      res.json({ following: result.following, success: true })
     },
   )
 

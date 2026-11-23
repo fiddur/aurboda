@@ -21,6 +21,7 @@ import {
   getMediaPlays,
   getOverrideForActivity,
   insertDeductionRuleRun,
+  listLivePersonIds,
   upsertActivity,
 } from '../db/index.ts'
 import { auditWarn } from './audit-log.ts'
@@ -277,6 +278,60 @@ const getLocationVisits = async (
   return visits.filter((v) => v.name === locationName).map((v) => ({ end: v.end_time, start: v.start_time }))
 }
 
+const enrichTargetRows = async (user: string, activityType: string, range: TimeRange) =>
+  (
+    await query(
+      user,
+      `SELECT id, data, start_time, end_time FROM activities
+       WHERE activity_type = $1
+         AND deleted_at IS NULL
+         AND start_time < $3
+         AND (end_time > $2 OR end_time IS NULL)
+       ORDER BY start_time`,
+      [activityType, range.start, range.end],
+    )
+  ).rows
+
+const getEnrichTargets = async (
+  user: string,
+  activityType: string,
+  ranges: TimeRange[],
+): Promise<string[]> => {
+  const ids = new Set<string>()
+  for (const range of ranges) {
+    for (const row of await enrichTargetRows(user, activityType, range)) ids.add(row.id as string)
+  }
+  return [...ids]
+}
+
+/**
+ * Only adds links, so a person taken off the activity by hand and still on the rule comes back on
+ * the next evaluation. No notification: people are no rule condition, so nothing re-evaluates.
+ */
+const addActivityPeople = async (
+  user: string,
+  activityIds: string[],
+  personIds: string[],
+  dryRun = false,
+): Promise<string[]> => {
+  if (activityIds.length === 0 || personIds.length === 0) return []
+  const missing = `SELECT a.id AS activity_id, p.id AS person_id
+     FROM unnest($1::uuid[]) a(id) CROSS JOIN unnest($2::uuid[]) p(id)
+     WHERE NOT EXISTS (SELECT 1 FROM activity_people ap WHERE ap.activity_id = a.id AND ap.person_id = p.id)`
+  const result = await query<{ activity_id: string }>(
+    user,
+    dryRun
+      ? `SELECT DISTINCT activity_id FROM (${missing}) m`
+      : `WITH inserted AS (
+           INSERT INTO activity_people (activity_id, person_id) ${missing}
+           ON CONFLICT DO NOTHING RETURNING activity_id
+         )
+         SELECT DISTINCT activity_id FROM inserted`,
+    [activityIds, personIds],
+  )
+  return result.rows.map((row) => row.activity_id)
+}
+
 const enrichActivities = async (
   user: string,
   activityType: string,
@@ -291,18 +346,7 @@ const enrichActivities = async (
   const enrichedIds: string[] = []
 
   for (const range of ranges) {
-    const result = await query(
-      user,
-      `SELECT id, data, start_time, end_time FROM activities
-       WHERE activity_type = $1
-         AND deleted_at IS NULL
-         AND start_time < $3
-         AND (end_time > $2 OR end_time IS NULL)
-       ORDER BY start_time`,
-      [activityType, range.start, range.end],
-    )
-
-    for (const row of result.rows) {
+    for (const row of await enrichTargetRows(user, activityType, range)) {
       const activityId = row.id as string
       if (seen.has(activityId)) continue
       seen.add(activityId)
@@ -541,6 +585,7 @@ export const createDefaultEngineDeps = (
   notifier?: ActivityNotifier,
   markWorkoutHours: typeof markWorkoutHoursDirty = markWorkoutHoursDirty,
 ): DeductionEngineDeps => ({
+  addActivityPeople,
   deleteStaleRuleActivities: async (user, ruleId, windowStart, windowEnd, keepIds) => {
     const deleted = await deleteStaleRuleActivities(user, ruleId, windowStart, windowEnd, keepIds)
     await markWorkoutHours(user, deleted)
@@ -555,6 +600,7 @@ export const createDefaultEngineDeps = (
   getActivityFeatures: getFeaturesOfActivity,
   getCategorisableActivities,
   getEarliestActivityTime,
+  getEnrichTargets,
   getLocationVisits,
   getMediaPlays,
   getScrobbles,
@@ -578,6 +624,7 @@ export const createDefaultEngineDeps = (
     return { changed, id }
   },
   insertRuleRun: insertDeductionRuleRun,
+  listLivePersonIds,
   patchActivityData,
   retitleActivities: (user, activityType, ranges, field, ruleId, dryRun) =>
     retitleActivities(user, activityType, ranges, field, ruleId, dryRun, notifier),

@@ -93,7 +93,6 @@ export interface AddNoteInput {
   /** Not on a reply. */
   title?: string | null
   tags?: string[]
-  /** Not on a reply. */
   related?: NoteLinkInput[]
 }
 
@@ -108,7 +107,6 @@ export interface UpdateNoteInput {
   /** Null clears it. Not on a reply. */
   title?: string | null
   tags?: string[]
-  /** Replaces the links when given; absent leaves them. Not on a reply. */
   related?: NoteLinkInput[]
   /** When given and the note's `updated_at` differs, nothing is written: the answer is a conflict. */
   expected_updated_at?: string
@@ -263,9 +261,18 @@ const entryAttachments = (
 const localDate = (instant: Date, tz: string): string =>
   Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
 
-/** A link's label: the person's name, or the activity's name and its local date in `tz`. */
-export const noteRelatedLabel = (link: NoteLinkRecord, tz: string): string =>
-  link.start_time === null ? link.name : `${link.name}, ${localDate(link.start_time, tz)}`
+/**
+ * A link's label: the person's name, or the activity's name and its local date in `tz`. A sleep is
+ * dated by the morning it ended, as the editor's picker lists it.
+ */
+export const noteRelatedLabel = (
+  link: Pick<NoteLinkRecord, 'name' | 'start_time' | 'end_time' | 'activity_type'>,
+  tz: string,
+): string => {
+  if (link.start_time === null) return link.name
+  const dated = link.activity_type === 'sleep' && link.end_time !== null ? link.end_time : link.start_time
+  return `${link.name}, ${localDate(dated, tz)}`
+}
 
 /** The visible links of the thread roots among `notes`, labelled, in one batched lookup. */
 const relatedFor = async (user: string, notes: DbNote[]): Promise<Map<string, NoteRelated[]>> => {
@@ -278,6 +285,7 @@ const relatedFor = async (user: string, notes: DbNote[]): Promise<Map<string, No
     [...links].map(([id, list]) => [
       id,
       list.map((link) => ({
+        ...(link.activity_type === null ? {} : { activity_type: link.activity_type }),
         entity_id: link.entity_id,
         entity_type: link.entity_type,
         label: noteRelatedLabel(link, tz),

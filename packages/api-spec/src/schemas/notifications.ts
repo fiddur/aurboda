@@ -18,6 +18,7 @@ export const notificationTypes = [
   'feed_boost',
   'feed_post',
   'challenge_comment',
+  'challenge_reply',
   'autoshare_pending',
   'garmin_key_expiring',
   'reminder',
@@ -113,9 +114,16 @@ export const notificationTypeInfo: Record<NotificationType, NotificationTypeInfo
   },
   challenge_comment: {
     admin_only: false,
-    description: 'Someone commented in a challenge you host or take part in',
+    description: 'Someone posted in the comment thread of a challenge you host or take part in',
     group: 'feed',
-    label: 'Challenge comments',
+    label: 'Challenge posts',
+  },
+  challenge_reply: {
+    admin_only: false,
+    description:
+      'Someone replied under a challenge post you follow: your own post, one you replied to, or one you chose to follow',
+    group: 'feed',
+    label: 'Replies in challenges',
   },
   autoshare_pending: {
     admin_only: false,

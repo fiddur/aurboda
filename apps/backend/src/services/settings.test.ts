@@ -497,6 +497,23 @@ describe('validateAndUpdateSettings', () => {
     ])
   })
 
+  test('drops hidden pages that are no longer hideable menu paths', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    const result = await validateAndUpdateSettings('testuser', {
+      hidden_pages: ['/meals', '/data-sources/oura', '/settings', '/reminders', '/meals'],
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.upsertUserSettings).toHaveBeenCalledWith(
+      'testuser',
+      { hidden_pages: ['/meals', '/reminders'] },
+      [],
+    )
+  })
+
   test('forgets the remembered report import mapping with null', async () => {
     vi.mocked(db.getUserSettings).mockResolvedValue({})
     vi.mocked(db.upsertUserSettings).mockResolvedValue({})

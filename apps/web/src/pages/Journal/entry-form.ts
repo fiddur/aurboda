@@ -17,7 +17,6 @@ export interface EntryForm {
   date: string
   start: string
   end: string
-  /** The people and activities the entry is related to, with the labels their chips show. */
   related: RelatedLink[]
 }
 

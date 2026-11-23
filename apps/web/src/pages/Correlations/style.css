@@ -567,6 +567,9 @@
 .explore-run:hover {
   background: var(--color-primary-hover);
 }
+.explore-trigger-label {
+  margin: 8px 0 0;
+}
 .explore-summary {
   color: var(--color-text-muted);
   font-size: 0.9rem;

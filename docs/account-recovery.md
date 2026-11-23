@@ -36,7 +36,9 @@ and REST only, like `/login`.
 3. The mail names the account and links to `/recover?token=…`. The link works **once**, within **30
    minutes**, and only while the address it went to is still the account's verified email. Asking
    again replaces the earlier link. A new password that fails to save leaves the link unused, so it
-   can be tried again.
+   can be tried again. Using the link, reading the account and marking its password a way in run in
+   one transaction on one central database connection, so concurrent resets cannot exhaust the
+   central pool.
 4. On that page, either
    - **Set a new password** (typed twice), which also clears the account's failed sign-in count and
      makes the password a way in again for an account created through a

@@ -247,6 +247,17 @@ export const socialTables: Record<string, string> = {
     )
   `,
 
+  // The user's own choice to follow (or stop following) the replies under a top-level post of a
+  // challenge thread, keyed by the post's Note id: the same on the host's server and in a member's
+  // copy. Without a row the user follows a post they wrote or replied under.
+  challenge_post_follows: `
+    CREATE TABLE IF NOT EXISTS challenge_post_follows (
+      root_object_uri TEXT PRIMARY KEY,
+      following       BOOLEAN NOT NULL,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Challenges the user LEFT (#1093). Leaving hard-deletes the participation
   // row, so the "don't suggest this again" fact needs its own record to survive
   // the delete — discovery excludes these the way it excludes joined ones.

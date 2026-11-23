@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { getOverrideForActivity } from '../db/activities/index.ts'
 import { query } from '../db/connection.ts'
-import { getPendingOutboundSync } from '../db/outbound-sync.ts'
+import { ackOutboundSync, getPendingOutboundSync } from '../db/outbound-sync.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
   addCheckInForm,
@@ -142,5 +142,78 @@ describe('check-ins against the database (integration)', () => {
         payload: { metric: 'weight', time: '2026-11-20T07:00:00.000Z', unit: 'kg', value: 72.5 },
       },
     ])
+  })
+  describe('Health Connect hears of edits and deletes', () => {
+    const at7 = '2026-11-20T07:00:00.000Z'
+    const submitWeight = async (user: string) => {
+      const { deps, form } = await addForm(user)
+      const checkIn = unwrap(
+        await submitCheckIn(deps, user, { answered_at: at7, answers: { weight: 72.5 }, form_id: form.id }),
+      )
+      return { checkIn, deps }
+    }
+    const ackAll = async (user: string, recordId?: string) => {
+      for (const entry of (await getPendingOutboundSync(user)).entries) {
+        await ackOutboundSync(user, entry.id, recordId)
+      }
+    }
+    const pending = async (user: string) =>
+      (await getPendingOutboundSync(user)).entries.map(({ entity_id, operation, payload }) => ({
+        entity_id,
+        operation,
+        payload,
+      }))
+
+    test('deleting a check-in whose point reached the phone queues its delete', async () => {
+      const user = getTestUser()
+      const { checkIn, deps } = await submitWeight(user)
+      await ackAll(user, 'hc-weight')
+      await deleteCheckInById(deps, user, checkIn.id)
+      expect(await pending(user)).toEqual([
+        { entity_id: `weight|${at7}`, operation: 'delete', payload: { hc_record_id: 'hc-weight' } },
+      ])
+    })
+
+    test('deleting one whose point never reached the phone leaves nothing queued', async () => {
+      const user = getTestUser()
+      const { checkIn, deps } = await submitWeight(user)
+      await deleteCheckInById(deps, user, checkIn.id)
+      expect(await pending(user)).toEqual([])
+    })
+
+    test('restoring it queues the insert again in place of the delete', async () => {
+      const user = getTestUser()
+      const { checkIn, deps } = await submitWeight(user)
+      await ackAll(user, 'hc-weight')
+      await deleteCheckInById(deps, user, checkIn.id)
+      unwrap(await restoreCheckInById(deps, user, checkIn.id))
+      expect(await pending(user)).toMatchObject([{ entity_id: `weight|${at7}`, operation: 'insert' }])
+
+      await ackAll(user)
+      await deleteCheckInById(deps, user, checkIn.id)
+      unwrap(await restoreCheckInById(deps, user, checkIn.id))
+      expect(await pending(user)).toMatchObject([{ entity_id: `weight|${at7}`, operation: 'insert' }])
+    })
+
+    test('an edit at the same time rewrites the point; one at another time deletes the old', async () => {
+      const user = getTestUser()
+      const { checkIn, deps } = await submitWeight(user)
+      await ackAll(user, 'hc-weight')
+
+      unwrap(await updateCheckInById(deps, user, checkIn.id, { answers: { weight: 73 } }))
+      expect(await pending(user)).toMatchObject([
+        { entity_id: `weight|${at7}`, operation: 'insert', payload: { value: 73 } },
+      ])
+      await ackAll(user, 'hc-weight')
+
+      unwrap(await updateCheckInById(deps, user, checkIn.id, { answered_at: '2026-11-20T07:30:00.000Z' }))
+      expect(await pending(user)).toEqual(
+        expect.arrayContaining([
+          { entity_id: `weight|${at7}`, operation: 'delete', payload: { hc_record_id: 'hc-weight' } },
+          expect.objectContaining({ entity_id: 'weight|2026-11-20T07:30:00.000Z', operation: 'insert' }),
+        ]),
+      )
+      expect(await pending(user)).toHaveLength(2)
+    })
   })
 })

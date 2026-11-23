@@ -36,9 +36,7 @@ export interface NoteAttachmentUsage {
 }
 
 export interface NoteAttachmentLimits {
-  /** Live attachments one note may hold. */
   per_note: number
-  /** Stored bytes one account may hold, deleted attachments included. */
   account_bytes: number
 }
 

@@ -446,6 +446,8 @@ export {
   upsertThreadCopyEntry,
 } from './challenge-thread-copy.ts'
 
+export { getChallengePostFollows, setChallengePostFollow } from './challenge-post-follows.ts'
+
 export {
   type ChallengeBanner,
   deleteChallengeBanner,
@@ -763,6 +765,7 @@ export {
 export {
   ackOutboundSync,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   enqueueOutboundSyncInsertsIfChanged,
   failOutboundSync,
   findHcRecordId,
@@ -772,6 +775,7 @@ export {
   reportSyncFailure,
   requeueOutboundSync,
   type EnqueueOutboundSyncInput,
+  type OutboundSyncDeleteItem,
   type OutboundSyncEntry,
   type OutboundSyncInsertItem,
   type OutboundSyncOperation,

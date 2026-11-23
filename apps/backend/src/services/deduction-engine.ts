@@ -9,7 +9,8 @@
  *    (and, with output_category, adds or removes the rule's entry in data.run_categories)
  *    In 'retype' mode: the activities of the rule's single 'activity' condition that overlap the
  *    result change type to output_activity_type
- * 6. Rules are evaluated in priority order for chaining support
+ * 6. In every mode: the rule's output_people are added to each activity it creates, enriches or retypes
+ * 7. Rules are evaluated in priority order for chaining support
  */
 
 import type {
@@ -159,6 +160,16 @@ export interface DeductionEngineDeps {
     },
   ) => Promise<void>
   getEarliestActivityTime: (user: string) => Promise<Date | null>
+  /** The rows `enrichActivities` reads for these ranges, whether or not it would patch them. */
+  getEnrichTargets: (user: string, activityType: string, ranges: TimeRange[]) => Promise<string[]>
+  listLivePersonIds: (user: string, ids: string[]) => Promise<string[]>
+  /** Ids of the activities that gained at least one of the people, or with dryRun would. */
+  addActivityPeople: (
+    user: string,
+    activityIds: string[],
+    personIds: string[],
+    dryRun?: boolean,
+  ) => Promise<string[]>
   retypeActivity: (user: string, id: string, change: RetypeChange) => Promise<boolean>
   /** Ids of the activities whose title the rule changed, or with dryRun would change. */
   retitleActivities: (
@@ -448,6 +459,19 @@ const activityConditionsOf = (conditions: Condition[]): ActivityCondition[] =>
 const overlapsAny = (span: TimeRange, ranges: TimeRange[]): boolean =>
   ranges.some((r) => r.start < span.end && span.start < r.end)
 
+/** People soft-deleted or purged since the rule was saved are skipped; the rule keeps their ids. */
+const linkPeople = async (
+  user: string,
+  rule: DeductionRule,
+  activityIds: string[],
+  deps: DeductionEngineDeps,
+  dryRun: boolean,
+): Promise<string[]> => {
+  if (activityIds.length === 0 || !rule.output_people?.length) return []
+  const people = await deps.listLivePersonIds(user, rule.output_people)
+  return people.length === 0 ? [] : deps.addActivityPeople(user, activityIds, people, dryRun)
+}
+
 const retype = async (
   user: string,
   rule: DeductionRule,
@@ -473,6 +497,7 @@ const retype = async (
     })
     if (ok) retypedIds.push(activity.id)
   }
+  await linkPeople(user, rule, retypedIds, deps, false)
   return allAffected(retypedIds)
 }
 
@@ -553,12 +578,23 @@ const enrich = async (
     titleField
       ? deps.retitleActivities(user, rule.output_activity_type, matched, titleField, rule.id, dry)
       : Promise.resolve([])
+  const addPeople = async (dry: boolean) =>
+    rule.output_people?.length
+      ? linkPeople(
+          user,
+          rule,
+          await deps.getEnrichTargets(user, rule.output_activity_type, matched),
+          deps,
+          dry,
+        )
+      : []
 
   if (dryRun) {
     const enrichable = await countEnrichable(user, rule, matched, window, deps, dataFor)
     const retitled = (await retitle(true)).length
     const categorised = (await categorise(user, rule, matched, window, deps, true)).length
-    return nothingAffected(Math.max(enrichable, retitled, categorised))
+    const peopled = (await addPeople(true)).length
+    return nothingAffected(Math.max(enrichable, retitled, categorised, peopled))
   }
 
   const enrichedIds = await deps.enrichActivities(
@@ -573,7 +609,8 @@ const enrich = async (
   )
   const retitledIds = await retitle(false)
   const categorisedIds = await categorise(user, rule, matched, window, deps, false)
-  const affected = [...new Set([...enrichedIds, ...retitledIds, ...categorisedIds])]
+  const peopledIds = await addPeople(false)
+  const affected = [...new Set([...enrichedIds, ...retitledIds, ...categorisedIds, ...peopledIds])]
   return allAffected(affected)
 }
 
@@ -601,7 +638,7 @@ export const evaluateRule = async (
   if (dryRun) return nothingAffected(result.length)
 
   const createdIds: string[] = []
-  let created = 0
+  const changedIds = new Set<string>()
   for (const range of result) {
     const id = randomUUID()
     // The insert upserts on (source, activity_type, start_time), so a re-evaluation
@@ -618,10 +655,11 @@ export const evaluateRule = async (
       title: rule.output_title ?? rule.name,
     })
     createdIds.push(insertedId ?? id)
-    if (changed) created++
+    if (changed) changedIds.add(insertedId ?? id)
   }
+  for (const id of await linkPeople(user, rule, createdIds, deps, false)) changedIds.add(id)
 
-  return { activities_created: created, affected_ids: createdIds, would_affect: createdIds.length }
+  return { activities_created: changedIds.size, affected_ids: createdIds, would_affect: createdIds.length }
 }
 
 /**

@@ -34,6 +34,7 @@ import {
   OWN_PENDING_KEEP_MS,
   type PushedThreadDeps,
   readRemoteThread,
+  setRemotePostFollowing,
   type RemoteThreadDeps,
   syncRemoteThread,
   THREAD_COPY_MAX_AGE_MS,
@@ -357,8 +358,10 @@ const remoteDeps = (
     copy?: ThreadCopyEntryRecord[]
     fetchThread?: RemoteThreadDeps['fetchThread'] | null
     document?: Awaited<ReturnType<RemoteThreadDeps['fetchDocument']>>
+    follows?: Record<string, boolean>
   } = {},
 ) => {
+  const follows = new Map(Object.entries(over.follows ?? {}))
   let current = over.participation === undefined ? participation() : over.participation
   let copy = [...(over.copy ?? [])]
   const fetched: string[] = []
@@ -381,6 +384,8 @@ const remoteDeps = (
     },
     deliver: { createdReply: (_user, post) => delivered.push(post.id) },
     fetchDocument: async () => over.document ?? null,
+    followChoices: async (_user, uris) =>
+      new Map(uris.flatMap((uri) => (follows.has(uri) ? [[uri, follows.get(uri) === true] as const] : []))),
     ...(over.fetchThread === null
       ? {}
       : {
@@ -412,6 +417,9 @@ const remoteDeps = (
       )
     },
     resolveTags: async () => [],
+    setFollow: async (_user, uri, following) => {
+      follows.set(uri, following)
+    },
     updateThreadState: async (_user, _id, state) => {
       states.push(state)
       if (current == null) return null
@@ -437,6 +445,7 @@ const remoteDeps = (
     deleted,
     deps,
     fetched,
+    follows,
     posts,
     pushes,
     removeCopy,
@@ -676,6 +685,56 @@ describe('readRemoteThread', () => {
   })
 })
 
+describe('following a post in a joined thread', () => {
+  const top = copyRow({ actor_uri: HOST_ACTOR })
+  const mine = copyRow({ actor_uri: OLA, in_reply_to_uri: top.object_uri })
+  const orphan = copyRow({ actor_uri: ZED, in_reply_to_uri: 'https://gone.example/notes/1' })
+
+  test('the read marks each top-level entry with whether I follow it', async () => {
+    const fake = remoteDeps({ copy: [top, mine, orphan], follows: { [orphan.object_uri]: true } })
+    const result = await readRemoteThread(fake.deps, 'ola', CHALLENGE_URL)
+    expect(result.ok ? result.entries.map((e) => [e.id, e.following]) : result).toEqual([
+      [top.id, true],
+      [orphan.id, true],
+    ])
+    const quiet = remoteDeps({ copy: [top, mine], follows: { [top.object_uri]: false } })
+    const unfollowed = await readRemoteThread(quiet.deps, 'ola', CHALLENGE_URL)
+    expect(unfollowed.ok ? unfollowed.entries.map((e) => e.following) : unfollowed).toEqual([false])
+  })
+
+  test('setting a top-level entry stores the choice by its Note id', async () => {
+    const fake = remoteDeps({ copy: [top, mine, orphan] })
+    expect(await setRemotePostFollowing(fake.deps, 'ola', CHALLENGE_URL, top.id, false)).toEqual({
+      following: false,
+      ok: true,
+    })
+    expect(await setRemotePostFollowing(fake.deps, 'ola', CHALLENGE_URL, orphan.id, true)).toMatchObject({
+      ok: true,
+    })
+    expect(fake.follows).toEqual(
+      new Map([
+        [top.object_uri, false],
+        [orphan.object_uri, true],
+      ]),
+    )
+  })
+
+  test('a reply is a 400, an unknown entry a 404, a challenge not joined a 403', async () => {
+    const fake = remoteDeps({ copy: [top, mine] })
+    expect(await setRemotePostFollowing(fake.deps, 'ola', CHALLENGE_URL, mine.id, true)).toMatchObject({
+      status: 400,
+    })
+    expect(await setRemotePostFollowing(fake.deps, 'ola', CHALLENGE_URL, POST_ID, true)).toMatchObject({
+      status: 404,
+    })
+    const left = remoteDeps({ copy: [top], participation: participation({ status: 'withdrawn' }) })
+    expect(await setRemotePostFollowing(left.deps, 'ola', CHALLENGE_URL, top.id, true)).toMatchObject({
+      status: 403,
+    })
+    expect(fake.follows.size).toBe(0)
+  })
+})
+
 describe('addRemoteChallengeComment', () => {
   const body = { audience: 'participants' as const, challenge_url: CHALLENGE_URL, message: ' Go! ' }
 
@@ -834,13 +893,18 @@ describe('admitPushedThreadNote', () => {
     })
   }
 
-  const pushedDeps = (current: ChallengeParticipationRecord | null = participation()) => {
-    const fake = remoteDeps({ participation: current })
+  const pushedDeps = (
+    current: ChallengeParticipationRecord | null = participation(),
+    over: { copy?: ThreadCopyEntryRecord[]; follows?: Record<string, boolean> } = {},
+  ) => {
+    const fake = remoteDeps({ participation: current, ...over })
     const notified: RaiseNotificationInput[] = []
     const deps: PushedThreadDeps = {
       deleteCopy: fake.deps.deleteCopy,
+      followChoices: fake.deps.followChoices,
       getCopyByObjectUri: fake.deps.getCopyByObjectUri,
       getParticipationByObjectUri: fake.deps.getParticipationByObjectUri,
+      listCopy: fake.deps.listCopy,
       notify: async (_user, input) => {
         notified.push(input)
       },
@@ -876,7 +940,7 @@ describe('admitPushedThreadNote', () => {
         data: { actor_uri: HOST_ACTOR, challenge_url: CHALLENGE_URL },
         dedupe_key: `challenge_comment:${HOST_WEB}/notes/1`,
         link: '/challenges/joined/p1#comments',
-        title: 'Freja commented in November',
+        title: 'Freja posted in November',
         type: 'challenge_comment',
       },
     ])
@@ -884,11 +948,73 @@ describe('admitPushedThreadNote', () => {
     expect(fake.notified).toHaveLength(1)
   })
 
-  test("an attendee's public reply enters as public and says replied", async () => {
-    const fake = pushedDeps()
-    await admit(fake, pushed({ actor: ZED, public: true, target: `${HOST_WEB}/notes/1` }), ZED)
-    expect(fake.copy()[0]).toMatchObject({ actor_uri: ZED, audience: 'public' })
-    expect(fake.notified[0]?.title).toBe('Freja replied in November')
+  describe('a pushed reply notifies me only when I follow its root post', () => {
+    const myPost = copyRow({
+      actor_uri: OLA,
+      display_name: 'Ola',
+      object_uri: `${HOME}/users/ola/feed/${POST_ID}`,
+    })
+    const hostPost = copyRow({ actor_uri: HOST_ACTOR, object_uri: `${HOST_WEB}/notes/1` })
+    const replyUnder = (root: ThreadCopyEntryRecord) =>
+      pushed({ actor: ZED, id: 'https://far.example/notes/7', public: true, target: root.object_uri })
+
+    test('a reply to my post: challenge_reply, worded "your post"', async () => {
+      const fake = pushedDeps(participation(), { copy: [myPost] })
+      await admit(fake, replyUnder(myPost), ZED)
+      expect(fake.copy().find((r) => r.actor_uri === ZED)).toMatchObject({ audience: 'public' })
+      expect(fake.notified).toEqual([
+        expect.objectContaining({
+          dedupe_key: 'challenge_reply:https://far.example/notes/7',
+          link: '/challenges/joined/p1#comments',
+          title: 'Freja replied to your post in November',
+          type: 'challenge_reply',
+        }),
+      ])
+    })
+
+    test("a reply under someone else's post I replied to, deeper in the chain", async () => {
+      const mine = copyRow({ actor_uri: OLA, in_reply_to_uri: hostPost.object_uri })
+      const zeds = copyRow({ actor_uri: ZED, in_reply_to_uri: mine.object_uri })
+      const fake = pushedDeps(participation(), { copy: [hostPost, mine, zeds] })
+      await admit(
+        fake,
+        pushed({ actor: ZED, id: 'https://far.example/notes/8', target: zeds.object_uri }),
+        ZED,
+      )
+      expect(fake.notified.map((n) => [n.type, n.title])).toEqual([
+        ['challenge_reply', "Freja replied to Freja's post in November"],
+      ])
+    })
+
+    test('a post I neither wrote nor replied under: nothing, unless I follow it', async () => {
+      const quiet = pushedDeps(participation(), { copy: [hostPost] })
+      await admit(quiet, replyUnder(hostPost), ZED)
+      expect(quiet.notified).toEqual([])
+      const followed = pushedDeps(participation(), {
+        copy: [hostPost],
+        follows: { [hostPost.object_uri]: true },
+      })
+      await admit(followed, replyUnder(hostPost), ZED)
+      expect(followed.notified.map((n) => n.type)).toEqual(['challenge_reply'])
+    })
+
+    test('my own post I unfollowed: nothing', async () => {
+      const fake = pushedDeps(participation(), { copy: [myPost], follows: { [myPost.object_uri]: false } })
+      await admit(fake, replyUnder(myPost), ZED)
+      expect(fake.notified).toEqual([])
+    })
+
+    test('the root is not in the copy: the direct parent decides', async () => {
+      const missingMine = pushedDeps()
+      await admit(missingMine, replyUnder(myPost), ZED)
+      expect(missingMine.notified.map((n) => n.title)).toEqual(['Freja replied to your post in November'])
+      const missingOther = pushedDeps()
+      await admit(missingOther, replyUnder(hostPost), ZED)
+      expect(missingOther.notified).toEqual([])
+      const followedParent = pushedDeps(participation(), { follows: { [hostPost.object_uri]: true } })
+      await admit(followedParent, replyUnder(hostPost), ZED)
+      expect(followedParent.notified.map((n) => n.title)).toEqual(['Freja replied to a post in November'])
+    })
   })
 
   test('an unknown sender is not stored and marks the copy stale', async () => {

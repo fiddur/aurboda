@@ -108,6 +108,32 @@ How it works:
     `event_outcome.comparisons` is how many lags were tested. The web marks a lag
     from the adjusted value.
 
+### People triggers
+
+A trigger of `type: "people"` is the time with people as an event: the day's minutes with
+`person_id` (or, without it, with anyone), from the same computation as the
+[`people` selector](#selectors) — the union of the activities with them per UTC day,
+overlapping activities counted once. Like a `nutrition` trigger it is a daily value turned
+into an event by `threshold` (default: more than 0 minutes), and needs an `event` outcome
+(any other outcome is a `400`). `pattern` is not used.
+
+```jsonc
+{
+  "triggers": [{ "type": "people", "person_id": "<person id>", "threshold": { "op": "gte", "value": 60 } }],
+  "outcome": { "type": "event", "source": "metric", "metric": "headache" },
+}
+```
+
+An unknown or deleted `person_id` is a `400` naming it (unlike the Continuous-mode selector,
+which reads it as no time). `min_count` / `window_days` and flagged windows work as for the
+other types. `get_event_probability` takes no `TriggerCondition` (only an activity type or a
+tag pattern), so it has no people trigger. In the web Explore page, Event mode offers
+**time with people** as a trigger kind with the person select and an "At least … minutes"
+input; the result is headed "Trigger: Time with <name>" or "Time with anyone".
+
+Articles publish selectors, not triggers, so nothing about people triggers reaches an
+article.
+
 ### Denominator: `known` vs `all`
 
 The denominator is the set of days the analysis trusts as "outcome status known":

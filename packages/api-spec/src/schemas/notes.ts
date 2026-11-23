@@ -180,8 +180,12 @@ export const noteRelatedSchema = z
     entity_type: noteRelatedEntityTypeSchema,
     label: z.string().meta({
       description:
-        'Display label: the person\'s name; for an activity its title (else its type\'s name) and its local date, e.g. "Evening walk, 2026-11-20"',
+        "Display label: the person's name; for an activity its title (else its type's name) and its local date (a sleep's, the day it ended), e.g. \"Evening walk, 2026-11-20\"",
     }),
+    activity_type: z
+      .string()
+      .optional()
+      .meta({ description: "An activity's type, for its icon; absent for a person" }),
   })
   .meta({
     description: 'A person or an activity the note is related to, without being a comment on it',

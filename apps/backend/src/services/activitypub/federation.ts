@@ -857,7 +857,7 @@ interface StrangerIngestOptions {
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
   onNewEntry?: (user: string) => void
   structuredUrl?: string
-  /** The Note already raised `challenge_comment` for `me`: store it without a notification. */
+  /** The Note is a challenge thread entry, which notifies `me` through the thread (or, for an unfollowed post's reply, not at all): store it without a notification. */
   quiet?: boolean
 }
 
@@ -907,8 +907,9 @@ const ingestStrangerInvolvement = async (
 }
 
 /**
- * Admit the Note into a challenge thread hosted here when it answers one; true when `me` already
- * gets `challenge_comment` for it, so the timeline must not notify again.
+ * Admit the Note into a challenge thread hosted here when it answers one; true when the thread
+ * notifies `me` of it (`challenge_comment`, or `challenge_reply` when `me` follows the post), so the
+ * timeline must not notify again.
  */
 const admitToChallengeThread = async (
   ctx: InboxContext<void>,

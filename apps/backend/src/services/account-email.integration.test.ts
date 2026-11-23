@@ -134,6 +134,34 @@ describe('account_email_tokens', () => {
     expect(await centralDb.consumeAccountEmailToken('h2', 'reset')).not.toBeNull()
   })
 
+  test('the use reads and writes accounts on the transaction holding the token', async () => {
+    await centralDb.ensureUserAccount('alice', { createdAt: new Date(), preExisting: false })
+    await centralDb.setPasswordLogin('alice', false)
+    await issue('h4')
+    const seen: { outside?: boolean; username?: string } = {}
+    await centralDb.consumeAccountEmailToken('h4', 'reset', async (consumed, accounts) => {
+      seen.username = (await accounts.getUserAccount(consumed.username))?.username
+      await accounts.setPasswordLogin(consumed.username, true)
+      seen.outside = await centralDb.getPasswordLogin(consumed.username)
+    })
+    expect(seen).toEqual({ outside: false, username: 'alice' })
+    expect(await centralDb.getPasswordLogin('alice')).toBe(true)
+  })
+
+  test('a use that fails after an account write rolls the write back', async () => {
+    await centralDb.ensureUserAccount('alice', { createdAt: new Date(), preExisting: false })
+    await centralDb.setPasswordLogin('alice', false)
+    await issue('h5')
+    await expect(
+      centralDb.consumeAccountEmailToken('h5', 'reset', async (consumed, accounts) => {
+        await accounts.setPasswordLogin(consumed.username, true)
+        throw new Error('role locked')
+      }),
+    ).rejects.toThrow('role locked')
+    expect(await centralDb.getPasswordLogin('alice')).toBe(false)
+    expect(await centralDb.consumeAccountEmailToken('h5', 'reset')).not.toBeNull()
+  })
+
   test('two concurrent uses of one token: only one runs and succeeds', async () => {
     await issue('h3')
     let uses = 0

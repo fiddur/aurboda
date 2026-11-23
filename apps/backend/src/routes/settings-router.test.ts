@@ -47,14 +47,15 @@ describe('hidden_pages over GET/PATCH /user/settings', () => {
     expect(res.body.hidden_pages).toEqual([])
   })
 
-  test('stores the list as given, an unknown path included, and reads it back', async () => {
-    const hidden = ['/meals', '/feed', '/a-page-from-the-future']
-    const patched = await supertest(app()).patch('/user/settings').send({ hidden_pages: hidden })
+  test('stores the menu paths, drops one no menu offers, and reads them back', async () => {
+    const patched = await supertest(app())
+      .patch('/user/settings')
+      .send({ hidden_pages: ['/meals', '/feed', '/a-page-from-the-future'] })
     expect(patched.status).toBe(200)
-    expect(patched.body.hidden_pages).toEqual(hidden)
+    expect(patched.body.hidden_pages).toEqual(['/meals', '/feed'])
 
     const read = await supertest(app()).get('/user/settings')
-    expect(read.body.hidden_pages).toEqual(hidden)
+    expect(read.body.hidden_pages).toEqual(['/meals', '/feed'])
   })
 
   test('null shows every page again', async () => {
