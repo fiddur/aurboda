@@ -77,6 +77,12 @@ describe('GET /chart-data breakdown by an item path', () => {
     expect(res.status).toBe(200)
   })
 
+  test('passes @people through untouched, beside a data field', async () => {
+    const res = await supertest(app).get(`${activity}&breakdown_fields=%40people,mood`)
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getChartData).mock.calls[0]?.[1].breakdown_fields).toEqual(['@people', 'mood'])
+  })
+
   test('passes a muscle-group filter on with a summed measure', async () => {
     const res = await supertest(app).get(
       `${activity}&filter_field=sets.exercise.muscle_group&filter_value=chest&measure=set_count&breakdown_fields=sets.exercise`,

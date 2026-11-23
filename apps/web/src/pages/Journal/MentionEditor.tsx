@@ -3,8 +3,12 @@ import type { JSX } from 'preact'
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
+import type { UploadImage } from '../../components/MarkdownEditor/image-upload'
+
 import { MarkdownEditor } from '../../components/MarkdownEditor'
+import { fetchNoteAttachmentBlob } from '../../state/api'
 import { caretLineRect } from './caret-position'
+import { resolveInlinePictures } from './inline-pictures'
 import { type MentionPlacement, mentionMenuPlacement } from './mention-placement'
 import { MentionMenu, useAddPerson, usePeople } from './Related'
 import {
@@ -106,14 +110,22 @@ export const MentionEditor = ({
   onChange,
   onMention,
   onBlur,
-  attachPictures,
+  noteId,
+  upload,
+  uploadFailureMessage,
+  onOpenPicture,
   autoFocus,
 }: {
   value: string
   onChange: (content: string) => void
   onMention: (content: string, person: Person) => void
   onBlur: () => void
-  attachPictures: (files: File[]) => void
+  /** The entry, once it has been saved: its pictures in the text are shown in the preview. */
+  noteId: string | undefined
+  /** Keeps a pasted, dropped or picked picture with the entry and answers its `attachment:` URL. */
+  upload: UploadImage
+  uploadFailureMessage: (failure: unknown) => string
+  onOpenPicture: (attachmentId: string) => void
   /** Focus the text with the caret at its end once shown. */
   autoFocus?: boolean
 }) => {
@@ -239,8 +251,19 @@ export const MentionEditor = ({
         textareaRef={textareaRef}
         onKeyDown={keys}
         onCaret={readCaret}
-        attachPictures={attachPictures}
-        attachHint="Paste, drop or pick pictures to add them to this entry, in order. Type @ to name someone."
+        upload={upload}
+        uploadFailureMessage={uploadFailureMessage}
+        pictureHint="Paste or drop pictures to put them in the text; 🖼 Add pictures adds them below. Type @ to name someone."
+        decoratePreview={(preview) =>
+          noteId
+            ? resolveInlinePictures(preview, {
+                fetchBlob: fetchNoteAttachmentBlob,
+                maxEdge: '2000',
+                noteId,
+                onOpen: onOpenPicture,
+              })
+            : undefined
+        }
       />
       {open && (
         <MentionMenu

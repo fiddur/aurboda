@@ -9,6 +9,11 @@ export const uploadPlaceholder = (name: string): string => `${PLACEHOLDER_PREFIX
 
 export const stillUploading = (value: string): boolean => value.includes(PLACEHOLDER_PREFIX)
 
+const PLACEHOLDER_LINE = /!\[Uploading\u2060 [^\n]*?…\]\(\)\n?/g
+
+/** The text without the placeholders of pictures still on their way: what is worth saving meanwhile. */
+export const withoutUploadPlaceholders = (value: string): string => value.replace(PLACEHOLDER_LINE, '')
+
 export const freePlaceholder = (value: string, name: string): string => {
   let candidate = uploadPlaceholder(name)
   for (let attempt = 2; value.includes(candidate); attempt += 1) {
@@ -82,25 +87,6 @@ const REFUSED_TYPE = 'image/svg+xml'
 const imagesIn = (files: FileList | null | undefined): File[] =>
   [...(files ?? [])].filter((file) => file.type.startsWith('image/'))
 
-/** Paste and drop handlers that hand the pictures to `take` and leave the text alone. */
-export const pictureDropHandlers = (take: (files: File[]) => void): ImageUpload['handlers'] => ({
-  onDragOver: (event) => {
-    if (event.dataTransfer?.types.includes('Files') === true) event.preventDefault()
-  },
-  onDrop: (event) => {
-    const pictures = imagesIn(event.dataTransfer?.files)
-    if (pictures.length === 0) return
-    event.preventDefault()
-    take(pictures)
-  },
-  onPaste: (event) => {
-    const pictures = imagesIn(event.clipboardData?.files)
-    if (pictures.length === 0) return
-    event.preventDefault()
-    take(pictures)
-  },
-})
-
 export interface ImageUpload {
   enabled: boolean
   handlers: {
@@ -118,11 +104,14 @@ export const useImageUpload = ({
   onChange,
   upload,
   cursor,
+  failureMessage = messageForFailure,
 }: {
   value: string
   onChange: (value: string) => void
   upload?: UploadImage
   cursor: () => number | undefined
+  /** What to tell the person when `upload` fails; the feed-image wording by default. */
+  failureMessage?: (failure: unknown) => string
 }): ImageUpload => {
   const [sending, setSending] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -142,7 +131,7 @@ export const useImageUpload = ({
       write(replaceFirst(latest.current, placeholder, imageMarkdown(url)))
     } catch (failure) {
       write(removePlaceholder(latest.current, placeholder))
-      setError(messageForFailure(failure))
+      setError(failureMessage(failure))
     }
   }
 

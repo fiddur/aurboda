@@ -184,6 +184,25 @@ describe('dashboardConfigError', () => {
     ).toBeUndefined()
   })
 
+  test('accepts a breakdown by who the activity was with, masked', () => {
+    const people = { breakdown_fields: ['@people'], masked_breakdown_fields: ['@people'] }
+    expect(
+      dashboardConfigError(barWidget({ ...people, filter_field: undefined, filter_value: undefined })),
+    ).toBeUndefined()
+    expect(dashboardConfigError(barWidget(people))).toBeUndefined()
+    expect(
+      dashboardConfigError(
+        withWidgets([
+          {
+            config: { ...people, pattern: 'sex', source_type: 'activity_type' },
+            id: 'trend',
+            type: 'trend_chart',
+          },
+        ]),
+      ),
+    ).toBeUndefined()
+  })
+
   test('refuses a muscle-group filter without a muscle group', () => {
     expect(dashboardConfigError(barWidget({ filter_value: 'pecs' }))).toBe(MUSCLE_GROUP_FILTER_NEEDS_GROUP)
   })

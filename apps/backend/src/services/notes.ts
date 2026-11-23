@@ -361,9 +361,13 @@ const checkRelated = async (
   return null
 }
 
-/** The first non-empty line of a note's text, cut to the excerpt length. */
+const ONLY_PICTURES = /^\s*(!\[[^\]]*\]\([^)]*\)\s*)+$/
+
+/** The first line of a note's text with words in it (not empty, not only pictures), cut to the excerpt length. */
 export const journalExcerpt = (content: string): string =>
-  (content.split('\n').find((line) => line.trim() !== '') ?? '').trim().slice(0, JOURNAL_ENTRY_EXCERPT_MAX)
+  (content.split('\n').find((line) => line.trim() !== '' && !ONLY_PICTURES.test(line)) ?? '')
+    .trim()
+    .slice(0, JOURNAL_ENTRY_EXCERPT_MAX)
 
 /** The live notes related to any of `targetIds`, newest first, as a person's or an activity's page lists them. */
 export async function listJournalEntryRefs(

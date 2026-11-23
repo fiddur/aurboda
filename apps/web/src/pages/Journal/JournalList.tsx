@@ -17,7 +17,7 @@ import {
 } from '../../state/api'
 import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
-import { AttachmentStrip } from './Attachments'
+import { AttachmentStrip, PictureViewer, useInlinePictures } from './Attachments'
 import {
   dayHeading,
   daysLeft,
@@ -98,15 +98,27 @@ const EntryHead = ({ note }: { note: Note }) => {
   )
 }
 
-const EntryText = ({ content }: { content: string }) => {
+const EntryText = ({
+  content,
+  noteId,
+  onOpenPicture,
+}: {
+  content: string
+  noteId: string | undefined
+  onOpenPicture: (attachmentId: string) => void
+}) => {
   const [expanded, setExpanded] = useState(false)
+  const text = useRef<HTMLDivElement>(null)
+  const html = content.trim() ? renderMarkdown(content) : ''
+  useInlinePictures(text, noteId, html, '400', onOpenPicture)
   const long = isLongText(content)
-  if (!content.trim()) return null
+  if (!html) return null
   return (
     <>
       <div
+        ref={text}
         class={`journal-entry-text${long && !expanded ? ' clamped' : ''}`}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
       {long && (
         <button type="button" class="journal-link-btn" onClick={() => setExpanded(!expanded)}>
@@ -145,22 +157,28 @@ const EntryFoot = ({
     </footer>
   ) : null
 
-const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => (
-  <article class="journal-entry">
-    <EntryHead note={note} />
-    {note.title && (
-      <h3 class="journal-entry-title">
-        {isJournalEntry(note) ? <a href={editorHref(note)}>{note.title}</a> : note.title}
-      </h3>
-    )}
-    <EntryText content={note.content} />
-    {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
-    {note.id && (note.attachments ?? []).length > 0 && (
-      <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} />
-    )}
-    <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
-  </article>
-)
+const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => {
+  const [viewing, setViewing] = useState<string | undefined>(undefined)
+  return (
+    <article class="journal-entry">
+      <EntryHead note={note} />
+      {note.title && (
+        <h3 class="journal-entry-title">
+          {isJournalEntry(note) ? <a href={editorHref(note)}>{note.title}</a> : note.title}
+        </h3>
+      )}
+      <EntryText content={note.content} noteId={note.id} onOpenPicture={setViewing} />
+      {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
+      {note.id && (note.attachments ?? []).length > 0 && (
+        <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} content={note.content} />
+      )}
+      <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
+      {viewing && note.id && (
+        <PictureViewer noteId={note.id} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+      )}
+    </article>
+  )
+}
 
 const OnThisDay = ({ today }: { today: string }) => {
   const query = useQuery({
