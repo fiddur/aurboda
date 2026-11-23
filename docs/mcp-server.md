@@ -318,6 +318,12 @@ that upload's error. A body over `max_bytes` (`413`) or an empty one (`400`) lea
 usable; any other answer uses it up. An unknown, expired or used URL answers `404`. Minting draws
 on the account's upload budget; the uploads themselves are limited per client IP.
 
+The upload itself is not checked against the account's plan: a URL minted just before an account
+becomes read-only can still take its one upload within its 15 minutes. A reverse proxy in front of
+the API must accept bodies of up to 20 MB on `/api/uploads/<user>/<token>`; the bundled
+`nginx.conf` allows 25 MB there and keeps those paths out of its access log, since they carry the
+URL's credential.
+
 ## Endpoint
 
 The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
