@@ -66,6 +66,15 @@ export const validMetrics = [
   'vertical_speed',
   'grade_adjusted_speed',
   'performance_condition',
+  'strength_score',
+  'strength_score_chest',
+  'strength_score_shoulders',
+  'strength_score_back',
+  'strength_score_biceps',
+  'strength_score_triceps',
+  'strength_score_quadriceps',
+  'strength_score_hamstrings',
+  'strength_score_glutes',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -78,6 +87,28 @@ export type MetricType = z.infer<typeof metricTypeSchema>
 
 export const isValidMetric = (metric: string): metric is MetricType =>
   (validMetrics as readonly string[]).includes(metric)
+
+/** The overall strength score and one per score group (`strengthScoreGroups`), stored once per local day. */
+export const strengthScoreMetrics = [
+  'strength_score',
+  'strength_score_chest',
+  'strength_score_shoulders',
+  'strength_score_back',
+  'strength_score_biceps',
+  'strength_score_triceps',
+  'strength_score_quadriceps',
+  'strength_score_hamstrings',
+  'strength_score_glutes',
+] as const satisfies readonly MetricType[]
+
+/**
+ * Metrics Aurboda calculates and stores itself. A recalculation replaces their rows, so they are never accepted from a
+ * client: no write, delete or merge into them.
+ */
+export const computedMetrics: readonly MetricType[] = strengthScoreMetrics
+
+export const isComputedMetric = (metric: string): boolean =>
+  (computedMetrics as readonly string[]).includes(metric)
 
 /**
  * HR zone metrics are computed from heart_rate data, not stored directly.
@@ -264,6 +295,15 @@ export const metricUnits: Record<MetricType, string> = {
   vertical_speed: 'm/s',
   grade_adjusted_speed: 'm/s',
   performance_condition: 'score',
+  strength_score: 'points',
+  strength_score_chest: 'points',
+  strength_score_shoulders: 'points',
+  strength_score_back: 'points',
+  strength_score_biceps: 'points',
+  strength_score_triceps: 'points',
+  strength_score_quadriceps: 'points',
+  strength_score_hamstrings: 'points',
+  strength_score_glutes: 'points',
 }
 
 export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
@@ -301,6 +341,15 @@ export const metricBetterDirections: Partial<Record<MetricType, Exclude<MetricBe
   sleep_total_score: 'higher',
   steps: 'higher',
   stress_level: 'lower',
+  strength_score: 'higher',
+  strength_score_chest: 'higher',
+  strength_score_shoulders: 'higher',
+  strength_score_back: 'higher',
+  strength_score_biceps: 'higher',
+  strength_score_triceps: 'higher',
+  strength_score_quadriceps: 'higher',
+  strength_score_hamstrings: 'higher',
+  strength_score_glutes: 'higher',
 }
 
 export const customMetricDefinitionSchema = z
@@ -421,6 +470,15 @@ export const metricLabels: Record<string, string> = {
   vertical_speed: 'Vertical Speed',
   grade_adjusted_speed: 'Grade Adjusted Speed',
   performance_condition: 'Performance Condition',
+  strength_score: 'Strength Score',
+  strength_score_chest: 'Strength Score (Chest)',
+  strength_score_shoulders: 'Strength Score (Shoulders)',
+  strength_score_back: 'Strength Score (Back)',
+  strength_score_biceps: 'Strength Score (Biceps)',
+  strength_score_triceps: 'Strength Score (Triceps)',
+  strength_score_quadriceps: 'Strength Score (Quadriceps)',
+  strength_score_hamstrings: 'Strength Score (Hamstrings)',
+  strength_score_glutes: 'Strength Score (Glutes)',
 }
 
 export const getMetricDisplayName = (metric: string): string => metricLabels[metric] ?? metric

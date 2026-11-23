@@ -14,6 +14,7 @@ import {
   scoredSets,
   strengthScoreAt,
   strengthScoreHistory,
+  strengthScorePoints,
   type StrengthScoreSubject,
 } from './strength-score.ts'
 
@@ -382,5 +383,43 @@ describe('strengthScoreHistory', () => {
     )
     expect(history.missing).toEqual(['sex'])
     expect(history.points).toEqual([])
+  })
+})
+
+describe('strengthScorePoints', () => {
+  const pointOf = (moment: Date, sets: ScoredSet[]) => {
+    const score = strengthScoreAt(sets, references, male, moment, 'sets.exercise')
+    return {
+      at: score.at,
+      groups: Object.fromEntries(score.groups.flatMap((g) => (g.score === null ? [] : [[g.group, g.score]]))),
+      score: score.score,
+    }
+  }
+
+  test('equals scoring each moment on its own, for unsorted sets and moments in any order', () => {
+    const sets = setsOf([
+      session('d', daysBefore(5), [set('Bench press', 100, 5), set('Curl', 20, 8)]),
+      session('a', daysBefore(120), [set('Bench press', 140, 3)]),
+      session('c', daysBefore(30), [set('Incline', 80, 6), set('Hammer', 18, 10)]),
+      session('edge', daysBefore(90), [set('Fly', 30, 12)]),
+      session('b', daysBefore(60), [set('Bench press', 120, 5), set('Curl', 25, 5)]),
+      session('now', at, [set('DB bench', 40, 10)]),
+    ]).toReversed()
+    const moments = [
+      at,
+      daysBefore(100),
+      daysBefore(0.5),
+      daysBefore(45),
+      daysBefore(91),
+      daysBefore(150),
+      at,
+    ]
+    expect(strengthScorePoints(sets, references, male, moments)).toEqual(moments.map((m) => pointOf(m, sets)))
+  })
+
+  test('gives no points for no moments', () => {
+    expect(
+      strengthScorePoints(setsOf([session('s', at, [set('Curl', 12, 12)])]), references, male, []),
+    ).toEqual([])
   })
 })

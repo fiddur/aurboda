@@ -419,6 +419,12 @@ The following metrics are available for querying and manual entry:
 | `readiness_score`          | score       | Readiness score (0-100)        |
 | `resilience_score`         | score       | Resilience score (0-100)       |
 | `productivity_score`       | score       | Productivity score (0-100)     |
+| `strength_score`           | points      | Strength score (read only)     |
+| `strength_score_<group>`   | points      | Strength score of one group    |
+
+The strength score metrics are calculated by Aurboda and cannot be written or deleted; the groups
+are chest, shoulders, back, biceps, triceps, quadriceps, hamstrings and glutes (see
+[Strength score](features/strength-score.md#stored-as-daily-metrics)).
 
 ## Connecting with Claude Desktop
 

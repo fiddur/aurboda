@@ -248,13 +248,14 @@ export const createMetricsRouter = (
     },
   )
 
-  router.delete<{ metric: string }, { success: boolean; deleted?: number }>(
+  router.delete<{ metric: string }, { success: boolean; deleted?: number; error?: string }>(
     '/metrics/:metric/data',
     authMiddleware,
     async (req, res) => {
       const { metric } = req.params
       const user = req.user!
       const result = await deleteMetricData(user, metric)
+      if (result.error) return res.status(400).json({ error: result.error, success: false })
       res.json({ ...result, success: true })
     },
   )
@@ -268,6 +269,7 @@ export const createMetricsRouter = (
       const { time, source } = req.query
       const user = req.user!
       const result = await deleteMetric(user, metric, new Date(time), source)
+      if (result.error) return res.status(400).json({ deleted: false, error: result.error, success: false })
       if (!result.deleted) {
         return res.status(404).json({ deleted: false, error: 'Measurement not found', success: false })
       }

@@ -203,6 +203,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
       }
 
       const result = await deleteMetric(user, metric, measurementTime, source)
+      if (result.error) return errorResponse(result.error)
       return jsonResponse(result)
     },
   )
@@ -215,6 +216,7 @@ export const registerMetricTools = (server: McpServer, user: string) => {
     },
     async ({ metric }) => {
       const result = await deleteMetricData(user, metric)
+      if (result.error) return errorResponse(result.error)
       return jsonResponse(result)
     },
   )

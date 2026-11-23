@@ -177,6 +177,21 @@ describe('planImport', () => {
     expect(plan.rows[1]).toMatchObject({ error: 'No unit for "Zonulin": add a unit column', status: 'error' })
   })
 
+  test('a computed metric is an error and is not imported', () => {
+    const plan = planImport(
+      table([cell(2, '2026-03-01', 'strength_score', 80, 'points'), cell(3, '2026-03-01', 'Hb', 145, 'g/L')]),
+      [],
+      'blood_panel',
+      [],
+      catalog,
+    )
+    expect(plan.dates[0].entries).toEqual([{ metric: 'Hb', unit: 'g/L', value: 145 }])
+    expect(plan.rows[0]).toMatchObject({
+      error: '"strength_score" is calculated by Aurboda and cannot be written.',
+      status: 'error',
+    })
+  })
+
   test('keeps the extraction errors and skipped rows', () => {
     const plan = planImport(
       { cells: [], errors: [{ error: 'Not a number: <0,2', metric: 'CRP', row: 4 }], skipped: [{ row: 5 }] },

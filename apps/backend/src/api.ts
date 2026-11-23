@@ -281,6 +281,9 @@ import {
 import { createSourceEnrichQueue, type SourceEnrichQueue } from './services/source-enrich-queue.ts'
 import { garminActivityExternalId } from './services/source-identity.ts'
 import { createStravaQueue, type StravaQueue } from './services/strava-queue.ts'
+import { defaultStrengthScoreMetricsDeps } from './services/strength-score-metrics/deps.ts'
+import { createStrengthScoreQueue, type StrengthScoreQueue } from './services/strength-score-metrics/queue.ts'
+import { refreshStrengthScoreMetrics } from './services/strength-score-metrics/refresh.ts'
 import { createSyncProvider } from './services/sync-provider.ts'
 import { createSyncScheduler } from './services/sync-scheduler.ts'
 import { readTagActorHost } from './services/tag-actor-host.ts'
@@ -478,6 +481,7 @@ const main = async () => {
   // over the variable, so it starts enqueuing as soon as the queue exists.
   let deductionQueue: DeductionQueue | null = null
   let autoshareQueue: AutoshareQueue | null = null
+  let strengthScoreQueue: StrengthScoreQueue | null = null
   const activityNotifier: ActivityNotifier = (user, activityType, start, end, sourceRuleId) => {
     void deductionQueue?.enqueueEvaluation({
       activity_type: activityType,
@@ -489,6 +493,7 @@ const main = async () => {
     // Auto-share rules (#903) evaluate the same mutation windows, after a
     // stabilisation delay (the queue's startAfter). Fire-and-forget.
     void autoshareQueue?.enqueueEvaluation(user, start, end)
+    void strengthScoreQueue?.enqueueRefresh(user)
   }
   const checkInServiceDeps: CheckInDeps = { ...checkInDeps, activityMutated: activityNotifier }
   // Home Assistant location pull. The detection trigger is built much
@@ -1177,6 +1182,22 @@ const main = async () => {
       user,
       since,
     )
+
+  if (boss) {
+    try {
+      const strengthScoreMetricsDeps = defaultStrengthScoreMetricsDeps()
+      strengthScoreQueue = await createStrengthScoreQueue(boss, {
+        isReadOnly,
+        listUsers: () => listUserNames(userDb),
+        refresh: (user) => refreshStrengthScoreMetrics(user, strengthScoreMetricsDeps),
+      })
+    } catch (error) {
+      console.error('Failed to initialize strength score metrics queue:', error)
+    }
+  }
+  if (!strengthScoreQueue) {
+    console.warn('⚠️ Strength score metrics disabled (no job queue) - they will not be stored or updated')
+  }
 
   // Background polling (#1042): every 5 minutes, sync whatever each user's
   // `sync_intervals` says is due, through the same sync provider queries use.

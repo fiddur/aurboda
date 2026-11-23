@@ -531,6 +531,48 @@ export const replaceTimeSeriesInWindow = async (
     return deleted.rowCount ?? 0
   })
 
+/**
+ * Makes the stored rows of `source` and `metrics` exactly `points`, in one transaction: rows not among the points,
+ * and soft-deleted ones, are hard-deleted; new points and points whose value differs are written. Unchanged rows are
+ * left alone, so their `updated_at` still says when the number last changed.
+ */
+export const reconcileTimeSeries = async (
+  user: string,
+  source: string,
+  metrics: readonly string[],
+  points: TimeSeriesPoint[],
+): Promise<{ removed: number; written: number }> =>
+  withUserTransaction(user, async (tx) => {
+    const keyOf = (time: Date, metric: string) => `${time.getTime()}|${metric}`
+    const wanted = new Map(points.map((p) => [keyOf(p.time, p.metric), p]))
+    const existing = await query<{ deleted: boolean; metric: string; time: Date; value: number }>(
+      tx,
+      `SELECT time, metric, value, deleted_at IS NOT NULL AS deleted FROM time_series
+        WHERE source = $1 AND metric = ANY($2::text[])`,
+      [source, metrics],
+    )
+    const live = new Map<string, number>()
+    const stale: { metric: string; time: Date }[] = []
+    for (const row of existing.rows) {
+      const time = new Date(row.time)
+      const key = keyOf(time, row.metric)
+      if (row.deleted || !wanted.has(key)) stale.push({ metric: row.metric, time })
+      else live.set(key, row.value)
+    }
+    if (stale.length > 0) {
+      await query(
+        tx,
+        `DELETE FROM time_series
+          WHERE source = $1
+            AND (time, metric) IN (SELECT * FROM unnest($2::timestamptz[], $3::text[]))`,
+        [source, stale.map((s) => s.time), stale.map((s) => s.metric)],
+      )
+    }
+    const changed = [...wanted].flatMap(([key, p]) => (live.get(key) === p.value ? [] : [p]))
+    await insertTimeSeries(tx, changed)
+    return { removed: stale.length, written: changed.length }
+  })
+
 export const getTimeSeriesBucketed = async (
   user: string,
   metrics: MetricType[],
