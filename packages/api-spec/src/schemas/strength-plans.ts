@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { createDataResponseSchema } from './common.ts'
+import { exerciseMuscleGroupSchema } from './exercise-catalog.ts'
 
 export const STRENGTH_PLAN_MAX_SETS = 200
 
@@ -98,6 +99,10 @@ export const strengthPlanSchema = z
   .object({
     created_at: z.string(),
     id: z.string(),
+    muscle_groups: z.array(exerciseMuscleGroupSchema).meta({
+      description:
+        "The muscle groups the plan's exercises mainly work (their primary muscles in the exercise catalogue), in the order they first appear in the plan. Empty when none of its exercises is matched to the catalogue.",
+    }),
     name: z.string(),
     note: z.string().nullable(),
     planned_for: z.string().nullable().meta({ description: 'YYYY-MM-DD, or null for a routine' }),

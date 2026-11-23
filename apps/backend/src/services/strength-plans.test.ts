@@ -7,6 +7,8 @@ import type { StrengthPlanRecord } from '../db/index.ts'
 import { loadExerciseCatalog } from './exercise-catalog.ts'
 import {
   compareStrengthPlans,
+  planMuscleGroups,
+  planSetEntry,
   selectStrengthPlans,
   serializeStrengthPlan,
   strengthPlanPatch,
@@ -19,6 +21,7 @@ const knownKey = catalog.entries[0].key
 const plan = (overrides: Partial<StrengthPlan>): StrengthPlan => ({
   created_at: '2026-11-01T10:00:00.000Z',
   id: '11111111-1111-4111-8111-111111111111',
+  muscle_groups: [],
   name: 'Plan',
   note: null,
   planned_for: null,
@@ -65,6 +68,7 @@ describe('serializeStrengthPlan', () => {
     ).toEqual({
       created_at: '2026-11-01T10:00:00.000Z',
       id: 'p1',
+      muscle_groups: [],
       name: 'Push',
       note: 'Heavy',
       planned_for: '2026-11-19',
@@ -73,6 +77,64 @@ describe('serializeStrengthPlan', () => {
       updated_at: '2026-11-02T10:00:00.000Z',
     })
     expect(serializeStrengthPlan(record).sessions).toEqual([])
+  })
+})
+
+describe('planMuscleGroups', () => {
+  const byName = (value: string) =>
+    value.toLowerCase() === 'my squat' ? catalog.entries.find((e) => e.key === 'barbell_squat') : undefined
+  const entryOf = planSetEntry(catalog, byName)
+
+  test('a keyed set gives the groups its catalogue entry mainly works', () => {
+    expect(planMuscleGroups([{ exercise: 'Bench', exercise_key: 'barbell_bench_press' }], entryOf)).toEqual([
+      'shoulders',
+      'chest',
+      'triceps',
+    ])
+  })
+
+  test('a set without a key is matched by its name', () => {
+    expect(planMuscleGroups([{ exercise: 'My squat' }], entryOf)).toEqual([
+      'glutes',
+      'quadriceps',
+      'lower_back',
+    ])
+  })
+
+  test('an unmatched set adds nothing', () => {
+    expect(planMuscleGroups([{ exercise: 'Something odd' }], entryOf)).toEqual([])
+    expect(planMuscleGroups([{ exercise: 'My squat' }], planSetEntry(catalog, undefined))).toEqual([])
+  })
+
+  test('groups come in the order they first appear, without duplicates', () => {
+    expect(
+      planMuscleGroups(
+        [
+          { exercise: 'Plank', exercise_key: 'plank' },
+          { exercise: 'Bench', exercise_key: 'barbell_bench_press' },
+          { exercise: 'Plank', exercise_key: 'plank' },
+          { exercise: 'Bench', exercise_key: 'barbell_bench_press' },
+        ],
+        entryOf,
+      ),
+    ).toEqual(['abdominals', 'shoulders', 'chest', 'triceps'])
+  })
+
+  test('serializeStrengthPlan fills muscle_groups through the given resolver', () => {
+    const record: StrengthPlanRecord = {
+      created_at: new Date('2026-11-01T10:00:00Z'),
+      id: 'p1',
+      name: 'Legs',
+      note: null,
+      planned_for: null,
+      sets: [{ exercise: 'My squat', reps: 5 }],
+      updated_at: new Date('2026-11-01T10:00:00Z'),
+    }
+    expect(serializeStrengthPlan(record, [], entryOf).muscle_groups).toEqual([
+      'glutes',
+      'quadriceps',
+      'lower_back',
+    ])
   })
 })
 

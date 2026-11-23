@@ -4,19 +4,23 @@ import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-quer
 import axios from 'axios'
 import { format } from 'date-fns'
 import { useLocation, useRoute } from 'preact-iso'
-import { useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { ExerciseBlock } from './sessionModel'
 
 import {
   createStrengthPlan,
   deleteStrengthPlan,
+  fetchActivityById,
   fetchStrengthPlan,
+  updateActivity,
   updateStrengthPlan,
 } from '../../state/api'
 import { sessionUrl } from './constants'
 import { blocksFromPlan, planBody, planFormError } from './planModel'
+import { invalidateStrengthQueries } from './queries'
 import { BlocksEditor } from './SessionBlocks'
+import { blocksFromSets, isEditable, setsOfData } from './sessionModel'
 import './style.css'
 
 const invalidatePlans = (queryClient: QueryClient): Promise<unknown> =>
@@ -40,13 +44,58 @@ const PlanSessions = ({ sessions }: { sessions: StrengthPlan['sessions'] }) =>
     </p>
   )
 
-const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
+interface SourceSession {
+  blocks: ExerciseBlock[]
+  link_id?: string
+}
+
+const linkSession = async (activityId: string, planId: string): Promise<void> => {
+  try {
+    await updateActivity(activityId, { data: { plan_id: planId } })
+  } catch {
+    // The plan is saved either way; the link only feeds "Saved as" and "Last done".
+  }
+}
+
+const createPlan = async (
+  body: ReturnType<typeof planBody>,
+  source: SourceSession | undefined,
+  queryClient: QueryClient,
+): Promise<void> => {
+  const created = await createStrengthPlan(body)
+  if (!source?.link_id) return
+  await linkSession(source.link_id, created.id)
+  await invalidateStrengthQueries(queryClient)
+}
+
+const formTitle = (plan: StrengthPlan | undefined, fromSession: boolean | undefined): string => {
+  if (plan) return 'Edit plan'
+  return fromSession ? 'Save as a workout' : 'New plan'
+}
+
+const PlanForm = ({
+  plan,
+  fromSession,
+  source,
+  sourceError,
+}: {
+  plan?: StrengthPlan
+  fromSession?: boolean
+  source?: SourceSession
+  sourceError?: boolean
+}) => {
   const queryClient = useQueryClient()
   const { route } = useLocation()
   const [name, setName] = useState(plan?.name ?? '')
   const [day, setDay] = useState(plan?.planned_for ?? '')
   const [note, setNote] = useState(plan?.note ?? '')
-  const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => (plan ? blocksFromPlan(plan.sets) : []))
+  const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
+    plan ? blocksFromPlan(plan.sets) : (source?.blocks ?? []),
+  )
+  const nameRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (fromSession) nameRef.current?.focus()
+  }, [fromSession])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -62,7 +111,7 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
     try {
       const body = planBody({ day, name, note }, blocks)
       if (plan) await updateStrengthPlan(plan.id, body)
-      else await createStrengthPlan(body)
+      else await createPlan(body, source, queryClient)
       await invalidatePlans(queryClient)
       route('/strength/workouts')
     } catch {
@@ -89,16 +138,18 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
   return (
     <div class="page page--narrow strength-page">
       <header class="strength-sticky-header">
-        <h1>{plan ? 'Edit plan' : 'New plan'}</h1>
+        <h1>{formTitle(plan, fromSession)}</h1>
         <button type="button" class="btn-primary" onClick={() => void save()} disabled={busy}>
           {busy && !confirmDelete ? 'Saving…' : 'Save'}
         </button>
       </header>
+      {sourceError && <p class="strength-error">That session could not be loaded.</p>}
       {error && <p class="strength-error">{error}</p>}
       <div class="strength-card strength-plan-fields">
         <label>
           <span class="strength-field-label">Name</span>
           <input
+            ref={nameRef}
             type="text"
             required
             maxLength={120}
@@ -110,7 +161,7 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
           <span class="strength-field-label">Day</span>
           <input type="date" value={day} onInput={(e) => setDay((e.target as HTMLInputElement).value)} />
           <span class="strength-muted strength-hint">
-            Leave the day empty to keep it as a routine you can start any time.
+            Leave the day empty to keep it as a saved workout you can start any time.
           </span>
         </label>
         <label>
@@ -174,8 +225,29 @@ const ExistingPlan = ({ id }: { id: string }) => {
   return <PlanForm plan={query.data} />
 }
 
+const FromSession = ({ id }: { id: string }) => {
+  const query = useQuery({
+    gcTime: 0,
+    queryFn: () => fetchActivityById(id),
+    queryKey: ['entity-detail', 'activity', id, 'strength'],
+    retry: 1,
+    staleTime: 0,
+  })
+  if (query.isLoading) return <p class="loading">Loading…</p>
+  const activity = query.data?.activity
+  if (!activity) return <PlanForm fromSession sourceError />
+  const source: SourceSession = {
+    blocks: blocksFromSets(setsOfData(activity.data)),
+    ...(isEditable(activity, id) && !activity.data?.plan_id ? { link_id: id } : {}),
+  }
+  return <PlanForm fromSession source={source} />
+}
+
 export function StrengthPlanEditor() {
   const { params } = useRoute()
+  const { query } = useLocation()
   const id = params.id as string | undefined
-  return id ? <ExistingPlan key={id} id={id} /> : <PlanForm />
+  if (id) return <ExistingPlan key={id} id={id} />
+  const from = query.from
+  return from ? <FromSession key={from} id={from} /> : <PlanForm />
 }
