@@ -14,13 +14,13 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #6b7280;
+  color: var(--gray-500);
   cursor: pointer;
 }
 
 .chart-menu-button:hover,
 .chart-menu-button[aria-expanded='true'] {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 .chart-menu {
@@ -32,12 +32,12 @@
   flex-direction: column;
   min-width: 12rem;
   padding: 0.25rem 0;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 10%),
-    0 4px 6px -4px rgb(0 0 0 / 10%);
+    0 10px 15px -3px var(--black-a10),
+    0 4px 6px -4px var(--black-a10);
 }
 
 .chart-menu-item {
@@ -45,7 +45,7 @@
   padding: 0.5rem 0.75rem;
   border: none;
   background: none;
-  color: #374151;
+  color: var(--color-text-default-2);
   font: inherit;
   font-size: 0.9rem;
   text-align: left;
@@ -56,28 +56,13 @@
 
 .chart-menu-item:hover,
 .chart-menu-item:focus-visible {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
   outline: none;
 }
 
 @media (prefers-color-scheme: dark) {
-  .chart-menu-button:hover,
-  .chart-menu-button[aria-expanded='true'] {
-    background: #374151;
-  }
-
   .chart-menu {
-    background: #1f2937;
-    border-color: #374151;
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
-  }
-
-  .chart-menu-item {
-    color: #e5e7eb;
-  }
-
-  .chart-menu-item:hover,
-  .chart-menu-item:focus-visible {
-    background: #374151;
+    border-color: var(--gray-700);
+    box-shadow: 0 10px 15px -3px var(--black-a40);
   }
 }

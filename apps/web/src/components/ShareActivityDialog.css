@@ -1,7 +1,7 @@
 .share-dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--black-a40);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10,7 +10,7 @@
 }
 
 .share-dialog {
-  background: #fff;
+  background: var(--white);
   border-radius: 8px;
   padding: 1.25rem;
   max-width: 520px;
@@ -21,7 +21,7 @@
   box-sizing: border-box;
   max-height: 100%;
   overflow-y: auto;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px var(--black-a15);
 }
 
 .share-dialog-header {
@@ -35,7 +35,7 @@
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gray-800);
 }
 
 .share-dialog-close {
@@ -44,22 +44,22 @@
   font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--gray-500);
   padding: 0 0.25rem;
 }
 
 .share-dialog-close:hover {
-  color: #1f2937;
+  color: var(--gray-800);
 }
 
 .share-dialog-subtitle {
   margin: 0 0 1rem;
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .share-dialog-group {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 6px;
   padding: 0.75rem;
   margin: 0 0 0.75rem;
@@ -68,7 +68,7 @@
 .share-dialog-group legend {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gray-800);
   padding: 0 0.375rem;
 }
 
@@ -81,7 +81,7 @@
 .share-dialog-note {
   margin: 0 0 0.5rem;
   font-size: 0.78rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-style: italic;
 }
 
@@ -100,8 +100,8 @@
 .share-dialog-error {
   margin: 0.5rem 0 0;
   padding: 0.375rem 0.5rem;
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--red-100);
+  color: var(--red-800);
   border-radius: 4px;
   font-size: 0.85rem;
 }
@@ -119,7 +119,7 @@
   box-sizing: border-box;
   resize: vertical;
   padding: 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font: inherit;
   background: inherit;
@@ -128,30 +128,26 @@
 
 @media (prefers-color-scheme: dark) {
   .share-dialog {
-    background: #1f2937;
+    background: var(--gray-800);
   }
 
   .share-dialog-message,
   .share-dialog-tags {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .share-dialog-header h2,
   .share-dialog-group legend {
-    color: #e5e7eb;
-  }
-
-  .share-dialog-subtitle {
-    color: #d1d5db;
+    color: var(--gray-200);
   }
 
   .share-dialog-group {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
 .share-dialog-preview {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
@@ -168,7 +164,7 @@
 
 @media (prefers-color-scheme: dark) {
   .share-dialog-preview {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
@@ -179,12 +175,6 @@
 
 .share-dialog-plain summary {
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   margin-bottom: 0.4rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  .share-dialog-plain summary {
-    color: #9ca3af;
-  }
 }

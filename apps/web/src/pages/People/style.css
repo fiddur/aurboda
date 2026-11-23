@@ -41,7 +41,7 @@
 }
 
 .people-error {
-  color: #dc2626;
+  color: var(--red-600);
   margin: 0;
 }
 
@@ -361,7 +361,7 @@
 .people-chip.active {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--color-cta-text, #fff);
+  color: var(--color-cta-text, var(--white));
 }
 
 .people-more {

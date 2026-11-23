@@ -51,7 +51,7 @@
 }
 
 .tl-error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .tl-note {
@@ -87,11 +87,11 @@
 }
 
 .tl-form-fresh {
-  border-left-color: #22c55e;
+  border-left-color: var(--green-500);
 }
 
 .tl-form-fatigued {
-  border-left-color: #ef4444;
+  border-left-color: var(--red-500);
 }
 
 .tl-form-label {
@@ -229,19 +229,19 @@
 }
 
 .tl-zone-undertrained {
-  background: #60a5fa;
+  background: var(--blue-400);
 }
 
 .tl-zone-balanced {
-  background: #22c55e;
+  background: var(--green-500);
 }
 
 .tl-zone-strained {
-  background: #f97316;
+  background: var(--orange-500);
 }
 
 .tl-zone-very_strained {
-  background: #ef4444;
+  background: var(--red-500);
 }
 
 .tl-workouts {
@@ -292,7 +292,7 @@
   display: block;
   height: 6px;
   border-radius: 3px;
-  background: #8b5cf6;
+  background: var(--violet-500);
   opacity: 0.5;
 }
 

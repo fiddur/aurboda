@@ -1,7 +1,7 @@
 .settings-section {
   margin-bottom: 2rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--neutral-l88);
 }
 
 .settings-section .section-header {
@@ -17,42 +17,41 @@
 }
 
 .settings-section .section-description {
-  color: #666;
+  color: var(--neutral-l40);
   margin-bottom: 1rem;
   line-height: 1.5;
   font-size: 0.9rem;
 }
 
 .settings-section .loading {
-  color: #888;
+  color: var(--neutral-l53);
   font-style: italic;
 }
 
 .settings-section .no-data {
-  color: #888;
+  color: var(--color-text-subtle);
   font-style: italic;
   padding: 1rem;
   text-align: center;
-  background: #f8f8f8;
+  background: var(--neutral-l97);
   border-radius: 4px;
 }
 
 @media (prefers-color-scheme: dark) {
   .settings-section {
-    border-bottom-color: #444;
+    border-bottom-color: var(--neutral-l27);
   }
 
   .settings-section .section-description {
-    color: #aaa;
+    color: var(--neutral-l67);
   }
 
   .settings-section .loading {
-    color: #aaa;
+    color: var(--neutral-l67);
   }
 
   .settings-section .no-data {
-    color: #aaa;
-    background: #2a2a2a;
+    background: var(--neutral-l16);
   }
 }
 

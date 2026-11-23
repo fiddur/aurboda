@@ -8,7 +8,7 @@
 .rules-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--neutral-l88);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -19,7 +19,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--neutral-l94);
 }
 
 .rule-row:last-child {
@@ -49,8 +49,8 @@
 
 .rule-conditions {
   font-size: 0.8rem;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--color-text-muted-2);
+  background: var(--color-surface-sunken);
   padding: 0.125rem 0.375rem;
   border-radius: 3px;
   max-width: 300px;
@@ -61,7 +61,7 @@
 
 .rule-output {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .rule-priority {
@@ -72,18 +72,18 @@
 }
 
 .rule-priority.priority-0 {
-  background: #e5e7eb;
-  color: #6b7280;
+  background: var(--gray-200);
+  color: var(--gray-500);
 }
 
 .rule-priority.priority-1 {
-  background: #dbeafe;
-  color: #2563eb;
+  background: var(--blue-100);
+  color: var(--blue-600);
 }
 
 .rule-priority.priority-2 {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--red-100);
+  color: var(--red-600);
 }
 
 .rule-actions {
@@ -99,7 +99,7 @@
   gap: 0.375rem;
   cursor: pointer;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .rule-toggle input {
@@ -114,15 +114,15 @@
 }
 
 .rules-empty {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.9rem;
   font-style: italic;
   padding: 1rem 0;
 }
 
 .eval-result {
-  background: #ecfdf5;
-  color: #065f46;
+  background: var(--emerald-50);
+  color: var(--emerald-800);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   font-size: 0.85rem;
@@ -130,7 +130,7 @@
 }
 
 .rule-error {
-  color: #ef4444;
+  color: var(--red-500);
   font-size: 0.85rem;
   margin: 0.5rem 0;
 }
@@ -166,7 +166,7 @@
 .rule-section h2 {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-default);
   margin: 0;
 }
 
@@ -180,20 +180,20 @@
   min-width: 140px;
   font-size: 0.85rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   flex-shrink: 0;
 }
 
 .rule-field-hint {
   margin: 0;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .rule-field-error {
   margin: 0;
   font-size: 0.85rem;
-  color: #dc2626;
+  color: var(--color-danger-text-6);
 }
 
 .rule-field-input {
@@ -201,7 +201,7 @@
   max-width: 100%;
   padding: 0.375rem 0.5rem;
   font-size: 0.875rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   background: transparent;
   color: inherit;
@@ -216,7 +216,7 @@
 .rule-field-select {
   padding: 0.375rem 0.5rem;
   font-size: 0.875rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   background: transparent;
   color: inherit;
@@ -252,7 +252,7 @@
 .rule-danger-zone {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
 }
 
 .output-data-entries {
@@ -277,66 +277,45 @@
 
 .rule-preview-btn {
   background: transparent;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  border: 1px solid var(--gray-300);
+  color: var(--gray-700);
 }
 
 .rule-preview-btn:hover {
-  background: #f3f4f6;
+  background: var(--gray-100);
 }
 
 .rule-preview-result {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 @media (prefers-color-scheme: dark) {
-  .rule-field-error {
-    color: #fca5a5;
-  }
-
   .rules-list {
-    border-color: #333;
+    border-color: var(--neutral-l20);
   }
 
   .rule-row {
-    border-bottom-color: #333;
-  }
-
-  .rule-conditions {
-    background: #374151;
-    color: #9ca3af;
+    border-bottom-color: var(--neutral-l20);
   }
 
   .rule-priority.priority-1 {
-    background: #1e3a5f;
-    color: #60a5fa;
+    background: var(--blue-l24p5-c65);
+    color: var(--blue-400);
   }
 
   .rule-priority.priority-2 {
-    background: #3b1111;
-    color: #f87171;
-  }
-
-  .rule-toggle {
-    color: #9ca3af;
+    background: var(--red-l15);
+    color: var(--red-400);
   }
 
   .eval-result {
-    background: #052e16;
-    color: #6ee7b7;
-  }
-
-  .rule-section h2 {
-    color: #d1d5db;
-  }
-
-  .rule-field-label {
-    color: #9ca3af;
+    background: var(--green-950);
+    color: var(--emerald-300);
   }
 
   .rule-field-input {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .rule-field-input:focus {
@@ -344,11 +323,11 @@
   }
 
   .rule-field-select {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .rule-danger-zone {
-    border-top-color: #333;
+    border-top-color: var(--neutral-l20);
   }
 }
 

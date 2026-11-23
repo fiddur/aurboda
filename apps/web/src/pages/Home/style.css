@@ -2,7 +2,7 @@
   --welcome-bg: color-mix(in srgb, var(--color-border) 25%, var(--color-bg));
   --welcome-text-2: color-mix(in srgb, var(--color-text) 85%, var(--color-bg));
   --welcome-eyebrow-on-chrome: var(--color-accent-border);
-  --welcome-shadow: 0 12px 32px rgba(15, 42, 79, 0.12);
+  --welcome-shadow: 0 12px 32px var(--blue-l18p4-c64-a12);
 
   /* main > div makes route roots flex columns pinned to main's height; the welcome page scrolls as one block. */
   display: block;
@@ -17,7 +17,7 @@
   .welcome {
     --welcome-bg: var(--color-bg);
     --welcome-eyebrow-on-chrome: var(--color-accent);
-    --welcome-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    --welcome-shadow: 0 12px 32px var(--black-a40);
   }
 }
 
@@ -141,26 +141,26 @@
 }
 
 .welcome .welcome-button-outline {
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  color: #fff;
+  border: 1px solid var(--white-a35);
+  color: var(--white);
   font-weight: 600;
   padding: 0 18px;
 }
 
 .welcome .welcome-button-outline:hover {
   background: var(--color-chrome-hover);
-  color: #fff;
+  color: var(--white);
 }
 
 .welcome .welcome-button-primary {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--white);
   font-weight: 600;
 }
 
 .welcome .welcome-button-primary:hover {
   background: var(--color-primary-hover);
-  color: #fff;
+  color: var(--white);
 }
 
 /* Screenshots */
@@ -186,7 +186,7 @@
 
 .welcome-hero {
   background: var(--color-chrome);
-  color: #fff;
+  color: var(--white);
 }
 
 .welcome-hero-inner {
@@ -243,7 +243,7 @@
 }
 
 .welcome-hero .welcome-hero-state a {
-  color: #fff;
+  color: var(--white);
 }
 
 .welcome-hero-own {
@@ -256,7 +256,7 @@
 }
 
 .welcome-hero-shot img {
-  box-shadow: 0 24px 60px rgba(8, 20, 40, 0.35);
+  box-shadow: 0 24px 60px var(--blue-l9p4-a35);
 }
 
 /* Works with */
@@ -402,7 +402,7 @@
 }
 
 .welcome-band .welcome-split-shot img {
-  box-shadow: 0 12px 32px rgba(15, 42, 79, 0.18);
+  box-shadow: 0 12px 32px var(--blue-l18p4-c64-a18);
 }
 
 /* Three figures */
@@ -547,7 +547,7 @@
 
 .welcome-closing {
   background: var(--color-chrome);
-  color: #fff;
+  color: var(--white);
 }
 
 .welcome-closing-inner {

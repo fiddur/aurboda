@@ -1,7 +1,7 @@
 .add-to-dash-success {
   text-align: center;
   padding: 1.5rem;
-  color: #059669;
+  color: var(--emerald-600);
   font-weight: 500;
   font-size: 1rem;
 }
@@ -21,13 +21,13 @@
 }
 
 .mask-hint {
-  color: #999;
+  color: var(--neutral-l60);
   font-size: 0.8rem;
   margin: 0.375rem 0 0;
 }
 
 @media (prefers-color-scheme: dark) {
   .add-to-dash-success {
-    color: #34d399;
+    color: var(--emerald-400);
   }
 }

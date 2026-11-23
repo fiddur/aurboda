@@ -18,12 +18,12 @@
   align-items: center;
   padding: 0.75rem;
   gap: 0.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid var(--white-a15);
   min-height: 48px;
 }
 
 .sidebar-brand {
-  color: #fff;
+  color: var(--white);
   font-weight: 700;
   font-size: 1.1rem;
   white-space: nowrap;
@@ -32,14 +32,14 @@
 }
 
 .sidebar-brand:hover {
-  color: #fff;
+  color: var(--white);
   text-decoration: underline;
 }
 
 .sidebar-toggle {
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--white-a70);
   cursor: pointer;
   padding: 0.25rem;
   font-size: 1.1rem;
@@ -54,8 +54,8 @@
 }
 
 .sidebar-toggle:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+  background: var(--white-a10);
 }
 
 .sidebar-nav {
@@ -80,12 +80,12 @@
 
 .sidebar-link:hover {
   background: var(--color-chrome-hover);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-link.active {
   background: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-icon {
@@ -155,12 +155,12 @@
 
 .sidebar-section-btn:hover {
   background: var(--color-chrome-hover);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-section-btn.active {
   background: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-section-arrow {
@@ -203,9 +203,9 @@
   flex-direction: column;
   padding: 0.25rem 0;
   background: var(--color-chrome);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--white-a15);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 16px var(--black-a30);
 }
 
 .sidebar-flyout-title {
@@ -227,17 +227,17 @@
 
 .sidebar-flyout-link:hover {
   background: var(--color-chrome-hover);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-flyout-link.active {
   background: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .sidebar-footer {
   margin-top: auto;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-top: 1px solid var(--white-a15);
   padding: 0.5rem 0;
 }
 

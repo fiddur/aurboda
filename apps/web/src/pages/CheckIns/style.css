@@ -263,9 +263,9 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  background: white;
+  background: var(--white);
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px var(--black-a20);
   transition: transform 0.2s ease;
 }
 
@@ -317,7 +317,7 @@
 }
 
 .checkin-question.missing .checkin-prompt {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .checkin-scale-buttons {
@@ -377,7 +377,7 @@
 .checkin-choice.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: white;
+  color: var(--white);
 }
 
 .checkin-choice:focus-visible,
@@ -493,7 +493,7 @@
 }
 
 .checkin-error {
-  color: #dc2626;
+  color: var(--red-600);
   margin: 0;
   font-size: 0.9rem;
 }
@@ -576,7 +576,7 @@ ul.checkin-error {
 }
 
 .checkin-link-btn.danger {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .checkin-answers {
@@ -762,7 +762,7 @@ ul.checkin-error {
 .checkin-day.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: white;
+  color: var(--white);
 }
 
 .checkin-day-start {
@@ -1180,6 +1180,6 @@ ul.checkin-error {
   .checkin-error,
   .checkin-link-btn.danger,
   .checkin-question.missing .checkin-prompt {
-    color: #f87171;
+    color: var(--red-400);
   }
 }

@@ -18,24 +18,24 @@
 }
 
 .save-pending {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .save-ok {
-  color: #166534;
-  background: #dcfce7;
+  color: var(--green-800);
+  background: var(--green-100);
 }
 
 .save-error {
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--red-800);
+  background: var(--red-100);
 }
 
 .food-item-detail-page h1 {
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0 0 1rem;
-  color: #1f2937;
+  color: var(--gray-800);
 }
 
 .fi-name-heading {
@@ -49,10 +49,10 @@
   font-size: 1.25rem;
   font-weight: 600;
   padding: 0.375rem 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
   flex: 1;
 }
 
@@ -61,16 +61,16 @@
   gap: 0.375rem;
   align-items: center;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .fi-default-edit input {
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
 }
 
 .fi-default-edit input[type='number'] {
@@ -91,16 +91,16 @@
   width: 70px;
   padding: 0.125rem 0.25rem;
   font-size: 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 3px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
   text-align: right;
 }
 
 .nutrient-unit {
   font-size: 0.65rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   min-width: 20px;
 }
 
@@ -108,7 +108,7 @@
   padding: 0.375rem 0.75rem;
   font-size: 0.85rem;
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -156,7 +156,7 @@
 }
 
 .fi-icon-label {
-  color: #6b7280;
+  color: var(--gray-500);
   font-weight: 500;
   min-width: 2.5rem;
 }
@@ -164,10 +164,10 @@
 .fi-icon-row input[type='text'] {
   padding: 0.25rem 0.375rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
   width: 180px;
 }
 
@@ -181,14 +181,14 @@
   gap: 1.5rem;
   margin-bottom: 1.5rem;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .fi-shared-banner {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
+  background: var(--sky-50);
+  border: 1px solid var(--sky-200);
   border-radius: 6px;
-  color: #075985;
+  color: var(--color-info-text-2);
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem;
   margin: 0 0 1rem;
@@ -200,19 +200,14 @@
 }
 
 .fi-default-readonly {
-  color: #374151;
+  color: var(--color-text-default);
   font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-color-scheme: dark) {
   .fi-shared-banner {
-    background: #082f49;
-    border-color: #155e75;
-    color: #bae6fd;
-  }
-
-  .fi-default-readonly {
-    color: #d1d5db;
+    background: var(--sky-950);
+    border-color: var(--cyan-800);
   }
 }
 
@@ -225,10 +220,10 @@
 .nutrient-section h3 {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--gray-700);
   margin: 0 0 0.5rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .nutrient-grid {
@@ -245,11 +240,11 @@
 }
 
 .nutrient-label {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .nutrient-value {
-  color: #374151;
+  color: var(--gray-700);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -257,41 +252,41 @@
 @media (prefers-color-scheme: dark) {
   .food-item-detail-page h1,
   .fi-name-input {
-    color: #e5e7eb;
+    color: var(--gray-200);
   }
 
   .fi-name-input,
   .fi-default-edit input,
   .fi-icon-row input[type='text'],
   .nutrient-edit input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-300);
   }
 
   .fi-icon-label {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .food-item-detail-page h1 {
-    color: #e5e7eb;
+    color: var(--gray-200);
   }
 
   .fi-meta {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .nutrient-section h3 {
-    color: #d1d5db;
-    border-color: #374151;
+    color: var(--gray-300);
+    border-color: var(--gray-700);
   }
 
   .nutrient-label {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .nutrient-value {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 }
 
@@ -307,13 +302,13 @@
   gap: 0.75rem;
   margin: 0 0 1rem;
   padding: 0.5rem 0.75rem;
-  background: #f9fafb;
+  background: var(--color-surface-subtle);
   border-radius: 4px;
 }
 
 .composite-toggle-hint {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .composite-header {
@@ -326,7 +321,7 @@
 .composite-derived-note {
   margin: 0 0 0.75rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-style: italic;
 }
 
@@ -334,24 +329,15 @@
   margin: 0 0 0.75rem;
   padding: 0.375rem 0.5rem;
   font-size: 0.8rem;
-  color: #92400e;
-  background: #fef3c7;
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
   border-radius: 4px;
 }
 
 @media (prefers-color-scheme: dark) {
-  .composite-toggle-row {
-    background: #1f2937;
-  }
-
   .composite-derived-note,
   .composite-toggle-hint {
-    color: #9ca3af;
-  }
-
-  .composite-incomplete {
-    color: #fef3c7;
-    background: #78350f;
+    color: var(--gray-400);
   }
 }
 
@@ -362,15 +348,15 @@
   margin: 0 0 1rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
-  color: #166534;
-  background: #dcfce7;
+  color: var(--green-800);
+  background: var(--green-100);
   border-radius: 4px;
 }
 
 @media (prefers-color-scheme: dark) {
   .fi-resnapshot-banner {
-    color: #bbf7d0;
-    background: #14532d;
+    color: var(--green-200);
+    background: var(--green-900);
   }
 }
 
@@ -381,13 +367,13 @@
   gap: 0.5rem;
   margin: 0 0 1rem;
   padding: 0.5rem 0.75rem;
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 4px;
   font-size: 0.85rem;
 }
 
 .fi-reference-label {
-  color: #6b7280;
+  color: var(--gray-500);
   font-weight: 500;
 }
 
@@ -399,7 +385,7 @@
 }
 
 .fi-reference-name {
-  color: #374151;
+  color: var(--gray-700);
   text-decoration: none;
   font-weight: 500;
 }
@@ -439,7 +425,7 @@
 }
 
 .btn-link-danger {
-  color: #b91c1c;
+  color: var(--color-danger-text-2);
 }
 
 .fi-reference-warning {
@@ -447,26 +433,26 @@
   margin: 0.25rem 0 0;
   padding: 0.375rem 0.5rem;
   font-size: 0.8rem;
-  color: #92400e;
-  background: #fef3c7;
+  color: var(--color-warning-text);
+  background: var(--color-warning-soft);
   border-radius: 4px;
 }
 
 .nutrient-edit-inherited input {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-style: italic;
 }
 
 .nutrient-edit-inherited input::placeholder {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-style: italic;
   opacity: 1;
 }
 
 .nutrient-origin-badge {
   font-size: 0.6rem;
-  color: #6b7280;
-  background: #e5e7eb;
+  color: var(--color-text-muted-2);
+  background: var(--color-surface-strong);
   padding: 0.05rem 0.25rem;
   border-radius: 3px;
   text-transform: uppercase;
@@ -475,38 +461,24 @@
 
 @media (prefers-color-scheme: dark) {
   .fi-reference-row {
-    background: #1f2937;
+    background: var(--gray-800);
   }
 
   .fi-reference-label {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .fi-reference-name {
-    color: #d1d5db;
-  }
-
-  .btn-link-danger {
-    color: #fca5a5;
-  }
-
-  .fi-reference-warning {
-    color: #fef3c7;
-    background: #78350f;
-  }
-
-  .nutrient-origin-badge {
-    color: #9ca3af;
-    background: #374151;
+    color: var(--gray-300);
   }
 }
 
 .fi-portions {
   margin-top: 1.5rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 6px;
-  background: #f9fafb;
+  background: var(--color-surface-subtle-2);
 }
 
 .fi-portions-header h2 {
@@ -516,7 +488,7 @@
 
 .fi-portions-help {
   margin: 0 0 0.5rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
 }
 
@@ -531,7 +503,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--gray-100);
 }
 
 .fi-portion-row:last-child {
@@ -539,7 +511,7 @@
 }
 
 .fi-portion-base {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .fi-portion-default {
@@ -557,11 +529,11 @@
 }
 
 .fi-portion-eq-sep {
-  color: #9ca3af;
+  color: var(--gray-400);
 }
 
 .fi-portion-base-unit {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.9rem;
 }
 
@@ -587,11 +559,11 @@
 
 .fi-default-amount-hint {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .fi-portion-add-prefix {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .fi-portion-add {
@@ -600,7 +572,7 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px dashed #d1d5db;
+  border-top: 1px dashed var(--gray-300);
 }
 
 .fi-portion-add input[type='number'] {
@@ -613,44 +585,37 @@
 
 .fi-portions-error {
   margin: 0.5rem 0 0;
-  color: #b91c1c;
+  color: var(--red-700);
   font-size: 0.85rem;
 }
 
 @media (prefers-color-scheme: dark) {
   .fi-portions {
-    background: #111827;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
   .fi-portions-help,
   .fi-portion-base,
   .fi-portion-base-unit {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
   .fi-portion-row {
-    border-color: #1f2937;
+    border-color: var(--gray-800);
   }
   .fi-portion-add {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
   .fi-portions-error {
-    color: #fca5a5;
+    color: var(--red-300);
   }
 }
 
 .fi-attribution {
   margin: 0 0 1rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .fi-attribution a {
   color: inherit;
   text-decoration: underline;
-}
-
-@media (prefers-color-scheme: dark) {
-  .fi-attribution {
-    color: #9ca3af;
-  }
 }

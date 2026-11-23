@@ -10,7 +10,7 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .routes-controls select {
@@ -20,7 +20,7 @@
 .routes-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--neutral-l88);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -31,7 +31,7 @@
   align-items: baseline;
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--neutral-l94);
   text-decoration: none;
   color: inherit;
 }
@@ -55,11 +55,11 @@
 .route-count,
 .route-last {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .routes-empty {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .route-name-row {
@@ -82,7 +82,7 @@
 
 .route-name-input:hover,
 .route-name-input:focus {
-  border-color: #d1d5db;
+  border-color: var(--gray-300);
 }
 
 .route-back-link {
@@ -99,7 +99,7 @@
 
 .route-section h3 {
   font-size: 0.9rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0.75rem 0 0.25rem;
 }
 
@@ -113,7 +113,7 @@
 .route-efforts td {
   text-align: left;
   padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--neutral-l94);
 }
 
 .route-manage {
@@ -134,7 +134,7 @@
   .route-row,
   .route-efforts th,
   .route-efforts td {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
@@ -149,6 +149,6 @@
 
 .segments-crosslink {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0.25rem 0 0;
 }
