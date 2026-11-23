@@ -6,8 +6,10 @@ import {
   boardReturnPath,
   chartWidgetMaskedFields,
   chartWidgetTitle,
+  initialMaskedFields,
   parseChartOrigin,
   replaceWidgetInConfig,
+  showsPeopleNames,
 } from './updateWidget'
 
 const trendWidget = (id: string, title?: string): DashboardWidget => ({
@@ -136,5 +138,45 @@ describe('replaceWidgetInConfig', () => {
   test('leaves the config unchanged when the widget id is unknown', () => {
     const next = replaceWidgetInConfig(config, 'sec-1', 'missing', trendWidget('missing', 'Updated'))
     expect(next.sections[0].widgets.map((w) => w.id)).toEqual(['w-1', 'w-2'])
+  })
+})
+
+describe('initialMaskedFields', () => {
+  const barWidget = (fields: Record<string, unknown>): DashboardWidget =>
+    ({
+      config: {
+        bucket_size: '1w',
+        lookback_days: 90,
+        pattern: 'walking',
+        source_type: 'activity_type',
+        ...fields,
+      },
+      id: 'w',
+      type: 'bar_chart',
+    }) as DashboardWidget
+
+  test('a new save starts with @people masked when the breakdown has it', () => {
+    expect(initialMaskedFields(['@people', 'mood'])).toEqual(['@people'])
+    expect(initialMaskedFields(['mood'])).toEqual([])
+  })
+
+  test('an update keeps what the widget has', () => {
+    const unmasked = barWidget({ breakdown_fields: ['@people'] })
+    expect(initialMaskedFields(['@people'], unmasked)).toEqual([])
+    const masked = barWidget({ breakdown_fields: ['mood'], masked_breakdown_fields: ['mood'] })
+    expect(initialMaskedFields(['mood'], masked)).toEqual(['mood'])
+  })
+
+  test('an update that adds @people to the breakdown masks it', () => {
+    const widget = barWidget({ breakdown_fields: ['mood'], masked_breakdown_fields: ['mood'] })
+    expect(initialMaskedFields(['mood', '@people'], widget)).toEqual(['mood', '@people'])
+  })
+})
+
+describe('showsPeopleNames', () => {
+  test('only when @people is in the breakdown and not masked', () => {
+    expect(showsPeopleNames(['@people'], [])).toBe(true)
+    expect(showsPeopleNames(['@people'], ['@people'])).toBe(false)
+    expect(showsPeopleNames(['mood'], [])).toBe(false)
   })
 })

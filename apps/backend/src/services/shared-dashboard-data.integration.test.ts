@@ -11,7 +11,7 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { insertActivity, upsertUserSettings } from '../db/index.ts'
+import { addActivityPeople, insertActivity, insertPerson, upsertUserSettings } from '../db/index.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
@@ -348,6 +348,70 @@ describe('resolveDashboardData integration', () => {
         expect(Object.keys(bucket.series).every((k) => k === 'A' || k === 'B')).toBe(true)
       }
       expect(JSON.stringify(bar.data)).not.toContain('anaerobic')
+    }
+  })
+
+  test('masking @people letters the names of who the activity was with, in a trend and a bar chart', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const day = (offset: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - offset)
+      d.setUTCHours(12, 0, 0, 0)
+      return d
+    }
+    for (const [offset, person] of [
+      [3, anna.id],
+      [2, bo.id],
+    ] as const) {
+      const id = await insertActivity(user, {
+        activity_type: 'walking',
+        data: {},
+        end_time: new Date(day(offset).getTime() + 3_600_000),
+        source: 'manual',
+        start_time: day(offset),
+      })
+      await addActivityPeople(user, id, [person])
+    }
+    const people = { breakdown_fields: ['@people'], masked_breakdown_fields: ['@people'] }
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            {
+              config: { ...people, lookback_days: 30, pattern: 'walking', source_type: 'activity_type' },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+            {
+              config: {
+                ...people,
+                bucket_size: '1M',
+                lookback_days: 30,
+                pattern: 'walking',
+                source_type: 'activity_type',
+              },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type === 'trend_chart' && trend.data?.breakdown_series).toEqual(['A', 'B'])
+    const bar = data['bar']
+    expect(bar.type === 'bar_chart' && bar.data?.breakdown_series).toEqual(['A', 'B'])
+    for (const widget of [trend, bar]) {
+      expect(JSON.stringify(widget)).not.toContain('Anna')
+      expect(JSON.stringify(widget)).not.toContain('Bo')
     }
   })
 

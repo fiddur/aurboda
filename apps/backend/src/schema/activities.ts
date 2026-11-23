@@ -67,6 +67,7 @@ export const activitiesTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_activities_time_range ON activities (start_time, end_time);
     CREATE INDEX IF NOT EXISTS idx_activities_not_deleted ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_not_superseded ON activities (activity_type, start_time DESC) WHERE deleted_at IS NULL AND superseded_by IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_activities_superseded_by ON activities (superseded_by) WHERE superseded_by IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_activities_category_path_start ON activities ((data->>'category_path') text_pattern_ops, start_time)
       WHERE deleted_at IS NULL AND superseded_by IS NULL AND end_time IS NOT NULL
   `,

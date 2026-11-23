@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
-import { chartFilterFieldSchema } from './chart-data.ts'
+import { chartFilterFieldSchema, PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, queryBooleanSchema } from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
 import { mediaPlaySourceSchema } from './media.ts'
@@ -101,10 +101,10 @@ export const trendChartConfigSchema = z
     breakdown_fields: z
       .array(z.string())
       .optional()
-      .meta({ description: 'Categorical data fields to break the series down by' }),
+      .meta({ description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
     masked_breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names',
     }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
@@ -146,10 +146,10 @@ export const barChartConfigSchema = z
     breakdown_fields: z
       .array(z.string())
       .optional()
-      .meta({ description: 'Categorical data fields to break the series down by' }),
+      .meta({ description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
     masked_breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board',
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names',
     }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
