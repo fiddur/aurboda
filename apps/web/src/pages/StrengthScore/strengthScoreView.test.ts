@@ -178,6 +178,39 @@ describe('scoreChange', () => {
     ).toBeUndefined()
     expect(scoreChange(history([]), 30)).toBeUndefined()
   })
+
+  test('compares the score of a group when given its key', () => {
+    const h = history([
+      { at: at(1), groups: { back: 86, chest: 70 }, score: 80 },
+      { at: at(38), groups: { back: 90, chest: 70 }, score: 82 },
+    ])
+    expect(scoreChange(h, 30, 'back')).toBe(4)
+    expect(scoreChange(h, 30, 'chest')).toBe(0)
+    expect(scoreChange(h, 30)).toBe(2)
+  })
+
+  test('is undefined for a group missing from either point', () => {
+    expect(
+      scoreChange(
+        history([
+          { at: at(1), groups: {}, score: 80 },
+          { at: at(38), groups: { back: 90 }, score: 82 },
+        ]),
+        30,
+        'back',
+      ),
+    ).toBeUndefined()
+    expect(
+      scoreChange(
+        history([
+          { at: at(1), groups: { back: 86 }, score: 80 },
+          { at: at(38), groups: {}, score: 82 },
+        ]),
+        30,
+        'back',
+      ),
+    ).toBeUndefined()
+  })
 })
 
 describe('changeLabel', () => {

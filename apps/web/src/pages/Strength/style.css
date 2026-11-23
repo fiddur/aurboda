@@ -8,8 +8,25 @@
   margin: 0;
 }
 
-.strength-page-train > :not(h1, .strength-tabs) {
+.strength-page-train > :not(.strength-header, .strength-tabs) {
   max-width: 640px;
+}
+
+.strength-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.strength-page .strength-header h1 {
+  margin: 0;
+}
+
+.strength-header-action {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .strength-tabs {
@@ -646,5 +663,218 @@ button.strength-set-row:hover {
 @media (prefers-color-scheme: dark) {
   .strength-error {
     color: var(--red-300);
+  }
+}
+
+.strength-page-muscles {
+  --muscle-recovery-ready: var(--color-success, var(--emerald-500));
+  --muscle-recovery-recovering: var(--orange-l48);
+  --muscle-recovery-fatigued: var(--color-error, var(--red-l57p1-c167));
+}
+
+.strength-muscles-score {
+  color: var(--color-text);
+  text-decoration: none;
+  gap: 0.25rem;
+}
+
+.strength-muscles-score:hover {
+  background: var(--color-surface-hover);
+}
+
+.strength-muscles-score-label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.strength-muscles-score-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.strength-muscles-score-value {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.strength-muscles-sparkline {
+  margin-left: auto;
+  display: inline-flex;
+}
+
+.strength-muscles-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.strength-muscles-heading h2 {
+  margin: 0;
+}
+
+.strength-muscles-heading select {
+  min-height: 44px;
+  max-width: 55%;
+  padding: 0.375rem 0.5rem;
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.strength-muscle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px 52px 40px 12px;
+  gap: 8px;
+  align-items: center;
+}
+
+.strength-muscles-columns {
+  margin-top: 0.75rem;
+  padding: 0 0.25rem 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.strength-muscles-section h3 {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.strength-muscles-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.strength-muscle {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.strength-muscle-row {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.25rem;
+  font: inherit;
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.strength-muscle-row:hover {
+  background: var(--color-surface-hover);
+}
+
+.strength-muscle-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.strength-muscle-name {
+  overflow-wrap: break-word;
+}
+
+.strength-muscle-sub {
+  font-size: 0.8rem;
+}
+
+.strength-muscle-muted {
+  color: var(--color-text-muted);
+}
+
+.strength-muscle-warning {
+  color: var(--color-warning-text);
+}
+
+.strength-muscle-up {
+  color: var(--muscle-recovery-ready);
+}
+
+.strength-muscle-down {
+  color: var(--color-danger-text);
+}
+
+.strength-muscle-cell .strength-muscle-bar {
+  height: 0.25rem;
+}
+
+.strength-muscle-chevron {
+  justify-self: center;
+  color: var(--color-text-muted);
+  transition: transform 0.15s;
+}
+
+.strength-muscle-row[aria-expanded='true'] .strength-muscle-chevron {
+  transform: rotate(90deg);
+}
+
+.strength-muscle-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 1rem;
+}
+
+.strength-muscle-details[hidden] {
+  display: none;
+}
+
+.strength-muscle-block h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.strength-muscle-block p {
+  margin: 0 0 0.25rem;
+}
+
+.strength-muscle-weeks {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 3px;
+  align-items: end;
+  height: 3rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.strength-muscle-week {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  background: var(--color-surface-subtle);
+  border-radius: 2px;
+}
+
+.strength-muscle-week > span {
+  display: block;
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+.strength-muscles-caption {
+  font-size: 0.8rem;
+}
+
+@media (min-width: 40em) {
+  .strength-muscle-grid {
+    grid-template-columns: minmax(0, 1fr) 120px 80px 64px 16px;
+    gap: 16px;
   }
 }

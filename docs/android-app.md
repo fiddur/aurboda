@@ -19,7 +19,7 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 | More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
 The Add tab's Activity form starts with **Log a strength session**, which opens the web
-[strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
+[strength session page](features/strength-logging.md) (`/strength/workouts`) in the More tab's web view:
 sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
 declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
 field that does not parse, or falls outside the field's `min` and `max` ("Must be between 0 and 10"),

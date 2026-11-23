@@ -28,7 +28,7 @@ const CHANGE_DAYS = 30
 const CAPTION =
   "A lift's points compare your best estimated one-rep max of the last 90 days (working sets with a weight; reps above 12 count as 12) with a reference for your sex and bodyweight; 100 is a solid recreational lifter. A muscle group is the average of its best three lifts, the score the average of the groups. Dumbbell lifts count per dumbbell, as logged. Only exercises matched to the catalogue count:"
 
-const MissingNotice = ({ missing }: { missing: StrengthScoreMissing[] }) => {
+export const MissingNotice = ({ missing }: { missing: StrengthScoreMissing[] }) => {
   const text = missingText(missing)
   if (!text) return null
   return (
@@ -79,7 +79,17 @@ const ScoreCards = ({ field, name, score }: { field: string; name: string; score
   )
 }
 
-const Body = ({ field, name, score }: { field: string; name: string; score: Score }) => {
+const Body = ({
+  field,
+  name,
+  score,
+  withoutGroups,
+}: {
+  field: string
+  name: string
+  score: Score
+  withoutGroups: boolean
+}) => {
   const groupNames: Partial<Record<StrengthScoreGroup, string>> = Object.fromEntries(
     score.groups.map((g) => [g.group, g.name]),
   )
@@ -92,9 +102,8 @@ const Body = ({ field, name, score }: { field: string; name: string; score: Scor
           <ScoreHistory field={field} groupNames={groupNames} name={name} />
         </>
       )}
-      {score.groups.map((g) => (
-        <GroupSection key={g.group} field={field} group={g} name={name} />
-      ))}
+      {!withoutGroups &&
+        score.groups.map((g) => <GroupSection key={g.group} field={field} group={g} name={name} />)}
       <p class="activity-type-item-caption">
         {CAPTION}{' '}
         <a href={`/activity-type/${encodeURIComponent(name)}#${unmappedSectionId(field)}`}>
@@ -105,7 +114,15 @@ const Body = ({ field, name, score }: { field: string; name: string; score: Scor
   )
 }
 
-export function StrengthScoreContent({ field, name }: { field: string; name: string }) {
+export function StrengthScoreContent({
+  field,
+  name,
+  withoutGroups = false,
+}: {
+  field: string
+  name: string
+  withoutGroups?: boolean
+}) {
   const query = useStrengthScore(name, field)
   return (
     <>
@@ -123,7 +140,7 @@ export function StrengthScoreContent({ field, name }: { field: string; name: str
           </button>
         </p>
       )}
-      {query.data && <Body field={field} name={name} score={query.data} />}
+      {query.data && <Body field={field} name={name} score={query.data} withoutGroups={withoutGroups} />}
     </>
   )
 }
