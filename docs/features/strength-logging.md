@@ -16,6 +16,15 @@ The Strength page has four tabs, each at its own address, under the heading **St
 | Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time             |
 | Muscles   | `/strength/muscles`   | [Muscle recovery](muscle-recovery.md) of every group, and sets per muscle group                            |
 
+The Exercises table has a row per exercise with how often and when it was last done, the best
+e1RM and the **best set** behind it (`80 kg × 5`, the working set with the highest Epley
+estimate), its **points** in the [strength score](strength-score.md), max weight, volume and
+sets. Points are those of the reference lift whose best set is that exercise (the highest when
+several are), always of the score's last 90 days whatever period the table covers, and link to
+the Progress tab; an exercise no lift is scored on, or a score without sex or bodyweight, shows
+`–`. It sorts by recency, count, best e1RM, max weight, volume, points or name. On a phone, last
+done, max weight, volume and sets are left out.
+
 The tabs are plain links, so each can be bookmarked and the back button steps between them; on a
 phone the tab bar scrolls sideways. The session, log and plan pages below have no tab bar.
 

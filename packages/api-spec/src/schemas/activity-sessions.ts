@@ -75,8 +75,21 @@ export const activitySessionSchema = z
 
 export type ActivitySession = z.infer<typeof activitySessionSchema>
 
+export const bestSetSchema = z
+  .object({
+    reps: z.number().meta({ description: 'Reps as logged' }),
+    weight: z.number().meta({ description: 'Weight (kg)' }),
+  })
+  .meta({ description: 'A weighted working set', id: 'BestSet' })
+
+export type BestSet = z.infer<typeof bestSetSchema>
+
 export const activitySessionGroupSchema = z
   .object({
+    best_set: bestSetSchema.optional().meta({
+      description:
+        'Grouped by an item path: the working set the e1rm measure comes from (warm-ups excluded, Epley); present only with an e1rm',
+    }),
     avg_hr_median: z
       .number()
       .optional()

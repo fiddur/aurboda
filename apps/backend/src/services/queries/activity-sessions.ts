@@ -29,6 +29,7 @@ import {
   getValueHistogramsForWindows,
 } from '../../db/index.ts'
 import {
+  bestE1rmSet,
   combineMeasures,
   fieldValue,
   type FieldValue,
@@ -271,7 +272,8 @@ export const groupSessions = (
 /**
  * Group newest-first sessions by an item value: one group per normalised value, spelled as in the
  * most recent session, a session in every group it has an item for and in the no-value group when
- * it has none. Each group's measures combine its members' measures over that value's items.
+ * it has none. Each group's measures combine its members' measures over that value's items, and
+ * its best set is the one its e1rm comes from.
  * `pooledHr` holds the pooled HR under `groupKey(normalized value)`.
  */
 export const groupSessionsByItem = (
@@ -281,22 +283,31 @@ export const groupSessionsByItem = (
 ): ActivitySessionGroup[] => {
   const byValue = new Map<
     string,
-    { value: string | null; sessions: ActivitySession[]; measures: ActivityMeasures[] }
+    {
+      value: string | null
+      sessions: ActivitySession[]
+      measures: ActivityMeasures[]
+      items: Record<string, unknown>[]
+    }
   >()
-  const add = (key: string, value: string | null, session: ActivitySession, measures?: ActivityMeasures) => {
-    const group = byValue.getOrInsertComputed(key, () => ({ measures: [], sessions: [], value }))
-    group.sessions.push(session)
-    if (measures) group.measures.push(measures)
+  const add = (key: string, value: string | null, session: ActivitySession, group?: ItemGroup) => {
+    const entry = byValue.getOrInsertComputed(key, () => ({ items: [], measures: [], sessions: [], value }))
+    entry.sessions.push(session)
+    if (group) {
+      entry.measures.push(measureItems(group.items))
+      entry.items.push(...group.items)
+    }
   }
   for (const session of sessions) {
     const groups = itemGroups.get(session.id) ?? []
     if (groups.length === 0) add(groupKey(null), null, session)
-    for (const g of groups) add(groupKey(g.normalized), g.value, session, measureItems(g.items))
+    for (const g of groups) add(groupKey(g.normalized), g.value, session, g)
   }
 
   return [...byValue.entries()]
-    .map(([key, { value, sessions: members, measures }]) => ({
+    .map(([key, { value, sessions: members, measures, items }]) => ({
       ...summarizeGroup(value, members, pooledHr.get(key)),
+      best_set: value === null ? undefined : bestE1rmSet(items),
       measures: value === null ? undefined : nonEmpty(combineMeasures(measures)),
     }))
     .toSorted(byRecency)

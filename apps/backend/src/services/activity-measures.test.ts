@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  bestE1rmSet,
   combineMeasures,
   groupItemsByKey,
   isWorkingItem,
@@ -191,6 +192,25 @@ describe('recordsFor', () => {
   test('the first time is a record; an absent measure never is', () => {
     expect(recordsFor({ max_weight: 50, set_count: 1 }, [])).toEqual(['max_weight'])
     expect(recordsFor({ set_count: 1 }, [{ e1rm: 10 }])).toEqual([])
+  })
+})
+
+describe('bestE1rmSet', () => {
+  test('the working set with the best Epley estimate, the one e1rm comes from', () => {
+    const items = [
+      set('Bench Press', 120, 10, { set_type: 'warmup' }),
+      set('Bench Press', 80, 5),
+      set('Bench Press', 85, 3),
+      set('Bench Press', 70, 8),
+    ]
+    expect(bestE1rmSet(items)).toEqual({ reps: 3, weight: 85 })
+    expect(measureItems(items).e1rm).toBe(93.5)
+  })
+
+  test('absent without a weighted working set', () => {
+    expect(bestE1rmSet([set('Pull-up', null, 8), { time: 60 }, { reps: 5, weight: 0 }])).toBeUndefined()
+    expect(bestE1rmSet([set('Bench', 60, 5, { set_type: 'warmup' })])).toBeUndefined()
+    expect(bestE1rmSet([])).toBeUndefined()
   })
 })
 

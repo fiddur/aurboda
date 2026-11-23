@@ -221,7 +221,8 @@ Where item paths are accepted:
   field. `group_by=sets.exercise` gives one group per exercise, a session in every group it has
   a set for (sessions without one in the no-value group), each group with its members' measures
   for that exercise combined (volume, set count and total reps summed, the rest at their
-  maximum).
+  maximum) and, with an e1RM, its `best_set` (`weight` and `reps`): the working set that e1RM
+  comes from.
   `filter_field=sets.exercise&filter_value=Bench Press` keeps the sessions with that exercise,
   each with its matching `items`, their `measures` and the `records` it set, judged against all
   earlier sessions even when `start` cuts them off.

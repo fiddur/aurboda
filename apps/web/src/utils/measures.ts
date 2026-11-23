@@ -32,6 +32,10 @@ const formatSeconds = (seconds: number): string => {
   return `${m}:${String(total % 60).padStart(2, '0')}`
 }
 
+/** A weighted set as `80 kg × 5`. */
+export const formatBestSet = ({ weight, reps }: { weight: number; reps: number }): string =>
+  `${formatKg(weight)} × ${reps}`
+
 export const formatMeasure = (measure: ActivityMeasure, value: number): string => {
   switch (measure) {
     case 'volume':
