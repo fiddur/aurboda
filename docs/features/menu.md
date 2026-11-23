@@ -5,8 +5,8 @@
 The web sidebar and the phone menu (☰) show **Home** and **Add** on top, then five sections that
 open and close: **Log** (Journal, Meals, Check-ins, Reports, People), **Training** (Strength,
 Training load, Routes, Segments), **Explore** (Timeline, Data, Chart, Analyze, Goals, Places),
-**Sharing** (Feed, Dashboards, Challenges) and **Setup** (Data sources, Activity types, Rules, and
-Admin for admins). At the bottom are Help & support, Settings (with your user name) and Log out.
+**Sharing** (Feed, Dashboards, Challenges) and **Setup** (Data sources, Activity types, Rules,
+Reminders, and Admin for admins). At the bottom are Help & support, Settings (with your user name) and Log out.
 
 Several sections can be open at once, and which are open is remembered in the browser
 (`menu-open-sections` in local storage), shared by the sidebar and the phone menu; at first they are
@@ -17,7 +17,7 @@ collapsed, each section is one icon that opens its links in a panel beside it. T
 links): the web menus read it, and `pnpm generate` writes it as Kotlin for the Android app's More
 tab, which shows the same sections with the same pages, Admin left out (see
 [the Android app](../android-app.md#navigation)). The app adds its own entries around them:
-Notifications and Reminders on top, and Help & support, Settings, the Audit log and its native
+Notifications on top, and Help & support, Settings, the Audit log and its native
 screens at the bottom.
 
 ## Choosing which pages show
@@ -50,8 +50,7 @@ The list is `MENU_ALWAYS_SHOWN` in `packages/api-spec/src/menu.ts`, which the ap
 The switches come from the same lists the menus are built from (`menu.ts`), so a new menu page
 gets a switch, and its one-line `description`, with no extra registry. They are grouped as the
 menus show them: **Main** (Add), then **Log**, **Training**, **Explore**, **Sharing** and **Setup**,
-plus **Only in the Android app** for the pages that only the app's More tab lists (Reminders and the
-audit log). Data sources is one switch, for the overview page; the single sources' pages are not in
+plus **Only in the Android app** for the page that only the app's More tab lists (the audit log). Data sources is one switch, for the overview page; the single sources' pages are not in
 the menu and get none.
 
 ## For API users

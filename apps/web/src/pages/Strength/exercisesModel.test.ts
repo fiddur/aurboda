@@ -13,7 +13,6 @@ import {
   exercisePoints,
   exerciseSummaryLine,
   filterExercises,
-  formatBestSet,
   liftsNotDone,
   muscleGroupOptions,
   muscleSearch,
@@ -273,11 +272,7 @@ describe('exercisePoints', () => {
   })
 })
 
-describe('formatBestSet and exerciseSummaryLine', () => {
-  test('weight × reps', () => {
-    expect(formatBestSet({ reps: 9, weight: 24 })).toBe('24 kg × 9')
-  })
-
+describe('exerciseSummaryLine', () => {
   test('the phone line leaves out what is missing', () => {
     expect(exerciseSummaryLine(bench)).toBe('10× · 9\u2009000 kg · best set 90 kg × 5 · e1RM 105 kg')
     expect(exerciseSummaryLine(dips)).toBe('6×')

@@ -1,6 +1,5 @@
 import {
   type ActivitySessionGroup,
-  type ActivitySessionGroupBestSet,
   EXERCISE_PRIMARY_MUSCLE_WEIGHT,
   type ExerciseEquipment,
   exerciseEquipmentInfo,
@@ -12,7 +11,7 @@ import {
   type StrengthScoreLift,
 } from '@aurboda/api-spec'
 
-import { formatMeasure } from '../../utils/measures'
+import { formatBestSet, formatMeasure } from '../../utils/measures'
 import { filterItemGroups, type ItemGroupSortKey, sortItemGroups } from '../ActivityTypeMeta/itemGroups'
 import { scoreGroupOf } from '../StrengthScore/strengthScoreView'
 
@@ -152,9 +151,6 @@ export const exercisePoints = (
   }
   return undefined
 }
-
-export const formatBestSet = (best: ActivitySessionGroupBestSet): string =>
-  `${formatMeasure('max_weight', best.weight)} × ${best.reps}`
 
 /** The phone row's third line: `{count}× · {volume} · best set {set} · e1RM {e1rm}`, without what is missing. */
 export const exerciseSummaryLine = (g: ActivitySessionGroup): string => {

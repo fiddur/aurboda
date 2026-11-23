@@ -78,11 +78,12 @@ recognises a post's hashtags (not inside a word, a URL or markdown code) and
 recomputed whenever the content changes. Every answer's `tags` is the union of
 both, deduplicated and sorted, and tag filters match against that union.
 
-## Related people and activities
+## Related people, activities, meals, reports and check-ins
 
-A thread root can be related to people and activities without being a comment on
-them: `related` on `POST /notes` and `PATCH /notes/:id` is the full list of
-`{ entity_type: "person" | "activity", entity_id }` (at most 30; present replaces,
+A thread root can be related to people, activities, meals, reports and check-ins
+without being a comment on them: `related` on `POST /notes` and `PATCH /notes/:id` is
+the full list of `{ entity_type: "person" | "activity" | "meal" | "report" | "check_in",
+entity_id }` (at most 30; present replaces,
 `[]` clears, absent leaves). A reply cannot carry it (`400`), nor an unknown or deleted
 target (`400` naming it). Every thread root in an answer carries `related` with a
 display `label` for each live target. See [Journal → Related](./journal.md#related).
@@ -201,7 +202,7 @@ reads.
 | `limit`                      | 1--200, default 50                                                                                                                                                                                |
 | `cursor`                     | The `next_cursor` of the previous page                                                                                                                                                            |
 | `needs_text`                 | `true`: only entries with a live picture and no text yet (the range read `GET /notes?from=&to=` takes it too)                                                                                     |
-| `related_type`, `related_id` | Both or neither: only comments related to that person or activity (by its own id; a deleted target matches nothing)                                                                               |
+| `related_type`, `related_id` | Both or neither: only comments related to that person, activity, meal, report or check-in (by its own id; a deleted target matches nothing)                                                       |
 
 The order is newest first by anchor -- a `day` comment's anchor is the start of
 its date in `tz` -- then by `created_at` and `id`. Comments with no anchor at all

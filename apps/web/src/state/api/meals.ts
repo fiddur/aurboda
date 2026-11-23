@@ -11,6 +11,7 @@ import type {
   FrequentFoodItemsResponse,
   FrequentMeal,
   FrequentMealsResponse,
+  JournalEntryRef,
   MealResponse,
   MealsQuery,
   MealsResponse,
@@ -55,12 +56,14 @@ export const fetchMeals = async (params?: MealsQuery): Promise<MealsResult> => {
   }
 }
 
-export const fetchMeal = async (id: string): Promise<Meal> => {
+/** A meal read by its ID, with the journal entries related to it. */
+export const fetchMeal = async (id: string): Promise<Meal & { journal_entries?: JournalEntryRef[] }> => {
   const { token } = auth.value
   const response = await axios.get<MealResponse>(`${API_URL}/meals/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return mapMeal(response.data.data!)
+  const data = response.data.data!
+  return { ...mapMeal(data), journal_entries: data.journal_entries }
 }
 
 export const addMealApi = async (body: AddMealBody): Promise<Meal> => {

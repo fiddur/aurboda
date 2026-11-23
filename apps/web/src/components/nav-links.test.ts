@@ -44,6 +44,7 @@ describe('NAV_TOP_LINKS and NAV_SECTIONS', () => {
       '/data-sources',
       '/activity-types',
       '/deduction-rules',
+      '/reminders',
       '/admin',
     ])
     expect(setup.at(-1)?.adminOnly).toBe(true)
@@ -306,6 +307,7 @@ describe('menuSwitches', () => {
       '/data-sources',
       '/activity-types',
       '/deduction-rules',
+      '/reminders',
     ])
   })
 
@@ -324,7 +326,6 @@ describe('menuSwitches', () => {
   })
 
   test('covers the Android-only More entries', () => {
-    expect(paths).toContain('/reminders')
     expect(paths).toContain('/audit-log')
   })
 

@@ -75,7 +75,7 @@ export const NOTE_TITLE_MAX_LENGTH = 200
 
 export const NOTE_TAGS_MAX = 20
 
-export const NOTE_REPLY_RELATED_ERROR = 'A reply cannot be related to people or activities'
+export const NOTE_REPLY_RELATED_ERROR = 'A reply cannot be related to anything'
 
 export const NOTES_SEARCH_DEFAULT_LIMIT = 50
 
@@ -150,10 +150,11 @@ export const noteReplySchema = z
 
 export type NoteReply = z.infer<typeof noteReplySchema>
 
-export const noteRelatedEntityTypes = ['person', 'activity'] as const
+export const noteRelatedEntityTypes = ['person', 'activity', 'meal', 'report', 'check_in'] as const
 
 export const noteRelatedEntityTypeSchema = z.enum(noteRelatedEntityTypes).meta({
-  description: 'What a journal entry can be related to: a person or an activity',
+  description:
+    'What a journal entry can be related to: a person, an activity, a meal, a report or a check-in',
   id: 'NoteRelatedEntityType',
 })
 
@@ -167,28 +168,43 @@ export const JOURNAL_ENTRY_EXCERPT_MAX = 200
 
 export const noteRelatedInputSchema = z
   .object({
-    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_id: z
+      .string()
+      .uuid()
+      .meta({ description: 'ID of the person, activity, meal, report or check-in' }),
     entity_type: noteRelatedEntityTypeSchema,
   })
-  .meta({ description: 'A person or an activity a note is related to', id: 'NoteRelatedInput' })
+  .meta({
+    description: 'A person, an activity, a meal, a report or a check-in a note is related to',
+    id: 'NoteRelatedInput',
+  })
 
 export type NoteRelatedInput = z.infer<typeof noteRelatedInputSchema>
 
 export const noteRelatedSchema = z
   .object({
-    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_id: z
+      .string()
+      .uuid()
+      .meta({ description: 'ID of the person, activity, meal, report or check-in' }),
     entity_type: noteRelatedEntityTypeSchema,
     label: z.string().meta({
       description:
-        "Display label: the person's name; for an activity its title (else its type's name) and its local date (a sleep's, the day it ended), e.g. \"Evening walk, 2026-11-20\"",
+        'Display label, made when read: the person\'s name; for an activity its title (else its type\'s name) and its local date (a sleep\'s, the day it ended), e.g. "Evening walk, 2026-11-20"; for a meal its type and local time, e.g. "Lunch 12:30"; for a report its type and local date, e.g. "Blood Panel, 2026-11-20"; for a check-in its form\'s name and local time, e.g. "Morning 07:45"',
     }),
     activity_type: z
       .string()
       .optional()
-      .meta({ description: "An activity's type, for its icon; absent for a person" }),
+      .meta({ description: "An activity's type, for its icon; absent for anything else" }),
+    form_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: "A check-in's form, whose page lists it; absent for anything else" }),
   })
   .meta({
-    description: 'A person or an activity the note is related to, without being a comment on it',
+    description:
+      'A person, an activity, a meal, a report or a check-in the note is related to, without being a comment on it',
     id: 'NoteRelated',
   })
 
@@ -198,7 +214,7 @@ const noteRelatedInputListSchema = z
   .array(noteRelatedInputSchema)
   .max(NOTE_RELATED_MAX)
   .meta({
-    description: `The people and activities this note is related to, without being a comment on them (at most ${NOTE_RELATED_MAX}). The full list: it replaces the note's links when present; an empty list removes them all. Duplicates are collapsed. Not on a reply.`,
+    description: `The people, activities, meals, reports and check-ins this note is related to, without being a comment on them (at most ${NOTE_RELATED_MAX}). The full list: it replaces the note's links when present; an empty list removes them all. Duplicates are collapsed. Not on a reply.`,
   })
 
 export const journalEntryRefSchema = z
@@ -215,7 +231,8 @@ export const journalEntryRefSchema = z
     title: noteTitleResponseSchema.optional(),
   })
   .meta({
-    description: 'A journal entry or comment related to a person or an activity',
+    description:
+      'A journal entry or comment related to a person, an activity, a meal, a report or a check-in',
     id: 'JournalEntryRef',
   })
 
@@ -249,7 +266,7 @@ export const noteSchema = z
     purge_at: notePurgeAtSchema.optional(),
     related: z.array(noteRelatedSchema).optional().meta({
       description:
-        'The people and activities this note is related to (a thread root only; a deleted target is left out until it is restored)',
+        'The people, activities, meals, reports and check-ins this note is related to (a thread root only; a deleted target is left out until it is restored)',
     }),
     replies: z.array(noteReplySchema).optional().meta({
       description: "Replies in this comment's thread, oldest first",
@@ -643,10 +660,11 @@ export const notesSearchQuerySchema = z
         'Full-text search over title and content (words, "quoted phrases", -excluded, or); the last word also matches as a prefix. A match in a reply returns its thread root.',
     }),
     related_id: z.string().uuid().optional().meta({
-      description: 'With related_type: only entries related to this person or activity (by its own id)',
+      description:
+        'With related_type: only entries related to this person, activity, meal, report or check-in (by its own id)',
     }),
     related_type: noteRelatedEntityTypeSchema.optional().meta({
-      description: 'With related_id: whether it names a person or an activity',
+      description: 'With related_id: whether it names a person, an activity, a meal, a report or a check-in',
     }),
     tags: z.string().optional().meta({
       description: 'Comma-separated tags: only entries carrying all of them (set explicitly or as #hashtags)',

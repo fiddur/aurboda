@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
-  bestSet,
+  bestE1rmSet,
   combineMeasures,
   groupItemsByKey,
   isWorkingItem,
@@ -141,26 +141,6 @@ describe('measureItems', () => {
   })
 })
 
-describe('bestSet', () => {
-  test('the heaviest working set, warm-ups left out', () => {
-    expect(
-      bestSet([set('Squat', 120, 3, { set_type: 'warmup' }), set('Squat', 100, 5), set('Squat', 90, 8)]),
-    ).toEqual({ reps: 5, weight: 100 })
-  })
-
-  test('a tie on weight goes to more reps', () => {
-    expect(bestSet([set('Squat', 100, 5), set('Squat', 100, 7), set('Squat', 100, 6)])).toEqual({
-      reps: 7,
-      weight: 100,
-    })
-  })
-
-  test('none without a set that has both a weight and reps', () => {
-    expect(bestSet([set('Plank', null, null, { time: 60 }), set('Pull-up', null, 10)])).toBeUndefined()
-    expect(bestSet([set('Bench', 0, 10), set('Bench', 50, null)])).toBeUndefined()
-  })
-})
-
 describe('combineMeasures', () => {
   test('sums volume, set_count and total_reps, maxes the rest, absent stays absent', () => {
     expect(
@@ -212,6 +192,25 @@ describe('recordsFor', () => {
   test('the first time is a record; an absent measure never is', () => {
     expect(recordsFor({ max_weight: 50, set_count: 1 }, [])).toEqual(['max_weight'])
     expect(recordsFor({ set_count: 1 }, [{ e1rm: 10 }])).toEqual([])
+  })
+})
+
+describe('bestE1rmSet', () => {
+  test('the working set with the best Epley estimate, the one e1rm comes from', () => {
+    const items = [
+      set('Bench Press', 120, 10, { set_type: 'warmup' }),
+      set('Bench Press', 80, 5),
+      set('Bench Press', 85, 3),
+      set('Bench Press', 70, 8),
+    ]
+    expect(bestE1rmSet(items)).toEqual({ reps: 3, weight: 85 })
+    expect(measureItems(items).e1rm).toBe(93.5)
+  })
+
+  test('absent without a weighted working set', () => {
+    expect(bestE1rmSet([set('Pull-up', null, 8), { time: 60 }, { reps: 5, weight: 0 }])).toBeUndefined()
+    expect(bestE1rmSet([set('Bench', 60, 5, { set_type: 'warmup' })])).toBeUndefined()
+    expect(bestE1rmSet([])).toBeUndefined()
   })
 })
 

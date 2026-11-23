@@ -85,9 +85,13 @@ describe('tz through the settings MCP tools', () => {
 
     const updated = await call('update_user_settings', { tz: 'Asia/Kolkata' })
     expect(updated.tz).toBe('Asia/Kolkata')
+    expect(updated.tz_follows_device).toBe(false)
     expect(store.settings.device_timezone).toBe('Asia/Kolkata')
 
-    expect((await call('update_user_settings', { tz: null })).tz).toBeNull()
+    const cleared = await call('update_user_settings', { tz: null })
+    expect(cleared.tz).toBeNull()
+    expect(cleared.tz_follows_device).toBe(true)
     expect(store.settings).not.toHaveProperty('device_timezone')
+    expect(store.settings).not.toHaveProperty('tz_follows_device')
   })
 })

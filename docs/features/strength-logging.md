@@ -63,7 +63,8 @@ filtered on the page:
   exercise" row shows only without a muscle or equipment filter.
 - **Each exercise** shows its name (to the exercise page), its muscle groups (the main ones first,
   the others muted, at most four and "+n"; "Not matched" links to matching it to the catalogue),
-  Done, Last, Best e1RM, Max weight, Best set ("24 kg × 9"), Volume, Sets and Points: the
+  Done, Last, Best e1RM, Max weight, Best set ("24 kg × 9", the working set the best e1RM comes
+  from), Volume, Sets and Points: the
   [strength score](strength-score.md) of the lift it counts as, today's whatever the period,
   muted when the lift is not among its group's counted lifts and "–" when it is no scoring lift.
   From 700 px wide this is a table; narrower, each exercise is a three-line row.

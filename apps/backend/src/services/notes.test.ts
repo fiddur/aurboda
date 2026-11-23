@@ -1550,6 +1550,7 @@ describe('related people and activities', () => {
     end_time: null,
     entity_id: ANNA,
     entity_type: 'person' as const,
+    form_id: null,
     name: 'Anna',
     start_time: null,
   }
@@ -1558,6 +1559,7 @@ describe('related people and activities', () => {
     end_time: new Date('2026-11-21T00:30:00Z'),
     entity_id: WALK,
     entity_type: 'activity' as const,
+    form_id: null,
     name: 'Evening walk',
     start_time: new Date('2026-11-20T23:30:00Z'),
   }
@@ -1602,6 +1604,7 @@ describe('related people and activities', () => {
     const sleep = {
       activity_type: 'sleep',
       end_time: new Date('2026-11-20T06:30:00Z'),
+      entity_type: 'activity' as const,
       name: 'Sleep',
       start_time: new Date('2026-11-19T22:30:00Z'),
     }
@@ -1610,9 +1613,93 @@ describe('related people and activities', () => {
     expect(noteRelatedLabel({ ...sleep, activity_type: 'walking', name: 'Walk' }, 'UTC')).toBe(
       'Walk, 2026-11-19',
     )
-    expect(noteRelatedLabel({ ...sleep, start_time: null, activity_type: null, name: 'Anna' }, 'UTC')).toBe(
-      'Anna',
+    expect(
+      noteRelatedLabel(
+        { ...sleep, activity_type: null, entity_type: 'person', name: 'Anna', start_time: null },
+        'UTC',
+      ),
+    ).toBe('Anna')
+  })
+
+  test('a meal is labelled with its type and local time, a report with its type and local date, a check-in with its form and local time', () => {
+    const at = { activity_type: null, end_time: null, start_time: new Date('2026-11-20T11:30:00Z') }
+    expect(noteRelatedLabel({ ...at, entity_type: 'meal', name: 'lunch' }, 'Europe/Stockholm')).toBe(
+      'Lunch 12:30',
     )
+    expect(noteRelatedLabel({ ...at, entity_type: 'meal', name: '' }, 'UTC')).toBe('Meal 11:30')
+    expect(
+      noteRelatedLabel(
+        { ...at, entity_type: 'report', name: 'blood_panel', start_time: new Date('2026-11-20T23:30:00Z') },
+        'Europe/Stockholm',
+      ),
+    ).toBe('Blood Panel, 2026-11-21')
+    expect(noteRelatedLabel({ ...at, entity_type: 'check_in', name: 'Morning' }, 'UTC')).toBe('Morning 11:30')
+  })
+
+  test('meals, reports and check-ins are checked by kind and answered labelled, a check-in with its form', async () => {
+    const MEAL = randomUUID()
+    const REPORT = randomUUID()
+    const CHECK_IN = randomUUID()
+    const FORM = randomUUID()
+    vi.mocked(db.listLiveLinkTargetIds).mockImplementation(async (_user, _type, ids) => ids)
+    const note = makeNote({ date: '2026-11-20', entity_id: null, entity_type: 'day' })
+    vi.mocked(db.insertNote).mockResolvedValue(note)
+    const at = new Date('2026-11-20T11:30:00Z')
+    vi.mocked(db.getNoteLinksForNoteIds).mockResolvedValue(
+      new Map([
+        [
+          note.id,
+          [
+            { ...annaRecord, entity_id: MEAL, entity_type: 'meal', name: 'lunch', start_time: at },
+            { ...annaRecord, entity_id: REPORT, entity_type: 'report', name: 'inbody', start_time: at },
+            {
+              ...annaRecord,
+              entity_id: CHECK_IN,
+              entity_type: 'check_in',
+              form_id: FORM,
+              name: 'Mood',
+              start_time: at,
+            },
+          ],
+        ],
+      ]),
+    )
+    const related = [
+      { entity_id: MEAL, entity_type: 'meal' as const },
+      { entity_id: REPORT, entity_type: 'report' as const },
+      { entity_id: CHECK_IN, entity_type: 'check_in' as const },
+    ]
+
+    const result = await addNote('user', { content: '', date: '2026-11-20', entity_type: 'day', related })
+
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledWith('user', 'meal', [MEAL])
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledWith('user', 'report', [REPORT])
+    expect(db.listLiveLinkTargetIds).toHaveBeenCalledWith('user', 'check_in', [CHECK_IN])
+    expect(vi.mocked(db.insertNote).mock.calls[0]![6]).toMatchObject({ related })
+    expect(result.data?.related).toEqual([
+      { entity_id: MEAL, entity_type: 'meal', label: 'Lunch 12:30' },
+      { entity_id: REPORT, entity_type: 'report', label: 'Inbody, 2026-11-20' },
+      { entity_id: CHECK_IN, entity_type: 'check_in', form_id: FORM, label: 'Mood 12:30' },
+    ])
+  })
+
+  test('an unknown meal, report or check-in is refused by name', async () => {
+    vi.mocked(db.listLiveLinkTargetIds).mockResolvedValue([])
+    const missing = randomUUID()
+    const refused = async (entity_type: 'meal' | 'report' | 'check_in') =>
+      (
+        await addNote('user', {
+          content: 'x',
+          entity_type: 'time',
+          related: [{ entity_id: missing, entity_type }],
+          start_time: '2026-11-20T10:00:00Z',
+        })
+      ).error
+
+    expect(await refused('meal')).toBe(`Unknown meal: ${missing}`)
+    expect(await refused('report')).toBe(`Unknown report: ${missing}`)
+    expect(await refused('check_in')).toBe(`Unknown check-in: ${missing}`)
+    expect(db.insertNote).not.toHaveBeenCalled()
   })
 
   test('without related a new entry answers an empty list and writes no links', async () => {
@@ -1758,6 +1845,12 @@ describe('related people and activities', () => {
       success: false,
     })
     expect(await searchNotesForUser('user', { related_id: ANNA })).toMatchObject({ success: false })
+
+    await searchNotesForUser('user', { related_id: WALK, related_type: 'check_in', tz: 'UTC' })
+    expect(db.searchNotes).toHaveBeenLastCalledWith(
+      'user',
+      expect.objectContaining({ related: { entity_id: WALK, entity_type: 'check_in' } }),
+    )
   })
 
   test('listJournalEntryRefs lists the related notes with an excerpt of their first line', async () => {

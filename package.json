@@ -9,7 +9,7 @@
   "scripts": {
     "dev:backend": "pnpm --filter aurboda-backend start",
     "dev:web": "pnpm --filter aurboda-web dev",
-    "test": "pnpm --filter aurboda-backend test && pnpm --filter aurboda-web test && pnpm test:android",
+    "test": "pnpm --filter @aurboda/api-spec test && pnpm --filter aurboda-backend test && pnpm --filter aurboda-web test && pnpm test:android",
     "test:android": "cd apps/android && ./gradlew test",
     "build": "pnpm --filter aurboda-web build && pnpm build:android",
     "build:android": "cd apps/android && ./gradlew assembleGithubDebug",

@@ -169,6 +169,7 @@ export interface SyncRouterDeps {
     calendars?: CalendarConfig[]
     lastfm_username?: string
     garmin_disabled_data_types?: GarminDataType[]
+    tz_follows_device?: boolean
   }>
   getLastFmApiKey: () => Promise<string | null>
   processActivityWatchEvents: (
@@ -239,8 +240,9 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
         if (tz) deviceTimezone = tz
       }
 
-      // Store the device timezone in user settings for gap-fill day boundary alignment
-      if (deviceTimezone) {
+      // Store the device timezone in user settings for gap-fill day boundary alignment,
+      // unless the user chose a zone by hand.
+      if (deviceTimezone && (await deps.getSettings(user)).tz_follows_device !== false) {
         await deps.upsertUserSettings(user, { device_timezone: deviceTimezone })
       }
 

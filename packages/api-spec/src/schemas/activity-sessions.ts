@@ -79,6 +79,15 @@ export const activitySessionSchema = z
 
 export type ActivitySession = z.infer<typeof activitySessionSchema>
 
+export const bestSetSchema = z
+  .object({
+    reps: z.number().meta({ description: 'Reps as logged' }),
+    weight: z.number().meta({ description: 'Weight (kg)' }),
+  })
+  .meta({ description: 'A weighted working set', id: 'BestSet' })
+
+export type BestSet = z.infer<typeof bestSetSchema>
+
 export const activitySessionGroupMuscleSchema = z
   .object({
     muscle_group: exerciseMuscleGroupSchema,
@@ -94,27 +103,18 @@ export const activitySessionGroupMuscleSchema = z
 
 export type ActivitySessionGroupMuscle = z.infer<typeof activitySessionGroupMuscleSchema>
 
-export const activitySessionGroupBestSetSchema = z
-  .object({
-    reps: z.number().meta({ description: 'Reps of the set' }),
-    weight: z.number().meta({ description: 'Weight of the set (kg)' }),
-  })
-  .meta({ description: 'One working set: its weight and reps', id: 'ActivitySessionGroupBestSet' })
-
-export type ActivitySessionGroupBestSet = z.infer<typeof activitySessionGroupBestSetSchema>
-
 export const activitySessionGroupSchema = z
   .object({
+    best_set: bestSetSchema.optional().meta({
+      description:
+        'Grouped by an item path: the working set the e1rm measure comes from (warm-ups excluded, Epley); present only with an e1rm',
+    }),
     avg_hr_median: z
       .number()
       .optional()
       .meta({ description: 'Median of the average heart rates of the sessions' }),
     avg_hr_count: z.number().int().meta({
       description: 'Number of sessions with an average heart rate: the sample size of avg_hr_median',
-    }),
-    best_set: activitySessionGroupBestSetSchema.optional().meta({
-      description:
-        'Grouped by an item path: the heaviest working set of the value in the sessions (ties on weight to more reps), counting only sets with a weight and reps; absent when there is none',
     }),
     catalog_key: exerciseCatalogKeySchema.optional().meta({
       description:
