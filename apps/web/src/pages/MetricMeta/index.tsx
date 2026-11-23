@@ -1,6 +1,7 @@
 import {
   metricUnits as builtinMetricUnits,
   getMetricAggregation,
+  isComputedMetric,
   type MetricAggregation,
   type MetricBetter,
   validMetrics,
@@ -364,7 +365,9 @@ function MergeMetricSection({
   })
 
   const options = [
-    ...validMetrics.filter((m) => m !== metricName).map((m) => ({ label: formatMetricLabel(m), value: m })),
+    ...validMetrics
+      .filter((m) => m !== metricName && !isComputedMetric(m))
+      .map((m) => ({ label: formatMetricLabel(m), value: m })),
     ...customMetrics
       .filter((m) => m.name !== metricName)
       .map((m) => ({ label: `${formatMetricLabel(m.name)} (custom)`, value: m.name })),

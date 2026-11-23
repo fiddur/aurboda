@@ -2,37 +2,17 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
-import { clearLiveDraft, readLiveDraft } from './draftStorage'
-import { PlannedWorkouts } from './PlannedWorkouts'
-import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
+import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
+import { clearLiveDraft } from './draftStorage'
+import { NoPlans, PlannedWorkouts } from './PlannedWorkouts'
+import { invalidateStrengthQueries, liveApi, useOpenStrengthPlans, useUnfinishedSession } from './queries'
+import { RecentSessions } from './RecentSessions'
 import { finishLiveSession } from './saveQueue'
-import { liveDraftFromServer, loggedSetCount, type SessionDraft, sessionSummary } from './sessionModel'
-import {
-  exerciseListLabel,
-  lastSetLabel,
-  repeatCandidates,
-  sessionDateLabel,
-  startedLabel,
-  type StrengthActivity,
-  unfinishedOnServer,
-} from './startModel'
-import { StrengthTabs } from './StrengthTabs'
+import { type SessionDraft, sessionSummary } from './sessionModel'
+import { lastSetLabel, repeatCandidates, startedLabel } from './startModel'
+import { StrengthHeader } from './StrengthHeader'
 import './style.css'
-
-const unfinishedDraft = (
-  local: SessionDraft | undefined,
-  server: StrengthActivity | undefined,
-): SessionDraft | undefined => {
-  if (local && !local.id && loggedSetCount(local.blocks) > 0) return local
-  if (!server?.id) return undefined
-  if (local?.id === server.id) return local
-  return liveDraftFromServer({
-    data: server.data,
-    id: server.id,
-    start_time: server.start_time.toISOString(),
-  })
-}
 
 const UnfinishedCard = ({
   draft,
@@ -66,18 +46,18 @@ const UnfinishedCard = ({
   )
 }
 
-export function Strength() {
+export function StrengthWorkouts() {
   const queryClient = useQueryClient()
   const { route } = useLocation()
-  const [local, setLocal] = useState(() => readLiveDraft())
-  const sessions = useRecentStrengthSessions()
+  const { local, sessions, setLocal, unfinished } = useUnfinishedSession()
   const [finishing, setFinishing] = useState(false)
   const [finishError, setFinishError] = useState<string | undefined>()
   const [confirmTarget, setConfirmTarget] = useState<string | undefined>()
 
-  const rows = sessions.data ?? []
-  const unfinished = unfinishedDraft(local, unfinishedOnServer(rows, new Date()))
-  const candidates = repeatCandidates(rows, unfinished?.id)
+  const plans = useOpenStrengthPlans()
+  const recovery = useMuscleRecovery(STRENGTH_TYPE, SETS_PATH)
+  const openPlans = plans.data ?? []
+  const candidates = repeatCandidates(sessions.data ?? [], unfinished?.id)
 
   const finish = async (): Promise<boolean> => {
     if (!unfinished) return true
@@ -104,8 +84,7 @@ export function Strength() {
 
   return (
     <div class="page page--wide strength-page strength-page-train">
-      <h1>Strength</h1>
-      <StrengthTabs />
+      <StrengthHeader />
       {unfinished && (
         <UnfinishedCard
           draft={unfinished}
@@ -134,41 +113,34 @@ export function Strength() {
           </div>
         </div>
       ) : (
-        <div class="strength-start-actions">
-          <button type="button" class="btn-primary strength-wide-btn" onClick={() => start('/strength/live')}>
-            Start a session now
-          </button>
-          <a class="btn-secondary strength-wide-btn" href="/strength/log">
-            Log a past session
-          </a>
-        </div>
+        !plans.isLoading &&
+        openPlans.length === 0 && (
+          <div class="strength-start-actions">
+            <button
+              type="button"
+              class="btn-primary strength-wide-btn"
+              onClick={() => start('/strength/live')}
+            >
+              Start an empty session
+            </button>
+            <a class="btn-secondary strength-wide-btn" href="/strength/log">
+              Log a past session
+            </a>
+          </div>
+        )
       )}
-      <PlannedWorkouts onStart={start} />
-      <section class="strength-section">
-        <h2>Repeat a session</h2>
-        {sessions.isLoading && <p class="loading">Loading…</p>}
-        {sessions.isError && <p class="strength-error">Your recent sessions could not be loaded.</p>}
-        {!sessions.isLoading && !sessions.isError && candidates.length === 0 && (
-          <p class="strength-muted">No sessions with sets in the last 90 days.</p>
-        )}
-        <ul class="strength-repeat-list">
-          {candidates.map((c) => (
-            <li key={c.id} class="strength-card strength-repeat">
-              <div class="strength-repeat-text">
-                <a href={detailUrl(c.id)}>{sessionDateLabel(c.start_time, c.minutes)}</a>
-                <span class="strength-muted">{exerciseListLabel(c.names)}</span>
-              </div>
-              <button
-                type="button"
-                class="btn-secondary"
-                onClick={() => start(`/strength/live?repeat=${encodeURIComponent(c.id)}`)}
-              >
-                Repeat
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {openPlans.length > 0 ? (
+        <PlannedWorkouts plans={openPlans} recovery={recovery.data} onStart={start} />
+      ) : (
+        <NoPlans state={plans.isError ? 'error' : plans.data ? 'empty' : 'loading'} />
+      )}
+      <RecentSessions
+        candidates={candidates}
+        isError={sessions.isError}
+        isLoading={sessions.isLoading}
+        plans={openPlans}
+        onStart={start}
+      />
       <p>
         <a href={`/activity-type/${STRENGTH_TYPE}`}>All strength sessions</a>
       </p>

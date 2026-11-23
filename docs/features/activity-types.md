@@ -221,7 +221,11 @@ Where item paths are accepted:
   field. `group_by=sets.exercise` gives one group per exercise, a session in every group it has
   a set for (sessions without one in the no-value group), each group with its members' measures
   for that exercise combined (volume, set count and total reps summed, the rest at their
-  maximum).
+  maximum) and, with an e1RM, its `best_set` (`weight` and `reps`): the working set that e1RM
+  comes from. On a catalogue-backed path a group whose exercise is matched to the
+  [exercise catalogue](exercise-catalog.md) also has `catalog_key`, `muscle_groups`
+  (`{ muscle_group, weight }` per group it works, highest weight first, then the catalogue's
+  order; 0.75 or more means it mainly works the group) and `equipment`.
   `filter_field=sets.exercise&filter_value=Bench Press` keeps the sessions with that exercise,
   each with its matching `items`, their `measures` and the `records` it set, judged against all
   earlier sessions even when `start` cuts them off.
@@ -428,7 +432,8 @@ unmatched names. A **Last trained** column says when each group last got sets ("
 bar chart, one bar per group per week, opens under the list on **Show weekly chart**. An activity's
 exercises section ends with a **Sets per muscle group** block of its own, set apart from the last
 exercise, that lists the session's sets per group; its heading links to this section of the type
-page. The Strength page's Muscles tab (`/strength/muscles`) shows the same section.
+page. The Strength page's Muscles tab (`/strength`) folds the same sets into its combined list of
+muscle groups, with recovery and strength score, as rolling 7-day windows over 13 weeks.
 
 The [strength score](strength-score.md) builds on the same catalogue matching: per reference lift
 the best estimated one-rep max of the last 90 days against a reference by sex and bodyweight,

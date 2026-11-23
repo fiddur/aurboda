@@ -1,3 +1,5 @@
+import type { UpdateSettingsInput } from '@aurboda/api-spec'
+
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
@@ -20,7 +22,13 @@ export function TimeZoneSettings() {
   const [status, setStatus] = useState<SaveStatus>({ status: 'idle' })
   const scrolled = useRef(false)
   const supported = useMemo(supportedTimezones, [])
-  const view = timeZoneSettingsView(settings?.tz ?? null, browserTimezone(), supported)
+  const view = timeZoneSettingsView(
+    settings?.tz ?? null,
+    browserTimezone(),
+    supported,
+    settings?.tz_follows_device ?? true,
+  )
+  const { browserOffer } = view
 
   useEffect(() => {
     if (scrolled.current || settings === undefined || window.location.hash !== `#${SECTION_ID}`) return
@@ -28,10 +36,10 @@ export function TimeZoneSettings() {
     document.getElementById(SECTION_ID)?.scrollIntoView({ block: 'start' })
   }, [settings])
 
-  const save = async (tz: string | null) => {
+  const save = async (update: UpdateSettingsInput) => {
     setStatus({ status: 'saving' })
     try {
-      const result = await updateUserSettings({ tz })
+      const result = await updateUserSettings(update)
       queryClient.setQueryData(['userSettings'], result)
       setStatus({ status: 'saved', time: new Date() })
     } catch (err) {
@@ -43,7 +51,7 @@ export function TimeZoneSettings() {
     <SettingsSection
       id={SECTION_ID}
       title="Time zone"
-      description="Reminders and daily figures follow this time zone. The Android app updates it from the phone when it syncs."
+      description="Reminders and daily figures follow this time zone."
       headerExtra={<SaveStatusIndicator state={status} />}
     >
       <div class="form-field">
@@ -60,9 +68,22 @@ export function TimeZoneSettings() {
           ))}
         </select>
       </div>
-      {view.browserOffer && (
-        <button type="button" class="btn-secondary" onClick={() => void save(view.browserOffer)}>
-          Use this browser&apos;s time zone ({view.browserOffer})
+      <div class="form-field">
+        <label class="checkbox-field">
+          <input
+            type="checkbox"
+            checked={view.followsDevice}
+            onChange={(e) => void save(view.followToSave((e.target as HTMLInputElement).checked))}
+          />
+          <span>Use my phone&apos;s time zone</span>
+        </label>
+        <p class="field-description">
+          The Android app sets your time zone from the phone each time it syncs.
+        </p>
+      </div>
+      {browserOffer && (
+        <button type="button" class="btn-secondary" onClick={() => void save(view.toSave(browserOffer))}>
+          Use this browser&apos;s time zone ({browserOffer})
         </button>
       )}
     </SettingsSection>

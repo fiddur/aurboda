@@ -108,6 +108,12 @@ describe('metricTargetProblems', () => {
       metricTargetProblems([{ ...dose, logs_to: { metric: 'weight' }, unit: 'kg' }], null, [], catalog),
     ).toEqual([])
   })
+
+  test('a metric Aurboda calculates is refused', () => {
+    expect(
+      metricTargetProblems([{ ...rested, logs_to: { metric: 'strength_score' } }], null, [], catalog),
+    ).toEqual([expect.stringContaining('"strength_score" is calculated by Aurboda and cannot be written.')])
+  })
 })
 
 describe('updateCheckInFormById', () => {

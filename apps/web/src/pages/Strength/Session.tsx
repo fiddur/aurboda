@@ -16,6 +16,7 @@ import { useStrengthPlan } from './queries'
 import {
   blocksFromSets,
   isDirty,
+  isEditable,
   isInProgress,
   liveDraftFromServer,
   loggedSetCount,
@@ -34,12 +35,6 @@ interface LiveState {
 }
 
 const PLAN_GONE = 'That plan no longer exists. Starting an empty session.'
-
-const isEditable = (activity: Activity & { source_records?: unknown[] }, id: string): boolean =>
-  activity.source === 'aurboda' &&
-  !activity.override_target_ids?.length &&
-  !id.startsWith('merged:') &&
-  (activity.source_records?.length ?? 0) <= 1
 
 const ReadOnlySession = ({ activity, id }: { activity: Activity; id: string }) => (
   <div class="page page--narrow strength-page">

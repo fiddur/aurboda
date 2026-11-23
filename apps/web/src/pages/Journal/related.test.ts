@@ -6,12 +6,20 @@ import {
   activityLabel,
   activityLink,
   addLink,
+  checkInLabel,
+  checkInLink,
   dayActivityOptions,
   dayActivityWindow,
+  dayCheckInOptions,
+  dayMealOptions,
+  dayWindow,
+  isRelatedLink,
   insertMention,
   journalRefHeading,
   journalRefHref,
   journalRefWhen,
+  mealLabel,
+  mealLink,
   MENTION_MAX_OPTIONS,
   mentionAt,
   highlighted,
@@ -27,6 +35,11 @@ import {
   relatedFilterLinks,
   relatedHref,
   removeLink,
+  reportLabel,
+  zonedDate,
+  zonedTime,
+  reportLink,
+  reportOptions,
   sameLinks,
   unionLinks,
 } from './related'
@@ -56,9 +69,22 @@ describe('the link list', () => {
     expect(unionLinks([ANNA], [BO, ANNA])).toEqual([ANNA, BO])
   })
 
-  test('each chip opens the person or the activity', () => {
+  test('each chip opens its target: a check-in opens its form', () => {
+    const id = WALK.entity_id
     expect(relatedHref(ANNA)).toBe(`/people/${ANNA.entity_id}`)
-    expect(relatedHref(WALK)).toBe(`/detail/activity/${WALK.entity_id}`)
+    expect(relatedHref(WALK)).toBe(`/detail/activity/${id}`)
+    expect(relatedHref({ entity_id: id, entity_type: 'meal' })).toBe(`/meals/${id}`)
+    expect(relatedHref({ entity_id: id, entity_type: 'report' })).toBe(`/reports/${id}`)
+    expect(relatedHref({ entity_id: id, entity_type: 'check_in', form_id: 'f1' })).toBe('/check-ins/f1')
+    expect(relatedHref({ entity_id: id, entity_type: 'check_in' })).toBe('/check-ins')
+  })
+
+  test('a kept draft link is any of the five kinds, with a label', () => {
+    for (const entity_type of ['person', 'activity', 'meal', 'report', 'check_in']) {
+      expect(isRelatedLink({ entity_id: 'x', entity_type, label: 'L' })).toBe(true)
+    }
+    expect(isRelatedLink({ entity_id: 'x', entity_type: 'place', label: 'L' })).toBe(false)
+    expect(isRelatedLink({ entity_id: 'x', entity_type: 'meal' })).toBe(false)
   })
 })
 
@@ -73,6 +99,17 @@ describe('links a save refused', () => {
     ]).toEqual([`person:${ANNA.entity_id}`, `person:${BO.entity_id}`])
     expect([...refusedLinkKeys(`Unknown activity: ${WALK.entity_id}`, [ANNA, WALK])]).toEqual([
       `activity:${WALK.entity_id}`,
+    ])
+  })
+
+  test('marks a meal, a report or a check-in the answer names', () => {
+    const lunch = { entity_id: ANNA.entity_id, entity_type: 'meal' as const, label: 'Lunch 12:30' }
+    const mood = { entity_id: BO.entity_id, entity_type: 'check_in' as const, label: 'Mood 08:00' }
+    expect([...refusedLinkKeys(`Unknown meal: ${lunch.entity_id}`, [ANNA, lunch])]).toEqual([
+      `meal:${lunch.entity_id}`,
+    ])
+    expect([...refusedLinkKeys(`Unknown check-in: ${mood.entity_id}`, [BO, mood])]).toEqual([
+      `check_in:${mood.entity_id}`,
     ])
   })
 
@@ -191,18 +228,75 @@ describe("the day's activities", () => {
   })
 })
 
+describe('meals, reports and check-ins to pick', () => {
+  const at = (hour: number, minute = 0, day = 20) => new Date(2026, 10, day, hour, minute)
+
+  test('a meal is labelled with its type and local time, as the server does', () => {
+    expect(mealLabel({ meal_type: 'lunch', time: at(12, 30) })).toBe('Lunch 12:30')
+    expect(mealLabel({ time: at(8) })).toBe('Meal 08:00')
+    expect(mealLink({ id: 'm1', meal_type: 'dinner', time: at(18) })).toEqual({
+      entity_id: 'm1',
+      entity_type: 'meal',
+      label: 'Dinner 18:00',
+    })
+  })
+
+  test('a report with its type and local date, a check-in with its form and time and its form id', () => {
+    expect(reportLabel({ date: at(9), report_type: 'blood_panel' })).toBe('Blood Panel, 2026-11-20')
+    expect(reportLink({ date: at(9), id: 'r1', report_type: 'inbody' }).entity_type).toBe('report')
+    const answered_at = at(7, 45).toISOString()
+    expect(checkInLabel({ answered_at, form_name: 'Morning' })).toBe('Morning 07:45')
+    expect(checkInLink({ answered_at, form_id: 'f1', form_name: 'Morning', id: 'c1' })).toEqual({
+      entity_id: 'c1',
+      entity_type: 'check_in',
+      form_id: 'f1',
+      label: 'Morning 07:45',
+    })
+  })
+
+  test("the day's meals and answered check-ins in time order, others left out", () => {
+    const meals = [{ time: at(18) }, { time: at(8) }, { time: at(12, 0, 21) }]
+    expect(dayMealOptions(meals, '2026-11-20')).toEqual([{ time: at(8) }, { time: at(18) }])
+    const checkIns = [
+      { answered_at: at(20).toISOString(), status: 'answered' as const },
+      { answered_at: at(7).toISOString(), status: 'answered' as const },
+      { answered_at: at(8).toISOString(), status: 'skipped' as const },
+      { answered_at: at(7, 0, 19).toISOString(), status: 'answered' as const },
+    ]
+    expect(dayCheckInOptions(checkIns, '2026-11-20').map((c) => c.answered_at)).toEqual([
+      at(7).toISOString(),
+      at(20).toISOString(),
+    ])
+    expect(dayWindow('2026-11-20')).toEqual({ end: new Date(2026, 10, 21), start: new Date(2026, 10, 20) })
+  })
+
+  test('reports newest first, searchable by type as written or as shown', () => {
+    const reports = [
+      { date: at(9, 0, 1), report_type: 'inbody' },
+      { date: at(9, 0, 10), report_type: 'blood_panel' },
+    ]
+    expect(reportOptions(reports).map((r) => r.report_type)).toEqual(['blood_panel', 'inbody'])
+    expect(reportOptions(reports, 'blood p').map((r) => r.report_type)).toEqual(['blood_panel'])
+    expect(reportOptions(reports, 'INB').map((r) => r.report_type)).toEqual(['inbody'])
+  })
+})
+
 describe('the Related to filter', () => {
   const id = '00000000-0000-4000-8000-00000000000a'
 
   test('reads ?person= and ?activity= and ignores anything else', () => {
     expect(relatedFilterFromQuery({ person: id })).toEqual({ id, type: 'person' })
     expect(relatedFilterFromQuery({ activity: `merged:${id}` })).toEqual({ id, type: 'activity' })
+    expect(relatedFilterFromQuery({ meal: id })).toEqual({ id, type: 'meal' })
+    expect(relatedFilterFromQuery({ report: id })).toEqual({ id, type: 'report' })
+    expect(relatedFilterFromQuery({ check_in: id })).toEqual({ id, type: 'check_in' })
     expect(relatedFilterFromQuery({ person: 'nope' })).toBeUndefined()
     expect(relatedFilterFromQuery({})).toBeUndefined()
   })
 
   test('writes the link back', () => {
     expect(relatedFilterHref({ id, type: 'activity' })).toBe(`/journal?activity=${id}`)
+    expect(relatedFilterHref({ id, type: 'check_in' })).toBe(`/journal?check_in=${id}`)
   })
 })
 
@@ -256,6 +350,8 @@ describe('relatedFilterLabel', () => {
   test("an activity's label once loaded", () => {
     expect(relatedFilterLabel({ id, type: 'activity' }, people, 'Walk, 2026-11-20')).toBe('Walk, 2026-11-20')
     expect(relatedFilterLabel({ id, type: 'activity' }, people, undefined)).toBe('This activity')
+    expect(relatedFilterLabel({ id, type: 'meal' }, people, 'Lunch 12:30')).toBe('Lunch 12:30')
+    expect(relatedFilterLabel({ id, type: 'check_in' }, people, undefined)).toBe('This check-in')
   })
 })
 
@@ -266,5 +362,34 @@ describe('relatedFilterLinks', () => {
       { entity_id: id, entity_type: 'person', label: 'Anna' },
     ])
     expect(relatedFilterLinks(undefined, 'Anyone')).toEqual([])
+  })
+})
+
+describe('labels in the user zone', () => {
+  const instant = new Date('2026-11-20T23:30:00Z')
+
+  test('format the date and time in the given zone, as the server does', () => {
+    expect(zonedDate(instant, 'Asia/Tokyo')).toBe('2026-11-21')
+    expect(zonedTime(instant, 'Asia/Tokyo')).toBe('08:30')
+    expect(zonedTime(new Date('2026-11-20T00:05:00Z'), 'UTC')).toBe('00:05')
+    expect(mealLabel({ meal_type: 'breakfast', time: instant }, 'Asia/Tokyo')).toBe('Breakfast 08:30')
+    expect(reportLabel({ date: instant, report_type: 'blood_panel' }, 'Asia/Tokyo')).toBe(
+      'Blood Panel, 2026-11-21',
+    )
+    expect(checkInLabel({ answered_at: instant.toISOString(), form_name: 'Morning' }, 'Asia/Tokyo')).toBe(
+      'Morning 08:30',
+    )
+    expect(
+      activityLabel(
+        { activity_type: 'walking', start_time: instant, title: 'Walk' },
+        undefined,
+        'Asia/Tokyo',
+      ),
+    ).toBe('Walk, 2026-11-21')
+  })
+
+  test('fall back to the browser zone without one, or with one the browser does not know', () => {
+    expect(zonedDate(instant)).toBe(zonedDate(instant, 'Not/AZone'))
+    expect(zonedTime(instant)).toBe(zonedTime(instant, 'Not/AZone'))
   })
 })

@@ -7,9 +7,10 @@ recreational lifter who has trained the lift regularly for a year or two.
 
 It is a yardstick for following one's own progress, not a standard to be ranked against: the
 references are Aurboda's own estimates, and the score leaves out age, limb length, technique and
-everything else that sets one lifter apart from the next. It is computed on read and never stored,
-so it and its history always follow the data as it is now (a corrected set, a newly matched
-exercise, a changed weight).
+everything else that sets one lifter apart from the next. The score page and the REST and MCP reads
+compute it on read, so they always follow the data as it is now (a corrected set, a newly matched
+exercise, a changed weight). A copy is also [stored as daily metrics](#stored-as-daily-metrics) for
+charts, dashboards, goals and correlations.
 
 ## How it is computed
 
@@ -75,16 +76,24 @@ the history has no points; each lift's best set (by e1RM) is still given, withou
 
 - **The score page** (`/activity-type/<type>/strength-score/<item path>`, for strength training
   `/activity-type/strength_training/strength-score/sets.exercise`): the overall score with its
-  change over the last 30 days, the score over time (overall or one muscle group, over 90 days, a
-  year or three years) and, per group, the lifts done in the last 90 days with the set each is
+  change over the last 30 days, the score over time (overall, one muscle group, or all groups with
+  history as one line each, over 90 days, a year or three years) and, per group, the lifts done in the last 90 days with the set each is
   scored on, its estimated one-rep max, the weight that would score 100 points and whether it
   counts toward the group. A lift whose best set leaves the 90 days within two weeks says so. The
   reference lifts not done are listed under each group. Without sex or a bodyweight the page says
   what to add and still lists the best sets. Beside the score cards, a **Strongest and weakest**
   card names the highest and lowest scored groups (`Triceps 128 · Quadriceps 93`) once at least
   two groups have a score and they differ.
-- **Strength page, Progress tab** (`/strength/progress`): the score page's content for strength
-  training, under the Strength page's tabs.
+- **Strength page, Progress tab** (`/strength/progress`): the score cards and chart for strength
+  training, without the per-group lists of lifts, then what moved in 30 days and the lifts about
+  to leave the 90 days (see [the Progress tab](strength-logging.md#the-progress-tab)). Its score
+  chart has the ⋮ menu for overall or one group, pointing at the [stored
+  metrics](#stored-as-daily-metrics) (`strength_score`, `strength_score_<group>`): open in the
+  Chart Explorer (a daily trend of the mean with the shortest half-life, 7 days), add to a
+  dashboard as a trend chart or a sparkline card, or set a goal. "All muscle groups" has no menu.
+- **Strength page, Muscles tab** (`/strength`): the overall score as a card linking to Progress,
+  and per muscle group row its score group's points and 30-day change; an opened row lists that
+  group's lifts as the score page does.
 - **Type page**: a "Strength score" section above "Sets per muscle group".
 - **Muscle group page**: the group's score as a card and its score over the period chosen on the
   page (the Back score on the Lats and Middle back pages).
@@ -113,6 +122,46 @@ The Android app shows the same pages, embedded.
 
 A field that is not a catalogue-backed item path of the type is a 400, an unknown type a 404. The
 MCP tools take the same parameters plus `activity_type`.
+
+## Stored as daily metrics
+
+Aurboda also stores the score of strength training (`strength_training`'s `sets.exercise`) as nine
+built-in metrics, so it works wherever a metric does: Chart Explorer, dashboard cards and charts,
+goals, correlations, the Data page, the data export and the MCP metric tools.
+
+| Metric                      | Value                        |
+| --------------------------- | ---------------------------- |
+| `strength_score`            | The overall score            |
+| `strength_score_chest`      | The Chest group's score      |
+| `strength_score_shoulders`  | The Shoulders group's score  |
+| `strength_score_back`       | The Back group's score       |
+| `strength_score_biceps`     | The Biceps group's score     |
+| `strength_score_triceps`    | The Triceps group's score    |
+| `strength_score_quadriceps` | The Quadriceps group's score |
+| `strength_score_hamstrings` | The Hamstrings group's score |
+| `strength_score_glutes`     | The Glutes group's score     |
+
+- **Unit** `points`, a level (averaged, never summed), higher is better. Source `aurboda`.
+- **One value per local day** in the user's time zone, from the day of the first scored set through
+  today. A past day's value is the score at the end of that day; today's is the score when it was
+  last recalculated, so a best set that leaves the 90 days during the day shows from the next day. The
+  value is stamped at local noon of its day (today, before noon, at the current minute, so no value
+  lies in the future). A day on which a group, or the overall score, has no score stores nothing for
+  that metric. Without sex or a bodyweight nothing is stored, and values stored earlier are removed.
+- **Kept up to date by Aurboda**, as the score it copies (the same calculation as the history):
+  an activity that is added, changed, merged or synced recalculates within seconds (pg-boss queue
+  `strength-score-refresh`); everything else, a deleted or restored activity, a new day, a
+  bodyweight that arrived by sync, a changed sex setting, a newly matched exercise or new reference
+  numbers, within five minutes (queue `strength-score-sweep`, every five minutes over every user). A user whose
+  inputs have not changed since the last run is skipped after a few cheap reads. Only values that
+  changed are rewritten.
+- **Read only.** They cannot be added, imported, logged by a check-in, deleted or merged into by
+  hand, through REST or MCP: such a write is refused with `"<metric>" is calculated by Aurboda and
+cannot be written.` (or `… cannot be deleted.`). The Add data form does not offer them. They are
+  never sent to Health Connect.
+
+The score page and `get_strength_score` / `get_strength_score_history` still calculate on read; the
+stored metrics are a derived copy.
 
 ## Limits
 

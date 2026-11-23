@@ -1,11 +1,15 @@
 import {
   type CreateStrengthPlanBody,
+  type ExerciseMuscleGroup,
+  exerciseMuscleInfo,
+  type MuscleRecovery,
   type StrengthPlan,
   type StrengthPlanSet,
   strengthPlanSetTypes,
 } from '@aurboda/api-spec'
 import { addDays, format, isBefore, isSameDay, isSameYear, startOfDay } from 'date-fns'
 
+import { recoveryLevel } from '../../components/muscleRecovery/recoveryView'
 import {
   blocksFromSets,
   type ExerciseBlock,
@@ -92,10 +96,75 @@ export const planSummary = (plan: Pick<StrengthPlan, 'sets'>): string =>
 
 export const splitPlans = <T extends Pick<StrengthPlan, 'planned_for'>>(
   plans: T[],
-): { dated: T[]; routines: T[] } => ({
+): { dated: T[]; saved: T[] } => ({
   dated: plans.filter((p) => p.planned_for !== null),
-  routines: plans.filter((p) => p.planned_for === null),
+  saved: plans.filter((p) => p.planned_for === null),
 })
+
+export const isPlannedToday = (plannedFor: string | null, now: Date): boolean => {
+  const day = plannedFor === null ? undefined : localDay(plannedFor)
+  return day !== undefined && isSameDay(day, now)
+}
+
+export const plansForToday = <T extends Pick<StrengthPlan, 'planned_for'>>(plans: T[], now: Date): T[] =>
+  plans.filter((p) => isPlannedToday(p.planned_for, now))
+
+export const isPrimaryStart = (plannedFor: string | null, now: Date): boolean =>
+  isPlannedToday(plannedFor, now) || isOverdue(plannedFor, now)
+
+export const lastDoneLabel = (sessions: StrengthPlan['sessions'], now: Date): string => {
+  const newest = sessions
+    .map((s) => new Date(s.start_time))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .reduce<Date | undefined>((latest, d) => (latest && latest >= d ? latest : d), undefined)
+  if (!newest) return 'Not done yet'
+  return `Last done ${format(newest, isSameYear(newest, now) ? 'EEE d MMM' : 'EEE d MMM yyyy')}`
+}
+
+export const savedAsPlan = <T extends Pick<StrengthPlan, 'id' | 'planned_for'>>(
+  planId: string | undefined,
+  plans: T[],
+): T | undefined =>
+  planId === undefined ? undefined : plans.find((p) => p.planned_for === null && p.id === planId)
+
+const HOUR_MS = 3_600_000
+
+const muscleGroupName = (group: ExerciseMuscleGroup): string => exerciseMuscleInfo[group].name
+
+const listOf = (names: string[]): string =>
+  names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+
+const capitalised = (value: string): string => value.charAt(0).toUpperCase() + value.slice(1)
+
+const hoursUntil = (readyAt: string | null, now: Date): number => {
+  if (readyAt === null) return 0
+  const hours = (new Date(readyAt).getTime() - now.getTime()) / HOUR_MS
+  return hours > 0 ? Math.max(1, Math.round(hours)) : 0
+}
+
+export const readinessLine = (
+  muscleGroups: readonly ExerciseMuscleGroup[],
+  recovery: MuscleRecovery | null | undefined,
+  now: Date,
+): string | undefined => {
+  if (muscleGroups.length === 0 || !recovery) return undefined
+  const groups = muscleGroups.flatMap((group) => {
+    const r = recovery.groups.find((g) => g.muscle_group === group)
+    if (!r) return []
+    const ready = recoveryLevel(r.recovery, recovery.ready_percent) === 'ready'
+    return [{ group, hours: ready ? 0 : hoursUntil(r.ready_at, now), ready }]
+  })
+  if (groups.length === 0) return undefined
+  const recovering = groups.filter((g) => !g.ready)
+  if (recovering.length === 0) {
+    const names = groups.map((g) => muscleGroupName(g.group).toLowerCase())
+    return `${capitalised(listOf(names))} ${names.length === 1 ? 'is' : 'are'} ready`
+  }
+  return `Still recovering: ${recovering
+    .toSorted((a, b) => b.hours - a.hours)
+    .map((g) => `${muscleGroupName(g.group).toLowerCase()} (${g.hours} h)`)
+    .join(', ')}`
+}
 
 export const planFormError = (name: string, blocks: ExerciseBlock[]): string | undefined => {
   if (name.trim() === '') return 'Give the plan a name.'

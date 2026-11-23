@@ -22,6 +22,7 @@
     "node_modules",
     "dist",
     "generated",
+    "src/**/*.test.ts",
     "src/openapi.ts",
     "src/generate-html.ts",
     "src/generate-docs.ts",

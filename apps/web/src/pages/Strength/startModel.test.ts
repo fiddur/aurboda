@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import type { SessionDraft } from './sessionModel'
+
 import {
   exerciseListLabel,
   lastSetLabel,
@@ -7,6 +9,7 @@ import {
   repeatCandidates,
   sessionDateLabel,
   startedLabel,
+  unfinishedDraft,
   unfinishedOnServer,
 } from './startModel'
 
@@ -25,6 +28,43 @@ describe('unfinishedOnServer', () => {
     ]
     expect(unfinishedOnServer(rows, now)?.id).toBe('b')
     expect(unfinishedOnServer([rows[0], rows[3]], now)).toBeUndefined()
+  })
+})
+
+describe('unfinishedDraft', () => {
+  const draft = (extra: Partial<SessionDraft> = {}): SessionDraft => ({
+    blocks: [{ exercise: 'Squat', id: 'b1', planned: [], sets: [{ reps: 5 }] }],
+    rev: 1,
+    saved_rev: 0,
+    start_time: at(14, 17).toISOString(),
+    ...extra,
+  })
+  const server = { data: { ...sets('Bench press'), in_progress: true }, id: 'srv', start_time: at(14, 16) }
+
+  it('prefers a local draft with sets that the server has not seen', () => {
+    const local = draft()
+    expect(unfinishedDraft(local, server)).toBe(local)
+  })
+
+  it('ignores a local draft without an id and without sets', () => {
+    expect(unfinishedDraft(draft({ blocks: [] }), undefined)).toBeUndefined()
+    expect(unfinishedDraft(draft({ blocks: [] }), server)?.id).toBe('srv')
+  })
+
+  it('keeps the local copy of the server session', () => {
+    const local = draft({ id: 'srv' })
+    expect(unfinishedDraft(local, server)).toBe(local)
+  })
+
+  it('builds a draft from the server session otherwise', () => {
+    const found = unfinishedDraft(draft({ id: 'other' }), server)
+    expect(found?.id).toBe('srv')
+    expect(found?.start_time).toBe(at(14, 16).toISOString())
+    expect(found?.blocks.map((b) => b.exercise)).toEqual(['Bench press'])
+  })
+
+  it('is undefined with neither', () => {
+    expect(unfinishedDraft(undefined, undefined)).toBeUndefined()
   })
 })
 
@@ -48,6 +88,14 @@ describe('repeatCandidates', () => {
       names: ['Bench press', 'Pull-up'],
       start_time: at(5, 17, 2),
     })
+  })
+
+  it('carries the plan a session was started from', () => {
+    const rows = [
+      { data: { ...sets('Squat'), plan_id: 'p1' }, end_time: at(2, 18), id: 'a', start_time: at(2, 17) },
+      { data: { ...sets('Squat'), plan_id: '' }, end_time: at(1, 18), id: 'b', start_time: at(1, 17) },
+    ]
+    expect(repeatCandidates(rows).map((c) => c.plan_id)).toEqual(['p1', undefined])
   })
 })
 

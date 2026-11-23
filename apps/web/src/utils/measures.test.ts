@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   defaultAggregation,
+  formatBestSet,
   formatMeasure,
   formatSet,
   formatSetCount,
@@ -48,6 +49,13 @@ describe('formatMeasure', () => {
     expect(formatMeasure('max_time', 90)).toBe('1:30')
     expect(formatMeasure('max_time', 5)).toBe('0:05')
     expect(formatMeasure('max_time', 3725)).toBe('62:05')
+  })
+})
+
+describe('formatBestSet', () => {
+  test('weight then reps', () => {
+    expect(formatBestSet({ reps: 5, weight: 80 })).toBe('80 kg × 5')
+    expect(formatBestSet({ reps: 3, weight: 102.5 })).toBe('102.5 kg × 3')
   })
 })
 

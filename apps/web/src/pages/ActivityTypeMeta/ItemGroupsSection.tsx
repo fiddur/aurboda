@@ -140,7 +140,7 @@ const ItemGroupsTable = ({
   )
 }
 
-const ItemValueAliases = ({ name, path }: { name: string; path: string }) => {
+export const ItemValueAliases = ({ name, path }: { name: string; path: string }) => {
   const queryClient = useQueryClient()
   const queryKey = ['item-value-aliases', name, path]
   const query = useQuery({

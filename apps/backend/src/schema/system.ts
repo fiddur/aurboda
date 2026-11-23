@@ -163,7 +163,23 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links (entity_type, entity_id)
   `,
 
-  // entity_id has no foreign key (it targets two tables), so an activity removed for good takes
+  // The column check Postgres named note_links_entity_type_check, widened under the same name so
+  // an older build starting against this database finds it and leaves it alone. Replaced only
+  // while its definition does not know the check-in.
+  note_links_more_targets: `
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+         WHERE conname = 'note_links_entity_type_check' AND pg_get_constraintdef(oid) LIKE '%''check_in''%'
+      ) THEN
+        ALTER TABLE note_links DROP CONSTRAINT IF EXISTS note_links_entity_type_check;
+        ALTER TABLE note_links ADD CONSTRAINT note_links_entity_type_check
+          CHECK (entity_type IN ('person', 'activity', 'meal', 'report', 'check_in'));
+      END IF;
+    END $$
+  `,
+
+  // entity_id has no foreign key (it targets several tables), so an activity removed for good takes
   // its links with it here, whichever path deletes it. Statement-level, so a source-wide delete
   // costs one statement rather than one per row.
   note_links_activity_delete_trigger: `
@@ -187,6 +203,52 @@ export const systemTables: Record<string, string> = {
           REFERENCING OLD TABLE AS deleted_activities
           FOR EACH STATEMENT EXECUTE FUNCTION delete_note_links_of_deleted_activities();
       END IF;
+    END $$
+  `,
+
+  // A link suggestion the user turned down for one journal entry, so it is not offered again.
+  note_link_dismissals: `
+    CREATE TABLE IF NOT EXISTS note_link_dismissals (
+      note_id     UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id   UUID NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (note_id, entity_type, entity_id)
+    )
+  `,
+
+  // The meals, reports and check-ins removed for good take their links with them, as activities
+  // do above. A check-in goes for good when purged, when an answer replaces a skip, and when its
+  // form is purged (the cascade fires this trigger too).
+  note_links_target_delete_triggers: `
+    CREATE OR REPLACE FUNCTION delete_note_links_of_deleted_targets() RETURNS TRIGGER AS $$
+    BEGIN
+      DELETE FROM note_links l
+       USING deleted_targets d
+       WHERE l.entity_type = TG_ARGV[0] AND l.entity_id = d.id;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    DO $$
+    DECLARE
+      target RECORD;
+    BEGIN
+      FOR target IN
+        SELECT * FROM (VALUES ('meals', 'meal'), ('reports', 'report'), ('check_ins', 'check_in'))
+          AS t(table_name, entity_type)
+      LOOP
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.triggers
+           WHERE event_object_table = target.table_name
+             AND trigger_name = target.table_name || '_delete_note_links'
+        ) THEN
+          EXECUTE format(
+            'CREATE TRIGGER %I AFTER DELETE ON %I REFERENCING OLD TABLE AS deleted_targets
+               FOR EACH STATEMENT EXECUTE FUNCTION delete_note_links_of_deleted_targets(%L)',
+            target.table_name || '_delete_note_links', target.table_name, target.entity_type);
+        END IF;
+      END LOOP;
     END $$
   `,
 

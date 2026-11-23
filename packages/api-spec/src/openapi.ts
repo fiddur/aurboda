@@ -5,6 +5,7 @@ import * as yaml from 'yaml'
 import { z } from 'zod'
 import { createDocument } from 'zod-openapi'
 
+import { kotlinOpenApiDocument } from './openapi-kotlin-filter.ts'
 import { isAllowedWhenReadOnly } from './read-only.ts'
 import {
   recoveryCompleteBodySchema,
@@ -115,12 +116,50 @@ import {
 } from './schemas/feed-images.ts'
 import {
   addPublicTagBlockBodySchema,
+  articleDraftResponseSchema,
+  articleDraftsResponseSchema,
+  articleExportResponseSchema,
+  articlePreviewResponseSchema,
+  createArticleBodySchema,
+  createArticleDraftBodySchema,
+  dashboardSharePreviewResponseSchema,
+  exerciseSharePreviewResponseSchema,
+  feedPostReactionsResponseSchema,
+  feedPostRepliesResponseSchema,
+  feedPostResponseSchema,
+  feedPostsQuerySchema,
+  feedPostsResponseSchema,
+  followActorBodySchema,
+  followActorResponseSchema,
+  followedTagsResponseSchema,
+  followerResponseSchema,
+  followersQuerySchema,
+  followersResponseSchema,
+  followingResponseSchema,
+  followTagBodySchema,
+  followTagResponseSchema,
+  previewArticleBodySchema,
   publicTagBlockResponseSchema,
   publicTagBlocksResponseSchema,
   publicTagHiddenPostResponseSchema,
   publicTagHiddenPostsResponseSchema,
   publicTagPostsQuerySchema,
   publicTagPostsResponseSchema,
+  publishArticleDraftBodySchema,
+  replyToPostBodySchema,
+  shareActivityBodySchema,
+  shareChallengeBodySchema,
+  shareDashboardPeriodBodySchema,
+  shareExerciseBodySchema,
+  sharePreviewResponseSchema,
+  timelineEntryResponseSchema,
+  timelineQuerySchema,
+  timelineRepliesResponseSchema,
+  timelineResponseSchema,
+  updateArticleBodySchema,
+  updateArticleDraftBodySchema,
+  updateFeedPostBodySchema,
+  updateFollowingBodySchema,
 } from './schemas/feed.ts'
 import {
   addFoodItemPortionBodySchema,
@@ -226,7 +265,11 @@ import {
   addNoteBodySchema,
   deleteNoteQuerySchema,
   deleteNoteResponseSchema,
+  dismissNoteLinkSuggestionBodySchema,
   noteConflictResponseSchema,
+  noteLinkSuggestionsPageQuerySchema,
+  noteLinkSuggestionsPageResponseSchema,
+  noteLinkSuggestionsResponseSchema,
   noteNeighborsQuerySchema,
   noteNeighborsResponseSchema,
   noteTagsListQuerySchema,
@@ -292,6 +335,8 @@ import {
   personDateResponseSchema,
   personDatesResponseSchema,
   personDetailResponseSchema,
+  personPostsQuerySchema,
+  personPostsResponseSchema,
   personResponseSchema,
   updatePersonBodySchema,
   updatePersonDateBodySchema,
@@ -441,6 +486,26 @@ const activityImpactPathSchema = z.object({
 })
 
 const reportIdPathSchema = z.object({ id: z.string().uuid().meta({ description: 'Report ID' }) })
+
+const feedPostIdPathSchema = z.object({ postId: z.string().uuid().meta({ description: 'Feed post ID' }) })
+
+const timelineEntryIdPathSchema = z.object({
+  id: z.string().uuid().meta({ description: 'Timeline entry ID, the local one a timeline entry carries' }),
+})
+
+const articleDraftIdPathSchema = z.object({ id: z.string().uuid().meta({ description: 'Article draft ID' }) })
+
+const followingIdPathSchema = z.object({
+  id: z.string().uuid().meta({ description: 'Follow ID, the `id` a followed account carries' }),
+})
+
+const followedTagPathSchema = z.object({
+  tag: z.string().meta({ description: 'The followed hashtag, with or without `#`' }),
+})
+
+const followerIdPathSchema = z.object({
+  id: z.string().uuid().meta({ description: 'Follower ID, the `id` a follower carries' }),
+})
 
 const openApiDocument = createDocument({
   components: {
@@ -898,6 +963,909 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Delete a picture',
+        tags: ['Feed'],
+      },
+    },
+    '/feed': {
+      get: {
+        description:
+          "The authenticated user's own posts, newest first, a page at a time: pass `next_cursor` as `cursor` for the next. Each post carries its structured payload.",
+        requestParams: { query: feedPostsQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostsResponseSchema } },
+            description: 'A page of posts',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my posts',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/timeline': {
+      get: {
+        description:
+          'The home timeline: posts received from the accounts and hashtags the user follows, newest first, a page at a time: pass `next_cursor` as `cursor` for the next. `tag` narrows it to the posts carrying that hashtag.',
+        requestParams: { query: timelineQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineResponseSchema } },
+            description: 'A page of timeline entries',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List the home timeline',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/timeline/{id}/replies': {
+      get: {
+        description:
+          "A live snapshot of a timeline post's reply thread, read from its origin, with the user's own replies merged in. Nothing is stored. `fetched: false` means the origin's thread could not be read, so an empty list then means unknown rather than no replies.",
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineRepliesResponseSchema } },
+            description: 'The reply thread',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Replies are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "Read a timeline post's replies",
+        tags: ['Feed'],
+      },
+    },
+    '/feed/timeline/{id}/reply': {
+      post: {
+        description:
+          "Reply to a timeline post: publishes a reply post and delivers it to the user's followers and to the inbox of the author it answers.",
+        requestBody: { content: { 'application/json': { schema: replyToPostBodySchema } } },
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The reply post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a reply without text',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The author's server could not be reached",
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Replies are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Reply to a timeline post',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/timeline/{id}/like': {
+      delete: {
+        description: 'Take back a like. Taking back a like that is not there changes nothing.',
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineEntryResponseSchema } },
+            description: 'The timeline entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reactions are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unlike a timeline post',
+        tags: ['Feed'],
+      },
+      post: {
+        description:
+          'Like a timeline post, delivering the like to its author. A repeat like returns the entry unchanged and delivers nothing.',
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineEntryResponseSchema } },
+            description: 'The timeline entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The author's server could not be reached",
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reactions are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Like a timeline post',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/timeline/{id}/boost': {
+      delete: {
+        description: 'Take back a boost. Taking back a boost that is not there changes nothing.',
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineEntryResponseSchema } },
+            description: 'The timeline entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reactions are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unboost a timeline post',
+        tags: ['Feed'],
+      },
+      post: {
+        description:
+          "Boost a timeline post to the user's followers. A repeat boost returns the entry unchanged and delivers nothing.",
+        requestParams: { path: timelineEntryIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: timelineEntryResponseSchema } },
+            description: 'The timeline entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Timeline entry not found',
+          },
+          502: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The author's server could not be reached",
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Reactions are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Boost a timeline post',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/article-drafts': {
+      get: {
+        description: "The user's article drafts. A draft is private and never federated.",
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articleDraftsResponseSchema } },
+            description: 'The drafts',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my article drafts',
+        tags: ['Feed'],
+      },
+      post: {
+        description: 'Start an article draft, empty unless `article` is given.',
+        requestBody: { content: { 'application/json': { schema: createArticleDraftBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articleDraftResponseSchema } },
+            description: 'The new draft',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create an article draft',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/article-drafts/{id}': {
+      delete: {
+        description: 'Delete an article draft.',
+        requestParams: { path: articleDraftIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Draft not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete an article draft',
+        tags: ['Feed'],
+      },
+      get: {
+        description: 'One article draft.',
+        requestParams: { path: articleDraftIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articleDraftResponseSchema } },
+            description: 'The draft',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Draft not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get an article draft',
+        tags: ['Feed'],
+      },
+      patch: {
+        description: 'Change an article draft; fields left out keep their value.',
+        requestBody: { content: { 'application/json': { schema: updateArticleDraftBodySchema } } },
+        requestParams: { path: articleDraftIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articleDraftResponseSchema } },
+            description: 'The updated draft',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Draft not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update an article draft',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/article-drafts/{id}/publish': {
+      post: {
+        description:
+          'Publish an article draft as an article post, federated to followers, and remove the draft.',
+        requestBody: { content: { 'application/json': { schema: publishArticleDraftBodySchema } } },
+        requestParams: { path: articleDraftIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The published article',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a draft that is not a valid article',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Draft not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Publish an article draft',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/{postId}/reactions': {
+      get: {
+        description: "Who liked, boosted or quoted one of the user's own posts, newest first.",
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostReactionsResponseSchema } },
+            description: 'The reactions',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Feed post not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a post's reactions",
+        tags: ['Feed'],
+      },
+    },
+    '/feed/{postId}/replies': {
+      get: {
+        description:
+          "The replies under one of the user's own posts that this server already holds, the latest 100, oldest first.",
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostRepliesResponseSchema } },
+            description: 'The replies',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Feed post not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Replies are not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a post's replies",
+        tags: ['Feed'],
+      },
+    },
+    '/feed/activities/{id}/share': {
+      post: {
+        description: 'Share an activity as a feed post, federated to followers.',
+        requestBody: { content: { 'application/json': { schema: shareActivityBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Activity ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The new post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a mentioned person who cannot be mentioned',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Activity not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Share an activity',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/activities/{id}/preview': {
+      post: {
+        description: 'What sharing an activity with this body would publish. Nothing is created.',
+        requestBody: { content: { 'application/json': { schema: shareActivityBodySchema } } },
+        requestParams: { path: z.object({ id: z.string().meta({ description: 'Activity ID' }) }) },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: sharePreviewResponseSchema } },
+            description: 'The preview',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or a mentioned person who cannot be mentioned',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Activity not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview sharing an activity',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/challenges': {
+      post: {
+        description:
+          'Share an invitation to a challenge: one the user hosts (`challenge_id`) or one they joined (`participation_id`), exactly one of the two.',
+        requestBody: { content: { 'application/json': { schema: shareChallengeBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The new post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, or not exactly one of the two ids',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Challenge or participation not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Sharing is not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Share a challenge',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/exercises': {
+      post: {
+        description: "Share one exercise's progress as a feed post, federated to followers.",
+        requestBody: { content: { 'application/json': { schema: shareExerciseBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The new post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No sessions with that exercise',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Share an exercise',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/exercises/preview': {
+      post: {
+        description: 'What sharing an exercise with this body would publish. Nothing is created.',
+        requestBody: { content: { 'application/json': { schema: shareExerciseBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: exerciseSharePreviewResponseSchema } },
+            description: 'The preview',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No sessions with that exercise',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview sharing an exercise',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/dashboards': {
+      post: {
+        description: 'Share a finished period of a period dashboard as a feed post, federated to followers.',
+        requestBody: { content: { 'application/json': { schema: shareDashboardPeriodBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The new post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, not a period dashboard, or a period that is invalid or not finished',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Dashboard not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Share a dashboard period',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/dashboards/preview': {
+      post: {
+        description: 'What sharing a dashboard period with this body would publish. Nothing is created.',
+        requestBody: { content: { 'application/json': { schema: shareDashboardPeriodBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: dashboardSharePreviewResponseSchema } },
+            description: 'The preview',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body, not a period dashboard, or a period that is invalid or not finished',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Dashboard not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview sharing a dashboard period',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/articles': {
+      post: {
+        description:
+          'Publish an article: a title, prose and inline chart and correlation blocks, federated to followers. Delete one with `DELETE /feed/{postId}`.',
+        requestBody: { content: { 'application/json': { schema: createArticleBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The new article',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or article content',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Publish an article',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/articles/preview': {
+      post: {
+        description:
+          'An article as it would render, with the chart data its blocks draw from. Nothing is created.',
+        requestBody: { content: { 'application/json': { schema: previewArticleBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articlePreviewResponseSchema } },
+            description: 'The preview',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Article preview is not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Preview an article',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/articles/{postId}': {
+      patch: {
+        description:
+          'Change an article; fields left out keep their value. The edit is federated as an update.',
+        requestBody: { content: { 'application/json': { schema: updateArticleBodySchema } } },
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The updated article',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or article content',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Article not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update an article',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/articles/{postId}/export': {
+      get: {
+        description:
+          'An article as paste-ready markdown: its title, prose and one image link per chart or correlation block. Only a public or unlisted article can be exported, since a followers-only one needs a private link for its charts.',
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: articleExportResponseSchema } },
+            description: 'The markdown',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A followers-only article',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Article not found',
+          },
+          503: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Export is not available on this server',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Export an article as markdown',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/{postId}': {
+      delete: {
+        description: "Delete one of the user's own posts; the deletion is federated to followers.",
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Deleted',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Feed post not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Delete a post',
+        tags: ['Feed'],
+      },
+      get: {
+        description: "One of the user's own posts, with its structured payload.",
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The post',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Feed post not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get a post',
+        tags: ['Feed'],
+      },
+      patch: {
+        description:
+          'Change a post: its metric selection, attachments, visibility, message, hashtags or mentioned people. Fields left out keep their value. The edit is federated as an update.',
+        requestBody: { content: { 'application/json': { schema: updateFeedPostBodySchema } } },
+        requestParams: { path: feedPostIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: feedPostResponseSchema } },
+            description: 'The updated post',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description:
+              "Invalid body, a mentioned person who cannot be mentioned, or a visibility a challenge thread's post cannot take",
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Feed post not found',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a post',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/following': {
+      get: {
+        description: 'The fediverse accounts the user follows, with whether each has accepted.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followingResponseSchema } },
+            description: 'The follows',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List who I follow',
+        tags: ['Feed'],
+      },
+      post: {
+        description:
+          'Follow a fediverse account by handle (`@user@host`) or actor URL: resolves the actor and sends it a signed Follow. The follow is pending until the account accepts.',
+        requestBody: { content: { 'application/json': { schema: followActorBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followActorResponseSchema } },
+            description: 'The follow',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No actor could be resolved for the handle',
+          },
+          422: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The user themselves, or not an account that can be followed',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Follow an account',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/following/{id}': {
+      delete: {
+        description: 'Unfollow: sends the account an Undo of the Follow.',
+        requestParams: { path: followingIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followActorResponseSchema } },
+            description: 'Unfollowed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not following that actor',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unfollow an account',
+        tags: ['Feed'],
+      },
+      patch: {
+        description:
+          "Turn a follow's bell on or off: whether new posts from the account raise a notification.",
+        requestBody: { content: { 'application/json': { schema: updateFollowingBodySchema } } },
+        requestParams: { path: followingIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followActorResponseSchema } },
+            description: 'The follow',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not following that actor',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a follow',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/followed-tags': {
+      get: {
+        description: 'The hashtags the user follows.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followedTagsResponseSchema } },
+            description: 'The followed hashtags',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my followed hashtags',
+        tags: ['Feed'],
+      },
+      post: {
+        description:
+          "Follow a hashtag: follows its tag actor on the tag actor host, which boosts every public post it sees carrying the tag into the user's timeline.",
+        requestBody: { content: { 'application/json': { schema: followTagBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followTagResponseSchema } },
+            description: 'The followed hashtag',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body or hashtag',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The tag's actor could not be resolved",
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The hashtag is already followed',
+          },
+          422: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: "The tag's actor cannot be followed",
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Follow a hashtag',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/followed-tags/{tag}': {
+      delete: {
+        description: 'Unfollow a hashtag.',
+        requestParams: { path: followedTagPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: deleteResponseSchema } },
+            description: 'Unfollowed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not following that tag',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Unfollow a hashtag',
+        tags: ['Feed'],
+      },
+      patch: {
+        description:
+          "Turn a followed hashtag's bell on or off: whether new posts carrying it raise a notification.",
+        requestBody: { content: { 'application/json': { schema: updateFollowingBodySchema } } },
+        requestParams: { path: followedTagPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followTagResponseSchema } },
+            description: 'The followed hashtag',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not following that tag',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Update a followed hashtag',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/followers': {
+      get: {
+        description: "The user's followers; `status` narrows them to pending requests or approved followers.",
+        requestParams: { query: followersQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followersResponseSchema } },
+            description: 'The followers',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List my followers',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/followers/{id}': {
+      delete: {
+        description:
+          'Reject a pending follow request, or remove an approved follower; either way the follower is sent a Reject.',
+        requestParams: { path: followerIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followerResponseSchema } },
+            description: 'Removed',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such follower',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Reject or remove a follower',
+        tags: ['Feed'],
+      },
+    },
+    '/feed/followers/{id}/approve': {
+      post: {
+        description: 'Approve a pending follow request; the follower is sent an Accept.',
+        requestParams: { path: followerIdPathSchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: followerResponseSchema } },
+            description: 'The approved follower',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No such follower',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Approve a follower',
         tags: ['Feed'],
       },
     },
@@ -3475,6 +4443,26 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
     },
+    '/notes/link-suggestions': {
+      get: {
+        description:
+          "A page of journal entries, newest first, with the links suggested for each: the people named in the text, the night's sleep of an entry written before noon, and the activities of the entry's day. Only entries with a suggestion are listed, so a page may hold fewer than `limit` entries (or none) while `next_cursor` is set. `unlinked_only` (default true) leaves out entries already related to anything. Nothing is linked: save the accepted ones with `PATCH /notes/{id}` and `related`.",
+        requestParams: { query: noteLinkSuggestionsPageQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteLinkSuggestionsPageResponseSchema } },
+            description: 'A page of entries with their suggestions',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List link suggestions over journal entries',
+        tags: ['Notes'],
+      },
+    },
     '/notes/tags': {
       get: {
         description:
@@ -3657,6 +4645,55 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
     },
+    '/notes/{id}/link-suggestions': {
+      get: {
+        description:
+          'The links suggested for one journal entry: the people whose name is written in it, the sleep that ended on the morning of an entry written before noon, and the activities of its day. Archived people, what it is already related to and what was dismissed for it are left out. Nothing is linked: save the accepted ones with `PATCH /notes/{id}` and `related`.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteLinkSuggestionsResponseSchema } },
+            description: 'The suggestions',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get link suggestions for a journal entry',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/link-suggestions/dismissals': {
+      post: {
+        description:
+          'Stop suggesting a person or an activity for this journal entry. Dismissing twice is the same as once.',
+        requestBody: { content: { 'application/json': { schema: dismissNoteLinkSuggestionBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Dismissed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Dismiss a link suggestion',
+        tags: ['Notes'],
+      },
+    },
     '/notes/{id}/attachments': {
       get: {
         description:
@@ -3684,7 +4721,7 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
       post: {
-        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account. ${INLINE_PICTURE_HINT}`,
+        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP, GIF or HEIC, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account. ${INLINE_PICTURE_HINT}`,
         requestBody: {
           content: {
             'multipart/form-data': {
@@ -4454,8 +5491,33 @@ const openApiDocument = createDocument({
         tags: ['People'],
       },
     },
-    // No '/people/{id}/posts' here: its entries are timeline entries, whose structured payload the
-    // Kotlin generator cannot express (as the feed's own routes, which are not listed either).
+    '/people/{id}/posts': {
+      get: {
+        description:
+          "The posts this server holds from the person's fediverse account, as timeline entries, newest first.",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Person ID' }) }),
+          query: personPostsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: personPostsResponseSchema } },
+            description: "The person's posts",
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Person not found, or without a fediverse handle',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: "List a person's posts",
+        tags: ['People'],
+      },
+    },
     '/people/{id}/dates': {
       get: {
         description: "The person's yearly dates, by month and day.",
@@ -6055,7 +7117,9 @@ for (const [path, item] of Object.entries(openApiDocument.paths ?? {})) {
 fs.mkdirSync('./generated', { recursive: true })
 fs.writeFileSync('./generated/openapi.yaml', yaml.stringify(openApiDocument))
 fs.writeFileSync('./generated/openapi.json', JSON.stringify(openApiDocument, null, 2))
+fs.writeFileSync('./generated/openapi.kotlin.yaml', yaml.stringify(kotlinOpenApiDocument(openApiDocument)))
 
 console.info('Generated OpenAPI specification:')
 console.info('  - generated/openapi.yaml')
 console.info('  - generated/openapi.json')
+console.info('  - generated/openapi.kotlin.yaml (without the feed, for the Kotlin models)')

@@ -40,6 +40,7 @@ const CREATE_DESCRIPTION = [
   '`sets` are in the order to do them; consecutive sets of one exercise form a block, so write every set of an exercise (warm-ups with `set_type: "warmup"`) one after another.',
   'Each set has `reps` or `time` (seconds, for holds and timed sets) and, where it applies, `weight` in kg: for a dumbbell exercise the weight of ONE dumbbell, as sets are logged. `note` on a set is a cue; `note` on the plan is the idea behind it.',
   'Exercise names: use the user\'s own names first (list_activity_field_values with activity_type strength_training and field "sets.exercise"), so the logged sets continue their history; otherwise take a catalogue name from search_exercise_catalog and give that entry\'s key as `exercise_key` (an unknown key is refused).',
+  'The created plan comes back with `muscle_groups`: the muscle groups its catalogue-matched exercises mainly work.',
   'Before planning, read: get_muscle_recovery (which muscle groups are ready, 80 and above; pass a later `at` for the day of a plan ahead), get_strength_score (best recent sets per lift, to pick weights), get_activity_item_history or query_activities for what was done last time, and list_strength_plans so as not to plan the same workout twice.',
 ].join(' ')
 
@@ -50,14 +51,14 @@ export const registerStrengthPlanTools = (
 ) => {
   server.tool(
     'list_strength_plans',
-    'List planned strength workouts (see create_strength_plan), each with its sets and the `sessions` started from it (newest session first). `status`: `open` (default) gives the routines and the plans with a day that no session has been started from; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
+    'List planned strength workouts (see create_strength_plan), each with its sets, the `muscle_groups` its exercises mainly work and the `sessions` started from it (newest session first). `status`: `open` (default) gives the routines and the plans with a day that no session has been started from; `all` also the done ones. Plans with a day come first, earliest first, then routines by name.',
     { ...strengthPlansQuerySchema.shape },
     async ({ status }) => jsonResponse({ plans: await service.list(user, status) }),
   )
 
   server.tool(
     'get_strength_plan',
-    'Get one planned strength workout by ID, with its sets and the sessions started from it.',
+    'Get one planned strength workout by ID, with its sets, the `muscle_groups` its exercises mainly work and the sessions started from it.',
     { id: planId },
     async ({ id }) => {
       const result = await service.get(user, id)

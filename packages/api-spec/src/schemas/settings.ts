@@ -331,7 +331,11 @@ export const updateSettingsInputSchema = z
     }),
     tz: ianaTimezoneSchema.nullable().optional().meta({
       description:
-        'Time zone (IANA, e.g. Europe/Stockholm) that reminders and daily figures follow; the Android app also sets it from the phone when it syncs (set to null to clear, which means UTC)',
+        "Time zone (IANA, e.g. Europe/Stockholm) that reminders and daily figures follow. Setting it without tz_follows_device also turns tz_follows_device off, so the Android app no longer replaces it with the phone's zone (set to null to clear, which means UTC, and to follow the phone again)",
+    }),
+    tz_follows_device: z.boolean().nullable().optional().meta({
+      description:
+        "When true (the default), the Android app's sync sets tz from the phone; when false, the phone's zone is ignored and tz stays as set (set to null to reset to the default, true)",
     }),
     garmin_disabled_data_types: z.array(garminDataTypeSchema).nullable().optional().meta({
       description: 'Garmin data types to skip during sync (set to null to clear, enabling all)',
@@ -571,7 +575,11 @@ export const userSettingsResponseSchema = baseResponseSchema
       .meta({ description: 'Training load (Banister model) parameters (null = defaults)' }),
     tz: z.string().nullable().default(null).meta({
       description:
-        'User time zone (IANA). Set from the browser or in Settings on the web, and from the phone by the Android app; null means UTC.',
+        'User time zone (IANA). Set from the browser or in Settings on the web, and from the phone by the Android app while tz_follows_device is true; null means UTC.',
+    }),
+    tz_follows_device: z.boolean().default(true).meta({
+      description:
+        "Whether the Android app's sync sets tz from the phone's time zone; false once a zone is chosen by hand",
     }),
   })
   .meta({ id: 'UserSettingsResponse' })

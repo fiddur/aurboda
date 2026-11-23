@@ -2,15 +2,16 @@
 
 A strength plan is a strength workout written down ahead of time: a name, an optional note, and the
 planned sets in the order to do them. The user, or an assistant working for them over MCP, writes
-it; the [strength logging](strength-logging.md) start page lists the plans and starts a live
+it; the [strength logging](strength-logging.md) Workouts tab lists the plans and starts a live
 session from one, prefilled with the planned sets.
 
-## Day or routine
+## Day or saved workout
 
 - **With a day** (`planned_for`, `YYYY-MM-DD`): a workout to do once. It is a calendar day, not a
   moment, so no time zone ever moves it. Once a session has been started from it, the plan is
   done.
-- **Without a day**: a routine, started whenever and any number of times. A routine is never done.
+- **Without a day**: a routine, shown in the web app as a **saved workout**, started whenever and
+  any number of times. A routine is never done.
 
 ## Sets
 
@@ -23,6 +24,17 @@ Consecutive sets of one exercise form a block, as on the logging pages. At most 
 catalogue does not have is refused (`sets[2].exercise_key: unknown exercise catalogue key "…"`).
 The sets are stored as given: names are not normalised against aliases, since the sets logged
 from the plan go through the normal activity write.
+
+## Muscle groups
+
+Every plan answer carries `muscle_groups`: the muscle groups its exercises mainly work, in the order
+they first appear in the plan, without duplicates. A set with an `exercise_key` uses that catalogue
+entry; a set without one is matched by its name, as the muscle group pages match logged sets (the
+user's own mapping for `sets.exercise`, else an exact catalogue name or alias). An exercise mainly
+works a group when its weight for the group is at least 0.75 (`EXERCISE_PRIMARY_MUSCLE_WEIGHT`,
+the same threshold as the primary muscles of an exercise page). Sets matched to no entry add
+nothing, so a plan of unmatched exercises has an empty list. It is computed on every read, not
+stored.
 
 ## Sessions started from a plan
 
@@ -37,9 +49,12 @@ name (case-insensitive); ties by creation.
 
 ## In the web app
 
-- **Strength start page** (`/strength`): "Planned workouts" lists the open plans, those with a day
-  first (a day that has passed is marked), then the routines, each with **Start** and **Edit**,
-  and a "Plan a workout" link.
+- **Strength page, Workouts tab** (`/strength/workouts`, see [strength
+  logging](strength-logging.md#the-workouts-tab)): "Planned" lists the open plans with a day (a day
+  that has passed is marked), "Saved workouts" those without one with when each was last done; each
+  card has a readiness line for its `muscle_groups`, **Start** and **Edit**, and a "Plan a workout"
+  link sits on the first heading. Without any open plan the tab says so, with the link.
+- **Muscles tab** (`/strength`): a "Planned today" card for each plan for today, with **Start**.
 - **Start** opens the live session (`/strength/live?plan=<id>`) with the planned sets prefilled
   block by block, as Repeat does with an earlier session. The session carries the plan's id from
   its first save, after which the start page no longer lists a plan with a day as open. A planned
@@ -50,6 +65,13 @@ name (case-insensitive); ties by creation.
   empty session with "That plan no longer exists. Starting an empty session."
 - **The plan page** (`/strength/plan/new`, `/strength/plan/<id>`): name, day, note and the sets,
   in the same block editor as a past session, with the sessions done from the plan and Delete.
+- **Save as a workout** (`/strength/plan/new?from=<activity id>`, from a row of Recent sessions):
+  the plan page titled "Save as a workout", its blocks filled from that session's sets and the name
+  empty and focused. Nothing is created until Save. On Save, when the session was logged in
+  Aurboda on its own (not synced, merged or an override) and has no `plan_id` yet, its
+  `data.plan_id` is set to the new plan, so the row says "Saved as {name}" and the saved workout
+  "Last done"; a failure there is ignored and the plan stays saved. A session that cannot be loaded
+  shows "That session could not be loaded." over an empty form.
 
 The Android app shows the same pages, embedded.
 
@@ -59,7 +81,7 @@ The Android app shows the same pages, embedded.
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `GET /strength-plans`        | List plans; `status` is `open` (default) or `all`                                                                             |
 | `POST /strength-plans`       | Create a plan from `name`, `sets` and optional `planned_for` and `note`; answers 201                                          |
-| `GET /strength-plans/:id`    | One plan with its sessions; 404 `Plan not found`                                                                              |
+| `GET /strength-plans/:id`    | One plan with its sessions and `muscle_groups`; 404 `Plan not found`                                                          |
 | `PATCH /strength-plans/:id`  | Change it: a field left out stays, `planned_for: null` and `note: null` clear, `sets` replaces the list; an empty body is 400 |
 | `DELETE /strength-plans/:id` | Delete it                                                                                                                     |
 

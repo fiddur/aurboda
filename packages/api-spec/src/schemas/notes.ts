@@ -75,7 +75,7 @@ export const NOTE_TITLE_MAX_LENGTH = 200
 
 export const NOTE_TAGS_MAX = 20
 
-export const NOTE_REPLY_RELATED_ERROR = 'A reply cannot be related to people or activities'
+export const NOTE_REPLY_RELATED_ERROR = 'A reply cannot be related to anything'
 
 export const NOTES_SEARCH_DEFAULT_LIMIT = 50
 
@@ -150,10 +150,11 @@ export const noteReplySchema = z
 
 export type NoteReply = z.infer<typeof noteReplySchema>
 
-export const noteRelatedEntityTypes = ['person', 'activity'] as const
+export const noteRelatedEntityTypes = ['person', 'activity', 'meal', 'report', 'check_in'] as const
 
 export const noteRelatedEntityTypeSchema = z.enum(noteRelatedEntityTypes).meta({
-  description: 'What a journal entry can be related to: a person or an activity',
+  description:
+    'What a journal entry can be related to: a person, an activity, a meal, a report or a check-in',
   id: 'NoteRelatedEntityType',
 })
 
@@ -167,28 +168,43 @@ export const JOURNAL_ENTRY_EXCERPT_MAX = 200
 
 export const noteRelatedInputSchema = z
   .object({
-    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_id: z
+      .string()
+      .uuid()
+      .meta({ description: 'ID of the person, activity, meal, report or check-in' }),
     entity_type: noteRelatedEntityTypeSchema,
   })
-  .meta({ description: 'A person or an activity a note is related to', id: 'NoteRelatedInput' })
+  .meta({
+    description: 'A person, an activity, a meal, a report or a check-in a note is related to',
+    id: 'NoteRelatedInput',
+  })
 
 export type NoteRelatedInput = z.infer<typeof noteRelatedInputSchema>
 
 export const noteRelatedSchema = z
   .object({
-    entity_id: z.string().uuid().meta({ description: 'ID of the person or activity' }),
+    entity_id: z
+      .string()
+      .uuid()
+      .meta({ description: 'ID of the person, activity, meal, report or check-in' }),
     entity_type: noteRelatedEntityTypeSchema,
     label: z.string().meta({
       description:
-        "Display label: the person's name; for an activity its title (else its type's name) and its local date (a sleep's, the day it ended), e.g. \"Evening walk, 2026-11-20\"",
+        'Display label, made when read: the person\'s name; for an activity its title (else its type\'s name) and its local date (a sleep\'s, the day it ended), e.g. "Evening walk, 2026-11-20"; for a meal its type and local time, e.g. "Lunch 12:30"; for a report its type and local date, e.g. "Blood Panel, 2026-11-20"; for a check-in its form\'s name and local time, e.g. "Morning 07:45"',
     }),
     activity_type: z
       .string()
       .optional()
-      .meta({ description: "An activity's type, for its icon; absent for a person" }),
+      .meta({ description: "An activity's type, for its icon; absent for anything else" }),
+    form_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: "A check-in's form, whose page lists it; absent for anything else" }),
   })
   .meta({
-    description: 'A person or an activity the note is related to, without being a comment on it',
+    description:
+      'A person, an activity, a meal, a report or a check-in the note is related to, without being a comment on it',
     id: 'NoteRelated',
   })
 
@@ -198,7 +214,7 @@ const noteRelatedInputListSchema = z
   .array(noteRelatedInputSchema)
   .max(NOTE_RELATED_MAX)
   .meta({
-    description: `The people and activities this note is related to, without being a comment on them (at most ${NOTE_RELATED_MAX}). The full list: it replaces the note's links when present; an empty list removes them all. Duplicates are collapsed. Not on a reply.`,
+    description: `The people, activities, meals, reports and check-ins this note is related to, without being a comment on them (at most ${NOTE_RELATED_MAX}). The full list: it replaces the note's links when present; an empty list removes them all. Duplicates are collapsed. Not on a reply.`,
   })
 
 export const journalEntryRefSchema = z
@@ -215,7 +231,8 @@ export const journalEntryRefSchema = z
     title: noteTitleResponseSchema.optional(),
   })
   .meta({
-    description: 'A journal entry or comment related to a person or an activity',
+    description:
+      'A journal entry or comment related to a person, an activity, a meal, a report or a check-in',
     id: 'JournalEntryRef',
   })
 
@@ -249,7 +266,7 @@ export const noteSchema = z
     purge_at: notePurgeAtSchema.optional(),
     related: z.array(noteRelatedSchema).optional().meta({
       description:
-        'The people and activities this note is related to (a thread root only; a deleted target is left out until it is restored)',
+        'The people, activities, meals, reports and check-ins this note is related to (a thread root only; a deleted target is left out until it is restored)',
     }),
     replies: z.array(noteReplySchema).optional().meta({
       description: "Replies in this comment's thread, oldest first",
@@ -643,10 +660,11 @@ export const notesSearchQuerySchema = z
         'Full-text search over title and content (words, "quoted phrases", -excluded, or); the last word also matches as a prefix. A match in a reply returns its thread root.',
     }),
     related_id: z.string().uuid().optional().meta({
-      description: 'With related_type: only entries related to this person or activity (by its own id)',
+      description:
+        'With related_type: only entries related to this person, activity, meal, report or check-in (by its own id)',
     }),
     related_type: noteRelatedEntityTypeSchema.optional().meta({
-      description: 'With related_id: whether it names a person or an activity',
+      description: 'With related_id: whether it names a person, an activity, a meal, a report or a check-in',
     }),
     tags: z.string().optional().meta({
       description: 'Comma-separated tags: only entries carrying all of them (set explicitly or as #hashtags)',
@@ -846,3 +864,127 @@ export const mergeNoteTagsResponseSchema = createDataResponseSchema(mergeNoteTag
 })
 
 export type MergeNoteTagsResponse = z.infer<typeof mergeNoteTagsResponseSchema>
+
+export const noteLinkSuggestionReasonSchema = z.enum(['name_in_text', 'night_sleep', 'same_day']).meta({
+  description:
+    "Why it is suggested: `name_in_text` — the person's name (or, when no one else shares it, their first name) is written in the entry's title or text; `night_sleep` — the sleep that ended on the morning of an entry written before noon; `same_day` — an activity that started on the entry's day",
+  id: 'NoteLinkSuggestionReason',
+})
+
+export type NoteLinkSuggestionReason = z.infer<typeof noteLinkSuggestionReasonSchema>
+
+export const NOTE_LINK_SUGGESTIONS_SAME_DAY_MAX = 12
+
+export const noteLinkSuggestionSchema = noteRelatedSchema
+  .extend({ reason: noteLinkSuggestionReasonSchema })
+  .meta({
+    description:
+      'A person or an activity a journal entry could be related to and is not yet. Nothing is linked until the entry is saved with it in `related`.',
+    id: 'NoteLinkSuggestion',
+  })
+
+export type NoteLinkSuggestion = z.infer<typeof noteLinkSuggestionSchema>
+
+export const noteLinkSuggestionsResponseSchema = createDataArrayResponseSchema(noteLinkSuggestionSchema).meta(
+  {
+    description: `The links suggested for one journal entry: the people named in it, then the night's sleep, then the activities of its day (at most ${NOTE_LINK_SUGGESTIONS_SAME_DAY_MAX}). Archived people, what it is already related to and what was dismissed for it are left out.`,
+    id: 'NoteLinkSuggestionsResponse',
+  },
+)
+
+export type NoteLinkSuggestionsResponse = z.infer<typeof noteLinkSuggestionsResponseSchema>
+
+export const dismissNoteLinkSuggestionBodySchema = z
+  .object({
+    entity_id: z.string().uuid().meta({ description: 'ID of the suggested person or activity' }),
+    entity_type: noteRelatedEntityTypeSchema,
+  })
+  .meta({
+    description: 'A suggestion not to offer again for this entry',
+    id: 'DismissNoteLinkSuggestionBody',
+  })
+
+export type DismissNoteLinkSuggestionBody = z.infer<typeof dismissNoteLinkSuggestionBodySchema>
+
+export const NOTE_LINK_SUGGESTIONS_PAGE_DEFAULT_LIMIT = 20
+
+export const NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT = 50
+
+export const noteLinkSuggestionsPageQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    from: dateOnlySchema.optional().meta({
+      description:
+        "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
+    }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT)
+      .optional()
+      .meta({
+        description: `How many journal entries to look at (1–${NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT}, default ${NOTE_LINK_SUGGESTIONS_PAGE_DEFAULT_LIMIT}); only those with a suggestion are returned`,
+      }),
+    to: dateOnlySchema.optional().meta({ description: 'Latest local date (YYYY-MM-DD, inclusive)' }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone the local dates are read in (default: the user's timezone)",
+    }),
+    unlinked_only: queryBooleanSchema.optional().meta({
+      description:
+        'true (the default) leaves out the entries already related to anything; false includes them',
+    }),
+  })
+  .check((ctx) => {
+    const query = ctx.value
+    if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+      pushIssue(ctx, 'to', query.to, 'to must not precede from')
+    }
+  })
+  .meta({ id: 'NoteLinkSuggestionsPageQuery' })
+
+export type NoteLinkSuggestionsPageQuery = z.infer<typeof noteLinkSuggestionsPageQuerySchema>
+
+export const noteLinkSuggestionsEntrySchema = z
+  .object({
+    date: noteDateSchema.optional(),
+    entity_type: z.enum(['time', 'day']).meta({ description: 'A journal entry at a time, or for a day' }),
+    excerpt: z.string().meta({
+      description: `The first non-empty line of the text, at most ${JOURNAL_ENTRY_EXCERPT_MAX} characters (may be empty)`,
+    }),
+    id: z.string().uuid().meta({ description: 'Note ID' }),
+    related: z.array(noteRelatedSchema).meta({ description: 'What the entry is already related to' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'When a `time` entry is anchored' }),
+    suggestions: z.array(noteLinkSuggestionSchema).meta({ description: 'The links suggested for it' }),
+    title: noteTitleResponseSchema.optional(),
+    updated_at: iso8601DateTimeSchema.meta({
+      description: "The entry's `updated_at`, to pass as `expected_updated_at` when saving its links",
+    }),
+  })
+  .meta({ description: 'A journal entry with the links suggested for it', id: 'NoteLinkSuggestionsEntry' })
+
+export type NoteLinkSuggestionsEntry = z.infer<typeof noteLinkSuggestionsEntrySchema>
+
+export const noteLinkSuggestionsPageSchema = z
+  .object({
+    entries: z.array(noteLinkSuggestionsEntrySchema).meta({
+      description: 'The entries of this page that have at least one suggestion, newest first',
+    }),
+    next_cursor: z.string().optional().meta({
+      description:
+        'Cursor of the next page; absent when this is the last. A page may hold fewer entries than `limit`, or none, while there are more pages.',
+    }),
+  })
+  .meta({
+    description:
+      'A page of journal entries, newest first, with the links suggested for each: only the entries with a suggestion are listed, so a page may be shorter than `limit` (or empty) while `next_cursor` is still set',
+    id: 'NoteLinkSuggestionsPage',
+  })
+
+export type NoteLinkSuggestionsPage = z.infer<typeof noteLinkSuggestionsPageSchema>
+
+export const noteLinkSuggestionsPageResponseSchema = createDataResponseSchema(
+  noteLinkSuggestionsPageSchema,
+).meta({ id: 'NoteLinkSuggestionsPageResponse' })
+
+export type NoteLinkSuggestionsPageResponse = z.infer<typeof noteLinkSuggestionsPageResponseSchema>

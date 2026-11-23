@@ -1,4 +1,4 @@
-import type { Person } from '@aurboda/api-spec'
+import type { NoteRelatedEntityType, Person } from '@aurboda/api-spec'
 import type { JSX } from 'preact'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,26 +9,42 @@ import {
   addPerson,
   fetchActivities,
   fetchActivityTypeDefinitions,
+  fetchCheckIns,
+  fetchMeals,
   fetchPeople,
+  fetchReports,
+  fetchUserSettings,
   PEOPLE_KEY,
 } from '../../state/api'
+import { auth } from '../../state/auth'
 import { toDisplayName } from '../../utils/displayName'
 import { newPersonName } from '../People/people-view'
 import {
   activityLink,
   activityRowId,
   addLink,
+  checkInLink,
   dayActivityOptions,
   dayActivityWindow,
+  dayCheckInOptions,
+  dayMealOptions,
+  dayWindow,
   hasLink,
   linkKey,
+  mealLink,
   type MentionItem,
   mentionOptions,
   offeredPeople,
   personLink,
   type RelatedLink,
   relatedHref,
+  relatedNoun,
   removeLink,
+  reportLink,
+  reportOptions,
+  reportTypeName,
+  zonedDate,
+  zonedTime,
 } from './related'
 
 /** Every person, archived ones included, for the names of the links they already have. */
@@ -42,6 +58,20 @@ export const useAddPerson = () => {
     mutationFn: (name: string) => addPerson({ name }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PEOPLE_KEY }),
   })
+}
+
+/**
+ * The user's configured zone, which the server labels links in; undefined (the browser's) until the
+ * settings load or when none is set.
+ */
+const useUserZone = (): string | undefined => {
+  const settings = useQuery({
+    enabled: Boolean(auth.value.token),
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    staleTime: 5 * 60_000,
+  })
+  return settings.data?.tz ?? undefined
 }
 
 const useTypeDefinitions = () =>
@@ -59,7 +89,7 @@ const useTypeName = (): ((type: string) => string) => {
   }, [definitions.data])
 }
 
-const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
+export const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
   const definitions = useTypeDefinitions()
   return useMemo(() => {
     const icons = new Map((definitions.data ?? []).map((d) => [d.name, d.icon ?? undefined]))
@@ -67,19 +97,25 @@ const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
   }, [definitions.data])
 }
 
-const ChipIcon = ({ link, typeIcon }: { link: RelatedLink; typeIcon: string | undefined }) =>
-  link.entity_type === 'person' ? (
-    <span aria-hidden="true">👤</span>
-  ) : typeIcon ? (
+const kindIcons: Record<NoteRelatedEntityType, string> = {
+  activity: '🏃',
+  check_in: '📋',
+  meal: '🍽️',
+  person: '👤',
+  report: '🧪',
+}
+
+export const ChipIcon = ({ link, typeIcon }: { link: RelatedLink; typeIcon: string | undefined }) =>
+  link.entity_type === 'activity' && typeIcon ? (
     <span aria-hidden="true" class="journal-related-chip-icon">
       <IconPreview icon={typeIcon} size={16} />
     </span>
   ) : (
-    <span aria-hidden="true">🏃</span>
+    <span aria-hidden="true">{kindIcons[link.entity_type]}</span>
   )
 
 /**
- * The links as chips that open the person's or the activity's page; with `onRemove`, each has a ×.
+ * The links as chips that open the target's page; with `onRemove`, each has a ×.
  * A chip whose key is in `gone` is marked as removed since it was linked.
  */
 export const RelatedChips = ({
@@ -96,7 +132,7 @@ export const RelatedChips = ({
     <ul class="journal-related-chips" aria-label="Related">
       {links.map((link) => {
         const isGone = gone?.has(linkKey(link)) ?? false
-        const goneTitle = `This ${link.entity_type} was removed. Remove the link to save the entry.`
+        const goneTitle = `This ${relatedNoun[link.entity_type]} was removed. Remove the link to save the entry.`
         return (
           <li
             key={linkKey(link)}
@@ -220,6 +256,7 @@ export const ActivityOptions = ({
   const [date, setDate] = useState(entryDate)
   const [type, setType] = useState('')
   const typeName = useTypeName()
+  const tz = useUserZone()
   const range = dayActivityWindow(date)
   const activities = useQuery({
     enabled: /^\d{4}-\d{2}-\d{2}$/.test(date),
@@ -250,16 +287,15 @@ export const ActivityOptions = ({
       {!activities.isLoading && shown.length === 0 && <p class="journal-muted">No activities that day.</p>}
       <ul>
         {shown.map((activity) => {
-          const link = activityLink(activity, typeName)
+          const link = activityLink(activity, typeName, tz)
           return (
             <li key={link.entity_id}>
               <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
                 <strong>{activity.title?.trim() || typeName(activity.activity_type)}</strong>
                 <span class="journal-muted">
                   {' '}
-                  · {activity.start_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  {activity.end_time &&
-                    `–${activity.end_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                  · {zonedTime(activity.start_time, tz)}
+                  {activity.end_time && `–${zonedTime(activity.end_time, tz)}`}
                 </span>
               </button>
             </li>
@@ -270,7 +306,195 @@ export const ActivityOptions = ({
   )
 }
 
-/** The editor's Related row: the chips, and a picker for people and the activities of the entry's day. */
+const isDay = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
+
+const DayInput = ({ date, onChange }: { date: string; onChange: (date: string) => void }) => (
+  <label>
+    <span>Day</span>
+    <input type="date" value={date} onInput={(e) => onChange(e.currentTarget.value)} />
+  </label>
+)
+
+/** The meals of a day (`entryDate` to start with), in time order. */
+export const MealOptions = ({
+  entryDate,
+  links,
+  onAdd,
+}: {
+  entryDate: string
+  links: readonly RelatedLink[]
+  onAdd: (link: RelatedLink) => void
+}) => {
+  const [date, setDate] = useState(entryDate)
+  const tz = useUserZone()
+  const range = dayWindow(date)
+  const meals = useQuery({
+    enabled: isDay(date),
+    queryFn: () => fetchMeals({ end: range.end.toISOString(), start: range.start.toISOString() }),
+    queryKey: ['journal-related-meals', date],
+  })
+  const shown = dayMealOptions(meals.data?.meals ?? [], date).filter((m) => !hasLink(links, mealLink(m, tz)))
+  return (
+    <div class="journal-related-options">
+      <div class="journal-related-search">
+        <DayInput date={date} onChange={setDate} />
+      </div>
+      {meals.isLoading && <p class="journal-muted">Loading…</p>}
+      {!meals.isLoading && shown.length === 0 && <p class="journal-muted">No meals that day.</p>}
+      <ul>
+        {shown.map((meal) => {
+          const link = mealLink(meal, tz)
+          return (
+            <li key={link.entity_id}>
+              <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
+                <strong>{link.label}</strong>
+                {meal.name && <span class="journal-muted"> · {meal.name}</span>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/** The reports, newest first, searchable by type. */
+export const ReportOptions = ({
+  links,
+  onAdd,
+}: {
+  links: readonly RelatedLink[]
+  onAdd: (link: RelatedLink) => void
+}) => {
+  const [type, setType] = useState('')
+  const tz = useUserZone()
+  const reports = useQuery({ queryFn: () => fetchReports(), queryKey: ['journal-related-reports'] })
+  const shown = reportOptions(
+    (reports.data ?? []).filter((r) => !hasLink(links, reportLink(r))),
+    type,
+  )
+  return (
+    <div class="journal-related-options">
+      <input
+        type="search"
+        placeholder="Search reports"
+        aria-label="Search reports"
+        value={type}
+        onInput={(e) => setType(e.currentTarget.value)}
+      />
+      {reports.isLoading && <p class="journal-muted">Loading…</p>}
+      {!reports.isLoading && shown.length === 0 && <p class="journal-muted">No reports.</p>}
+      <ul>
+        {shown.map((report) => {
+          const link = reportLink(report, tz)
+          return (
+            <li key={link.entity_id}>
+              <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
+                <strong>{reportTypeName(report.report_type)}</strong>
+                <span class="journal-muted"> · {zonedDate(report.date, tz)}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/** The check-ins answered on a day (`entryDate` to start with), in time order. */
+export const CheckInOptions = ({
+  entryDate,
+  links,
+  onAdd,
+}: {
+  entryDate: string
+  links: readonly RelatedLink[]
+  onAdd: (link: RelatedLink) => void
+}) => {
+  const [date, setDate] = useState(entryDate)
+  const tz = useUserZone()
+  const range = dayWindow(date)
+  const checkIns = useQuery({
+    enabled: isDay(date),
+    queryFn: () =>
+      fetchCheckIns({ from: range.start.toISOString(), limit: 200, to: range.end.toISOString() }),
+    queryKey: ['journal-related-check-ins', date],
+  })
+  const shown = dayCheckInOptions(checkIns.data?.check_ins ?? [], date).filter(
+    (c) => !hasLink(links, checkInLink(c)),
+  )
+  return (
+    <div class="journal-related-options">
+      <div class="journal-related-search">
+        <DayInput date={date} onChange={setDate} />
+      </div>
+      {checkIns.isLoading && <p class="journal-muted">Loading…</p>}
+      {!checkIns.isLoading && shown.length === 0 && <p class="journal-muted">No check-ins that day.</p>}
+      <ul>
+        {shown.map((checkIn) => {
+          const link = checkInLink(checkIn, tz)
+          return (
+            <li key={link.entity_id}>
+              <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
+                <strong>{checkIn.form_name}</strong>
+                <span class="journal-muted"> · {zonedTime(new Date(checkIn.answered_at), tz)}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+const relatedTabs: { type: NoteRelatedEntityType; label: string }[] = [
+  { label: 'People', type: 'person' },
+  { label: 'Activities', type: 'activity' },
+  { label: 'Meals', type: 'meal' },
+  { label: 'Reports', type: 'report' },
+  { label: 'Check-ins', type: 'check_in' },
+]
+
+/** A tab per kind of target, each listing what can be picked: people, and the meals, activities and check-ins of a day. */
+export const RelatedTabs = ({
+  entryDate,
+  links,
+  onAdd,
+  initial = 'person',
+  allowNewPerson = true,
+}: {
+  entryDate: string
+  links: readonly RelatedLink[]
+  onAdd: (link: RelatedLink) => void
+  initial?: NoteRelatedEntityType
+  allowNewPerson?: boolean
+}) => {
+  const [tab, setTab] = useState<NoteRelatedEntityType>(initial)
+  return (
+    <>
+      <div class="journal-related-tabs" role="tablist">
+        {relatedTabs.map(({ label, type }) => (
+          <button
+            key={type}
+            type="button"
+            role="tab"
+            aria-selected={tab === type}
+            onClick={() => setTab(type)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'person' && <PeopleOptions links={links} onAdd={onAdd} allowNew={allowNewPerson} />}
+      {tab === 'activity' && <ActivityOptions entryDate={entryDate} links={links} onAdd={onAdd} />}
+      {tab === 'meal' && <MealOptions entryDate={entryDate} links={links} onAdd={onAdd} />}
+      {tab === 'report' && <ReportOptions links={links} onAdd={onAdd} />}
+      {tab === 'check_in' && <CheckInOptions entryDate={entryDate} links={links} onAdd={onAdd} />}
+    </>
+  )
+}
+
+/** The editor's Related row: the chips, and a picker for people and the activities, meals and check-ins of the entry's day, and reports. */
 export const RelatedRow = ({
   links,
   entryDate,
@@ -283,7 +507,6 @@ export const RelatedRow = ({
   gone?: ReadonlySet<string>
 }) => {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'person' | 'activity'>('person')
   const add = (link: RelatedLink) => onChange(addLink(links, link))
   return (
     <div class="journal-field journal-related">
@@ -301,34 +524,12 @@ export const RelatedRow = ({
       </div>
       {links.length === 0 && !open && (
         <small class="journal-muted">
-          People and activities this entry is about. Type @ to name someone.
+          People, activities, meals, reports and check-ins this entry is about. Type @ to name someone.
         </small>
       )}
       {open && (
         <div class="journal-card journal-related-picker">
-          <div class="journal-related-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'person'}
-              onClick={() => setTab('person')}
-            >
-              People
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'activity'}
-              onClick={() => setTab('activity')}
-            >
-              Activities
-            </button>
-          </div>
-          {tab === 'person' ? (
-            <PeopleOptions links={links} onAdd={add} />
-          ) : (
-            <ActivityOptions entryDate={entryDate} links={links} onAdd={add} />
-          )}
+          <RelatedTabs entryDate={entryDate} links={links} onAdd={add} />
         </div>
       )}
     </div>

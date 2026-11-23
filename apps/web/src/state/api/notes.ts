@@ -1,11 +1,15 @@
 import type {
   AddNoteBody,
   AddNoteTemplateBody,
+  BaseResponse,
+  DismissNoteLinkSuggestionBody,
   EntityType,
   MergeNoteTagsResponse,
   Note,
   NoteAttachment,
   NoteAttachmentResponse,
+  NoteLinkSuggestion,
+  NoteLinkSuggestionsResponse,
   NoteNeighbors,
   NoteNeighborsResponse,
   NoteResponse,
@@ -155,6 +159,27 @@ export const fetchJournalNeighbors = async (id: string, tz?: string): Promise<No
     },
   )
   return response.data.data ?? {}
+}
+
+/** The links suggested for a journal entry: people named in it, the night's sleep, the day's activities. */
+export const fetchNoteLinkSuggestions = async (id: string): Promise<NoteLinkSuggestion[]> => {
+  const response = await axios.get<NoteLinkSuggestionsResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/link-suggestions`,
+    { headers: authHeaders() },
+  )
+  return response.data.data ?? []
+}
+
+/** Stop suggesting a person or an activity for the entry. */
+export const dismissNoteLinkSuggestion = async (
+  id: string,
+  body: DismissNoteLinkSuggestionBody,
+): Promise<void> => {
+  await axios.post<BaseResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/link-suggestions/dismissals`,
+    body,
+    { headers: authHeaders() },
+  )
 }
 
 /** The tags on journal entries (or, with `entityTypes`, those comment roots too), most used first. */

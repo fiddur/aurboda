@@ -91,7 +91,7 @@ import {
 } from './due-items.ts'
 import { decodeKeysetCursor, encodeKeysetCursor } from './keyset-cursor.ts'
 import { loadMetricCatalog } from './metric-catalog.ts'
-import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
+import { computedMetricWriteError, resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 import {
   activityWriteSchema,
   addActivity,
@@ -319,6 +319,8 @@ export const metricTargetProblems = (
   metricTargets(questions, score).flatMap(({ label, metric, unit }) => {
     const resolved = resolveMetricForWrite(metric, [...customMetrics], catalog)
     if (!resolved) return []
+    const computedError = computedMetricWriteError(resolved.metric)
+    if (computedError) return [`${label}: ${computedError}`]
     if (getSourceFilter(resolved.metric) !== null) {
       return [
         `${label} logs to "${resolved.metric}", which is computed from other sources and cannot be logged`,

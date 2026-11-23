@@ -167,7 +167,7 @@ another unit (`mg%`) is refused under those names: give it a name of its own, su
 | Tool                | Description                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- |
 | `add_report`        | Create a report with entries. All entries are written through to metrics.           |
-| `get_report`        | Fetch a single report with all entries.                                             |
+| `get_report`        | Fetch a single report with all entries and its related journal entries.             |
 | `query_reports`     | List reports, optionally filtered by type and date range.                           |
 | `update_report`     | Change a report's metadata and/or replace all its entries.                          |
 | `delete_report`     | Delete a report and its write-through metric data.                                  |
@@ -176,14 +176,21 @@ another unit (`mg%`) is refused under those names: give it a name of its own, su
 
 ### REST API
 
-| Method   | Path              | Description                                |
-| -------- | ----------------- | ------------------------------------------ |
-| `POST`   | `/reports`        | Create a report with entries               |
-| `GET`    | `/reports`        | Query reports (filter by type, date range) |
-| `GET`    | `/reports/:id`    | Get a single report                        |
-| `PATCH`  | `/reports/:id`    | Update metadata and/or replace entries     |
-| `DELETE` | `/reports/:id`    | Delete a report and metric data            |
-| `POST`   | `/reports/import` | Import results from a spreadsheet table    |
+| Method   | Path              | Description                                 |
+| -------- | ----------------- | ------------------------------------------- |
+| `POST`   | `/reports`        | Create a report with entries                |
+| `GET`    | `/reports`        | Query reports (filter by type, date range)  |
+| `GET`    | `/reports/:id`    | Get a single report, with `journal_entries` |
+| `PATCH`  | `/reports/:id`    | Update metadata and/or replace entries      |
+| `DELETE` | `/reports/:id`    | Delete a report and metric data             |
+| `POST`   | `/reports/import` | Import results from a spreadsheet table     |
+
+### Journal entries
+
+A journal entry can be related to a report (see [Journal → Related](journal.md#related)).
+`GET /reports/:id` (MCP `get_report`) carries `journal_entries`, the related entries newest
+first, and the report's page lists them under **Mentioned in the journal**. Deleting a report
+removes its links.
 
 ## Known Limitations
 

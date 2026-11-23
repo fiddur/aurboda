@@ -107,8 +107,17 @@ export {
   hasTimeSeries,
   type HrZoneBucket,
   insertTimeSeries,
+  reconcileTimeSeries,
   replaceTimeSeriesInWindow,
 } from './time-series.ts'
+
+export { getDerivedMetricStamp, setDerivedMetricStamp } from './derived-metric-state.ts'
+
+export {
+  type ChangeAggregate,
+  getStrengthScoreInputAggregates,
+  type StrengthScoreInputAggregates,
+} from './strength-score-inputs.ts'
 
 export {
   countTimeSeriesInWindows,
@@ -318,6 +327,11 @@ export {
   type RelatedNoteRecord,
   replaceNoteLinks,
 } from './note-links.ts'
+export {
+  getNoteLinkDismissalsForNoteIds,
+  insertNoteLinkDismissal,
+  type NoteLinkDismissal,
+} from './note-link-dismissals.ts'
 export {
   getDeletedNoteAttachments,
   getNoteAttachment,

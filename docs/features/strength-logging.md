@@ -2,22 +2,120 @@
 
 The pages under `/strength` log a strength training session, either live in the gym (one set at a
 time) or after the fact (quick entry such as "3 × 8 at 60"). They work in the browser (**Training → Strength** in the menu) and embedded
-in the Android app (More → Training → Strength, and the Add tab's **Log a strength session** opens `/strength` in the More tab's web
+in the Android app (More → Training → Strength, and the Add tab's **Log a strength session** opens `/strength/workouts` in the More tab's web
 view). They write the built-in `strength_training` type's `sets` list (see
 [Activity types](activity-types.md#data-schema-and-categorical-fields)); the generic add and edit forms with the sets
 table stay for corrections.
 
 The Strength page has four tabs, each at its own address, under the heading **Strength**:
 
-| Tab       | Address               | What it shows                                                                                              |
-| --------- | --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Train     | `/strength`           | Start: an unfinished session, start now, log a past session, planned workouts, repeat a session            |
-| Progress  | `/strength/progress`  | The [strength score](strength-score.md) of `sets.exercise`: cards, the score over time, each group's lifts |
-| Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time             |
-| Muscles   | `/strength/muscles`   | [Muscle recovery](muscle-recovery.md) of every group, and sets per muscle group                            |
+| Tab       | Address               | What it shows                                                                                          |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
+| Muscles   | `/strength`           | The score card, a status line and one list of every muscle group: recovery, sets and score (see below) |
+| Workouts  | `/strength/workouts`  | Start: an unfinished session, planned and saved workouts, a session without a plan, recent sessions    |
+| Progress  | `/strength/progress`  | The [strength score](strength-score.md) over time, what moved, lifts about to leave, sets per week     |
+| Exercises | `/strength/exercises` | "Your exercises": every exercise done, filtered by name, muscle group and equipment (see below)        |
 
 The tabs are plain links, so each can be bookmarked and the back button steps between them; on a
-phone the tab bar scrolls sideways. The session, log and plan pages below have no tab bar.
+phone the tab bar scrolls sideways. The old address `/strength/muscles` leads to `/strength`, keeping
+its query string. Beside the heading, every tab but Workouts has one button: **Start a session**
+(to `/strength/workouts`), or **Continue session** when a session is unfinished. The session, log
+and plan pages below have no tab bar.
+
+### The Muscles tab
+
+- **Planned today**: above the score card, one card per open plan for today (local day) with its
+  name, one line "{summary}. {readiness line}." (see [the Workouts tab](#the-workouts-tab)) and a
+  **Start** button to the live session. Not shown while a session is unfinished.
+- **Score card**, a link to Progress: the [strength score](strength-score.md), its change over 30
+  days, a sparkline of the year and the strongest and weakest group. Without sex or a bodyweight it
+  is the notice saying what to add; with no score at all it says "No strength score yet".
+- **Status line**: the groups below the ready percent of [muscle recovery](muscle-recovery.md),
+  least recovered first ("Every muscle is ready to train." when none is), and the groups last
+  trained 30 or more days ago, longest first; at most four names each.
+- **The list**, one row per muscle group: its name and when it was last trained (in the warning
+  colour from 30 days), its recovery with a bar (and the hours or day until ready when below the
+  ready percent), its sets of the last 7 days with the weekly average over 13 weeks, and the score
+  of the score group that holds it with its 30-day change (Lats and Middle back both show Back).
+  The sets come from daily buckets of the last 91 local days, cut into 13 rolling windows of 7
+  days, the last one ending today. In body order the rows are grouped by region (Chest and
+  shoulders, Back, Arms, Core, Legs), with groups never trained in a last "Never trained" section;
+  the other orders (least recovered, behind on sets, longest since trained, weakest score) are one
+  flat list.
+- **A row opens** (one at a time) to its recovery and newest session, the 13 weekly windows as
+  bars, the score group's lifts as the [score page](strength-score.md) lists them, and links to the
+  muscle group page and the Exercises tab.
+- A line under the list counts the sets of exercises not matched to the catalogue, with a link to
+  match them.
+
+### The Progress tab
+
+Top to bottom, under the line "Best lifts of the last 90 days":
+
+- **The score cards**: the [strength score](strength-score.md), its change over 30 days and the
+  strongest and weakest group. Without sex or a bodyweight, the notice saying what to add instead,
+  and nothing below but the sets chart.
+- **Score over time**: overall, one muscle group, or "All muscle groups" (one line per group, with
+  a legend), over 90 days, a year or three years. For overall or one group its ⋮ menu opens the
+  stored score metric in the Chart Explorer, adds it to a dashboard as a chart or a sparkline card,
+  or sets a goal on it.
+- **What moved in 30 days**: the groups whose score differs from 30 days ago, first or lost scores
+  first, then the largest change: "91 → 110 +19" with the reason, a new best lift of the last 30
+  days ("New best: Bench press, 80 kg × 5 on" and the day, linking to the session), a better lift
+  that left the 90 days (and the best one now), or every lift having left. A closing line names
+  the unchanged groups and those with no score yet.
+- **Leaving the 90 days soon**: the counted lifts whose best set leaves the 90 days within 30 days,
+  soonest first, with their points, groups, set and "leaves in N days".
+- **Sets per week**: the weekly sets per muscle group as stacked bars, as on the type page, with
+  its period and ⋮ menu.
+- The explanation of the score, with a link to the exercises not matched to the catalogue.
+
+### The Exercises tab
+
+"Your exercises" lists every exercise done in the period (90 days, 1 year, 2 years or all time),
+from the grouped sessions answer (`GET /activity-types/strength_training/sessions?group_by=sets.exercise`),
+filtered on the page:
+
+- **Controls**: a search field, **Muscle group** ("All muscles" or one of the 17 groups; kept in
+  the address as `?muscle=<group>`, which the Muscles tab's rows link to), **Equipment** ("Any
+  equipment" or what the listed exercises use), **Period** and **Sort** (recently done, most done,
+  best e1RM, max weight, best set, volume, points, name).
+- **A muscle group** keeps the exercises that work it: those that mainly work it (recruitment
+  weight 0.75 or more) first, then those that also work it, with a line counting both. The "No
+  exercise" row shows only without a muscle or equipment filter.
+- **Each exercise** shows its name (to the exercise page), its muscle groups (the main ones first,
+  the others muted, at most four and "+n"; "Not matched" links to matching it to the catalogue),
+  Done, Last, Best e1RM, Max weight, Best set ("24 kg × 9", the working set the best e1RM comes
+  from), Volume, Sets and Points: the
+  [strength score](strength-score.md) of the lift it counts as, today's whatever the period,
+  muted when the lift is not among its group's counted lifts and "–" when it is no scoring lift.
+  From 700 px wide this is a table; narrower, each exercise is a three-line row.
+- **Not done in the last 90 days**: with a muscle group chosen that belongs to a score group, the
+  lifts of that group without a set in the score's window.
+- The aliases of exercise names are listed under it, each deletable.
+
+### The Workouts tab
+
+Top to bottom: the unfinished session card, if any, then the [planned and saved
+workouts](strength-plans.md#in-the-web-app), then the sessions without a plan, then **Recent
+sessions** and a link to all strength sessions. Every Start and Repeat asks to finish an unfinished
+session first.
+
+- **With an open plan**: "Planned" lists the plans with a day, "Saved workouts" the plans without
+  one (each with "Last done …" or "Not done yet"), and "Without a plan" offers **Start an empty
+  session** and **Log a past session**. A plan card shows its name and day, the summary ("5
+  exercises · 15 sets"), the exercise names, the readiness line, the note, and **Start** and
+  **Edit**; Start is the primary button only for a plan whose day is today or has passed.
+- **Without one**: **Start an empty session** (primary) and **Log a past session** come first,
+  then "Planned and saved workouts" says nothing is planned or saved yet, with a "Plan a workout"
+  link.
+- **The readiness line** says whether the muscle groups the plan mainly works (its
+  `muscle_groups`) are ready, from [muscle recovery](muscle-recovery.md): "Chest, shoulders and
+  triceps are ready", or "Still recovering: triceps (20 h), chest (5 h)" with only the groups below
+  the ready percent, most hours first. No line when the plan's exercises match no catalogue entry.
+- **Recent sessions**: the latest five finished sessions with sets of the last 90 days, each with
+  **Save as a workout** (to `/strength/plan/new?from=<id>`) and **Repeat**. A session started from
+  a saved workout that is still open shows "Saved as {name}" instead of Save as a workout.
 
 | Page                   | What it is                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------- |
@@ -37,7 +135,8 @@ They also feed [muscle recovery](muscle-recovery.md): per muscle group how far t
 the working sets of the last days has worn off.
 
 A workout can also be planned ahead: [strength plans](strength-plans.md) are named lists of
-planned sets, for a day or as a routine, which the user or an assistant over MCP writes.
+planned sets, for a day or as a saved workout without one, which the user or an assistant over MCP
+writes.
 
 ## Exercise blocks
 
@@ -120,5 +219,5 @@ a synced session's sets are changed with the generic edit form.
 
 - One live draft per device; two devices editing one live session at once is last write wins.
 - Weights are in kg.
-- Supersets are shown, not created; there are no saved routines or programmes, and the rest default
+- Supersets are shown, not created; there are no programmes, and the rest default
   is per device, not a user setting.

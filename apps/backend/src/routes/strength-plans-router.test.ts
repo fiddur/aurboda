@@ -63,7 +63,7 @@ const buildApp = () => {
     '/strength-plans',
     createStrengthPlansRouter(
       auth,
-      createStrengthPlansService(memory.store, loadExerciseCatalog),
+      createStrengthPlansService(memory.store, loadExerciseCatalog, async () => undefined),
     ) as unknown as express.RequestHandler,
   )
   return { request: supertest(app), sessions: memory.sessions }
@@ -85,6 +85,7 @@ describe('strength plans router', () => {
       name: 'Push day',
       note: 'Go heavy',
       planned_for: '2026-11-19',
+      muscle_groups: ['shoulders', 'chest', 'triceps'],
       sessions: [],
       sets,
     })

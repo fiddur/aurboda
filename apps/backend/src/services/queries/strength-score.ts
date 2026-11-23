@@ -23,27 +23,27 @@ export interface StrengthScoreDeps {
   loadStrengthReferences: () => StrengthReferences
 }
 
-const defaultDeps = (): StrengthScoreDeps => ({
+export const defaultStrengthScoreDeps = (): StrengthScoreDeps => ({
   getTimeSeries,
   getUserSettings,
   loadSessions,
   loadStrengthReferences,
 })
 
-interface Loaded {
+export interface LoadedScoredSets {
   references: StrengthReferences
   sets: ScoredSet[]
   subject: StrengthScoreSubject
 }
 
 /** The scored sets of sessions starting within `period`, and what the user has given for a score. */
-const loadScoredSets = async (
+export const loadScoredSets = async (
   user: string,
   activityType: string,
   path: string,
   period: Period,
   deps: StrengthScoreDeps,
-): Promise<ItemValueResult<Loaded>> => {
+): Promise<ItemValueResult<LoadedScoredSets>> => {
   const loaded = await deps.loadSessions(user, activityType, path, period)
   if (!loaded.success) return loaded
   const [weights, settings] = await Promise.all([
@@ -67,7 +67,7 @@ export const queryStrengthScore = async (
   activityType: string,
   path: string,
   at: Date,
-  deps: StrengthScoreDeps = defaultDeps(),
+  deps: StrengthScoreDeps = defaultStrengthScoreDeps(),
 ): Promise<ItemValueResult<StrengthScore>> => {
   const period = { end: at, start: new Date(at.getTime() - WINDOW_MS) }
   const loaded = await loadScoredSets(user, activityType, path, period, deps)
@@ -81,7 +81,7 @@ export const queryStrengthScoreHistory = async (
   activityType: string,
   path: string,
   period: { end: Date; start: Date; step_days: number },
-  deps: StrengthScoreDeps = defaultDeps(),
+  deps: StrengthScoreDeps = defaultStrengthScoreDeps(),
 ): Promise<ItemValueResult<StrengthScoreHistory>> => {
   const window = { end: period.end, start: new Date(period.start.getTime() - WINDOW_MS) }
   const loaded = await loadScoredSets(user, activityType, path, window, deps)

@@ -2553,3 +2553,54 @@ describe('a type the user does not have', () => {
     expect(db.updateActivity).not.toHaveBeenCalled()
   })
 })
+
+describe('computed metrics', () => {
+  const time = new Date('2024-01-15T08:00:00Z')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.getCustomMetricDefinitions).mockResolvedValue([])
+  })
+
+  test('addMetric refuses a strength score', async () => {
+    const result = await addMetric('testuser', { metric: 'strength_score', time, value: 90 })
+
+    expect(result).toMatchObject({
+      error: '"strength_score" is calculated by Aurboda and cannot be written.',
+      success: false,
+    })
+    expect(db.insertTimeSeries).not.toHaveBeenCalled()
+  })
+
+  test('bulkAddMetrics refuses a strength score item and writes the rest', async () => {
+    vi.mocked(db.insertTimeSeries).mockResolvedValue(undefined)
+
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'strength_score_chest', time, value: 90 },
+      { metric: 'weight', time, value: 75 },
+    ])
+
+    expect(result.inserted).toBe(1)
+    expect(result.errors).toEqual([
+      { error: '"strength_score_chest" is calculated by Aurboda and cannot be written.', index: 0 },
+    ])
+  })
+
+  test('deleteMetric and deleteMetricData refuse a strength score', async () => {
+    expect(await deleteMetric('testuser', 'strength_score', time, 'aurboda')).toEqual({
+      deleted: false,
+      error: '"strength_score" is calculated by Aurboda and cannot be deleted.',
+      metric: 'strength_score',
+      success: false,
+      time: time.toISOString(),
+    })
+    expect(await deleteMetricData('testuser', 'strength_score_back')).toEqual({
+      deletedCount: 0,
+      error: '"strength_score_back" is calculated by Aurboda and cannot be deleted.',
+      metric: 'strength_score_back',
+      success: false,
+    })
+    expect(db.deleteTimeSeriesPoint).not.toHaveBeenCalled()
+    expect(db.deleteTimeSeriesMetric).not.toHaveBeenCalled()
+  })
+})

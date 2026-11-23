@@ -129,7 +129,7 @@ export const addNoteAttachmentInputSchema = z
       .min(1)
       .max(Math.ceil(NOTE_ATTACHMENT_MCP_MAX_BYTES / 3) * 4)
       .meta({
-        description: `The file's bytes, base64-encoded: a picture (PNG, JPEG, WebP or GIF) or a recording (WebM, Ogg, MP4/M4A, MP3 or WAV), at most ${NOTE_ATTACHMENT_MCP_MAX_BYTES / MB} MB decoded`,
+        description: `The file's bytes, base64-encoded: a picture (PNG, JPEG, WebP, GIF or HEIC) or a recording (WebM, Ogg, MP4/M4A, MP3 or WAV), at most ${NOTE_ATTACHMENT_MCP_MAX_BYTES / MB} MB decoded`,
       }),
     filename: z
       .string()

@@ -12,7 +12,7 @@ import { parseTable, REPORT_IMPORT_MAX_ROWS } from '@aurboda/api-spec'
 import { getCustomMetricDefinitions, upsertUserSettings } from '../db/index.ts'
 import { dayEndInTz, dayKey, dayStartInTz } from './day-keys.ts'
 import { loadMetricCatalog } from './metric-catalog.ts'
-import { resolveMetricForWrite } from './metric-resolution.ts'
+import { computedMetricWriteError, resolveMetricForWrite } from './metric-resolution.ts'
 import { type ExtractedTable, extractCells, type ImportCell } from './report-import-parse.ts'
 import {
   type AddReportInput,
@@ -120,7 +120,8 @@ const classifyCells = (
     const metric = resolved?.metric ?? cell.metric
     const unit = cell.unit ?? resolved?.unit
     const row = cellRow(cell, unit)
-    const error = cellError(cell, unit, seen.has(metric) && !resolved?.entry, date)
+    const error =
+      computedMetricWriteError(metric) ?? cellError(cell, unit, seen.has(metric) && !resolved?.entry, date)
     if (existingMetrics.has(metric)) out.rows.push({ ...row, status: 'exists' })
     else if (error !== undefined || unit === undefined) out.rows.push({ ...row, error, status: 'error' })
     else {

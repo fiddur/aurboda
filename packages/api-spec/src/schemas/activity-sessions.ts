@@ -12,7 +12,11 @@ import {
 } from './common.ts'
 import { sleepStageSummarySchema } from './daily-summary.ts'
 import { dataFieldCatalogSchema } from './data-schema.ts'
-import { exerciseMuscleGroupSchema } from './exercise-catalog.ts'
+import {
+  exerciseCatalogKeySchema,
+  exerciseEquipmentSchema,
+  exerciseMuscleGroupSchema,
+} from './exercise-catalog.ts'
 import { itemValueIdentityStateSchema } from './item-value-identities.ts'
 import { sharedExerciseSetSchema } from './shared-exercises.ts'
 
@@ -75,14 +79,46 @@ export const activitySessionSchema = z
 
 export type ActivitySession = z.infer<typeof activitySessionSchema>
 
+export const bestSetSchema = z
+  .object({
+    reps: z.number().meta({ description: 'Reps as logged' }),
+    weight: z.number().meta({ description: 'Weight (kg)' }),
+  })
+  .meta({ description: 'A weighted working set', id: 'BestSet' })
+
+export type BestSet = z.infer<typeof bestSetSchema>
+
+export const activitySessionGroupMuscleSchema = z
+  .object({
+    muscle_group: exerciseMuscleGroupSchema,
+    weight: z.number().meta({
+      description:
+        'How much the exercise recruits the group, in (0, 1]: its highest weight among the muscles in it',
+    }),
+  })
+  .meta({
+    description: 'A muscle group an exercise works, with its recruitment weight',
+    id: 'ActivitySessionGroupMuscle',
+  })
+
+export type ActivitySessionGroupMuscle = z.infer<typeof activitySessionGroupMuscleSchema>
+
 export const activitySessionGroupSchema = z
   .object({
+    best_set: bestSetSchema.optional().meta({
+      description:
+        'Grouped by an item path: the working set the e1rm measure comes from (warm-ups excluded, Epley); present only with an e1rm',
+    }),
     avg_hr_median: z
       .number()
       .optional()
       .meta({ description: 'Median of the average heart rates of the sessions' }),
     avg_hr_count: z.number().int().meta({
       description: 'Number of sessions with an average heart rate: the sample size of avg_hr_median',
+    }),
+    catalog_key: exerciseCatalogKeySchema.optional().meta({
+      description:
+        'Grouped by a catalogue-backed item path (sets.exercise): the catalogue entry the value is matched to; absent when it is not matched',
     }),
     count: z.number().int().meta({ description: 'Number of sessions in the group' }),
     duration_max: z.number().optional().meta({ description: 'Longest session (minutes)' }),
@@ -97,9 +133,16 @@ export const activitySessionGroupSchema = z
       .meta({ description: 'HR zone seconds summed over the sessions' }),
     last_start_time: iso8601DateTimeSchema,
     max_hr: z.number().optional().meta({ description: 'Highest heart rate across the sessions' }),
+    equipment: z.array(exerciseEquipmentSchema).optional().meta({
+      description: 'With catalog_key: the equipment of the catalogue entry',
+    }),
     measures: activityMeasuresSchema.optional().meta({
       description:
         "Grouped by an item path: the sessions' measures for this value combined — volume and set_count summed, e1rm, max_weight and max_time at their maximum",
+    }),
+    muscle_groups: z.array(activitySessionGroupMuscleSchema).optional().meta({
+      description:
+        'With catalog_key: the muscle groups the exercise works, highest weight first, then in catalogue order; a weight of at least 0.75 means it mainly works the group',
     }),
     session_ids: z.array(z.string()).meta({ description: 'IDs of the sessions in the group, newest first' }),
     value: z.union([z.string(), z.number(), z.boolean()]).nullable().meta({

@@ -65,13 +65,22 @@ optional end time, or **No time of day** with a date. It opens on "now".
   deleted for 30 days. An entry left completely empty is removed when you leave it.
 - **Replies**: comments on an entry (the same thread the Timeline shows) are listed
   under it.
-- **Related**: chips for the people and activities the entry is about, an
-  activity's with its type's icon. **+ Add** picks a person, or an activity of the
-  entry's day (last night's sleep listed, and labelled, under the morning it ended);
-  typing `@` offers people too. Archived people are not offered for a new link, but
-  an entry that already links one keeps the chip. If a save is refused because a
-  linked person or activity was removed since (a draft kept from before, say), the
-  chip turns red and says so; remove it and the entry saves.
+- **Related**: chips for the people, activities, meals, reports and check-ins the
+  entry is about, an activity's with its type's icon. **+ Add** has a tab per kind: a
+  person; an activity of the entry's day (last night's sleep listed, and labelled,
+  under the morning it ended); a meal or a check-in of the entry's day (another day
+  can be picked); a report, newest first, searchable by type. Typing `@` offers
+  people too. Archived people are not offered for a new link, but an entry that
+  already links one keeps the chip. A chip opens its target: a check-in's opens its
+  form's page, where its history is. If a save is refused because a linked target
+  was removed since (a draft kept from before, say), the chip turns red and says so;
+  remove it and the entry saves.
+- **Suggested**: under Related, once the entry is saved, dashed chips suggest links it
+  does not have yet -- a person named in the text ("named in the text"), the night's
+  sleep ("last night") and the day's activities ("that day"); see
+  [Suggested links](#suggested-links). A tap adds it to Related, as the picker does;
+  **×** stops suggesting it for this entry. There is no row when there is nothing to
+  suggest, and the chips are read again after each save.
 
 ## On the Timeline
 
@@ -125,14 +134,16 @@ See [Comments](./comments.md) for the exact rules.
 
 ## Related
 
-An entry can be **related to** any number of people (see [People](./people.md)) and
-activities without being a comment on any of them: today's entry mentions a partner,
-another is about last night's sleep. A link is made explicitly, never by reading the
+An entry can be **related to** any number of people (see [People](./people.md)),
+activities, meals, reports and check-ins without being a comment on any of them:
+today's entry mentions a partner, another is about last night's sleep, the lunch that
+did not agree with you, a blood panel's results or this morning's mood check-in. A link is made explicitly, never by reading the
 text; removing a name from the text does not remove the link, and a link can exist with
 nothing about it in the text.
 
-- **Model.** `note_links` holds `note_id`, `entity_type` (`person` or `activity`),
-  `entity_id` and `created_at`, one row per note and target. Only a thread root carries
+- **Model.** `note_links` holds `note_id`, `entity_type` (`person`, `activity`,
+  `meal`, `report` or `check_in`), `entity_id` and `created_at`, one row per note and
+  target. Only a thread root carries
   links (a `day` or `time` entry, or a comment on something); a reply is refused with a
   `400`. Targets are referenced by id and their labels resolved when read, so a renamed
   person or a retyped activity stays right.
@@ -140,33 +151,105 @@ nothing about it in the text.
   `update_note`) is the full list of `{ entity_type, entity_id }`, at most 30,
   duplicates collapsed: it replaces the links when present, `[]` removes them all, and
   leaving it out leaves them. An unknown, malformed or deleted target is a `400` naming
-  it (`Unknown person: <id>`, `Unknown activity: <id>`). A change of links follows the
+  it (`Unknown person: <id>`, `Unknown activity: <id>`, `Unknown meal: <id>`,
+  `Unknown report: <id>`, `Unknown check-in: <id>`). A change of links follows the
   same `expected_updated_at` check as the text (a stale one is the usual `409`); it bumps
   `updated_at` but keeps no text revision.
 - **Where it shows.** Every thread root in an answer carries `related`: each target's
-  `entity_type`, `entity_id` and a `label` -- the person's name, or the activity's title
-  (else its type's name) with its local date, "Evening walk, 2026-11-20" (a sleep is dated
-  by the morning it ended), and for an activity its `activity_type`. `GET /people/:id`
-  (MCP `get_person`) and the activity detail (`GET /activities/:id`,
-  `GET /activities/:id/full`, MCP `get_activity_detail`) carry `journal_entries`: the
+  `entity_type`, `entity_id` and a `label`, made when read in your timezone -- the
+  person's name; the activity's title (else its type's name) with its local date,
+  "Evening walk, 2026-11-20" (a sleep is dated by the morning it ended); the meal's type
+  and local time, "Lunch 12:30"; the report's type and local date, "Blood Panel,
+  2026-11-20"; the check-in's form name and local time, "Morning 07:45". An activity
+  carries its `activity_type` too, for its icon, and a check-in its `form_id`, for its
+  page. `GET /people/:id` (MCP `get_person`), the activity detail (`GET /activities/:id`,
+  `GET /activities/:id/full`, MCP `get_activity_detail`), `GET /meals/:id` (MCP
+  `get_meal`) and `GET /reports/:id` (MCP `get_report`) carry `journal_entries`: the
   related entries newest first, at most 50, each with `id`, `title`, `entity_type`,
   `date` or `start_time`, and `excerpt` (the first non-empty line, at most 200
   characters). A merged activity lists the entries related to any of its source rows,
   and merging activities relates their entries to the merged one. On the Timeline
-  nothing changes: an entry stays where its own time puts it.
-- **The filter.** `GET /notes/search` takes `related_type` (`person` or `activity`) with
-  `related_id`, both or neither, and combines them with every other filter. An activity
-  is matched by the id given.
-- **Deleted targets.** A link to a soft-deleted person or activity is hidden while its
-  target is deleted and back on restore; it goes when the target is removed for good
-  (for an activity a database trigger removes it, whatever removes the activity: a
-  purge, a source's delete, a rule's regeneration or an orphaned override).
+  nothing changes: an entry stays where its own time puts it. A check-in has no page
+  of its own, so its related entries are read with the filter below
+  (`related_type=check_in`).
+- **The filter.** `GET /notes/search` (MCP `search_notes`) takes `related_type`
+  (`person`, `activity`, `meal`, `report` or `check_in`) with `related_id`, both or
+  neither, and combines them with every other filter. An activity is matched by the id
+  given. The journal's **Related to** filter is the same, with a tab per kind, and
+  `/journal?meal=<id>` (or `person`, `activity`, `report`, `check_in`) opens the journal
+  filtered so; a meal's or a report's page links there under its related entries.
+- **Deleted targets.** A link to a soft-deleted person, activity or check-in is hidden
+  while its target is deleted and back on restore; it goes when the target is removed
+  for good. For an activity, a meal, a report and a check-in a database trigger removes
+  it, whatever removes the target: for an activity a purge, a source's delete, a rule's
+  regeneration or an orphaned override; a meal or a report is deleted outright; a
+  check-in is purged 30 days after its deletion, replaced when it was a skip and its
+  slot is answered, or purged with its form. The `note_links` check on `entity_type`
+  was widened in place, so an older build still running beside a newer one writes only
+  the kinds it knows.
   Replacing an entry's links only touches the visible ones, so a hidden link survives
   an edit and comes back with its target.
   A deleted entry's links are out of sight with it and come back with it.
 - **Privacy.** As the rest of People: links never leave your account. A note is never
   shared, and nothing about its links goes into an activity's share, the feed or
   anything federated.
+
+### Suggested links
+
+Aurboda suggests links, and only suggests them: a link is still made by a tap in the
+editor or by `related` on a save, never from the text by itself, and a suggestion never
+changes the text.
+
+- **What is suggested.** For a journal entry (a `time` or `day` note):
+  - a person whose name is written in the title or text, as a whole word, case aside,
+    also with a possessive `s`, `'s` or `’s` ("Saras", "Sara's"). The first name alone
+    counts when the name has more words, the first name has at least three letters and
+    no one else among your people has it. Archived people are never suggested.
+    Reason `name_in_text`, in the order they are first named.
+  - for a `time` entry before noon (in your timezone), the sleep that ended that
+    morning, at or before the entry (the one ending last). Reason `night_sleep`.
+  - the activities other than sleep that started on the entry's day (a `day` entry's
+    date, a `time` entry's local date), in time order, at most 12. Location visits and
+    screen-time spans are left out. Reason `same_day`. Activities are read as the
+    activity list reads them, so merges and rules apply.
+
+  What the entry is already related to, and what was dismissed for it, is left out.
+  Each suggestion is a `related` item (`entity_type`, `entity_id`, `label`, an
+  activity's `activity_type`) plus its `reason`.
+
+- **One entry.** `GET /notes/:id/link-suggestions` (MCP `get_note_link_suggestions`);
+  a `404` for anything but a live journal entry.
+- **Dismissing.** `POST /notes/:id/link-suggestions/dismissals` with
+  `{ entity_type, entity_id }` (MCP `dismiss_note_link_suggestion`) stops suggesting it
+  for that entry; dismissing twice is the same as once. Dismissals live in
+  `note_link_dismissals` (`note_id`, `entity_type`, `entity_id`, `created_at`) and go
+  with the entry when it is removed for good.
+- **Many entries.** `GET /notes/link-suggestions` (MCP `list_note_link_suggestions`)
+  pages through the journal newest first, as search does: `from`/`to` (local dates),
+  `tz`, `cursor` and `limit` (default 20, at most 50 entries looked at per page).
+  `unlinked_only` (default `true`) leaves out entries already related to anything.
+  Each listed entry carries `id`, `entity_type`, `title`, `date` or `start_time`,
+  `excerpt`, `updated_at`, its current `related` and its `suggestions`. Only entries with
+  a suggestion are listed, so a page can be short, or empty, while `next_cursor` is
+  still set: keep paging until it is absent.
+
+#### Going through old entries with an assistant
+
+An assistant (through MCP) can relate the archive in passes, with you deciding:
+
+1. `list_note_link_suggestions` with `from`/`to` for the stretch to go through
+   (`unlinked_only` stays `true`), following `next_cursor` to the end.
+2. Show the proposals grouped per entry -- its date, title or excerpt, and each
+   suggestion's label and reason -- and ask which to keep, entry by entry or for a
+   batch at once.
+3. For each entry with accepted links, `update_note` with `related` set to its current
+   links **plus** the accepted ones (`related` replaces the list) and
+   `expected_updated_at` set to the entry's `updated_at`. A conflict means the entry
+   changed meanwhile: read it again and ask again.
+4. `dismiss_note_link_suggestion` for each refused suggestion, so the next pass skips it.
+
+The assistant never edits an entry's text or title to make a link, and links nothing
+you have not agreed to.
 
 ## Finding entries
 
@@ -237,6 +320,17 @@ page order, each with `id`, `kind` (`image` or `audio`), `mime`, `size`,
   removes it from pictures added from then on; pictures already stored stay as
   they are. The downscaled previews (`?max_edge=`) and the copy an assistant gets
   carry no metadata either way.
+- **A HEIC picture** (an iPhone photo; HEVC-coded HEIF, recognised by the brands
+  its `ftyp` box names) is taken too. The bundled libvips cannot decode HEVC, so
+  the server decodes it in-process with `heic-decode` (libheif compiled to
+  WebAssembly), turned and mirrored as the file says, and then treats it like any
+  other picture: fitted inside 3000 px and stored as WebP. The decoder hands over
+  pixels only, so a HEIC picture keeps **no metadata** -- no time, camera or GPS
+  position -- whatever `journal_strip_metadata` says. A HEIC with more pixels
+  than any upload may have (16383 × 16383) is refused before it is decoded, and
+  one that does not decode is a `400` like any other unreadable file. Avatars,
+  feed pictures and challenge banners still refuse HEIC. An AVIF is not a HEIC
+  and is refused, as before.
 - **A recording** is stored exactly as recorded, as WebM, Ogg, MP4/M4A, MP3 or WAV
   -- the type its first bytes say, not the client's -- with whatever metadata the
   recorder wrote into the file (a phone's voice memo can carry where it was made),
@@ -310,6 +404,9 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
 | `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
+| `GET`    | `/notes/:id/link-suggestions`                   | `get_note_link_suggestions`     |
+| `POST`   | `/notes/:id/link-suggestions/dismissals`        | `dismiss_note_link_suggestion`  |
+| `GET`    | `/notes/link-suggestions`                       | `list_note_link_suggestions`    |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
 | `GET`    | `/notes/tags`                                   | `list_note_tags`                |
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |

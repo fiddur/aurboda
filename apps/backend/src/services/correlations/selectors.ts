@@ -5,7 +5,9 @@
  * the set of days where the dimension's status is known (the denominator).
  *
  * Everything is bucketed by UTC calendar day so metrics, nutrients and events
- * align regardless of process/DB timezone (matching getDailyNutrientTotals).
+ * align regardless of process/DB timezone (matching getDailyNutrientTotals). A meal sensitivity
+ * keeps the same day keys but files each meal under the user's local date, the day
+ * `meal_log_completed` marks complete.
  */
 
 import type { NutrientKey, TimeInterval } from '../../db/index.ts'
@@ -20,6 +22,8 @@ import {
   getTimeSeries,
   listActivityIntervalsWithPeople,
 } from '../../db/index.ts'
+import { getUserTimezone } from '../settings.ts'
+import { localDate } from '../sleep-debt.ts'
 import { sampleMean } from '../time-weighted-mean.ts'
 
 /** Comparison used to turn a numeric value into a discrete event. */
@@ -254,14 +258,18 @@ const resolveSensitivity = async (
   start: Date,
   end: Date,
 ): Promise<ResolvedSeries> => {
+  const tz = await getUserTimezone(user)
+  const firstDay = toUtcDay(start)
+  const lastDay = toUtcDay(end)
   const [meals, completed] = await Promise.all([
-    getMealFlagsInRange(user, start, end),
-    getMealLogCompletedInRange(user, toUtcDay(start), toUtcDay(end)),
+    getMealFlagsInRange(user, new Date(start.getTime() - MS_PER_DAY), new Date(end.getTime() + MS_PER_DAY)),
+    getMealLogCompletedInRange(user, firstDay, lastDay),
   ])
 
   const daily = new Map<string, number>()
   for (const meal of meals) {
-    const day = toUtcDay(meal.time)
+    const day = localDate(meal.time, tz)
+    if (day < firstDay || day > lastDay) continue
     daily.set(day, (daily.get(day) ?? 0) + (meal.flag_ids.includes(selector.flag) ? 1 : 0))
   }
   for (const day of completed) daily.getOrInsert(day, 0)

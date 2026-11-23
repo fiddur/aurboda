@@ -19,7 +19,7 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 | More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
 The Add tab's Activity form starts with **Log a strength session**, which opens the web
-[strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
+[strength session page](features/strength-logging.md) (`/strength/workouts`) in the More tab's web view:
 sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
 declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
 field that does not parse, or falls outside the field's `min` and `max` ("Must be between 0 and 10"),
@@ -55,9 +55,9 @@ sections open and close, closed at first, and which are open is remembered on th
 (`MenuSectionsStore`, `AppState.openMenuSections`). An entry that is also a bottom tab — **Feed**,
 under Sharing — switches to that tab (`mainTabForPath`) instead of opening the page inside More.
 
-Around the sections sit the entries only the app has. On top are **Notifications** (the web
-`/notifications` page, see [Notifications](features/notifications.md)) and **Reminders** (the web
-`/reminders` page, see [Reminders](features/reminders.md)); at the bottom **Help & support** and
+Around the sections sit the entries only the app has. On top is **Notifications** (the web
+`/notifications` page, see [Notifications](features/notifications.md)); **Reminders** is under
+Setup, as in the web menu (see [Reminders](features/reminders.md)); at the bottom **Help & support** and
 **Settings** (in the web menu's footer), the **Audit log** (reached from Settings on the web), and
 the two native-only screens, **Live** sensors ([BLE](#live-sensors)) and **Account** (server URL,
 logout). Home and Add are bottom tabs, not hub entries. **Admin** is left out: the app does not know
@@ -290,6 +290,27 @@ the external browser (via `ACTION_VIEW`); same-origin links stay in the WebView.
 The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
+
+## Generated API models
+
+The native screens read the API through the Kotlin models `pnpm generate` writes from the
+`@aurboda/api-spec` OpenAPI document (`net.aurboda.api.models`, under
+`packages/api-spec/generated/kotlin`). Two parts of that document are not usable natively, and the
+app embeds the web pages for both:
+
+- **The feed is not in the Kotlin models.** The OpenAPI document (`generated/openapi.yaml`)
+  describes `/feed/*` and `GET /people/{id}/posts` in full, but the Kotlin generator cannot express
+  their structured payload, so it reads `generated/openapi.kotlin.yaml` instead: the same document
+  without those paths and without every schema only they reach. The skipped paths are one list,
+  `kotlinSkippedPaths` in `packages/api-spec/src/openapi-kotlin-filter.ts`. The Feed tab embeds the
+  web feed; the old post notifier's `/feed/timeline` and `/feed/following` reads parse raw JSON.
+- **Some correlation models compile but do not decode.** The generator flattens a discriminated
+  union into one class with every variant's fields, so kotlinx cannot decode
+  `CorrelationSelector` (and `CorrelationSelectorOutput`), the generic correlation's lag-result
+  union (`GenericCorrelationDataPostTriggerValue`, the values of `post_trigger`) or the other
+  union-valued classes (`GenericCorrelationBodyOutcome`, `GenericCorrelationDataOutcome`,
+  `GenericCorrelationDataBaseline`). The app embeds the correlation pages and reads none of them;
+  they need hand-written serializers before it ever reads correlations natively.
 
 ## Login screen
 

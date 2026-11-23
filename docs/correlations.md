@@ -54,7 +54,9 @@ items' flags (resolved live) or the meal's own. Its known days are exactly the
 `nutrition` rule: a day with a meal, or one marked meal log completed, is known
 and 0 when no meal carried the flag; any other day is unknown, not 0. Its
 complete days (`nutrition_completeness: "complete_only"`, `n_complete`) are the
-days marked meal log completed. The selector stores the flag id, so a renamed
+days marked meal log completed. A meal counts on its **local date** in the user's time zone
+(the day a meal log is marked complete), while the other selectors bucket by UTC day; the day
+keys are the same dates. The selector stores the flag id, so a renamed
 flag keeps its correlations; the axis label resolves the name ("Meals with
 gluten (count)"). An article correlation block may use a `sensitivity` selector too;
 readers see the flag's name, and the article answers warn about it without refusing it

@@ -8,7 +8,9 @@ import type {
 
 import { describe, expect, test } from 'vitest'
 
+import { SERIES_COLORS } from '../../components/charts/breakdown'
 import {
+  allGroupsSeries,
   averageLabel,
   bestSetLabel,
   changeLabel,
@@ -19,6 +21,7 @@ import {
   liftNote,
   liftNoteLabel,
   missingText,
+  pointBefore,
   pointsLabel,
   scoreChange,
   scoredGroupCount,
@@ -133,6 +136,50 @@ describe('scoreSeries', () => {
   })
 })
 
+describe('pointBefore', () => {
+  test('is the latest point at least the days before the last one', () => {
+    const h = history([
+      { at: at(1), groups: {}, score: 80 },
+      { at: at(8), groups: {}, score: 85 },
+      { at: at(15), groups: {}, score: 88 },
+      { at: at(38), groups: {}, score: 92 },
+    ])
+    expect(pointBefore(h, 30)?.at).toBe(at(8))
+  })
+
+  test('is undefined without history or a point far enough back', () => {
+    expect(pointBefore(undefined, 30)).toBeUndefined()
+    expect(pointBefore(history([{ at: at(10), groups: {}, score: 80 }]), 30)).toBeUndefined()
+  })
+})
+
+describe('allGroupsSeries', () => {
+  test('one line per group with history, coloured by its place among all groups', () => {
+    const h = history([
+      { at: at(1), groups: { back: 70, biceps: 60, chest: 90 }, score: 90 },
+      { at: at(8), groups: { back: 75, chest: 95 }, score: 90 },
+    ])
+    expect(allGroupsSeries(h, { back: 'Back', chest: 'Chest' })).toEqual([
+      {
+        color: SERIES_COLORS[0],
+        data: [
+          { date: at(1), value: 90 },
+          { date: at(8), value: 95 },
+        ],
+        name: 'Chest',
+      },
+      {
+        color: SERIES_COLORS[2],
+        data: [
+          { date: at(1), value: 70 },
+          { date: at(8), value: 75 },
+        ],
+        name: 'Back',
+      },
+    ])
+  })
+})
+
 describe('scoreChange', () => {
   test('compares the last point with the latest one at least the days before it', () => {
     const h = history([
@@ -177,6 +224,39 @@ describe('scoreChange', () => {
       ),
     ).toBeUndefined()
     expect(scoreChange(history([]), 30)).toBeUndefined()
+  })
+
+  test('compares the score of a group when given its key', () => {
+    const h = history([
+      { at: at(1), groups: { back: 86, chest: 70 }, score: 80 },
+      { at: at(38), groups: { back: 90, chest: 70 }, score: 82 },
+    ])
+    expect(scoreChange(h, 30, 'back')).toBe(4)
+    expect(scoreChange(h, 30, 'chest')).toBe(0)
+    expect(scoreChange(h, 30)).toBe(2)
+  })
+
+  test('is undefined for a group missing from either point', () => {
+    expect(
+      scoreChange(
+        history([
+          { at: at(1), groups: {}, score: 80 },
+          { at: at(38), groups: { back: 90 }, score: 82 },
+        ]),
+        30,
+        'back',
+      ),
+    ).toBeUndefined()
+    expect(
+      scoreChange(
+        history([
+          { at: at(1), groups: { back: 86 }, score: 80 },
+          { at: at(38), groups: {}, score: 82 },
+        ]),
+        30,
+        'back',
+      ),
+    ).toBeUndefined()
   })
 })
 

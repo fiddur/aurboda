@@ -63,6 +63,7 @@ import { EntryReadView } from './EntryReadView'
 import { attachmentImageMarkdown, withoutInline } from './inline-pictures'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
+import { LinkSuggestions } from './LinkSuggestions'
 import { MentionEditor } from './MentionEditor'
 import { neighborAnchorKey } from './neighbors'
 import { Recorder } from './Recorder'
@@ -454,7 +455,7 @@ const EditorTools = ({
       <input
         type="file"
         class="md-editor-visually-hidden"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif"
         multiple
         onChange={(e) => {
           const input = e.currentTarget
@@ -552,6 +553,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const [attachments, setAttachmentsState] = useState<NoteAttachment[]>([])
   const [threadRoot, setThreadRoot] = useState<Note | undefined>(undefined)
   const [status, setStatus] = useState<AutosaveStatus>('saved')
+  const [savedAt, setSavedAt] = useState<string | undefined>(undefined)
   const [saveProblem, setSaveProblem] = useState<string | undefined>(undefined)
   const [goneLinks, setGoneLinks] = useState<ReadonlySet<string>>(new Set())
   const [conflict, setConflict] = useState<Note | undefined>(undefined)
@@ -582,6 +584,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const accept = useCallback(
     (note: Note, sent: EntryForm) => {
       updatedAtRef.current = note.updated_at
+      setSavedAt(note.updated_at)
       savedRelatedRef.current = note.related ?? sent.related
       setGoneLinks((current) => (current.size === 0 ? current : new Set()))
       if (note.attachments) setAttachments(sortByPosition(note.attachments))
@@ -640,7 +643,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         const refused = refusedLinkKeys(apiErrorMessage(error, ''), sent.related)
         if (refused.size > 0) {
           setGoneLinks(refused)
-          setSaveProblem('a related person or activity was removed. Remove the marked link.')
+          setSaveProblem('something it is related to was removed. Remove the marked link.')
         }
         throw error
       }
@@ -680,6 +683,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         if (cancelled) return
         const serverForm = formFromNote(note)
         updatedAtRef.current = note.updated_at
+        setSavedAt(note.updated_at)
         savedRelatedRef.current = serverForm.related
         setForm(serverForm)
         setAttachments(sortByPosition(note.attachments ?? []))
@@ -745,6 +749,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     if (!conflict) return
     const resolved = resolveConflict(choice, formRef.current, formFromNote(conflict))
     updatedAtRef.current = conflict.updated_at
+    setSavedAt(conflict.updated_at)
     savedRelatedRef.current = conflict.related ?? []
     if (conflict.attachments) setAttachments(sortByPosition(conflict.attachments))
     setConflict(undefined)
@@ -950,6 +955,13 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
             gone={goneLinks}
             entryDate={entryDay(form)}
             onChange={(related) => patch({ related })}
+          />
+
+          <LinkSuggestions
+            noteId={idRef.current}
+            savedAt={savedAt}
+            links={form.related}
+            onAdd={(link) => patch({ related: addLink(formRef.current.related, link) })}
           />
 
           <EditorFiles
