@@ -548,6 +548,51 @@ export const getNoteNeighbors = async (
   return { next: at('next'), previous: at('previous') }
 }
 
+export interface NoteTagCount {
+  tag: string
+  count: number
+  last_used: Date
+}
+
+/**
+ * The tags (explicit and #hashtags) on the roots {@link searchNotes} lists, each counted once per
+ * note, most used first, with the newest carrying root's anchor.
+ */
+export const listNoteTags = async (
+  user: string,
+  params: { tz: string; entity_types: EntityType[] },
+): Promise<NoteTagCount[]> => {
+  const { param, values } = paramList()
+  const roots = anchoredRootsSql(param, param(params.tz), params.entity_types)
+  const result = await query(
+    user,
+    `SELECT t.tag, count(*)::int AS count, max(n.anchor) AS last_used
+       FROM (${roots}
+     ) n
+     CROSS JOIN LATERAL (SELECT DISTINCT unnest(n.tags || n.hashtags) AS tag) t
+     GROUP BY t.tag
+     ORDER BY count DESC, t.tag`,
+    values,
+  )
+  return result.rows.map((row) => ({
+    count: row.count,
+    last_used: new Date(row.last_used),
+    tag: row.tag,
+  }))
+}
+
+/** Every live note, of any kind (replies included), carrying one of `tags` explicitly or as a #hashtag. */
+export const getNotesWithAnyTag = async (user: string, tags: string[]): Promise<Note[]> => {
+  const result = await query(
+    user,
+    `SELECT ${NOTE_COLUMNS} FROM notes
+      WHERE deleted_at IS NULL AND (tags || hashtags) && $1::text[]
+      ORDER BY created_at, id`,
+    [tags],
+  )
+  return result.rows.map(mapNoteRow)
+}
+
 /**
  * Delete a note for good and, when it is a thread root, every reply hanging off it, deleted or
  * not. There is no FK between a reply and its root, so the cascade is explicit.

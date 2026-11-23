@@ -16,6 +16,9 @@ import {
   journalExcerpt,
   listDeletedNotes,
   listJournalEntryRefs,
+  listNoteTagsForUser,
+  mergeNoteTags,
+  mergeTagsInNote,
   noteRelatedLabel,
   onThisDayFilter,
   restoreNoteById,
@@ -39,12 +42,14 @@ vi.mock('../db', () => ({
   getNoteRoot: vi.fn(),
   getNotesForEntity: vi.fn(),
   getNotesForTimeRange: vi.fn(),
+  getNotesWithAnyTag: vi.fn(),
   getPerson: vi.fn(),
   getProductivityById: vi.fn(),
   getReportById: vi.fn(),
   getRepliesForRootIds: vi.fn(async () => new Map()),
   insertNote: vi.fn(),
   listLiveLinkTargetIds: vi.fn(async () => []),
+  listNoteTags: vi.fn(),
   listNotesRelatedTo: vi.fn(async () => []),
   restoreNote: vi.fn(),
   searchNotes: vi.fn(),
@@ -1850,5 +1855,143 @@ describe('journal neighbours', () => {
   test('null when the entry is not a live Journal entry', async () => {
     vi.mocked(db.getNoteNeighbors).mockResolvedValue(null)
     expect(await getJournalNeighbors('user', 'id')).toBeNull()
+  })
+})
+
+describe('mergeTagsInNote', () => {
+  const merge = (content: string, tags: string[] = [], from = ['running'], into = 'run') =>
+    mergeTagsInNote({ content, tags }, from, into)
+
+  test('rewrites a hashtag at the start, in the middle and at the end', () => {
+    expect(merge('#running today')?.content).toBe('#run today')
+    expect(merge('Went #running, then home')?.content).toBe('Went #run, then home')
+    expect(merge('Good day #running')?.content).toBe('Good day #run')
+  })
+
+  test('rewrites every occurrence, whatever its casing', () => {
+    expect(merge('#Running and #running and #RUNNING')?.content).toBe('#run and #run and #run')
+  })
+
+  test('leaves tags in a URL or in code alone', () => {
+    expect(merge('See https://example.com/#running and `#running` but #running')?.content).toBe(
+      'See https://example.com/#running and `#running` but #run',
+    )
+    expect(merge('Only https://example.com/#running')).toBeNull()
+  })
+
+  test('leaves longer tags that start with the same letters alone', () => {
+    expect(merge('#runningshoes')).toBeNull()
+  })
+
+  test('replaces explicit tags, deduplicating and keeping their order', () => {
+    expect(merge('No hashtags', ['travel', 'running', 'family'])).toEqual({
+      content: 'No hashtags',
+      tags: ['travel', 'run', 'family'],
+    })
+    expect(merge('Text', ['run', 'running'])).toEqual({ content: 'Text', tags: ['run'] })
+  })
+
+  test('merges several tags at once, into a tag already in the text', () => {
+    expect(merge('#jog then #run and #running', ['jog'], ['jog', 'running'], 'run')).toEqual({
+      content: '#run then #run and #run',
+      tags: ['run'],
+    })
+  })
+
+  test('changes both the explicit tags and the text', () => {
+    expect(merge('A #running day', ['running'])).toEqual({ content: 'A #run day', tags: ['run'] })
+  })
+
+  test('null when nothing carries a from tag', () => {
+    expect(merge('A #walking day', ['walking'])).toBeNull()
+  })
+})
+
+describe('listNoteTagsForUser', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test("lists the free-standing entries' tags in the user's zone by default", async () => {
+    vi.mocked(db.listNoteTags).mockResolvedValue([
+      { count: 2, last_used: new Date('2024-01-15T08:00:00Z'), tag: 'run' },
+    ])
+    expect(await listNoteTagsForUser('user', {})).toEqual({
+      data: [{ count: 2, last_used: '2024-01-15T08:00:00.000Z', tag: 'run' }],
+      success: true,
+    })
+    expect(db.listNoteTags).toHaveBeenCalledWith('user', {
+      entity_types: ['time', 'day'],
+      tz: 'Europe/Stockholm',
+    })
+  })
+
+  test('passes the entity types and zone given', async () => {
+    vi.mocked(db.listNoteTags).mockResolvedValue([])
+    await listNoteTagsForUser('user', { entity_types: 'time,activity', tz: 'UTC' })
+    expect(db.listNoteTags).toHaveBeenCalledWith('user', { entity_types: ['time', 'activity'], tz: 'UTC' })
+  })
+
+  test('refuses an entity type that is not a root type', async () => {
+    expect(await listNoteTagsForUser('user', { entity_types: 'note' })).toMatchObject({
+      errorCode: 'invalid',
+      success: false,
+    })
+    expect(db.listNoteTags).not.toHaveBeenCalled()
+  })
+})
+
+describe('mergeNoteTags', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('updates each carrying note through updateNote, always keeping a revision', async () => {
+    const byHashtag = makeNote({ content: 'A #running day', hashtags: ['running'], tags: [] })
+    const byTag = makeNote({ content: 'Plain', hashtags: [], tags: ['running', 'travel'] })
+    const stale = makeNote({ content: 'No tag here', hashtags: ['running'], tags: [] })
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([byHashtag, byTag, stale])
+    vi.mocked(db.getNoteById).mockImplementation(
+      async (_user, id) => [byHashtag, byTag, stale].find((note) => note.id === id) ?? null,
+    )
+    vi.mocked(db.updateNoteGuarded).mockImplementation(async (_user, id) =>
+      updated([byHashtag, byTag].find((note) => note.id === id)!),
+    )
+
+    expect(await mergeNoteTags('user', { from: ['#Running'], into: 'run' })).toEqual({
+      data: { changed: 2 },
+      success: true,
+    })
+    expect(db.getNotesWithAnyTag).toHaveBeenCalledWith('user', ['running'])
+    const calls = vi.mocked(db.updateNoteGuarded).mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[0]![1]).toBe(byHashtag.id)
+    expect(calls[0]![2]).toMatchObject({ content: 'A #run day', hashtags: ['run'], tags: [] })
+    expect(calls[0]![3]).toMatchObject({
+      expected_updated_at: undefined,
+      revisions: { limit: 50, min_interval_minutes: 0 },
+    })
+    expect(calls[1]![1]).toBe(byTag.id)
+    expect(calls[1]![2]).toEqual({ tags: ['run', 'travel'] })
+  })
+
+  test('does not count a note the update refuses (a synced one)', async () => {
+    const synced = makeNote({ content: 'A #running day', hashtags: ['running'], source: 'oura', tags: [] })
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([synced])
+    vi.mocked(db.getNoteById).mockResolvedValue(synced)
+    expect(await mergeNoteTags('user', { from: ['running'], into: 'run' })).toEqual({
+      data: { changed: 0 },
+      success: true,
+    })
+    expect(db.updateNoteGuarded).not.toHaveBeenCalled()
+  })
+
+  test('refuses into among from, or an invalid tag', async () => {
+    expect(await mergeNoteTags('user', { from: ['run', 'jog'], into: '#Run' })).toMatchObject({
+      errorCode: 'invalid',
+      success: false,
+    })
+    expect(await mergeNoteTags('user', { from: ['run'], into: '123' })).toMatchObject({ success: false })
+    expect(db.getNotesWithAnyTag).not.toHaveBeenCalled()
   })
 })

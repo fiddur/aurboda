@@ -227,6 +227,10 @@ import {
   noteConflictResponseSchema,
   noteNeighborsQuerySchema,
   noteNeighborsResponseSchema,
+  noteTagsListQuerySchema,
+  noteTagsListResponseSchema,
+  mergeNoteTagsBodySchema,
+  mergeNoteTagsResponseSchema,
   noteResponseSchema,
   noteRevisionsResponseSchema,
   notesResponseSchema,
@@ -3466,6 +3470,46 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Search comments',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/tags': {
+      get: {
+        description:
+          'The tags used on journal entries and comments (explicit tags and #hashtags in the text), with how many live notes carry each and when it was last used, most used first. `entity_types` narrows like search (default: the free-standing journal entries).',
+        requestParams: { query: noteTagsListQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTagsListResponseSchema } },
+            description: 'The tags',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List journal tags',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/tags/merge': {
+      post: {
+        description:
+          'Merge tags: every live note carrying a tag in `from` gets `into` instead. Explicit tags are replaced and #hashtags in the text are rewritten (each rewritten text keeps a revision). Renaming is a merge with one `from`.',
+        requestBody: { content: { 'application/json': { schema: mergeNoteTagsBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeNoteTagsResponseSchema } },
+            description: 'How many notes changed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Merge journal tags',
         tags: ['Notes'],
       },
     },

@@ -1213,6 +1213,8 @@ export {
   getNotesForEntity,
   getNotesInRange,
   listDeletedNotes,
+  listNoteTagsForUser,
+  mergeNoteTags,
   restoreNoteById,
   searchNotesForUser,
   updateNote,
