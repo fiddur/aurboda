@@ -185,7 +185,7 @@ export function PeopleList() {
 
   if (!isLoggedIn) {
     return (
-      <div class="people-page">
+      <div class="page people-page">
         <h1>People</h1>
         <p>Please log in to see the people in your life.</p>
       </div>
@@ -199,7 +199,7 @@ export function PeopleList() {
   const empty = !peopleQuery.isLoading && !peopleQuery.error && people.length === 0 && !showArchived
 
   return (
-    <div class="people-page">
+    <div class="page people-page">
       <div class="people-header">
         <h1>People</h1>
         {!adding && (

@@ -1,9 +1,3 @@
-.meal-detail-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .detail-layout {
   display: flex;
   flex-direction: column;
@@ -553,10 +547,6 @@ a.detail-food-link:hover {
 }
 
 @media (max-width: 639px) {
-  .meal-detail-page {
-    padding: 1rem;
-  }
-
   .detail-row {
     flex-direction: column;
     gap: 0.25rem;

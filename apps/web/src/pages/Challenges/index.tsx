@@ -637,7 +637,7 @@ export function Challenges() {
   const groups = groupChallengeItems(hosted, joined, now)
 
   return (
-    <div class="challenges-page">
+    <div class="page challenges-page">
       <h1>Challenges</h1>
       <p class="challenges-intro">
         Compete with others on a metric or activity type over a date range — including people on other Aurboda

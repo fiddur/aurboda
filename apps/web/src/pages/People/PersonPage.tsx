@@ -479,17 +479,17 @@ export function PersonPage({ id }: { id: string }) {
 
   if (!isLoggedIn) {
     return (
-      <div class="people-page">
+      <div class="page people-page">
         <h1>People</h1>
         <p>Please log in to see the people in your life.</p>
       </div>
     )
   }
   const person = personQuery.data
-  if (personQuery.isLoading) return <div class="people-page">Loading…</div>
+  if (personQuery.isLoading) return <div class="page people-page">Loading…</div>
   if (!person) {
     return (
-      <div class="people-page">
+      <div class="page people-page">
         <p>
           <a href="/people">← People</a>
         </p>
@@ -504,7 +504,7 @@ export function PersonPage({ id }: { id: string }) {
   const birthday = birthdayLabel(person.birth_date)
 
   return (
-    <div class="people-page">
+    <div class="page people-page">
       <p class="people-back">
         <a href="/people">← People</a>
       </p>

@@ -26,7 +26,7 @@ export function Help() {
   const versionHref = version ? versionLink(version) : undefined
 
   return (
-    <div class="static-page">
+    <div class="page static-page">
       <h1>Help &amp; support</h1>
       <p>
         Aurboda is free software looked after by a small community. This page shows where to find answers and

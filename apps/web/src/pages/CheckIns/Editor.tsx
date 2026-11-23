@@ -1128,16 +1128,16 @@ export function CheckInEditor() {
 
   if (!isLoggedIn) {
     return (
-      <div class="checkins-page">
+      <div class="page checkins-page">
         <h1>Check-in form</h1>
         <p>Please log in to edit your check-ins.</p>
       </div>
     )
   }
-  if (id && form.isLoading) return <div class="checkins-page checkins-muted">Loading…</div>
+  if (id && form.isLoading) return <div class="page checkins-page checkins-muted">Loading…</div>
   if (id && !form.data) {
     return (
-      <div class="checkins-page">
+      <div class="page checkins-page">
         <h1>Check-in form</h1>
         <p>That form was not found.</p>
         <a href="/check-ins">Back to check-ins</a>
@@ -1146,7 +1146,7 @@ export function CheckInEditor() {
   }
 
   return (
-    <div class="checkins-page checkin-editor-page">
+    <div class="page checkins-page checkin-editor-page">
       <p class="checkins-back">
         <a href="/check-ins">← Check-ins</a>
       </p>

@@ -44,7 +44,7 @@ export function AdminUserDetail() {
   if (!isAllowed) return <AdminAccessDenied title={username} />
 
   return (
-    <div class="admin-users-page">
+    <div class="page page--full admin-users-page">
       <p class="au-back">
         <a href="/admin/users">← Users</a>
       </p>

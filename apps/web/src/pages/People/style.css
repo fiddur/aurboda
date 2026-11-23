@@ -1,10 +1,3 @@
-.people-page {
-  box-sizing: border-box;
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
 .people-header,
 .people-section-head {
   display: flex;

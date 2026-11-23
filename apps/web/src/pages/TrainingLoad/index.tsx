@@ -269,14 +269,14 @@ export function TrainingLoad() {
 
   if (!isLoggedIn) {
     return (
-      <div class="training-load-page">
+      <div class="page page--wide training-load-page">
         <p>Please log in to see your training load.</p>
       </div>
     )
   }
 
   return (
-    <div class="training-load-page">
+    <div class="page page--wide training-load-page">
       <div class="tl-header">
         <div>
           <h1>Training load</h1>

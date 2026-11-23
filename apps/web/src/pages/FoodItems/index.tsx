@@ -88,14 +88,14 @@ export function FoodItems() {
 
   if (!isLoggedIn) {
     return (
-      <div class="food-items-page">
+      <div class="page page--full food-items-page">
         <p>Please log in.</p>
       </div>
     )
   }
 
   return (
-    <div class="food-items-page">
+    <div class="page page--full food-items-page">
       <h1>Food Items</h1>
 
       <div class="fi-search">

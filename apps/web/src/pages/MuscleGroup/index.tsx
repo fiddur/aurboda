@@ -194,7 +194,7 @@ export function MuscleGroup() {
   const known = isMuscleGroup(group)
 
   return (
-    <div class="activity-type-item-page">
+    <div class="page page--full activity-type-item-page">
       <a href={muscleGroupsHref(name, field)} class="activity-type-item-back">
         ← {typeName}
       </a>

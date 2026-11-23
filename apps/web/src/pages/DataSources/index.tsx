@@ -126,7 +126,7 @@ export function DataSources() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <h1>Data Sources</h1>
         <p>Please log in to see your data sources and setup guides.</p>
         <a href="/login" class="external-link" style={{ display: 'inline-block', marginTop: '1rem' }}>
@@ -238,7 +238,7 @@ export function DataSources() {
   ]
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Data Sources</h1>
         <p class="page-subtitle">

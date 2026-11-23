@@ -249,7 +249,7 @@ export function Dashboards() {
   const dashboards = query.data ?? []
 
   return (
-    <div class="shared-dashboards">
+    <div class="page shared-dashboards">
       <div class="shared-dashboards-header">
         <h1>Dashboards</h1>
       </div>

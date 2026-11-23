@@ -449,7 +449,7 @@ export function ImportReports() {
   const stepNumber = { done: 3, input: 1, mapping: 2, preview: 3 }[step]
 
   return (
-    <div class="add-data-page import-reports-page">
+    <div class="page page--full add-data-page import-reports-page">
       <div class="add-data-header">
         <h1>Import lab results</h1>
       </div>

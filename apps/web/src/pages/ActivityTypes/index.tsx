@@ -390,14 +390,14 @@ export function ActivityTypes() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage activity types.</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Activity Types</h1>
         <p class="page-subtitle">

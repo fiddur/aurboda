@@ -197,7 +197,7 @@ export function SegmentDetail() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to see your segments.</p>
       </div>
     )
@@ -205,7 +205,7 @@ export function SegmentDetail() {
 
   if (isLoading) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading segment...</p>
       </div>
     )
@@ -213,7 +213,7 @@ export function SegmentDetail() {
 
   if (!segment) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Segment not found.</p>
         <a href="/segments">Back to segments</a>
       </div>
@@ -221,7 +221,7 @@ export function SegmentDetail() {
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <NameEditor segment={segment} />
         <p class="page-subtitle">

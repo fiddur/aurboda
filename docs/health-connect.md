@@ -169,6 +169,9 @@ as a fresh insert.
 
 Not covered:
 
+- Two points of one metric at the same instant from different sources (an `aurboda` point and a
+  `check_in` answer, say): they share one Health Connect record, since the record is keyed by metric
+  and time, so deleting either takes the shared record off the phone.
 - A point whose insert was acknowledged more than 14 days ago: synced time-series queue rows are pruned
   then, and with them the record id the delete needs.
 - An acknowledged insert the app wrote without returning a record id (skipped for a missing

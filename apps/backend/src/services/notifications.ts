@@ -69,6 +69,17 @@ const firePing =
       .catch((error: unknown) => logError(`⚠️ Failed to ping ${user}'s live notifications:`, error))
   }
 
+/**
+ * A type split off from another one starts from the older type's switches until the user sets its
+ * own, so a type someone turned off does not come back under a new name.
+ */
+export const preferenceFallback: Partial<Record<NotificationType, NotificationType>> = {
+  challenge_reply: 'challenge_comment',
+}
+
+const fallbackOf = (type: string): NotificationType | undefined =>
+  preferenceFallback[type as NotificationType]
+
 export interface NotifierDeps {
   getPreference: (
     user: string,
@@ -148,7 +159,10 @@ export const createNotifier = (deps: NotifierDeps): Notifier => {
 
   const raise = async (user: string, input: RaiseNotificationInput): Promise<NotificationRecord | null> => {
     validateInput(input)
-    const preference = await deps.getPreference(user, input.type)
+    const fallback = fallbackOf(input.type)
+    const preference =
+      (await deps.getPreference(user, input.type)) ??
+      (fallback == null ? null : await deps.getPreference(user, fallback))
     const inApp = preference?.in_app ?? true
     const push = preference?.push ?? true
     if (!inApp && !push) return null
@@ -272,7 +286,8 @@ export const listNotificationTypeSettings = (
     .filter((type) => isAdmin || !notificationTypeInfo[type].admin_only)
     .map((type) => {
       const info = notificationTypeInfo[type]
-      const stored = byType.get(type)
+      const fallback = fallbackOf(type)
+      const stored = byType.get(type) ?? (fallback == null ? undefined : byType.get(fallback))
       return {
         admin_only: info.admin_only,
         description: info.description,

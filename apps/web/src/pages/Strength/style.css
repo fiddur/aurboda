@@ -1,24 +1,11 @@
 .strength-page {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 0 1rem 2rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.strength-page-wide {
-  max-width: 960px;
-}
-
 .strength-page-wide > p {
   margin: 0;
-}
-
-.strength-page-train {
-  max-width: 960px;
 }
 
 .strength-page-train > :not(h1, .strength-tabs) {

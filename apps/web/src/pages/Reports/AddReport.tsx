@@ -109,7 +109,7 @@ export function AddReport() {
   const hasValidEntries = entries.some((e) => e.metric && e.value && e.unit)
 
   return (
-    <div class="add-data-page">
+    <div class="page page--full add-data-page">
       <div class="add-data-header">
         <h1>Add Lab Report</h1>
       </div>

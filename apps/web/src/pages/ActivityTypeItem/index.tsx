@@ -295,7 +295,7 @@ export function ActivityTypeItem() {
   const shown = sliceByLookback(sessions, lookback)
 
   return (
-    <div class="activity-type-item-page">
+    <div class="page page--full activity-type-item-page">
       <a href={`/activity-type/${encodeURIComponent(name)}`} class="activity-type-item-back">
         ← {typeName}
       </a>

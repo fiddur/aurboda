@@ -232,14 +232,14 @@ export function ReportDetail() {
 
   if (isLoading) {
     return (
-      <div class="report-detail-page">
+      <div class="page page--full report-detail-page">
         <p class="loading">Loading report...</p>
       </div>
     )
   }
   if (error || !report) {
     return (
-      <div class="report-detail-page">
+      <div class="page page--full report-detail-page">
         <p class="error">Report not found</p>
       </div>
     )
@@ -248,7 +248,7 @@ export function ReportDetail() {
   const hasPrevious = comparisons.size > 0
 
   return (
-    <div class="report-detail-page">
+    <div class="page page--full report-detail-page">
       <div class="report-detail-nav">
         <a href="/reports">&larr; All Reports</a>
       </div>

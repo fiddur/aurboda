@@ -47,7 +47,7 @@ export function DataTypesList({ types }: { types: (string | DataTypeItem)[] }) {
 
 export function LoginRequired() {
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <p>Please log in to view data source settings.</p>
     </div>
   )
@@ -81,7 +81,7 @@ export function LoginRequiredToFinish({
   const { pathname, search } = window.location
   if (!oauthReturn(search, provider)) return <LoginRequired />
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <p>
         <a href={`/login?next=${encodeURIComponent(pathname + search)}`}>
           Log in to finish connecting {providerName}

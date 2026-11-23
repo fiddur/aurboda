@@ -521,7 +521,7 @@ export const JournalList = () => {
   const unfiltered = isUnfiltered(filters, q)
 
   return (
-    <div class="journal-page">
+    <div class="page journal-page">
       <JournalHeader />
       <JournalFilters filters={filters} today={today} onChange={change} />
       {unfiltered && <OnThisDay today={today} />}

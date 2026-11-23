@@ -257,7 +257,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   const canSubmit = Boolean(fields.name && fields.outputType) && !isOutputCategoryInvalid(fields)
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <div class="rule-header-row">
           <h1>{isNew ? 'New Deduction Rule' : fields.name}</h1>
@@ -521,7 +521,7 @@ function EditRuleLoader({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading rule...</p>
       </div>
     )
@@ -529,7 +529,7 @@ function EditRuleLoader({ id }: { id: string }) {
 
   if (!rule) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Rule not found.</p>
         <a href="/deduction-rules">Back to rules</a>
       </div>
@@ -545,7 +545,7 @@ export function DeductionRuleDetail() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage deduction rules.</p>
       </div>
     )

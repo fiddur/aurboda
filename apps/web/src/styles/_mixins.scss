@@ -1,0 +1,14 @@
+$shell-breakpoint: 60em;
+$phone-breakpoint: 639px;
+
+@mixin narrow-shell {
+  @media (max-width: $shell-breakpoint) {
+    @content;
+  }
+}
+
+@mixin phone {
+  @media (max-width: $phone-breakpoint) {
+    @content;
+  }
+}

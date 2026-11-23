@@ -6,14 +6,14 @@ export function ScreentimeCategories() {
   const isLoggedIn = auth.value.token
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage screentime categories.</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Screentime Categories</h1>
         <p class="page-subtitle">
