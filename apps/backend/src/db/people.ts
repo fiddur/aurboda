@@ -447,6 +447,37 @@ export const activityPeopleLateralSql = (alias: string): string => `
              SELECT s.id FROM activities s WHERE s.superseded_by = ${alias}.id AND s.deleted_at IS NULL)
   ) ppl ON true`
 
+/**
+ * Two CTEs, `group_roots` and `group_rows`, for the ids in `targets` (a relation with an `id`
+ * column): `group_rows(target_id, row_id)` is every live row the user sees as one activity with the
+ * target — the target, the row it is superseded by, the live rows superseded by either, and the
+ * override and target rows linked to any of them through `activity_override_targets`. The union of
+ * what `activityPeopleLateralSql` reads and what `updateActivity` replaces.
+ */
+export const activityGroupRowsSql = (targets: string): string => `
+  group_roots AS (
+    SELECT t.id AS target_id, t.id AS root_id FROM ${targets} t
+    UNION
+    SELECT t.id, a.superseded_by FROM ${targets} t JOIN activities a ON a.id = t.id
+     WHERE a.superseded_by IS NOT NULL
+    UNION
+    SELECT t.id, ot.override_id FROM ${targets} t JOIN activity_override_targets ot ON ot.target_id = t.id
+  ),
+  group_rows AS (
+    SELECT DISTINCT m.target_id, m.row_id FROM (
+      SELECT target_id, root_id AS row_id FROM group_roots
+      UNION ALL
+      SELECT r.target_id, s.id FROM group_roots r JOIN activities s ON s.superseded_by = r.root_id
+      UNION ALL
+      SELECT r.target_id, ot.target_id FROM group_roots r
+        JOIN activity_override_targets ot ON ot.override_id = r.root_id
+      UNION ALL
+      SELECT r.target_id, ot.override_id FROM group_roots r
+        JOIN activity_override_targets ot ON ot.target_id = r.root_id
+    ) m
+    JOIN activities live ON live.id = m.row_id AND live.deleted_at IS NULL
+  )`
+
 /** The live people of each of `activityIds` and of the live rows each supersedes. */
 export const getPeopleForActivityGroups = async (
   user: string,

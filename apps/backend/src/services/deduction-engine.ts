@@ -163,9 +163,13 @@ export interface DeductionEngineDeps {
   /** The rows `enrichActivities` reads for these ranges, whether or not it would patch them. */
   getEnrichTargets: (user: string, activityType: string, ranges: TimeRange[]) => Promise<string[]>
   listLivePersonIds: (user: string, ids: string[]) => Promise<string[]>
-  /** Ids of the activities that gained at least one of the people, or with dryRun would. */
+  /**
+   * Ids of the activities that gained at least one of the people, or with dryRun would. The rule
+   * adds each person to an activity once, and nobody to one whose people were set by hand.
+   */
   addActivityPeople: (
     user: string,
+    ruleId: string,
     activityIds: string[],
     personIds: string[],
     dryRun?: boolean,
@@ -469,7 +473,7 @@ const linkPeople = async (
 ): Promise<string[]> => {
   if (activityIds.length === 0 || !rule.output_people?.length) return []
   const people = await deps.listLivePersonIds(user, rule.output_people)
-  return people.length === 0 ? [] : deps.addActivityPeople(user, activityIds, people, dryRun)
+  return people.length === 0 ? [] : deps.addActivityPeople(user, rule.id, activityIds, people, dryRun)
 }
 
 const retype = async (
