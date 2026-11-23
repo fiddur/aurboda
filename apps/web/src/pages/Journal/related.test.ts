@@ -12,7 +12,9 @@ import {
   journalRefHeading,
   journalRefHref,
   journalRefWhen,
+  MENTION_MAX_OPTIONS,
   mentionAt,
+  mentionItems,
   mentionOptions,
   moveChoice,
   offeredPeople,
@@ -95,18 +97,37 @@ describe('typing @', () => {
     expect(insertMention('Hi @b', 3, 5, 'Bo')).toEqual({ cursor: 6, text: 'Hi Bo ' })
   })
 
-  test('offers names starting with the query first, at most eight', () => {
-    const person = (id: string, name: string): Person =>
-      ({ actor: null, archived: false, id, name, relationship: null }) as unknown as Person
+  const person = (id: string, name: string, archived = false): Person =>
+    ({ actor: null, archived, id, name, relationship: null }) as unknown as Person
+
+  test('offers names starting with the query first', () => {
     const people = [person('1', 'Johanna'), person('2', 'Anna'), person('3', 'Bo')]
     expect(mentionOptions(people, 'an').map((p) => p.name)).toEqual(['Anna', 'Johanna'])
     expect(mentionOptions(people, '')).toHaveLength(3)
-    expect(
-      mentionOptions(
-        Array.from({ length: 12 }, (_, i) => person(String(i), `P${i}`)),
-        'p',
-      ),
-    ).toHaveLength(8)
+  })
+
+  test('offers everyone who matches, well past a handful, up to the cap', () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => person(String(i), `P${i}`))
+    expect(mentionOptions(many(12), 'p')).toHaveLength(12)
+    expect(mentionOptions(many(MENTION_MAX_OPTIONS + 5), 'p')).toHaveLength(MENTION_MAX_OPTIONS)
+  })
+
+  test('the menu ends with adding the typed name as a person when nobody has it yet', () => {
+    const anna = person('1', 'Anna')
+    const cy = person('2', 'Cy', true)
+    expect(mentionItems([anna], [anna, cy], 'An')).toEqual([
+      { kind: 'person', person: anna },
+      { kind: 'new', name: 'An' },
+    ])
+    expect(mentionItems([anna], [anna, cy], 'Dana ')).toEqual([{ kind: 'new', name: 'Dana' }])
+  })
+
+  test('the menu offers no new person for a bare @ or a name somebody has, archived or not', () => {
+    const anna = person('1', 'Anna')
+    const cy = person('2', 'Cy', true)
+    expect(mentionItems([anna], [anna, cy], '')).toEqual([{ kind: 'person', person: anna }])
+    expect(mentionItems([anna], [anna, cy], 'anna')).toEqual([{ kind: 'person', person: anna }])
+    expect(mentionItems([anna], [anna, cy], 'cy')).toEqual([])
   })
 
   test('an archived person is not offered for a new link', () => {

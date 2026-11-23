@@ -852,9 +852,12 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
   z-index: 20;
   box-sizing: border-box;
+  max-height: 16rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   margin: 0;
   padding: 0.25rem;
   list-style: none;

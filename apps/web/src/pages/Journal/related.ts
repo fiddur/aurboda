@@ -11,7 +11,7 @@ import { addDays, format, parseISO } from 'date-fns'
 import type { Activity } from '../../state/api/types'
 
 import { toDisplayName } from '../../utils/displayName'
-import { filterPeople } from '../People/people-view'
+import { filterPeople, newPersonName } from '../People/people-view'
 
 /** A link as the editor holds it: the target and the label its chip shows. */
 export type RelatedLink = NoteRelated
@@ -177,9 +177,9 @@ export const insertMention = (
   return { cursor: start + inserted.length, text: `${text.slice(0, start)}${inserted}${after}` }
 }
 
-export const MENTION_MAX_OPTIONS = 8
+export const MENTION_MAX_OPTIONS = 50
 
-/** The people whose name (or relationship or handle) holds the query, names starting with it first, a handful. */
+/** The people whose name (or relationship or handle) holds the query, names starting with it first. */
 export const mentionOptions = <T extends Pick<Person, 'id' | 'name' | 'relationship' | 'actor'>>(
   people: readonly T[],
   query: string,
@@ -189,6 +189,19 @@ export const mentionOptions = <T extends Pick<Person, 'id' | 'name' | 'relations
   const starts = found.filter((p) => p.name.toLowerCase().startsWith(q))
   const rest = found.filter((p) => !p.name.toLowerCase().startsWith(q))
   return [...starts, ...rest].slice(0, MENTION_MAX_OPTIONS)
+}
+
+export type MentionItem<T> = { kind: 'person'; person: T } | { kind: 'new'; name: string }
+
+/** The `@` menu: the matching people, then "add as a person" when the query names nobody yet. */
+export const mentionItems = <T extends Pick<Person, 'id' | 'name' | 'relationship' | 'actor'>>(
+  offered: readonly T[],
+  all: readonly Pick<Person, 'name'>[],
+  query: string,
+): MentionItem<T>[] => {
+  const people = mentionOptions(offered, query).map((person): MentionItem<T> => ({ kind: 'person', person }))
+  const name = newPersonName(all, query)
+  return name === null ? people : [...people, { kind: 'new', name }]
 }
 
 /** The arrow-keyed choice, wrapping around. */
