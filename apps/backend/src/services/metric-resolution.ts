@@ -1,6 +1,6 @@
 import type { CustomMetricDefinition, StoredMetricCatalog, StoredMetricCatalogEntry } from '@aurboda/api-spec'
 
-import { sameUnit } from '@aurboda/api-spec'
+import { isComputedMetric, sameUnit } from '@aurboda/api-spec'
 
 import { isValidMetric, metricUnits } from '../schema.ts'
 import {
@@ -40,6 +40,13 @@ export const resolveMetricForWrite = (
     ? { adopt: false, entry, metric: entry.name, unit: own.unit }
     : { adopt: true, entry, metric: entry.name, unit: entry.unit }
 }
+
+/** Why a client may not write `metric`: Aurboda calculates it and replaces its rows on recalculation. */
+export const computedMetricWriteError = (metric: string): string | undefined =>
+  isComputedMetric(metric) ? `"${metric}" is calculated by Aurboda and cannot be written.` : undefined
+
+export const computedMetricDeleteError = (metric: string): string | undefined =>
+  isComputedMetric(metric) ? `"${metric}" is calculated by Aurboda and cannot be deleted.` : undefined
 
 const unitError = (resolved: ResolvedMetric, givenUnit: string): string =>
   resolved.entry

@@ -166,6 +166,7 @@ export const tableCreationOrder = [
   'uploaded_icons',
   'custom_metrics',
   'custom_metrics_indexes',
+  'derived_metric_state',
   'goals',
   'goals_indexes',
   'user_settings',

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { createDataResponseSchema, dataFieldPathSchema } from './common.ts'
+import { createDataResponseSchema, dataFieldPathSchema, type MetricType } from './common.ts'
 import { exerciseMuscleGroupSchema } from './exercise-catalog.ts'
 
 export const STRENGTH_SCORE_WINDOW_DAYS = 90
@@ -30,6 +30,9 @@ export const strengthScoreGroupSchema = z.enum(strengthScoreGroups).meta({
 })
 
 export type StrengthScoreGroup = z.infer<typeof strengthScoreGroupSchema>
+
+export const strengthScoreMetricOf = (group?: StrengthScoreGroup): MetricType =>
+  group === undefined ? 'strength_score' : `strength_score_${group}`
 
 export const strengthScoreMissingSchema = z.enum(['sex', 'bodyweight']).meta({
   description:

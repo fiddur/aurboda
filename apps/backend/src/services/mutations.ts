@@ -68,7 +68,12 @@ import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
 import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
-import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
+import {
+  computedMetricDeleteError,
+  computedMetricWriteError,
+  resolveMetricForWrite,
+  valueForWrite,
+} from './metric-resolution.ts'
 import { syncNoteTimesForEntity } from './notes.ts'
 import { reanalyseActivities, reanalyseOverrideTargets } from './track-analyse.ts'
 import { markWorkoutHoursDirty } from './training-load/dirty.ts'
@@ -242,6 +247,10 @@ export async function deleteMetric(
   time: Date,
   source: string,
 ): Promise<DeleteMetricResult> {
+  const computedError = computedMetricDeleteError(metric)
+  if (computedError) {
+    return { deleted: false, error: computedError, metric, success: false, time: time.toISOString() }
+  }
   const deleted = await deleteTimeSeriesPoint(user, metric, time, source)
   if (deleted && OUTBOUND_SOURCES.has(source)) await enqueueMetricOutboundDelete(user, [{ metric, time }])
 
@@ -255,6 +264,8 @@ export async function deleteMetric(
 
 /** Soft-deletes all user-created measurements of a metric. */
 export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
+  const computedError = computedMetricDeleteError(metric)
+  if (computedError) return { deletedCount: 0, error: computedError, metric, success: false }
   const deleted = await deleteTimeSeriesMetric(user, metric)
   await enqueueMetricOutboundDelete(
     user,
@@ -289,6 +300,8 @@ export async function addMetric(
     return refuse(`Invalid metric "${input.metric}". Not a built-in or registered custom metric.`)
   }
   const { metric, unit } = resolved
+  const computedError = computedMetricWriteError(metric)
+  if (computedError) return refuse(computedError, metric, unit)
 
   const converted = valueForWrite(resolved, input.value, input.unit)
   if ('error' in converted) return refuse(converted.error, metric, unit)
@@ -318,6 +331,8 @@ const prepareBulkItem = (
 ): PreparedBulkItem => {
   const resolved = resolveMetricForWrite(item.metric, customMetrics, catalog)
   if (!resolved) return { error: `Invalid metric "${item.metric}"` }
+  const computedError = computedMetricWriteError(resolved.metric)
+  if (computedError) return { error: computedError }
 
   const converted = valueForWrite(resolved, item.value, item.unit)
   if ('error' in converted) return converted

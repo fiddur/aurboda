@@ -18,6 +18,7 @@ import {
   getTimeSeriesWithSource,
   hasTimeSeries,
   insertTimeSeries,
+  reconcileTimeSeries,
   replaceTimeSeriesInWindow,
 } from './time-series.ts'
 
@@ -802,6 +803,90 @@ describe('Time Series Integration Tests', () => {
         [30, 90, 'garmin'],
       ])
       expect((await getTimeSeries(user, 'stress_level', t(0), t(59))).map(([, v]) => v)).toEqual([30])
+    })
+  })
+
+  describe('reconcileTimeSeries', () => {
+    const t = (day: number) => new Date(Date.UTC(2024, 0, day, 11))
+    const rows = async (user: string) =>
+      (
+        await query<{
+          deleted: boolean
+          metric: string
+          source: string
+          time: Date
+          updated_at: Date
+          value: number
+        }>(
+          user,
+          `SELECT time, metric, source, value, updated_at, deleted_at IS NOT NULL AS deleted
+             FROM time_series ORDER BY metric, source, time`,
+        )
+      ).rows
+
+    test('removes rows not among the points, writes new and changed ones and leaves the rest', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'strength_score', source: 'aurboda', time: t(1), value: 50 },
+        { metric: 'strength_score', source: 'aurboda', time: t(2), value: 55 },
+        { metric: 'strength_score', source: 'aurboda', time: t(3), value: 60 },
+        { metric: 'strength_score_chest', source: 'aurboda', time: t(1), value: 40 },
+        { metric: 'strength_score', source: 'manual', time: t(1), value: 99 },
+        { metric: 'training_impulse', source: 'aurboda', time: t(1), value: 7 },
+      ])
+      await query(user, `UPDATE time_series SET updated_at = '2020-01-01T00:00:00Z'`)
+
+      const result = await reconcileTimeSeries(
+        user,
+        'aurboda',
+        ['strength_score', 'strength_score_chest'],
+        [
+          { metric: 'strength_score', source: 'aurboda', time: t(1), unit: 'points', value: 50 },
+          { metric: 'strength_score', source: 'aurboda', time: t(2), unit: 'points', value: 56 },
+          { metric: 'strength_score', source: 'aurboda', time: t(4), unit: 'points', value: 62 },
+        ],
+      )
+
+      expect(result).toEqual({ removed: 2, written: 2 })
+      const after = await rows(user)
+      expect(after.map((r) => [r.metric, r.source, new Date(r.time).getUTCDate(), r.value])).toEqual([
+        ['strength_score', 'aurboda', 1, 50],
+        ['strength_score', 'aurboda', 2, 56],
+        ['strength_score', 'aurboda', 4, 62],
+        ['strength_score', 'manual', 1, 99],
+        ['training_impulse', 'aurboda', 1, 7],
+      ])
+      const unchanged = after.find((r) => r.source === 'aurboda' && new Date(r.time).getUTCDate() === 1)
+      expect(new Date(unchanged?.updated_at as Date).toISOString()).toBe('2020-01-01T00:00:00.000Z')
+    })
+
+    test('replaces a soft-deleted row and removes everything for no points', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'strength_score', source: 'aurboda', time: t(1), value: 50 },
+        { metric: 'strength_score_back', source: 'aurboda', time: t(1), value: 30 },
+      ])
+      await deleteTimeSeriesPoint(user, 'strength_score', t(1), 'aurboda')
+
+      expect(
+        await reconcileTimeSeries(
+          user,
+          'aurboda',
+          ['strength_score', 'strength_score_back'],
+          [{ metric: 'strength_score', source: 'aurboda', time: t(1), value: 50 }],
+        ),
+      ).toEqual({ removed: 2, written: 1 })
+      expect((await rows(user)).map((r) => [r.metric, r.value, r.deleted])).toEqual([
+        ['strength_score', 50, false],
+      ])
+
+      expect(
+        await reconcileTimeSeries(user, 'aurboda', ['strength_score', 'strength_score_back'], []),
+      ).toEqual({
+        removed: 1,
+        written: 0,
+      })
+      expect(await rows(user)).toEqual([])
     })
   })
 

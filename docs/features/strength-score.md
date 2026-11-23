@@ -7,9 +7,10 @@ recreational lifter who has trained the lift regularly for a year or two.
 
 It is a yardstick for following one's own progress, not a standard to be ranked against: the
 references are Aurboda's own estimates, and the score leaves out age, limb length, technique and
-everything else that sets one lifter apart from the next. It is computed on read and never stored,
-so it and its history always follow the data as it is now (a corrected set, a newly matched
-exercise, a changed weight).
+everything else that sets one lifter apart from the next. The score page and the REST and MCP reads
+compute it on read, so they always follow the data as it is now (a corrected set, a newly matched
+exercise, a changed weight). A copy is also [stored as daily metrics](#stored-as-daily-metrics) for
+charts, dashboards, goals and correlations.
 
 ## How it is computed
 
@@ -116,6 +117,45 @@ The Android app shows the same pages, embedded.
 
 A field that is not a catalogue-backed item path of the type is a 400, an unknown type a 404. The
 MCP tools take the same parameters plus `activity_type`.
+
+## Stored as daily metrics
+
+Aurboda also stores the score of strength training (`strength_training`'s `sets.exercise`) as nine
+built-in metrics, so it works wherever a metric does: Chart Explorer, dashboard cards and charts,
+goals, correlations, the Data page, the data export and the MCP metric tools.
+
+| Metric                      | Value                        |
+| --------------------------- | ---------------------------- |
+| `strength_score`            | The overall score            |
+| `strength_score_chest`      | The Chest group's score      |
+| `strength_score_shoulders`  | The Shoulders group's score  |
+| `strength_score_back`       | The Back group's score       |
+| `strength_score_biceps`     | The Biceps group's score     |
+| `strength_score_triceps`    | The Triceps group's score    |
+| `strength_score_quadriceps` | The Quadriceps group's score |
+| `strength_score_hamstrings` | The Hamstrings group's score |
+| `strength_score_glutes`     | The Glutes group's score     |
+
+- **Unit** `points`, a level (averaged, never summed), higher is better. Source `aurboda`.
+- **One value per local day** in the user's time zone, from the day of the first scored set through
+  today. A past day's value is the score at the end of that day; today's is the score now. The
+  value is stamped at local noon of its day (today, before noon, at the current minute, so no value
+  lies in the future). A day on which a group, or the overall score, has no score stores nothing for
+  that metric. Without sex or a bodyweight nothing is stored, and values stored earlier are removed.
+- **Kept up to date by Aurboda**, as the score it copies (the same calculation as the history):
+  an activity that is added, changed, merged or synced recalculates within seconds (pg-boss queue
+  `strength-score-refresh`); everything else, a deleted or restored activity, a new day, a
+  bodyweight that arrived by sync, a changed sex setting, a newly matched exercise or new reference
+  numbers, within five minutes (queue `strength-score-sweep`, every five minutes over every user). A user whose
+  inputs have not changed since the last run is skipped after a few cheap reads. Only values that
+  changed are rewritten.
+- **Read only.** They cannot be added, imported, logged by a check-in, deleted or merged into by
+  hand, through REST or MCP: such a write is refused with `"<metric>" is calculated by Aurboda and
+cannot be written.` (or `… cannot be deleted.`). The Add data form does not offer them. They are
+  never sent to Health Connect.
+
+The score page and `get_strength_score` / `get_strength_score_history` still calculate on read; the
+stored metrics are a derived copy.
 
 ## Limits
 

@@ -29,6 +29,7 @@ import {
   searchMetricCatalog,
   toMetricCatalogEntry,
 } from './metric-catalog.ts'
+import { computedMetricWriteError } from './metric-resolution.ts'
 
 export interface CustomMetricResult {
   success: boolean
@@ -61,12 +62,14 @@ export interface UpdateCustomMetricResult {
 export interface DeleteMetricResult {
   success: boolean
   deleted: boolean
+  error?: string
   metric: string
   time: string
 }
 
 export interface DeleteMetricDataResult {
   success: boolean
+  error?: string
   metric: string
   deletedCount: number
 }
@@ -227,6 +230,8 @@ export async function mergeCustomMetricService(
   if (source === target) {
     return { error: 'Source and target cannot be the same metric.', success: false }
   }
+  const computedError = computedMetricWriteError(target)
+  if (computedError) return { error: computedError, success: false }
 
   const sourceMetric = await getCustomMetricByName(user, source)
   if (!sourceMetric) {
