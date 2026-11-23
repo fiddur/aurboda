@@ -202,6 +202,7 @@ import {
 import {
   deleteNoteAttachmentQuerySchema,
   deleteNoteAttachmentResponseSchema,
+  INLINE_PICTURE_HINT,
   MAX_ATTACHMENTS_PER_NOTE,
   NOTE_ATTACHMENT_MAX_BYTES,
   NOTE_ATTACHMENTS_ACCOUNT_BYTES,
@@ -3682,7 +3683,7 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
       post: {
-        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account.`,
+        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account. ${INLINE_PICTURE_HINT}`,
         requestBody: {
           content: {
             'multipart/form-data': {

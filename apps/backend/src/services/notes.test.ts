@@ -1798,6 +1798,15 @@ describe('related people and activities', () => {
     expect(journalExcerpt('')).toBe('')
     expect(journalExcerpt('\n\n  Hello  \nWorld')).toBe('Hello')
   })
+
+  test('journalExcerpt skips lines that are only pictures', () => {
+    const id = '3f0c2b1a-9d8e-4f7a-8b6c-5d4e3f2a1b0c'
+    expect(
+      journalExcerpt(`![](attachment:${id})\n ![lake](https://x/y.png) ![](attachment:${id})\nThe lake`),
+    ).toBe('The lake')
+    expect(journalExcerpt(`Look ![](attachment:${id})`)).toBe(`Look ![](attachment:${id})`)
+    expect(journalExcerpt(`![](attachment:${id})`)).toBe('')
+  })
 })
 
 describe('journal neighbours', () => {
