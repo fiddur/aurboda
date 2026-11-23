@@ -108,7 +108,6 @@ const Body = ({ field, name, score }: { field: string; name: string; score: Scor
   </>
 )
 
-/** The loading and retry states of the score, and `children` with it once loaded. */
 export function StrengthScoreLoader({
   children,
   field,

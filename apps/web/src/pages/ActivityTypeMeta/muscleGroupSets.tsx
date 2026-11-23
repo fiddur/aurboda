@@ -54,7 +54,6 @@ export const useMuscleGroupSets = (name: string, path: string) => {
 
 export type MuscleGroupSets = ReturnType<typeof useMuscleGroupSets>
 
-/** The period select and the ⋮ menu of the weekly sets chart. */
 export const MuscleGroupSetsControls = ({ sets }: { sets: MuscleGroupSets }) => (
   <div class="sessions-controls">
     <select

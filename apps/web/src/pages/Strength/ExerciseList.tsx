@@ -209,7 +209,6 @@ const NotDone = ({
   )
 }
 
-/** The strength exercises of a period, filtered by name, muscle group and equipment. */
 export function ExerciseList({ item, list }: { item: DataItemFieldDefinition; list: ListFieldDefinition }) {
   const { query: urlQuery } = useLocation()
   const [lookback, setLookback] = useState(90)

@@ -6,8 +6,8 @@ import { ChartMenu } from '../../components/charts/ChartMenu'
 import { type LineSeriesData, TrendLineChart } from '../../components/charts/TrendLineChart'
 import { CHART_PRIMARY } from '../../theme'
 import { newWidgetId } from '../../utils/widget-id'
-import { scoreChartMenu } from '../Strength/progressModel'
 import { useStrengthScoreHistory } from './queries'
+import { scoreChartMenu } from './scoreChartMenu'
 import {
   ALL_GROUPS,
   allGroupsSeries,
