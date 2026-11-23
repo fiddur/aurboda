@@ -302,6 +302,7 @@ export const socialTables: Record<string, string> = {
       include_map       BOOLEAN NOT NULL DEFAULT false,
       include_chart     BOOLEAN NOT NULL DEFAULT false,
       include_exercises BOOLEAN NOT NULL DEFAULT false,
+      include_exercise_trends BOOLEAN NOT NULL DEFAULT false,
       article           JSONB,
       -- Challenge link payload (name + canonical URL) for kind = 'challenge' (#994).
       challenge         JSONB,
@@ -371,6 +372,9 @@ export const socialTables: Record<string, string> = {
   feed_posts_mentions_column: `
     ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS mentions JSONB NOT NULL DEFAULT '[]'::jsonb;
   `,
+  feed_posts_exercise_trends_column: `
+    ALTER TABLE feed_posts ADD COLUMN IF NOT EXISTS include_exercise_trends BOOLEAN NOT NULL DEFAULT false;
+  `,
   // Unpublished article drafts: private work in progress, kept out of feed_posts
   // so no feed, outbox, timeline or public listing can ever see one. Publishing
   // creates a feed_posts row and deletes the draft.
@@ -424,6 +428,7 @@ export const socialTables: Record<string, string> = {
       include_chart         BOOLEAN NOT NULL DEFAULT false,
       include_map           BOOLEAN NOT NULL DEFAULT false,
       include_exercises     BOOLEAN NOT NULL DEFAULT false,
+      include_exercise_trends BOOLEAN NOT NULL DEFAULT false,
       visibility            VARCHAR(12) NOT NULL DEFAULT 'followers',
       message               TEXT,
       created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -445,6 +450,9 @@ export const socialTables: Record<string, string> = {
   `,
   autoshare_rules_delay_minutes: `
     ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS delay_minutes INTEGER NOT NULL DEFAULT 10
+  `,
+  autoshare_rules_include_exercise_trends: `
+    ALTER TABLE autoshare_rules ADD COLUMN IF NOT EXISTS include_exercise_trends BOOLEAN NOT NULL DEFAULT false
   `,
   // `idx_feed_posts_series` is a GIN index over the shared-series set — the hot
   // path for the public series endpoint's `metric = ANY(series_metrics)` check.

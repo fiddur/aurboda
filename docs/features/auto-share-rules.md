@@ -40,6 +40,8 @@ A per-user set of rules, each combining a **predicate** and a **share template**
 - **Share template** — exactly the fields of a manual share: `included_metrics`,
   `series_metrics`, `include_chart`/`include_map`, `include_exercises` (off by default; a
   strength-training rule can share each exercise's sets, e1RM, volume and records),
+  `include_exercise_trends` (off by default; with `include_exercises`, each exercise's
+  e1RM and volume trend too — see [feed.md](feed.md)),
   `visibility`, and an optional fixed `message` for the created posts.
 - **Tags** (`tags`, nullable): `null` (the default) gives the created posts the owner's
   default tags; a list replaces them for this rule's posts (`[]` for none). The activity

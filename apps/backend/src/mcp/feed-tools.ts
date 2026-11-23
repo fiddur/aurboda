@@ -206,6 +206,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? activity_id,
         include_chart: body.include_chart,
+        include_exercise_trends: body.include_exercise_trends,
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,
@@ -240,6 +241,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
           user,
           activity,
           {
+            include_exercise_trends: body.include_exercise_trends,
             include_exercises: body.include_exercises,
             included_metrics: body.included_metrics,
             mentions: mentioned.mentions,
@@ -272,6 +274,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!retag.found) return errorResponse('Feed post not found')
       const record = await updateFeedPost(user, id, {
         include_chart: body.include_chart,
+        include_exercise_trends: body.include_exercise_trends,
         include_exercises: body.include_exercises,
         include_map: body.include_map,
         included_metrics: body.included_metrics,

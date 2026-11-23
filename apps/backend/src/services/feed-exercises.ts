@@ -6,6 +6,7 @@
  */
 import type {
   ActivityItemHistory,
+  ActivityItemTrend,
   ActivityMeasure,
   ActivityMeasures,
   DataSchemaDefinition,
@@ -13,7 +14,7 @@ import type {
   SharedExerciseSet,
 } from '@aurboda/api-spec'
 
-import { activityMeasureUnits } from '@aurboda/api-spec'
+import { activityMeasureUnits, itemTrendLabels, shownItemTrend } from '@aurboda/api-spec'
 
 import { getActivityTypeDefinition } from '../db/index.ts'
 import { toWireKey } from './activitypub/quant-wire.ts'
@@ -24,6 +25,7 @@ export interface SharedExercise {
   sets: SharedExerciseSet[]
   measures: ActivityMeasures
   records: ActivityMeasure[]
+  trend: ActivityItemTrend[]
 }
 
 export interface SharedExercisesDeps {
@@ -81,6 +83,7 @@ export const resolveSharedExercises = async (
     name: group.value,
     records: group.records,
     sets: group.items.map(toSharedSet),
+    trend: group.trend,
   }))
 }
 
@@ -135,14 +138,37 @@ export const formatMeasureValue = (measure: ActivityMeasure, value: number): str
   return unit === '' ? String(rounded) : `${rounded} ${unit}`
 }
 
-/** `Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM` */
-export const formatExerciseLine = (exercise: SharedExercise): string => {
+const TREND_UP = '↗'
+
+/** `e1RM 98 kg ↗ 101.3 kg`, or just `volume 640 kg` where the session did not lift the trend. */
+const formatTrendPart = ({ after, before, measure }: ActivityItemTrend): string => {
+  const value =
+    before !== undefined && after > before
+      ? `${formatMeasureValue(measure, before)} ${TREND_UP} ${formatMeasureValue(measure, after)}`
+      : formatMeasureValue(measure, after)
+  return `${itemTrendLabels[measure]} ${value}`
+}
+
+/**
+ * `Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM`, and with `trend`
+ * ` · trend e1RM 98 kg ↗ 101.3 kg, volume 640 kg` unless it is the exercise's first time.
+ */
+export const formatExerciseLine = (
+  exercise: Omit<SharedExercise, 'trend'> & { trend?: ActivityItemTrend[] },
+  { trend = false }: { trend?: boolean } = {},
+): string => {
   const parts = [`${exercise.name}: ${exercise.sets.map(formatExerciseSet).join(', ')}`]
   if (exercise.measures.e1rm !== undefined) parts.push(`e1RM ${kg(exercise.measures.e1rm)}`)
   if (exercise.measures.volume !== undefined) parts.push(`volume ${kg(exercise.measures.volume)}`)
   for (const record of exercise.records) parts.push(`PR ${RECORD_BADGES[record]}`)
+  const shown = trend ? shownItemTrend(exercise.trend ?? []) : undefined
+  if (shown) parts.push(`trend ${shown.map(formatTrendPart).join(', ')}`)
   return parts.join(' · ')
 }
+
+/** One line per shared exercise; the trend only where the post shares it. */
+export const formatExerciseLines = (exercises: SharedExercise[], opts: { trend: boolean }): string[] =>
+  exercises.map((exercise) => formatExerciseLine(exercise, opts))
 
 const WIRE_UNITS: Record<string, string> = { s: 'seconds' }
 

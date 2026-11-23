@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { runCategoryFilterSchema } from './activity-features.ts'
-import { activityMeasureSchema, activityMeasuresSchema } from './activity-measures.ts'
+import { type ActivityMeasure, activityMeasureSchema, activityMeasuresSchema } from './activity-measures.ts'
 import {
   activityTypeSchema,
   createDataResponseSchema,
@@ -424,6 +424,26 @@ export const activityItemTrendSchema = z
   })
 
 export type ActivityItemTrend = z.infer<typeof activityItemTrendSchema>
+
+/** How a shown trend measure is named next to its values: `e1RM 98 kg ↗ 101.3 kg`. */
+export const itemTrendLabels: Partial<Record<ActivityMeasure, string>> = {
+  e1rm: 'e1RM',
+  max_reps: 'best set',
+  max_time: 'hold',
+  volume: 'volume',
+}
+
+/**
+ * The trend measures an exercise line shows: e1RM and volume where the session has them, else the
+ * longest hold, else the best set. Undefined when none of them has an earlier trend (a first time).
+ */
+export const shownItemTrend = (trend: ActivityItemTrend[]): ActivityItemTrend[] | undefined => {
+  const of = (measure: ActivityMeasure) => trend.find((t) => t.measure === measure)
+  const main = [of('e1rm'), of('volume')].filter((t) => t !== undefined)
+  const fallback = of('max_time') ?? of('max_reps')
+  const shown = main.length > 0 ? main : fallback ? [fallback] : []
+  return shown.some((t) => t.before !== undefined) ? shown : undefined
+}
 
 export const activityItemGroupSchema = z
   .object({

@@ -521,6 +521,71 @@ describe('feed service', () => {
       expect(withExercises.content).toBe((await serializeFeedPost(user, post)).content)
     })
 
+    test('the trend joins the exercise lines only with both opt-ins, and the preview matches', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets: [{ exercise: 'Bench Press', reps: 8, weight: 70 }] },
+        end_time: new Date('2026-06-24T08:55:00Z'),
+        source: 'gravl',
+        start_time: new Date('2026-06-24T08:02:00Z'),
+        title: 'Push day',
+      })
+      const garminId = await insertStrengthPair(user)
+      const activity = await getActivityById(user, garminId)
+      if (!activity) throw new Error('expected the activity')
+
+      const both = await createFeedPost(
+        user,
+        postInput(garminId, { include_exercise_trends: true, include_exercises: true }),
+      )
+      const dto = await serializeFeedPost(user, both)
+      expect(dto.include_exercise_trends).toBe(true)
+      expect(dto.content).toContain(
+        '<p><strong>Exercises</strong><br>Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM · PR weight · trend e1RM 85.2 kg ↗ 101.3 kg, volume 537.8 kg ↗ 640 kg<br>Pull-up: 10 reps · PR reps</p>',
+      )
+
+      const preview = await previewActivityShare(user, activity, {
+        include_exercise_trends: true,
+        include_exercises: true,
+        included_metrics: ['duration'],
+      })
+      expect(preview.content).toBe(dto.content)
+
+      const exercisesOnly = await serializeFeedPost(
+        user,
+        await createFeedPost(user, postInput(garminId, { include_exercises: true })),
+      )
+      expect(exercisesOnly.include_exercise_trends).toBe(false)
+      expect(exercisesOnly.content).toContain('Bench Press')
+      expect(exercisesOnly.content).not.toContain('trend')
+
+      const trendsOnly = await createFeedPost(user, postInput(garminId, { include_exercise_trends: true }))
+      expect(trendsOnly.include_exercise_trends).toBe(true)
+      expect((await serializeFeedPost(user, trendsOnly)).content).not.toContain('Exercises')
+      const unticked = await previewActivityShare(user, activity, {
+        include_exercise_trends: true,
+        included_metrics: [],
+      })
+      expect(unticked.content).not.toContain('Exercises')
+    })
+
+    test('the trend flag round-trips through an update', async () => {
+      const user = getTestUser()
+      const garminId = await insertStrengthPair(user)
+      const post = await createFeedPost(user, postInput(garminId))
+      expect(post.include_exercise_trends).toBe(false)
+      expect(
+        (await updateFeedPost(user, post.id, { include_exercise_trends: true }))?.include_exercise_trends,
+      ).toBe(true)
+      expect(
+        (await updateFeedPost(user, post.id, { include_exercises: true }))?.include_exercise_trends,
+      ).toBe(true)
+      expect(
+        (await updateFeedPost(user, post.id, { include_exercise_trends: false }))?.include_exercise_trends,
+      ).toBe(false)
+    })
+
     test('an activity type without a categorical item field has no exercises', async () => {
       const user = getTestUser()
       const anchorId = await insertAnchor(user)
