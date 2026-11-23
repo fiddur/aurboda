@@ -276,6 +276,7 @@ export {
   type DeletedNote,
   getDeletedNotes,
   getNoteById,
+  getNoteNeighbors,
   getNoteRevisions,
   getNoteRoot,
   getNotesByEntityIds,

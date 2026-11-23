@@ -225,6 +225,8 @@ import {
   deleteNoteQuerySchema,
   deleteNoteResponseSchema,
   noteConflictResponseSchema,
+  noteNeighborsQuerySchema,
+  noteNeighborsResponseSchema,
   noteResponseSchema,
   noteRevisionsResponseSchema,
   notesResponseSchema,
@@ -3583,6 +3585,29 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List comment revisions',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/neighbors': {
+      get: {
+        description:
+          "The Journal entries just before (older, `previous`) and after (newer, `next`) one entry, in the Journal list's order: the free-standing `time` and `day` entries, newest first by their time or day (a `day` entry at the start of its date in tz).",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: noteNeighborsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteNeighborsResponseSchema } },
+            description: 'The neighbouring entries',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live Journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the neighbouring Journal entries',
         tags: ['Notes'],
       },
     },

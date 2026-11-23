@@ -7,6 +7,7 @@ import { createNotesRouter } from './notes-router.ts'
 vi.mock('../services/mutations.ts', () => ({
   addNote: vi.fn(),
   deleteNoteById: vi.fn(),
+  getJournalNeighbors: vi.fn(),
   getNoteForUser: vi.fn(),
   getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn(),
@@ -256,6 +257,43 @@ describe('GET /notes/:id/revisions', () => {
     vi.mocked(mutations.getNoteRevisionsById).mockResolvedValue({ error: 'Note not found', success: false })
 
     expect((await supertest(buildApp()).get(`/${NOTE_ID}/revisions`)).status).toBe(404)
+  })
+})
+
+describe('GET /notes/:id/neighbors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers the older and newer entries, reading tz', async () => {
+    const neighbors = {
+      next: { date: '2024-01-16', entity_type: 'day' as const, excerpt: 'Newer', id: ENTITY_ID },
+      previous: undefined,
+    }
+    vi.mocked(mutations.getJournalNeighbors).mockResolvedValue(neighbors)
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`).query({ tz: 'Europe/Stockholm' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { next: neighbors.next }, success: true })
+    expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('tester', NOTE_ID, 'Europe/Stockholm')
+  })
+
+  test('404 when it is not a Journal entry', async () => {
+    vi.mocked(mutations.getJournalNeighbors).mockResolvedValue(null)
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`)
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Journal entry not found', success: false })
+    expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('tester', NOTE_ID, undefined)
+  })
+
+  test('400 for an unknown zone', async () => {
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`).query({ tz: 'Mars/Olympus' })
+
+    expect(res.status).toBe(400)
+    expect(mutations.getJournalNeighbors).not.toHaveBeenCalled()
   })
 })
 

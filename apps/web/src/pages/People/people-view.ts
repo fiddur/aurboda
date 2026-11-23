@@ -128,6 +128,14 @@ export const filterPeople = <T extends Pick<Person, 'name' | 'relationship' | 'a
   query: string,
 ): T[] => people.filter((person) => matches(person, query))
 
+/** A trimmed, non-empty name that no person (archived ones included) already has, ignoring case. */
+export const newPersonName = (people: readonly Pick<Person, 'name'>[], typed: string): string | null => {
+  const name = typed.trim()
+  if (!name) return null
+  const lower = name.toLowerCase()
+  return people.some((p) => p.name.trim().toLowerCase() === lower) ? null : name
+}
+
 /** Followed accounts with a handle that no person has yet, so they can be added as one. */
 export const followedWithoutProfile = (
   following: readonly FollowingActor[],

@@ -3,7 +3,7 @@ import type { AddPersonBody } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { nameForAccount, withPickerOptions } from '../pages/People/people-view'
+import { nameForAccount, newPersonName, withPickerOptions } from '../pages/People/people-view'
 import { addPerson, fetchFollowing, fetchPeople, PEOPLE_KEY } from '../state/api'
 import './WithPicker.css'
 
@@ -54,9 +54,8 @@ export function WithPicker({ value, onChange, id = 'with-picker' }: Props) {
     onChange([...value, personId])
     setQuery('')
   }
-  const newName = query.trim()
-  const canAddNew =
-    newName !== '' && !people.some((p) => p.name.trim().toLowerCase() === newName.toLowerCase())
+  const newName = newPersonName(people, query)
+  const canAddNew = newName !== null
   const hasOptions = options.people.length > 0 || options.accounts.length > 0 || canAddNew
 
   return (
