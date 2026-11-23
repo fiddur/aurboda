@@ -190,7 +190,7 @@ const outputCategoryDescription =
   "Enrich mode only: add this category to data.run_categories of each matched activity of output_activity_type (with the feature conditions as reasons), and remove it again from activities the rule no longer matches; a category listed in the activity's run_categories_excluded is never added."
 
 const outputPeopleDescription =
-  'People to add to the With field of each activity the rule creates, enriches or retypes. People are only ever added: a person already on the activity stays, and the rule never removes anyone.'
+  'People to add to the With field of each activity the rule creates, enriches or retypes. The rule adds each person to an activity once: a person taken off by hand stays off, and an activity whose people were set by hand is left alone. The rule never removes anyone.'
 
 export const outputPeopleSchema = z
   .array(z.string().uuid())
