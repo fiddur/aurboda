@@ -5,6 +5,8 @@ import type {
   Note,
   NoteAttachment,
   NoteAttachmentResponse,
+  NoteNeighbors,
+  NoteNeighborsResponse,
   NoteResponse,
   NoteRevision,
   NoteRevisionsResponse,
@@ -138,6 +140,18 @@ export const fetchNote = async (id: string): Promise<Note> => {
     headers: authHeaders(),
   })
   return requireNote(response.data.data)
+}
+
+/** The entries just before (older, `previous`) and after (newer, `next`) one, in the Journal's order. */
+export const fetchJournalNeighbors = async (id: string, tz?: string): Promise<NoteNeighbors> => {
+  const response = await axios.get<NoteNeighborsResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/neighbors`,
+    {
+      headers: authHeaders(),
+      params: tz ? { tz } : {},
+    },
+  )
+  return response.data.data ?? {}
 }
 
 export const createJournalEntry = async (body: AddNoteBody): Promise<Note> => {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
 import type { ImageUpload, UploadImage } from './image-upload'
 
@@ -28,6 +28,42 @@ interface MarkdownEditorProps {
   onKeyDown?: (e: KeyboardEvent) => void
   /** The cursor may have moved without the text changing (a click, an arrow key). */
   onCaret?: () => void
+  /** The text area grows with its text instead of scrolling inside; `rows` is then its least height. */
+  autoGrow?: boolean
+}
+
+const fitHeight = (textarea: HTMLTextAreaElement) => {
+  const borders = textarea.offsetHeight - textarea.clientHeight
+  const scrollY = window.scrollY
+  textarea.style.height = 'auto'
+  textarea.style.height = `${textarea.scrollHeight + borders}px`
+  // Collapsing to `auto` for the measurement can shorten the page and clamp its scroll.
+  if (window.scrollY !== scrollY) window.scrollTo(window.scrollX, scrollY)
+}
+
+const useAutoGrow = (
+  textarea: { current: HTMLTextAreaElement | null },
+  enabled: boolean | undefined,
+  value: string,
+  tab: string,
+): string => {
+  useLayoutEffect(() => {
+    if (enabled && textarea.current) fitHeight(textarea.current)
+  }, [enabled, textarea, value, tab])
+
+  useLayoutEffect(() => {
+    if (!enabled) return
+    let width = window.innerWidth
+    const refit = () => {
+      if (window.innerWidth === width) return
+      width = window.innerWidth
+      if (textarea.current) fitHeight(textarea.current)
+    }
+    window.addEventListener('resize', refit)
+    return () => window.removeEventListener('resize', refit)
+  }, [enabled, textarea])
+
+  return enabled ? 'md-editor-textarea md-editor-textarea--grow' : 'md-editor-textarea'
 }
 
 const PictureIcon = () => (
@@ -92,6 +128,7 @@ export const MarkdownEditor = ({
   textareaRef,
   onKeyDown,
   onCaret,
+  autoGrow,
 }: MarkdownEditorProps) => {
   const [tab, setTab] = useState<'write' | 'preview'>('write')
   const ownTextarea = useRef<HTMLTextAreaElement>(null)
@@ -103,6 +140,7 @@ export const MarkdownEditor = ({
     value,
   })
   const picking = pictureInput(pictures, attachPictures)
+  const textareaClass = useAutoGrow(textarea, autoGrow, value, tab)
 
   const handleInput = useCallback(
     (e: Event) => {
@@ -137,7 +175,7 @@ export const MarkdownEditor = ({
         {tab === 'write' ? (
           <textarea
             ref={textarea}
-            class="md-editor-textarea"
+            class={textareaClass}
             value={value}
             onInput={handleInput}
             placeholder={placeholder ?? 'Write a note (markdown supported)…'}

@@ -8,6 +8,7 @@ import {
   decodeNotesCursor,
   deleteNoteById,
   encodeNotesCursor,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
@@ -21,6 +22,7 @@ import {
   searchNotesForUser,
   splitSearchText,
   syncNoteTimesForEntity,
+  toNoteNeighbor,
   updateNote,
 } from './notes.ts'
 
@@ -32,6 +34,7 @@ vi.mock('../db', () => ({
   getNoteAttachmentsForNoteIds: vi.fn(async () => new Map()),
   getNoteById: vi.fn(),
   getNoteLinksForNoteIds: vi.fn(async () => new Map()),
+  getNoteNeighbors: vi.fn(),
   getNoteRevisions: vi.fn(),
   getNoteRoot: vi.fn(),
   getNotesForEntity: vi.fn(),
@@ -1789,5 +1792,63 @@ describe('related people and activities', () => {
   test('journalExcerpt is the first non-empty line, trimmed', () => {
     expect(journalExcerpt('')).toBe('')
     expect(journalExcerpt('\n\n  Hello  \nWorld')).toBe('Hello')
+  })
+})
+
+describe('journal neighbours', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('toNoteNeighbor: a day entry carries its date, a timed one its start time, a blank title none', () => {
+    const id = randomUUID()
+    expect(
+      toNoteNeighbor(
+        makeNote({
+          content: '\n  First line  \nSecond',
+          date: '2024-01-15',
+          entity_id: null,
+          entity_type: 'day',
+          id,
+          title: 'Monday',
+        }),
+      ),
+    ).toEqual({ date: '2024-01-15', entity_type: 'day', excerpt: 'First line', id, title: 'Monday' })
+
+    expect(
+      toNoteNeighbor(
+        makeNote({
+          content: '',
+          entity_id: null,
+          entity_type: 'time',
+          id,
+          start_time: new Date('2024-01-15T08:00:00Z'),
+          title: '',
+        }),
+      ),
+    ).toEqual({ entity_type: 'time', excerpt: '', id, start_time: '2024-01-15T08:00:00.000Z' })
+  })
+
+  test("reads the free-standing entries in the user's zone unless one is given", async () => {
+    const older = makeNote({ content: 'Older', entity_id: null, entity_type: 'time', start_time: new Date() })
+    vi.mocked(db.getNoteNeighbors).mockResolvedValue({ next: null, previous: older })
+
+    const found = await getJournalNeighbors('user', 'id')
+    expect(found).toEqual({ next: undefined, previous: toNoteNeighbor(older) })
+    expect(db.getNoteNeighbors).toHaveBeenCalledWith('user', 'id', {
+      entity_types: ['time', 'day'],
+      tz: 'Europe/Stockholm',
+    })
+
+    await getJournalNeighbors('user', 'id', 'UTC')
+    expect(db.getNoteNeighbors).toHaveBeenLastCalledWith('user', 'id', {
+      entity_types: ['time', 'day'],
+      tz: 'UTC',
+    })
+  })
+
+  test('null when the entry is not a live Journal entry', async () => {
+    vi.mocked(db.getNoteNeighbors).mockResolvedValue(null)
+    expect(await getJournalNeighbors('user', 'id')).toBeNull()
   })
 })

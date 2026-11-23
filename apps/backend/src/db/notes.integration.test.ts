@@ -11,6 +11,7 @@ import {
   deleteNotesForEntityIn,
   getDeletedNotes,
   getNoteById,
+  getNoteNeighbors,
   getNoteRevisions,
   getNoteRoot,
   getNotesByEntityIds,
@@ -49,6 +50,14 @@ const updateNoteFields = async (user: string, id: string, fields: NoteFieldUpdat
 
 const search = (user: string, params: Partial<NotesSearchParams> = {}) =>
   searchNotes(user, { entity_types: ['time', 'day'], limit: 50, tz: 'UTC', ...params })
+
+const neighbors = async (user: string, id: string, tz = 'UTC') => {
+  const found = await getNoteNeighbors(user, id, { entity_types: ['time', 'day'], tz })
+  return found && { next: found.next?.content ?? null, previous: found.previous?.content ?? null }
+}
+
+const setCreatedAt = (user: string, id: string, createdAt: string) =>
+  query(user, `UPDATE notes SET created_at = $2::timestamptz WHERE id = $1`, [id, createdAt])
 
 const ageDeletion = (user: string, id: string, days: number) =>
   query(user, `UPDATE notes SET deleted_at = NOW() - make_interval(days => $2::int) WHERE id = $1`, [
@@ -1438,6 +1447,96 @@ describe('Notes Integration Tests', () => {
 
       expect((await search(user)).notes.map((n) => n.content)).toEqual(['Moment'])
       expect((await search(user, { entity_types: ['metric'] })).notes).toEqual([])
+    })
+  })
+
+  describe('getNoteNeighbors', () => {
+    test('steps through day and time entries in the Journal order, a day entry at the start of its date in tz', async () => {
+      const user = getTestUser()
+      const late = await insertNote(user, 'time', null, 'Late 14th', new Date('2024-01-14T23:30:00Z'))
+      const day = await insertNote(user, 'day', null, 'Day 15', undefined, undefined, { date: '2024-01-15' })
+      const morning = await insertNote(user, 'time', null, 'Morning 15th', new Date('2024-01-15T08:00:00Z'))
+
+      expect(await neighbors(user, day.id)).toEqual({ next: 'Morning 15th', previous: 'Late 14th' })
+      expect(await neighbors(user, late.id)).toEqual({ next: 'Day 15', previous: null })
+      expect(await neighbors(user, morning.id)).toEqual({ next: null, previous: 'Day 15' })
+
+      // The 15th starts at 23:00 UTC on the 14th in Stockholm, before 'Late 14th'.
+      expect(await neighbors(user, day.id, 'Europe/Stockholm')).toEqual({ next: 'Late 14th', previous: null })
+      expect(await neighbors(user, late.id, 'Europe/Stockholm')).toEqual({
+        next: 'Morning 15th',
+        previous: 'Day 15',
+      })
+    })
+
+    test('the same anchor is ordered by created_at, then id', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T08:00:00Z')
+      const first = await insertNote(user, 'time', null, 'First', start)
+      const second = await insertNote(user, 'time', null, 'Second', start)
+      await setCreatedAt(user, first.id, '2024-01-01T00:00:00Z')
+      await setCreatedAt(user, second.id, '2024-01-02T00:00:00Z')
+
+      expect(await neighbors(user, first.id)).toEqual({ next: 'Second', previous: null })
+      expect(await neighbors(user, second.id)).toEqual({ next: null, previous: 'First' })
+
+      await setCreatedAt(user, second.id, '2024-01-01T00:00:00Z')
+      const [low, high] = [first, second].sort((a, b) => (a.id < b.id ? -1 : 1))
+      expect(await neighbors(user, low.id)).toEqual({ next: high.content, previous: null })
+      expect(await neighbors(user, high.id)).toEqual({ next: null, previous: low.content })
+    })
+
+    test('a single entry has no neighbours', async () => {
+      const user = getTestUser()
+      const only = await insertNote(user, 'time', null, 'Only', new Date('2024-01-15T08:00:00Z'))
+
+      expect(await neighbors(user, only.id)).toEqual({ next: null, previous: null })
+    })
+
+    test('skips deleted entries and comments on entities', async () => {
+      const user = getTestUser()
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T09:30:00Z'),
+        source: 'manual',
+        start_time: new Date('2024-01-15T09:00:00Z'),
+      })
+      const older = await insertNote(user, 'time', null, 'Older', new Date('2024-01-15T07:00:00Z'))
+      const gone = await insertNote(user, 'time', null, 'Gone', new Date('2024-01-15T08:00:00Z'))
+      await insertNote(user, 'activity', activityId, 'On the run', new Date('2024-01-15T09:00:00Z'))
+      const target = await insertNote(user, 'time', null, 'Target', new Date('2024-01-15T10:00:00Z'))
+      await softDeleteNote(user, gone.id)
+
+      expect(await neighbors(user, target.id)).toEqual({ next: null, previous: 'Older' })
+      expect(await neighbors(user, older.id)).toEqual({ next: 'Target', previous: null })
+    })
+
+    test('null for a target that is not a live Journal entry', async () => {
+      const user = getTestUser()
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T09:30:00Z'),
+        source: 'manual',
+        start_time: new Date('2024-01-15T09:00:00Z'),
+      })
+      const root = await insertNote(user, 'time', null, 'Root', new Date('2024-01-15T08:00:00Z'))
+      const reply = await insertNote(user, 'note', root.id, 'Reply', new Date('2024-01-15T08:00:00Z'))
+      const comment = await insertNote(
+        user,
+        'activity',
+        activityId,
+        'Comment',
+        new Date('2024-01-15T09:00:00Z'),
+      )
+      const gone = await insertNote(user, 'time', null, 'Gone', new Date('2024-01-15T10:00:00Z'))
+      await softDeleteNote(user, gone.id)
+
+      expect(await neighbors(user, reply.id)).toBeNull()
+      expect(await neighbors(user, comment.id)).toBeNull()
+      expect(await neighbors(user, gone.id)).toBeNull()
+      expect(await neighbors(user, randomUUID())).toBeNull()
+      expect(await neighbors(user, 'not-a-uuid')).toBeNull()
+      expect(await neighbors(user, root.id)).toEqual({ next: null, previous: null })
     })
   })
 })
