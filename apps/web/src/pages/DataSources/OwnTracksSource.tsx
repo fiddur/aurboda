@@ -3,6 +3,7 @@ import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
 
 import { hasLocationsFromSource } from '../../state/api'
 import { auth } from '../../state/auth'
+import { OverlapNote } from './shared'
 import './style.css'
 
 const DATA_TYPES = ['GPS location', 'Visited places', 'Geofence regions']
@@ -45,6 +46,8 @@ export function OwnTracksSource() {
           HTTP mode, allowing you to track where you spend time, correlate locations with health data, and
           view your movement on the Places page.
         </p>
+
+        <OverlapNote sourceId="owntracks" />
 
         <div class="data-types-section">
           <h2>Data provided</h2>

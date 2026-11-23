@@ -64,11 +64,135 @@
   background: var(--color-surface-strong-2);
 }
 
-.source-card .data-types {
-  font-size: 0.8rem;
-  color: var(--gray-500);
-  line-height: 1.5;
+.source-card .source-kind-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  list-style: none;
   margin: 0 0 0.5rem 0;
+  padding: 0;
+}
+
+.source-card .source-kind-chip {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  background: var(--color-surface-sunken);
+  font-size: 0.75rem;
+  color: var(--gray-600);
+}
+
+.what-you-collect {
+  margin-bottom: 2rem;
+}
+
+.what-you-collect .collect-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--gray-200);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+}
+
+.what-you-collect .collect-row {
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+.what-you-collect .collect-row:first-child {
+  border-top: none;
+}
+
+.what-you-collect .collect-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.what-you-collect .collect-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-surface-strong-2);
+}
+
+.what-you-collect .collect-dot.collected {
+  background: var(--green-600);
+}
+
+.what-you-collect .collect-dot.overlap {
+  background: var(--color-warning-text-2);
+}
+
+.what-you-collect .collect-label {
+  flex: 0 0 13rem;
+  font-weight: 500;
+  color: var(--color-text-strong);
+}
+
+.what-you-collect .collect-sources {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.what-you-collect .collect-missing {
+  font-size: 0.85rem;
+  color: var(--color-text-muted-2);
+}
+
+.what-you-collect .collect-source-chip {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--green-300);
+  border-radius: 999px;
+  background: var(--color-success-soft);
+  font-size: 0.8rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.what-you-collect .collect-source-chip.available {
+  border: 1px dashed var(--gray-400);
+  background: transparent;
+  color: var(--color-accent);
+}
+
+.what-you-collect .collect-source-chip:hover {
+  border-color: var(--color-accent);
+}
+
+.what-you-collect .collect-overlap,
+.data-source-detail .overlap-note {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warning-text-2);
+  border-radius: 8px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.what-you-collect .collect-overlap {
+  margin: 0.5rem 0 0 1.375rem;
+}
+
+.data-source-detail .overlap-note {
+  margin-bottom: 1.5rem;
+  max-width: 700px;
+}
+
+.data-source-detail .overlap-note p {
+  margin: 0;
+}
+
+.source-group h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
 }
 
 .source-card .source-status-text {
@@ -708,8 +832,22 @@ a.garmin-data-type-label:hover {
     border-color: var(--gray-700);
   }
 
-  .source-card .data-types {
-    color: var(--gray-400);
+  .source-card .source-kind-chip {
+    border-color: var(--gray-700);
+    color: var(--gray-300);
+  }
+
+  .what-you-collect .collect-list,
+  .what-you-collect .collect-row {
+    border-color: var(--gray-700);
+  }
+
+  .what-you-collect .collect-source-chip {
+    border-color: var(--green-800);
+  }
+
+  .what-you-collect .collect-source-chip.available {
+    border-color: var(--gray-500);
   }
 
   .source-card .source-status-text.connected {
@@ -800,6 +938,14 @@ a.garmin-data-type-label:hover {
 @media (max-width: 800px) {
   .sources-grid {
     grid-template-columns: 1fr;
+  }
+
+  .what-you-collect .collect-label {
+    flex-basis: auto;
+  }
+
+  .what-you-collect .collect-overlap {
+    margin-left: 0;
   }
 }
 

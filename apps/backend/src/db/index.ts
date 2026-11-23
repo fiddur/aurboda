@@ -839,6 +839,8 @@ export {
 
 export { getDataPresence } from './data-presence.ts'
 
+export { getRecentSourceActivity, type RecentSourceActivity } from './data-source-activity.ts'
+
 export {
   deleteExpiredMcpSessions,
   deleteMcpSession,

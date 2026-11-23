@@ -1,128 +1,95 @@
-import { useQuery } from '@tanstack/react-query'
-import { endOfDay, formatISO, startOfDay, subDays } from 'date-fns'
+import type { DataKindOverview, DataSourceOverviewItem, DataSourcesOverview } from '@aurboda/api-spec'
 
-import {
-  fetchActivities,
-  fetchActivityWatchStatus,
-  fetchHeartRate,
-  fetchProductivity,
-  fetchUserSettings,
-  hasLocationsFromSource,
-} from '../../state/api'
+import { useQuery } from '@tanstack/react-query'
+
+import { fetchDataSourcesOverview } from '../../state/api'
 import { auth } from '../../state/auth'
+import { overlapMessage, sourcesByGroup } from './overview'
 import { SyncIntervalField } from './shared'
 import './style.css'
 
-interface SourceInfo {
-  name: string
-  path: string
-  dataTypes: string
-  isConnected: boolean
-  statusText: string
-}
+const kindLabel = (overview: DataSourcesOverview, id: DataKindOverview['id']): string =>
+  overview.kinds.find((kind) => kind.id === id)?.label ?? id
 
-function SourceCard({ source }: { source: SourceInfo }) {
+function SourceCard({ source, overview }: { source: DataSourceOverviewItem; overview: DataSourcesOverview }) {
+  const state = source.status === 'active' ? 'connected' : 'not-connected'
   return (
-    <a href={source.path} class={`source-card ${source.isConnected ? 'connected' : 'not-connected'}`}>
+    <a href={source.path} class={`source-card ${state}`}>
       <div class="source-card-header">
-        <span class={`status-dot ${source.isConnected ? 'connected' : 'not-connected'}`} />
+        <span class={`status-dot ${state}`} />
         <h3>{source.name}</h3>
       </div>
-      <p class="data-types">{source.dataTypes}</p>
-      <p class={`source-status-text ${source.isConnected ? 'connected' : 'not-connected'}`}>
-        {source.statusText}
-      </p>
+      <ul class="source-kind-chips">
+        {source.kinds.map((kind) => (
+          <li key={kind} class="source-kind-chip">
+            {kindLabel(overview, kind)}
+          </li>
+        ))}
+      </ul>
+      <p class={`source-status-text ${state}`}>{source.detail}</p>
     </a>
   )
 }
 
-// eslint-disable-next-line complexity -- multiple data source checks
+function SourceChip({ source, available }: { source: DataSourceOverviewItem; available?: boolean }) {
+  return (
+    <a href={source.path} class={`collect-source-chip${available ? ' available' : ''}`}>
+      {source.name}
+    </a>
+  )
+}
+
+function KindRow({ kind, overview }: { kind: DataKindOverview; overview: DataSourcesOverview }) {
+  const byId = (id: DataSourceOverviewItem['id']) => overview.sources.find((source) => source.id === id)
+  const active = kind.active_sources.flatMap((id) => byId(id) ?? [])
+  const available = kind.available_sources.flatMap((id) => byId(id) ?? [])
+  const state = kind.overlap ? 'overlap' : active.length > 0 ? 'collected' : 'missing'
+  return (
+    <li class={`collect-row ${state}`}>
+      <div class="collect-row-main">
+        <span class={`collect-dot ${state}`} />
+        <span class="collect-label">{kind.label}</span>
+        <span class="collect-sources">
+          {active.length > 0 ? (
+            active.map((source) => <SourceChip key={source.id} source={source} />)
+          ) : (
+            <>
+              <span class="collect-missing">Not collected. Add:</span>
+              {available.map((source) => (
+                <SourceChip key={source.id} source={source} available />
+              ))}
+            </>
+          )}
+        </span>
+      </div>
+      {kind.overlap && <p class="collect-overlap">{overlapMessage(kind, overview.sources)}</p>}
+    </li>
+  )
+}
+
+function WhatYouCollect({ overview }: { overview: DataSourcesOverview }) {
+  return (
+    <section class="what-you-collect">
+      <h2>What you collect</h2>
+      <ul class="collect-list">
+        {overview.kinds.map((kind) => (
+          <KindRow key={kind.id} kind={kind} overview={overview} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export function DataSources() {
   const isLoggedIn = auth.value.token
 
-  const end = endOfDay(new Date())
-  const start7days = startOfDay(subDays(new Date(), 7))
-
-  const settingsQuery = useQuery({
+  const overviewQuery = useQuery({
     enabled: !!isLoggedIn,
-    queryFn: fetchUserSettings,
-    queryKey: ['userSettings'],
-    staleTime: 5 * 60 * 1000,
+    queryFn: fetchDataSourcesOverview,
+    queryKey: ['dataSourcesOverview'],
+    staleTime: 60 * 1000,
   })
-
-  const heartRateQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchHeartRate(start7days, end),
-    queryKey: ['heartRate7days', formatISO(start7days, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const sleepQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchActivities(start7days, end, ['sleep']),
-    queryKey: ['sleep7days', formatISO(start7days, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const exerciseQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchActivities(start7days, end, ['exercise']),
-    queryKey: ['exercise7days', formatISO(start7days, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const productivityQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => fetchProductivity(start7days, end),
-    queryKey: ['productivity7days', formatISO(start7days, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const ownTracksQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: () => hasLocationsFromSource('owntracks', start7days, end),
-    queryKey: ['ownTracksLocations7days', formatISO(start7days, { representation: 'date' })],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const awStatusQuery = useQuery({
-    enabled: !!isLoggedIn,
-    queryFn: fetchActivityWatchStatus,
-    queryKey: ['awStatus'],
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const isLoading =
-    heartRateQuery.isLoading ||
-    sleepQuery.isLoading ||
-    exerciseQuery.isLoading ||
-    productivityQuery.isLoading ||
-    ownTracksQuery.isLoading ||
-    settingsQuery.isLoading ||
-    awStatusQuery.isLoading
-
-  const hasHeartRate = (heartRateQuery.data?.length ?? 0) > 0
-  const hasSleep = (sleepQuery.data?.length ?? 0) > 0
-  const hasExercise = (exerciseQuery.data?.length ?? 0) > 0
-  const hasProductivity = (productivityQuery.data?.records?.length ?? 0) > 0
-  const hasOwnTracks = ownTracksQuery.data ?? false
-  const isOuraConnected = settingsQuery.data?.oura_connected ?? false
-  const isGarminConnected = settingsQuery.data?.garmin_connected ?? false
-  const isStravaConnected = settingsQuery.data?.strava_connected ?? false
-  const isGravlConnected = !!settingsQuery.data?.gravl_connection
-  const isHomeAssistantConnected =
-    !!settingsQuery.data?.home_assistant_url &&
-    !!settingsQuery.data?.home_assistant_token_set &&
-    !!settingsQuery.data?.home_assistant_entity_id
-  const isRescueTimeConfigured = !!settingsQuery.data?.rescue_time_key
-  const hasLastfm = !!settingsQuery.data?.lastfm_username
-  const hasCalendars = (settingsQuery.data?.calendars ?? []).length > 0
-  const awProductivity = (productivityQuery.data?.records ?? []).filter((r) => r.source === 'activitywatch')
-  const hasAwDesktop = awProductivity.some((r) => !r.is_mobile)
-  const hasAwMobile = awProductivity.some((r) => r.is_mobile)
-
-  // Aurboda native: has data if user has manually added anything (HR, exercise, or sleep from Android)
-  const hasAndroidData = hasHeartRate || hasSleep || hasExercise
+  const overview = overviewQuery.data
 
   if (!isLoggedIn) {
     return (
@@ -136,124 +103,34 @@ export function DataSources() {
     )
   }
 
-  const sources: SourceInfo[] = [
-    {
-      dataTypes: 'Tags, custom metrics, manual data entry, goals',
-      isConnected: true,
-      name: 'Aurboda (Web / API / MCP)',
-      path: '/data-sources/aurboda',
-      statusText: 'Always available',
-    },
-    {
-      dataTypes: 'Heart rate, HRV, sleep, exercise, steps, weight, and more via Health Connect',
-      isConnected: hasAndroidData,
-      name: 'Aurboda Android',
-      path: '/data-sources/android-app',
-      statusText: hasAndroidData ? 'Data detected in the last 7 days' : 'No data from Android app yet',
-    },
-    {
-      dataTypes: 'Sleep scores, readiness, resilience, HRV, cardiovascular age, tags',
-      isConnected: isOuraConnected,
-      name: 'Oura Ring',
-      path: '/data-sources/oura',
-      statusText: isOuraConnected ? 'Connected' : 'Not connected',
-    },
-    {
-      dataTypes: 'Sleep, stress, body battery, HR, HRV, activities, SpO2, training readiness',
-      isConnected: isGarminConnected,
-      name: 'Garmin',
-      path: '/data-sources/garmin',
-      statusText: isGarminConnected ? 'Connected' : 'Not connected',
-    },
-    {
-      dataTypes: 'Activities with HR, GPS routes, cadence, power',
-      isConnected: isStravaConnected,
-      name: 'Strava',
-      path: '/data-sources/strava',
-      statusText: isStravaConnected ? 'Connected' : 'Not connected',
-    },
-    {
-      dataTypes: 'Strength workouts: exercises, sets, weight, reps, RPE',
-      isConnected: isGravlConnected,
-      name: 'Gravl',
-      path: '/data-sources/gravl',
-      statusText: isGravlConnected ? 'Connected' : 'Not connected',
-    },
-    {
-      dataTypes: 'App and window usage on desktop',
-      isConnected: hasAwDesktop,
-      name: 'ActivityWatch (Desktop)',
-      path: '/data-sources/activitywatch-desktop',
-      statusText: hasAwDesktop ? 'Desktop data syncing' : 'Not set up',
-    },
-    {
-      dataTypes: 'App usage on Android',
-      isConnected: hasAwMobile,
-      name: 'ActivityWatch (Android)',
-      path: '/data-sources/activitywatch-android',
-      statusText: hasAwMobile ? 'Mobile data syncing' : 'Not set up',
-    },
-    {
-      dataTypes: 'App and website usage, productivity scores',
-      isConnected: isRescueTimeConfigured && hasProductivity,
-      name: 'RescueTime',
-      path: '/data-sources/rescue-time',
-      statusText:
-        isRescueTimeConfigured && hasProductivity
-          ? 'Data syncing'
-          : isRescueTimeConfigured
-            ? 'Configured, no recent data'
-            : 'Not configured',
-    },
-    {
-      dataTypes: 'Music scrobbles',
-      isConnected: hasLastfm,
-      name: 'Last.fm',
-      path: '/data-sources/lastfm',
-      statusText: hasLastfm ? 'Connected' : 'Not configured',
-    },
-    {
-      dataTypes: 'GPS location, visited places',
-      isConnected: hasOwnTracks,
-      name: 'OwnTracks',
-      path: '/data-sources/owntracks',
-      statusText: hasOwnTracks ? 'Data received in the last 7 days' : 'No data in the last 7 days',
-    },
-    {
-      dataTypes: 'GPS location and zones from the companion app, visited places',
-      isConnected: isHomeAssistantConnected,
-      name: 'Home Assistant',
-      path: '/data-sources/home-assistant',
-      statusText: isHomeAssistantConnected ? 'Connected' : 'Not connected',
-    },
-    {
-      dataTypes: 'Calendar events imported as tags',
-      isConnected: hasCalendars,
-      name: 'Calendars (ICS)',
-      path: '/data-sources/calendars',
-      statusText: hasCalendars
-        ? `${settingsQuery.data?.calendars?.length} calendar(s) configured`
-        : 'No calendars added',
-    },
-  ]
-
   return (
     <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Data Sources</h1>
         <p class="page-subtitle">
-          Aurboda aggregates health, productivity, and location data from multiple sources. Connect your data
-          sources below to start tracking. Each source has its own setup and configuration.
+          What you collect, and where it comes from. Connect whatever you already use; one source per kind of
+          data is usually enough.
         </p>
       </div>
 
-      {isLoading && <div class="loading">Checking your data sources...</div>}
+      {overviewQuery.isLoading && <div class="loading">Checking your data sources...</div>}
+      {overviewQuery.isError && <p class="field-description warning">Could not load your data sources.</p>}
 
-      <div class="sources-grid">
-        {sources.map((source) => (
-          <SourceCard key={source.path} source={source} />
-        ))}
-      </div>
+      {overview && (
+        <>
+          <WhatYouCollect overview={overview} />
+          {sourcesByGroup(overview).map((group) => (
+            <section key={group.id} class="source-group">
+              <h2>{group.label}</h2>
+              <div class="sources-grid">
+                {group.sources.map((source) => (
+                  <SourceCard key={source.id} source={source} overview={overview} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </>
+      )}
 
       <SyncIntervalField provider="default" />
 
