@@ -80,10 +80,10 @@ test('guesses sent together past the free failures do not all reach the password
   expect(calls).toBe(RATE_LIMITS.failed_logins_by_username.free_failures + 1)
 })
 
-const discoveryApp = () =>
+const discoveryApp = (centralDb: unknown = {}) =>
   express().use(
     createOAuthRouter({
-      centralDb: {} as never,
+      centralDb: centralDb as never,
       failedLogins: {} as never,
       loginToUserDb: async () => undefined,
       webHost: 'https://aurboda.test',
@@ -107,4 +107,20 @@ test('the authorization server metadata names the issuer the protected resource 
   const res = await supertest(discoveryApp()).get('/.well-known/oauth-authorization-server')
   expect(res.body.issuer).toBe('https://aurboda.test')
   expect(res.body.registration_endpoint).toBe('https://aurboda.test/register')
+})
+
+test('registration answers a public client even when a secret-based method is asked for', async () => {
+  const stored: unknown[] = []
+  const res = await supertest(discoveryApp({ createOAuthClient: async (c: unknown) => stored.push(c) }))
+    .post('/register')
+    .send({
+      client_name: 'Gemini',
+      redirect_uris: ['https://client.test/cb'],
+      token_endpoint_auth_method: 'client_secret_post',
+    })
+
+  expect(res.status).toBe(201)
+  expect(res.body.token_endpoint_auth_method).toBe('none')
+  expect(res.body).not.toHaveProperty('client_secret')
+  expect(stored).toEqual([expect.objectContaining({ token_endpoint_auth_method: 'none' })])
 })
