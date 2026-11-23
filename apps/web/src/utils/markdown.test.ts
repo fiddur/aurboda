@@ -193,3 +193,48 @@ describe('renderMarkdown', () => {
     expect(renderRemoteMarkdown('[x](https://example.com)')).toContain('href="https://example.com"')
   })
 })
+
+describe('attachment pictures', () => {
+  const id = '3f0c2b1a-9d8e-4f7a-8b6c-5d4e3f2a1b0c'
+
+  it('renders an attachment: image as an <img> carrying the id and no src', () => {
+    const html = renderMarkdown(`![A walk](attachment:${id})`)
+    expect(html).toContain(`data-attachment-id="${id}"`)
+    expect(html).toContain('alt="A walk"')
+    expect(html).not.toContain('src=')
+  })
+
+  it('lower-cases the id', () => {
+    expect(renderMarkdown(`![](attachment:${id.toUpperCase()})`)).toContain(`data-attachment-id="${id}"`)
+  })
+
+  it('escapes the alt text', () => {
+    const box = document.createElement('div')
+    box.innerHTML = renderMarkdown(`![a "quoted" <b>](attachment:${id})`)
+    expect(box.querySelector('b')).toBeNull()
+    expect(box.querySelector('img')?.getAttribute('alt')).toBe('a "quoted" <b>')
+    expect(box.querySelector('img')?.dataset.attachmentId).toBe(id)
+  })
+
+  it('gives an attachment: URL that is not a uuid no id', () => {
+    expect(renderMarkdown('![x](attachment:not-a-uuid)')).not.toContain('data-attachment-id')
+  })
+
+  it('leaves an http image as it was', () => {
+    const html = renderMarkdown('![alt](https://example.com/a.png)')
+    expect(html).toContain('src="https://example.com/a.png"')
+    expect(html).not.toContain('data-attachment-id')
+  })
+
+  it('still strips an event handler from a raw <img> with an attachment id', () => {
+    const html = renderMarkdown(`<img data-attachment-id="${id}" onerror="alert(1)">`)
+    expect(html).not.toContain('onerror')
+  })
+
+  it('draws no attachment picture in remote markdown', () => {
+    expect(renderRemoteMarkdown(`![x](attachment:${id})`)).not.toContain('<img')
+    expect(
+      renderRemoteMarkdown(`![x](attachment:${id})`, [{ url: 'https://peer.example/a.png' }]),
+    ).not.toContain('<img')
+  })
+})

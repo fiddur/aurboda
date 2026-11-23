@@ -101,6 +101,9 @@ describe('entryGlimpse', () => {
       'Walked to the lake winter',
     )
     expect(entryGlimpse({ content: 'a'.repeat(200) }, 10)).toBe(`${'a'.repeat(9)}…`)
+    expect(
+      entryGlimpse({ content: '![](attachment:3f0c2b1a-9d8e-4f7a-8b6c-5d4e3f2a1b0c)\nAt the lake' }),
+    ).toBe('At the lake')
   })
 })
 

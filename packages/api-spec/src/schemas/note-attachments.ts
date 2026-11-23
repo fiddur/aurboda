@@ -28,6 +28,10 @@ export const NOTE_IMAGE_MAX_EDGE = 3000
 /** The downscaled sizes `max_edge` may ask for. */
 export const NOTE_ATTACHMENT_PREVIEW_EDGES = ['400', '2000'] as const
 
+/** How an entry's text shows one of its pictures in place, as REST and MCP describe it. */
+export const INLINE_PICTURE_HINT =
+  'To show a picture inline in the text, put `![caption](attachment:<attachment id>)` in content; pictures not referenced this way are listed below the entry.'
+
 /** The largest decoded file `add_note_attachment` accepts over MCP. */
 export const NOTE_ATTACHMENT_MCP_MAX_BYTES = 5 * MB
 
