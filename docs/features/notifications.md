@@ -65,6 +65,10 @@ row:
 - one off: stored with that switch off, so it is left out of that list;
 - both off: not stored at all.
 
+A type split off from an older one starts from the older type's switches until it is given its own:
+`challenge_reply` follows `challenge_comment`, so someone who turned challenge posts off before replies
+became a type of their own is not notified of replies either.
+
 Changing a switch affects notifications raised from then on, not the ones already stored.
 **Mark all read** stamps every unread row, push-only ones included: a device poller asks for
 unread ones only, so it also withdraws whatever has not been pushed yet, which is intended.
