@@ -24,6 +24,7 @@ import {
   listLivePersonIds,
   upsertActivity,
 } from '../db/index.ts'
+import { activityGroupRowsSql } from '../db/people.ts'
 import { auditWarn } from './audit-log.ts'
 import { computeEnrichPatch } from './deduction-engine.ts'
 import { activityTypeTitleNames, ruleTitleChange } from './deduction-title.ts'
@@ -33,6 +34,13 @@ import { categoryPathMatchSql } from './screentime-sql.ts'
 import { markWorkoutHoursDirty } from './training-load/dirty.ts'
 
 const DEFAULT_SPAN_MS = 60 * 60 * 1000
+
+/** Overlap of an activity with [start, end]; one without an end lasts DEFAULT_SPAN_MS. */
+const overlapsSql = (startParam: string, endParam: string, alias = ''): string => {
+  const column = (name: string) => (alias ? `${alias}.${name}` : name)
+  return `${column('start_time')} < ${endParam}
+       AND COALESCE(${column('end_time')}, ${column('start_time')} + interval '${DEFAULT_SPAN_MS} milliseconds') > ${startParam}`
+}
 
 const getActivities = async (
   user: string,
@@ -45,8 +53,7 @@ const getActivities = async (
     `SELECT start_time, end_time FROM activities
      WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
-       AND start_time < $3
-       AND (end_time > $2 OR end_time IS NULL)
+       AND ${overlapsSql('$2', '$3')}
      ORDER BY start_time`,
     [types, window.start, window.end],
   )
@@ -125,8 +132,7 @@ const getActivitiesWithData = async (
     `SELECT start_time, end_time FROM activities
      WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
-       AND start_time < $3
-       AND (end_time > $2 OR end_time IS NULL)
+       AND ${overlapsSql('$2', '$3')}
        ${whereClause}
      ORDER BY start_time`,
     params,
@@ -202,8 +208,7 @@ const findActivities = async (
     `SELECT id, start_time, end_time FROM activities
      WHERE activity_type = ANY($1)
        AND deleted_at IS NULL
-       AND start_time < $3
-       AND (end_time > $2 OR end_time IS NULL)
+       AND ${overlapsSql('$2', '$3')}
        ${whereClauses.join(' ')}
      ORDER BY start_time`,
     params,
@@ -285,8 +290,7 @@ const enrichTargetRows = async (user: string, activityType: string, range: TimeR
       `SELECT id, data, start_time, end_time FROM activities
        WHERE activity_type = $1
          AND deleted_at IS NULL
-         AND start_time < $3
-         AND (end_time > $2 OR end_time IS NULL)
+         AND ${overlapsSql('$2', '$3')}
        ORDER BY start_time`,
       [activityType, range.start, range.end],
     )
@@ -305,29 +309,61 @@ const getEnrichTargets = async (
 }
 
 /**
- * Only adds links, so a person taken off the activity by hand and still on the rule comes back on
- * the next evaluation. No notification: people are no rule condition, so nothing re-evaluates.
+ * A pair (activity, person) is decided once per rule and recorded in `rule_activity_people`, so a
+ * person taken off by hand stays off. A group with a link no rule recorded has its people set by
+ * hand and gets nobody. Every pair is decided against the state before this call's own writes.
+ * The rule id is compared as text: the preview's rule id is no uuid, and a dry run writes nothing.
+ * No notification: people are no rule condition, so nothing re-evaluates.
  */
 const addActivityPeople = async (
   user: string,
+  ruleId: string,
   activityIds: string[],
   personIds: string[],
   dryRun = false,
 ): Promise<string[]> => {
   if (activityIds.length === 0 || personIds.length === 0) return []
-  const missing = `SELECT a.id AS activity_id, p.id AS person_id
-     FROM unnest($1::uuid[]) a(id) CROSS JOIN unnest($2::uuid[]) p(id)
-     WHERE NOT EXISTS (SELECT 1 FROM activity_people ap WHERE ap.activity_id = a.id AND ap.person_id = p.id)`
+  const decisions = `targets AS (SELECT DISTINCT unnest($1::uuid[]) AS id),
+    ${activityGroupRowsSql('targets')},
+    undecided AS (
+      SELECT t.id AS activity_id, p.id AS person_id
+        FROM targets t CROSS JOIN unnest($2::uuid[]) p(id)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM group_rows g JOIN rule_activity_people r ON r.activity_id = g.row_id
+          WHERE g.target_id = t.id AND r.person_id = p.id AND r.rule_id::text = $3::text)
+    ),
+    set_by_hand AS (
+      SELECT DISTINCT g.target_id FROM group_rows g
+        JOIN activity_people ap ON ap.activity_id = g.row_id
+        JOIN people p ON p.id = ap.person_id AND p.deleted_at IS NULL
+       WHERE NOT EXISTS (
+         SELECT 1 FROM group_rows g2 JOIN rule_activity_people r ON r.activity_id = g2.row_id
+          WHERE g2.target_id = g.target_id AND r.person_id = ap.person_id)
+    ),
+    to_link AS (
+      SELECT u.activity_id, u.person_id FROM undecided u
+       WHERE NOT EXISTS (SELECT 1 FROM set_by_hand h WHERE h.target_id = u.activity_id)
+         AND NOT EXISTS (
+           SELECT 1 FROM group_rows g JOIN activity_people ap ON ap.activity_id = g.row_id
+            WHERE g.target_id = u.activity_id AND ap.person_id = u.person_id)
+    )`
   const result = await query<{ activity_id: string }>(
     user,
     dryRun
-      ? `SELECT DISTINCT activity_id FROM (${missing}) m`
-      : `WITH inserted AS (
-           INSERT INTO activity_people (activity_id, person_id) ${missing}
+      ? `WITH ${decisions} SELECT DISTINCT activity_id FROM to_link`
+      : `WITH ${decisions},
+         recorded AS (
+           INSERT INTO rule_activity_people (rule_id, activity_id, person_id)
+           SELECT $3::text::uuid, activity_id, person_id FROM undecided
+           ON CONFLICT DO NOTHING
+         ),
+         inserted AS (
+           INSERT INTO activity_people (activity_id, person_id)
+           SELECT activity_id, person_id FROM to_link
            ON CONFLICT DO NOTHING RETURNING activity_id
          )
          SELECT DISTINCT activity_id FROM inserted`,
-    [activityIds, personIds],
+    [activityIds, personIds, ruleId],
   )
   return result.rows.map((row) => row.activity_id)
 }
@@ -435,8 +471,7 @@ const retitleActivities = async (
        WHERE activity_type = $1
          AND deleted_at IS NULL
          AND superseded_by IS NULL
-         AND start_time < $3
-         AND (end_time > $2 OR end_time IS NULL)
+         AND ${overlapsSql('$2', '$3')}
        ORDER BY start_time`,
       [activityType, range.start, range.end],
     )
@@ -522,8 +557,7 @@ const getCategorisableActivities = async (
                AND a.data->'run_categories' @> jsonb_build_array(jsonb_build_object('rule_id', $4::text))) AS has_entry
        FROM activities a
        WHERE a.deleted_at IS NULL
-         AND a.start_time < $3
-         AND (a.end_time > $2 OR a.end_time IS NULL)
+         AND ${overlapsSql('$2', '$3', 'a')}
      ) candidates
      WHERE is_primary OR has_entry
      ORDER BY start_time`,

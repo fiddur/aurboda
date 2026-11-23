@@ -54,4 +54,15 @@ export const peopleTables: Record<string, string> = {
   activity_people_indexes: `
     CREATE INDEX IF NOT EXISTS idx_activity_people_person ON activity_people (person_id)
   `,
+  rule_activity_people: `
+    CREATE TABLE IF NOT EXISTS rule_activity_people (
+      rule_id     UUID NOT NULL REFERENCES deduction_rules(id) ON DELETE CASCADE,
+      activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      person_id   UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+      PRIMARY KEY (rule_id, activity_id, person_id)
+    )
+  `,
+  rule_activity_people_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_rule_activity_people_activity ON rule_activity_people (activity_id, person_id)
+  `,
 }

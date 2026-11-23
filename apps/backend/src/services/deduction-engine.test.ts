@@ -1461,7 +1461,7 @@ describe('output_people', () => {
 
     const result = await evaluateRule(user, { ...baseRule, mode: undefined }, window, deps)
 
-    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['created-1'], [anna], false)
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['created-1'], [anna], false)
     expect(result.activities_created).toBe(1)
   })
 
@@ -1472,7 +1472,7 @@ describe('output_people', () => {
     const result = await evaluateRule(user, baseRule, window, deps)
 
     expect(deps.getEnrichTargets).toHaveBeenCalledWith(user, 'fika', [{ end: d(11), start: d(10) }])
-    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1', 'a2'], [anna], false)
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['a1', 'a2'], [anna], false)
     expect(result).toMatchObject({ activities_created: 1, affected_ids: ['a1'] })
   })
 
@@ -1492,7 +1492,7 @@ describe('output_people', () => {
     await evaluateRule(user, { ...baseRule, output_people: [anna, bo] }, window, deps)
 
     expect(deps.listLivePersonIds).toHaveBeenCalledWith(user, [anna, bo])
-    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1'], [bo], false)
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['a1'], [bo], false)
   })
 
   test('no live people means no link at all', async () => {
@@ -1511,7 +1511,7 @@ describe('output_people', () => {
 
     const result = await evaluateRule(user, baseRule, window, deps, true)
 
-    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['a1', 'a2', 'a3'], [anna], true)
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['a1', 'a2', 'a3'], [anna], true)
     expect(result.would_affect).toBe(2)
     expect(deps.enrichActivities).not.toHaveBeenCalled()
   })
@@ -1530,7 +1530,7 @@ describe('output_people', () => {
 
     await evaluateRule(user, rule, window, deps)
 
-    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, ['r1'], [anna], false)
+    expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['r1'], [anna], false)
   })
 
   test('a rule without people never touches them', async () => {

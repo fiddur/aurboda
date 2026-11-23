@@ -298,6 +298,8 @@ export const tableCreationOrder = [
   'person_dates_indexes',
   'activity_people',
   'activity_people_indexes',
+  'rule_activity_people',
+  'rule_activity_people_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience
