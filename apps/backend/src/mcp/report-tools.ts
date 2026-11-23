@@ -51,7 +51,7 @@ export const registerReportTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_report',
-    'Fetch a single lab report by its ID, including all entries with their metadata.',
+    'Fetch a single lab report by its ID, including all entries with their metadata, and the journal entries related to it (journal_entries, newest first).',
     { id: z.string().uuid().describe('The report ID'), tz: tzSchema },
     async ({ id, tz }) => {
       const result = await getReport(user, id)

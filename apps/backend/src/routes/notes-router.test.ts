@@ -502,6 +502,21 @@ describe('related on POST and PATCH /notes and the search filter', () => {
     expect(mutations.addNote).toHaveBeenCalledWith('tester', expect.objectContaining({ related }))
   })
 
+  test('POST passes meals, reports and check-ins to the service', async () => {
+    vi.mocked(mutations.addNote).mockResolvedValue({ data: noteData, success: true })
+    const kinds = (['meal', 'report', 'check_in'] as const).map((entity_type) => ({
+      entity_id: PERSON_ID,
+      entity_type,
+    }))
+
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ content: '', date: '2024-01-20', entity_type: 'day', related: kinds })
+
+    expect(res.status).toBe(200)
+    expect(mutations.addNote).toHaveBeenCalledWith('tester', expect.objectContaining({ related: kinds }))
+  })
+
   test('PATCH takes related alone, [] included', async () => {
     vi.mocked(mutations.updateNote).mockResolvedValue({ data: noteData, success: true })
 
@@ -532,7 +547,7 @@ describe('related on POST and PATCH /notes and the search filter', () => {
         content: '',
         date: '2024-01-20',
         entity_type: 'day',
-        related: [{ entity_id: PERSON_ID, entity_type: 'meal' }],
+        related: [{ entity_id: PERSON_ID, entity_type: 'place' }],
       },
     ],
     [
@@ -578,8 +593,18 @@ describe('related on POST and PATCH /notes and the search filter', () => {
       related_type: 'person',
     })
 
+    for (const related_type of ['meal', 'report', 'check_in']) {
+      const res = await supertest(buildApp()).get('/search').query({ related_id: PERSON_ID, related_type })
+      expect(res.status).toBe(200)
+      expect(mutations.searchNotesForUser).toHaveBeenLastCalledWith('tester', {
+        related_id: PERSON_ID,
+        related_type,
+      })
+    }
+
     vi.clearAllMocks()
     for (const query of [
+      { related_id: PERSON_ID, related_type: 'place' },
       { related_type: 'person' },
       { related_id: PERSON_ID },
       { related_id: 'x', related_type: 'person' },

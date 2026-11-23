@@ -11,6 +11,7 @@ import { SparklineChart } from '../../components/SparklineChart'
 import { deleteReport, fetchReport, fetchReports, type Report } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { NotesSection } from '../EntityDetail/NotesSection'
+import { JournalEntryRefs } from '../Journal/JournalEntryRefs'
 import './ReportDetail.css'
 
 const formatType = (type: string): string =>
@@ -300,6 +301,14 @@ export function ReportDetail() {
       </section>
 
       <NotesSection entityType="report" entityId={id} />
+
+      {(report.journal_entries ?? []).length > 0 && (
+        <JournalEntryRefs
+          title="Mentioned in the journal"
+          entries={report.journal_entries ?? []}
+          filter={{ id, type: 'report' }}
+        />
+      )}
 
       <section class="report-detail-actions">
         <ConfirmButton

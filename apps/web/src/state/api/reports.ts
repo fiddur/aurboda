@@ -3,6 +3,7 @@ import type {
   ImportReportsBody,
   ImportReportsResponse,
   ImportReportsResult,
+  JournalEntryRef,
   Report as ApiReport,
   ReportResponse,
   ReportsResponse,
@@ -35,12 +36,14 @@ export const fetchReports = async (params?: {
   return (response.data.data ?? []).map(mapReport)
 }
 
-export const fetchReport = async (id: string): Promise<Report> => {
+/** A report read by its ID, with the journal entries related to it. */
+export const fetchReport = async (id: string): Promise<Report & { journal_entries?: JournalEntryRef[] }> => {
   const { token } = auth.value
   const response = await axios.get<ReportResponse>(`${API_URL}/reports/${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return mapReport(response.data.data!)
+  const data = response.data.data!
+  return { ...mapReport(data), journal_entries: data.journal_entries }
 }
 
 export const createReport = async (body: AddReportBody): Promise<Report> => {

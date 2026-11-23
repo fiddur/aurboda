@@ -42,6 +42,7 @@ vi.mock('./central-db.ts', () => ({
 // comment threads. Stub the notes service — its real module reaches into the db
 // mock for functions these tests don't stub.
 vi.mock('./notes.ts', () => ({
+  listJournalEntryRefs: vi.fn().mockResolvedValue([]),
   syncNoteTimesForEntity: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -183,11 +184,16 @@ describe('getMeal', () => {
       time: new Date('2025-06-15T12:00:00Z'),
     })
 
+    const entry = { entity_type: 'day' as const, excerpt: 'Ate well', id: 'note-1' }
+    vi.mocked(notesSvc.listJournalEntryRefs).mockResolvedValueOnce([entry])
+
     const result = await getMeal('testuser', 'meal-1')
 
     expect(result.success).toBe(true)
     expect(result.data!.time).toBe('2025-06-15T12:00:00.000Z')
     expect(result.data!.meal_type).toBe('lunch')
+    expect(notesSvc.listJournalEntryRefs).toHaveBeenCalledWith('testuser', 'meal', ['meal-1'])
+    expect(result.data!.journal_entries).toEqual([entry])
   })
 
   test('returns error when not found', async () => {
