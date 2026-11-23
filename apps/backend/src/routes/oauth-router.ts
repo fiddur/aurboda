@@ -80,6 +80,16 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
   const router = Router()
   const oauthDeps = { centralDb }
 
+  const protectedResourceMetadata = (_req: Request, res: Response) => {
+    res.json({
+      resource: `${webHost}/mcp`,
+      authorization_servers: [webHost],
+      bearer_methods_supported: ['header'],
+    })
+  }
+  router.get('/.well-known/oauth-protected-resource', protectedResourceMetadata)
+  router.get('/.well-known/oauth-protected-resource/mcp', protectedResourceMetadata)
+
   router.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
     const issuer = webHost
     res.json({
@@ -220,7 +230,7 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
 
   // Dynamic client registration (RFC 7591)
   router.post('/register', express.json(), async (req: Request, res: Response) => {
-    const { client_name, redirect_uris, token_endpoint_auth_method } = req.body
+    const { client_name, redirect_uris } = req.body
 
     if (!client_name || !redirect_uris || !Array.isArray(redirect_uris) || redirect_uris.length === 0) {
       res.status(400).json({
@@ -234,7 +244,6 @@ export const createOAuthRouter = (deps: OAuthRouterDeps): Router => {
       const result = await registerClient(oauthDeps, {
         client_name,
         redirect_uris,
-        token_endpoint_auth_method,
       })
 
       res.status(201).json(result)

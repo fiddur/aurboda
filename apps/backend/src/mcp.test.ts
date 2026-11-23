@@ -216,6 +216,18 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(401)
       expect(response.body.error).toBe('Unauthorized')
+      expect(response.headers['www-authenticate']).toBeUndefined()
+    })
+
+    test('401 points to the protected resource metadata when the host is known', async () => {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, { webHost: 'https://aurboda.test' }))
+      const response = await mcpPost(app).send({ id: 1, jsonrpc: '2.0', method: 'initialize' })
+
+      expect(response.status).toBe(401)
+      expect(response.headers['www-authenticate']).toBe(
+        'Bearer resource_metadata="https://aurboda.test/.well-known/oauth-protected-resource/mcp"',
+      )
     })
 
     test('returns 401 with invalid token', async () => {

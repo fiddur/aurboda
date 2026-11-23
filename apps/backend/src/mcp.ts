@@ -348,6 +348,12 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
   router.post('/', json({ limit: '4mb' }), async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req)
     if (!user) {
+      if (deps.webHost) {
+        res.set(
+          'WWW-Authenticate',
+          `Bearer resource_metadata="${deps.webHost}/.well-known/oauth-protected-resource/mcp"`,
+        )
+      }
       res.status(401).json({ error: 'Unauthorized' })
       return
     }
