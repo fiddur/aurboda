@@ -441,6 +441,14 @@ describe('updateReport', () => {
 describe('prepareReportEntries', () => {
   const catalog = loadMetricCatalog()
 
+  test('refuses a computed metric', () => {
+    expect(
+      prepareReportEntries([{ metric: 'strength_score', unit: 'points', value: 80 }], [], catalog),
+    ).toEqual({
+      errors: ['"strength_score" is calculated by Aurboda and cannot be written.'],
+    })
+  })
+
   test('resolves an alias, converts to the stored unit and adopts the metric', () => {
     expect(prepareReportEntries([{ metric: 'ldl', unit: 'mg/dL', value: 100 }], [], catalog)).toEqual({
       adopt: [

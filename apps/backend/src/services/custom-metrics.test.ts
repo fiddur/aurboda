@@ -26,6 +26,15 @@ describe('mergeCustomMetricService', () => {
     expect(result.error).toContain('same metric')
   })
 
+  test('refuses a target Aurboda calculates', async () => {
+    const result = await mergeCustomMetricService(user, 'my_strength', 'strength_score')
+    expect(result).toEqual({
+      error: '"strength_score" is calculated by Aurboda and cannot be written.',
+      success: false,
+    })
+    expect(db.mergeCustomMetric).not.toHaveBeenCalled()
+  })
+
   test('returns error when source is not a custom metric', async () => {
     vi.mocked(db.getCustomMetricByName).mockResolvedValue(null)
 

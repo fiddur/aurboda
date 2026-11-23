@@ -107,8 +107,17 @@ export {
   hasTimeSeries,
   type HrZoneBucket,
   insertTimeSeries,
+  reconcileTimeSeries,
   replaceTimeSeriesInWindow,
 } from './time-series.ts'
+
+export { getDerivedMetricStamp, setDerivedMetricStamp } from './derived-metric-state.ts'
+
+export {
+  type ChangeAggregate,
+  getStrengthScoreInputAggregates,
+  type StrengthScoreInputAggregates,
+} from './strength-score-inputs.ts'
 
 export {
   countTimeSeriesInWindows,

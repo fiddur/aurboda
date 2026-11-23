@@ -47,6 +47,15 @@ export const metricsTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_custom_metrics_name ON custom_metrics (name)
   `,
 
+  // The inputs stamp a derived metric (e.g. strength_score) was last computed from, so an unchanged user is skipped.
+  derived_metric_state: `
+    CREATE TABLE IF NOT EXISTS derived_metric_state (
+      name        VARCHAR(50) PRIMARY KEY,
+      stamp       TEXT NOT NULL,
+      computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+
   // Raw data sink - stores all incoming data in original form
   raw_records: `
     CREATE TABLE IF NOT EXISTS raw_records (
