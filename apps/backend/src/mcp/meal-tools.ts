@@ -99,7 +99,7 @@ export const registerMealTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_meal',
-    'Get a single meal by its ID, including food items and nutrition data.',
+    'Get a single meal by its ID, including food items and nutrition data, and the journal entries related to it (journal_entries, newest first).',
     { id: z.string().uuid().describe('The meal ID'), tz: tzSchema },
     async ({ id, tz }) => {
       const result = await getMeal(user, id)

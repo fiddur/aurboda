@@ -7,6 +7,7 @@
 import type {
   Confidence,
   CustomMetricDefinition,
+  JournalEntryRef,
   ReportFlag,
   StoredMetricCatalog,
   StoredMetricCatalogEntry,
@@ -33,6 +34,7 @@ import {
 import { writeWithCatalogAdoption } from './custom-metrics.ts'
 import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
 import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
+import { listJournalEntryRefs } from './notes.ts'
 
 export const REPORT_NOT_FOUND = 'Report not found'
 
@@ -85,6 +87,7 @@ interface ReportResponse {
   notes?: string
   created_at: string
   entries: ReportEntryResponse[]
+  journal_entries?: JournalEntryRef[]
 }
 
 interface ReportResult {
@@ -312,7 +315,8 @@ export async function getReport(user: string, id: string): Promise<ReportResult>
   if (!report) {
     return { error: REPORT_NOT_FOUND, success: false }
   }
-  return { data: formatReport(report), success: true }
+  const journalEntries = await listJournalEntryRefs(user, 'report', [report.id])
+  return { data: { ...formatReport(report), journal_entries: journalEntries }, success: true }
 }
 
 export async function queryReports(

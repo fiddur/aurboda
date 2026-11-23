@@ -1,4 +1,5 @@
 import type {
+  CheckIn,
   JournalEntryRef,
   NoteRelated,
   NoteRelatedEntityType,
@@ -6,15 +7,28 @@ import type {
   Person,
 } from '@aurboda/api-spec'
 
+import { noteRelatedEntityTypes } from '@aurboda/api-spec'
 import { addDays, format, parseISO } from 'date-fns'
 
-import type { Activity } from '../../state/api/types'
+import type { Activity, Meal, Report } from '../../state/api/types'
 
 import { toDisplayName } from '../../utils/displayName'
 import { filterPeople, newPersonName } from '../People/people-view'
 
 /** A link as the editor holds it: the target and the label its chip shows. */
 export type RelatedLink = NoteRelated
+
+/** What each kind of target is called in a sentence ("This meal was removed"), as the server names it in a refusal. */
+export const relatedNoun: Record<NoteRelatedEntityType, string> = {
+  activity: 'activity',
+  check_in: 'check-in',
+  meal: 'meal',
+  person: 'person',
+  report: 'report',
+}
+
+export const isRelatedType = (value: unknown): value is NoteRelatedEntityType =>
+  (noteRelatedEntityTypes as readonly unknown[]).includes(value)
 
 export const linkKey = (link: Pick<NoteRelated, 'entity_type' | 'entity_id'>) =>
   `${link.entity_type}:${link.entity_id.toLowerCase()}`
@@ -53,31 +67,40 @@ export const offeredPeople = <T extends Pick<Person, 'archived'>>(people: readon
 
 /**
  * The keys of the links in `links` that a save refused as no longer there: the ids an
- * `Unknown person: <ids>` or `Unknown activity: <ids>` answer names.
+ * `Unknown <kind>: <ids>` answer names (`Unknown person`, `Unknown check-in`, …).
  */
 export const refusedLinkKeys = (message: string, links: readonly RelatedLink[]): Set<string> => {
-  const match = /^Unknown (person|activity): (.+)$/.exec(message.trim())
+  const match = /^Unknown ([a-z-]+): (.+)$/.exec(message.trim())
   if (!match) return new Set()
+  const type = noteRelatedEntityTypes.find((kind) => relatedNoun[kind] === match[1])
+  if (!type) return new Set()
   const named = new Set(
-    match[2]!
-      .split(',')
-      .map((id) => linkKey({ entity_id: id.trim(), entity_type: match[1] as NoteRelatedEntityType })),
+    match[2]!.split(',').map((id) => linkKey({ entity_id: id.trim(), entity_type: type })),
   )
   return new Set(links.map(linkKey).filter((key) => named.has(key)))
 }
 
-export const relatedHref = (link: Pick<NoteRelated, 'entity_type' | 'entity_id'>): string =>
-  link.entity_type === 'person'
-    ? `/people/${encodeURIComponent(link.entity_id)}`
-    : `/detail/activity/${encodeURIComponent(link.entity_id)}`
+export const relatedHref = (link: Pick<NoteRelated, 'entity_type' | 'entity_id' | 'form_id'>): string => {
+  const id = encodeURIComponent(link.entity_id)
+  switch (link.entity_type) {
+    case 'person':
+      return `/people/${id}`
+    case 'meal':
+      return `/meals/${id}`
+    case 'report':
+      return `/reports/${id}`
+    case 'check_in':
+      return link.form_id ? `/check-ins/${encodeURIComponent(link.form_id)}` : '/check-ins'
+    default:
+      return `/detail/activity/${id}`
+  }
+}
 
 export const isRelatedLink = (value: unknown): value is RelatedLink => {
   if (typeof value !== 'object' || value === null) return false
   const link = value as Record<string, unknown>
   return (
-    (link.entity_type === 'person' || link.entity_type === 'activity') &&
-    typeof link.entity_id === 'string' &&
-    typeof link.label === 'string'
+    isRelatedType(link.entity_type) && typeof link.entity_id === 'string' && typeof link.label === 'string'
   )
 }
 
@@ -110,6 +133,88 @@ export const activityLink = (
   label: activityLabel(activity, typeName),
 })
 
+/** A meal's type with a capital, as the meals page writes it, or "Meal" when it has none. */
+const mealTypeName = (type: string | undefined): string => {
+  const trimmed = type?.trim() ?? ''
+  return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Meal'
+}
+
+/** "Lunch 12:30": its type and local time, as the server labels it. */
+export const mealLabel = (meal: Pick<Meal, 'meal_type' | 'time'>): string =>
+  `${mealTypeName(meal.meal_type)} ${format(meal.time, 'HH:mm')}`
+
+export const mealLink = (meal: Pick<Meal, 'id' | 'meal_type' | 'time'>): RelatedLink => ({
+  entity_id: meal.id ?? '',
+  entity_type: 'meal',
+  label: mealLabel(meal),
+})
+
+export const reportTypeName = (type: string): string =>
+  type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
+
+/** "Blood Panel, 2026-11-20": its type and local date, as the server labels it. */
+export const reportLabel = (report: Pick<Report, 'report_type' | 'date'>): string =>
+  `${reportTypeName(report.report_type)}, ${format(report.date, 'yyyy-MM-dd')}`
+
+export const reportLink = (report: Pick<Report, 'id' | 'report_type' | 'date'>): RelatedLink => ({
+  entity_id: report.id ?? '',
+  entity_type: 'report',
+  label: reportLabel(report),
+})
+
+/** "Morning 07:45": its form's name and the local time it was answered, as the server labels it. */
+export const checkInLabel = (checkIn: Pick<CheckIn, 'form_name' | 'answered_at'>): string =>
+  `${checkIn.form_name} ${format(new Date(checkIn.answered_at), 'HH:mm')}`
+
+export const checkInLink = (
+  checkIn: Pick<CheckIn, 'id' | 'form_id' | 'form_name' | 'answered_at'>,
+): RelatedLink => ({
+  entity_id: checkIn.id,
+  entity_type: 'check_in',
+  form_id: checkIn.form_id,
+  label: checkInLabel(checkIn),
+})
+
+/** The local day `date` (YYYY-MM-DD), from its start to the next day's. */
+export const dayWindow = (date: string): { start: Date; end: Date } => {
+  const start = parseISO(date)
+  return { end: addDays(start, 1), start }
+}
+
+const dayOf = (instant: Date) => format(instant, 'yyyy-MM-dd')
+
+/** The meals eaten on `date`, in time order. */
+export const dayMealOptions = <T extends Pick<Meal, 'time'>>(meals: readonly T[], date: string): T[] =>
+  meals.filter((m) => dayOf(m.time) === date).sort((a, b) => a.time.getTime() - b.time.getTime())
+
+/** The check-ins answered on `date` (a skip is not one), in time order. */
+export const dayCheckInOptions = <T extends Pick<CheckIn, 'answered_at' | 'status'>>(
+  checkIns: readonly T[],
+  date: string,
+): T[] =>
+  checkIns
+    .filter((c) => c.status !== 'skipped' && dayOf(new Date(c.answered_at)) === date)
+    .sort((a, b) => new Date(a.answered_at).getTime() - new Date(b.answered_at).getTime())
+
+export const REPORT_OPTIONS_MAX = 50
+
+/** The reports to pick from, newest first, optionally only those whose type holds `typeFilter`. */
+export const reportOptions = <T extends Pick<Report, 'report_type' | 'date'>>(
+  reports: readonly T[],
+  typeFilter = '',
+): T[] => {
+  const q = typeFilter.trim().toLowerCase()
+  return reports
+    .filter(
+      (r) =>
+        !q ||
+        r.report_type.toLowerCase().includes(q) ||
+        reportTypeName(r.report_type).toLowerCase().includes(q),
+    )
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, REPORT_OPTIONS_MAX)
+}
+
 /** What to fetch for a day's picker: from noon the day before (last night's sleep) to the day's end. */
 export const dayActivityWindow = (date: string): { start: Date; end: Date } => {
   const day = parseISO(date)
@@ -130,7 +235,6 @@ export const dayActivityOptions = <
   typeFilter = '',
   typeName: (type: string) => string = toDisplayName,
 ): T[] => {
-  const dayOf = (instant: Date) => format(instant, 'yyyy-MM-dd')
   const sleeps = activities.filter(
     (a) =>
       isSleep(a) && a.end_time !== undefined && dayOf(a.end_time) === date && dayOf(a.start_time) !== date,
@@ -222,7 +326,7 @@ export const highlighted = (
 export const moveChoice = (index: number, step: 1 | -1, count: number): number =>
   count === 0 ? 0 : (index + step + count) % count
 
-/** The journal's "Related to" filter as `/journal?person=<id>` or `?activity=<id>` gives it. */
+/** The journal's "Related to" filter as `/journal?person=<id>`, `?activity=<id>`, `?meal=<id>` and so on give it. */
 export interface RelatedFilter {
   type: NoteRelatedEntityType
   id: string
@@ -233,9 +337,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const relatedFilterFromQuery = (
   query: Record<string, string | undefined>,
 ): RelatedFilter | undefined => {
-  if (query.person && UUID.test(query.person)) return { id: query.person, type: 'person' }
-  if (query.activity && UUID.test(query.activity.replace(/^merged:/, ''))) {
-    return { id: query.activity.replace(/^merged:/, ''), type: 'activity' }
+  for (const type of noteRelatedEntityTypes) {
+    const id = query[type]?.replace(/^merged:/, '')
+    if (id && UUID.test(id)) return { id, type }
   }
   return undefined
 }
@@ -243,14 +347,14 @@ export const relatedFilterFromQuery = (
 export const relatedFilterHref = (filter: RelatedFilter): string =>
   `/journal?${filter.type}=${encodeURIComponent(filter.id)}`
 
-/** What the "Related to" button shows: Anyone, the person's name, or the activity's label once loaded. */
+/** What the "Related to" button shows: Anyone, the person's name, or the target's label once loaded. */
 export const relatedFilterLabel = (
   filter: RelatedFilter | undefined,
   people: readonly Pick<Person, 'id' | 'name'>[],
-  activity: string | undefined,
+  target: string | undefined,
 ): string => {
   if (!filter) return 'Anyone'
-  if (filter.type === 'activity') return activity ?? 'This activity'
+  if (filter.type !== 'person') return target ?? `This ${relatedNoun[filter.type]}`
   return people.find((person) => person.id === filter.id)?.name ?? 'Someone'
 }
 

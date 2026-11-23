@@ -174,7 +174,7 @@ Auth is read from `~/.config/aurboda/config`.
 - `PUT /meals` -- upsert a meal (client-generated UUID, idempotent)
 - `POST /meals` -- create a meal (server-generated UUID, backwards-compatible)
 - `GET /meals?start=&end=&date=` -- query meals with optional log_completed
-- `GET /meals/:id` -- get a single meal
+- `GET /meals/:id` -- get a single meal, with `journal_entries`: the journal entries related to it, newest first (see [Journal → Related](journal.md#related)); the meal's page lists them under **Mentioned in the journal**, and deleting the meal removes its links
 - `PATCH /meals/:id` -- update meal fields
 - `DELETE /meals/:id` -- delete a meal
 - `PUT /meals/log-completed/:date` -- mark day as logging-complete
@@ -190,7 +190,7 @@ Meals:
 
 - `add_meal` -- create/upsert a meal. `food_items[*]` accept either the legacy `quantity` + `unit` or `food_item_portion_id` + `portion_count` (portion path)
 - `query_meals` -- query by date range and meal type
-- `get_meal` -- get by ID
+- `get_meal` -- get by ID, with its related `journal_entries`
 - `update_meal` -- update fields
 - `delete_meal` -- delete by ID
 - `query_meals_period_summary` -- daily-averaged nutrient intake + calories burned over a date range

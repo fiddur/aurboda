@@ -255,6 +255,12 @@ history with its name until the form is purged, which takes its check-ins with i
 points and activities of those still live stay). Deleting a check-in removes the metric points it
 logged and soft-deletes its activities; restoring it brings both back. `deleted=true` on the lists shows what can be restored.
 
+A journal entry can be related to a check-in (see [Journal → Related](journal.md#related)). The
+link is hidden while the check-in is deleted and back on restore; it goes when the check-in is
+removed for good. A check-in has no page of its own: its related entries are read with
+`GET /notes/search?related_type=check_in&related_id=<id>` (MCP `search_notes`), and a check-in
+chip on an entry opens its form's page.
+
 ## Pages
 
 **Check-ins** is under **Log** in the menu (and can be hidden there, see [the menu](menu.md)); in the
