@@ -1,9 +1,3 @@
-.food-items-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .food-items-page h1 {
   font-size: 1.75rem;
   font-weight: 600;
@@ -139,10 +133,6 @@
 }
 
 @media (max-width: 639px) {
-  .food-items-page {
-    padding: 1rem;
-  }
-
   .fi-table {
     font-size: 0.75rem;
   }

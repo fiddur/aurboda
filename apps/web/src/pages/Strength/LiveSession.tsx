@@ -337,7 +337,7 @@ export const LiveSession = ({
       : STATUS_TEXT[status]
 
   return (
-    <div class="strength-page">
+    <div class="page page--narrow strength-page">
       <header class="strength-sticky-header">
         <div>
           <h1>Session</h1>

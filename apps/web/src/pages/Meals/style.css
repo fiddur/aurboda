@@ -1,9 +1,3 @@
-.meals-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .day-layout {
   display: flex;
   flex-direction: column;
@@ -660,10 +654,6 @@ a.meal-name:hover {
 }
 
 @media (max-width: 639px) {
-  .meals-page {
-    padding: 1rem;
-  }
-
   .meals-header {
     flex-direction: column;
     align-items: flex-start;

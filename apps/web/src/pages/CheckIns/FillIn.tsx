@@ -531,16 +531,16 @@ export function CheckInFill() {
 
   if (!isLoggedIn) {
     return (
-      <div class="checkins-page">
+      <div class="page checkins-page">
         <h1>Check-in</h1>
         <p>Please log in to fill in your check-ins.</p>
       </div>
     )
   }
-  if (isLoading) return <div class="checkins-page checkins-muted">Loading…</div>
+  if (isLoading) return <div class="page checkins-page checkins-muted">Loading…</div>
   if (error || !form) {
     return (
-      <div class="checkins-page">
+      <div class="page checkins-page">
         <h1>Check-in</h1>
         <p>That form was not found.</p>
         <a href="/check-ins">Back to check-ins</a>
@@ -552,7 +552,7 @@ export function CheckInFill() {
   const activityId = query.activity || undefined
 
   return (
-    <div class="checkins-page checkin-fill-page">
+    <div class="page checkins-page checkin-fill-page">
       <p class="checkins-back">
         <a href="/check-ins">← Check-ins</a>
       </p>

@@ -213,7 +213,7 @@ export function StravaSource() {
   if (!isLoggedIn) return <LoginRequiredToFinish provider="strava" providerName="Strava" />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Strava</h1>
       </div>

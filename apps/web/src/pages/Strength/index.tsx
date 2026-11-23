@@ -103,7 +103,7 @@ export function Strength() {
   }
 
   return (
-    <div class="strength-page strength-page-train">
+    <div class="page page--wide strength-page strength-page-train">
       <h1>Strength</h1>
       <StrengthTabs />
       {unfinished && (

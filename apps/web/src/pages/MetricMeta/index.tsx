@@ -516,7 +516,7 @@ export function MetricMeta() {
   })
 
   return (
-    <div class="metric-meta-page">
+    <div class="page page--full metric-meta-page">
       <div class="metric-meta-header">
         <h1>{label}</h1>
         <div class="metric-meta-subtitle">

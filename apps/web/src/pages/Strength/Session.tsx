@@ -42,7 +42,7 @@ const isEditable = (activity: Activity & { source_records?: unknown[] }, id: str
   (activity.source_records?.length ?? 0) <= 1
 
 const ReadOnlySession = ({ activity, id }: { activity: Activity; id: string }) => (
-  <div class="strength-page">
+  <div class="page page--narrow strength-page">
     <header class="strength-sticky-header">
       <h1>Session</h1>
       <a class="btn-secondary" href={detailUrl(id)}>
@@ -69,7 +69,7 @@ const ReadOnlySession = ({ activity, id }: { activity: Activity; id: string }) =
 )
 
 const OtherDraftNotice = ({ draft }: { draft: SessionDraft }) => (
-  <div class="strength-page">
+  <div class="page page--narrow strength-page">
     <h1>Session</h1>
     <div class="strength-card">
       <p>

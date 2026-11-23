@@ -1,0 +1,33 @@
+@use 'mixins';
+
+:root {
+  --page-width-narrow: 640px;
+  --page-width-default: 760px;
+  --page-width-wide: 1100px;
+}
+
+// A route root sits in `main > div`, which gives it width: 100%, so the padding must stay inside it.
+.page {
+  --page-width: var(--page-width-default);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--page-width);
+  margin-inline: auto;
+  padding: 2rem;
+
+  @include mixins.phone {
+    padding: 1rem;
+  }
+}
+
+.page--narrow {
+  --page-width: var(--page-width-narrow);
+}
+
+.page--wide {
+  --page-width: var(--page-width-wide);
+}
+
+.page--full {
+  --page-width: none;
+}

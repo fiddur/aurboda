@@ -279,7 +279,7 @@ export function GravlSource() {
   if (!isLoggedIn) return <LoginRequiredToFinish provider="gravl" providerName="Gravl" />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Gravl</h1>
       </div>

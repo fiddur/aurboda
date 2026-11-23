@@ -180,7 +180,7 @@ export function Feed() {
   }
 
   return (
-    <div class="feed-page">
+    <div class="page feed-page">
       <h1>Feed</h1>
       <p class="feed-intro">
         Your federated feed. Anyone on Mastodon and the wider fediverse can follow{' '}

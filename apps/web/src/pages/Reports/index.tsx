@@ -58,7 +58,7 @@ export function Reports() {
   const sorted = [...(reports ?? [])].sort((a, b) => b.date.getTime() - a.date.getTime())
 
   return (
-    <div class="reports-page">
+    <div class="page page--full reports-page">
       <div class="reports-header">
         <h1>Lab Reports</h1>
         <div class="reports-header-actions">

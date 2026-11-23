@@ -1,9 +1,3 @@
-.correlations-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .correlations-page .correlations-header {
   display: flex;
   justify-content: space-between;
@@ -379,10 +373,6 @@
 }
 
 @media (max-width: 768px) {
-  .correlations-page {
-    padding: 1rem;
-  }
-
   .correlations-page .correlations-header {
     flex-direction: column;
     align-items: flex-start;

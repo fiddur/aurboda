@@ -233,7 +233,7 @@ export function Reminders() {
 
   if (!isLoggedIn) {
     return (
-      <div class="reminders-page">
+      <div class="page reminders-page">
         <h1>Reminders</h1>
         <p>Please log in to see your reminders.</p>
       </div>
@@ -248,7 +248,7 @@ export function Reminders() {
   const editingReminder = reminders.find((r) => r.id === editing)
 
   return (
-    <div class="reminders-page">
+    <div class="page reminders-page">
       <div class="reminders-header">
         <h1>Reminders</h1>
         {editing === null && (

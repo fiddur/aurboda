@@ -30,7 +30,7 @@ export function Notifications() {
 
   if (!isLoggedIn) {
     return (
-      <div class="notifications-page">
+      <div class="page notifications-page">
         <h1>Notifications</h1>
         <p>Please log in to see your notifications.</p>
       </div>
@@ -41,7 +41,7 @@ export function Notifications() {
   const unread = data?.pages[0]?.unread_count ?? 0
 
   return (
-    <div class="notifications-page">
+    <div class="page notifications-page">
       <div class="notifications-header">
         <h1>Notifications</h1>
         <div class="notifications-header-actions">

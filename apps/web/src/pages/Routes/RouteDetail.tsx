@@ -270,7 +270,7 @@ export function RouteDetail() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to see your routes.</p>
       </div>
     )
@@ -278,7 +278,7 @@ export function RouteDetail() {
 
   if (isLoading) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading route...</p>
       </div>
     )
@@ -286,7 +286,7 @@ export function RouteDetail() {
 
   if (!route) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Route not found.</p>
         <a href="/routes">Back to routes</a>
       </div>
@@ -298,7 +298,7 @@ export function RouteDetail() {
   const cutKm = kmCut && cutKms(kmCut, route.length_m)
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <NameEditor route={route} />
         <p class="page-subtitle">

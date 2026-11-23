@@ -463,7 +463,7 @@ export const Data = () => {
     : [typesFilter?.split(',').join(', '), dataFilter && `(${dataFilter})`].filter(Boolean).join(' ')
 
   return (
-    <div class="data-page">
+    <div class="page page--full data-page">
       <div class="data-sidebar">
         <DateNav value={dateStr} onChange={handleDateChange} dateFormat="EEE MMM d, yyyy" />
         {hasTimeFilter && (

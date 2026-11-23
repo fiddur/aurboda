@@ -136,7 +136,7 @@ export function MealTypeMeta() {
   const displayName = toDisplayName(mealType)
 
   return (
-    <div class="activity-type-meta-page">
+    <div class="page page--full activity-type-meta-page">
       <div class="activity-type-meta-header">
         <div class="activity-type-meta-title-row">
           {icon ? (

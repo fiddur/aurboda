@@ -549,7 +549,7 @@ export function Sleep() {
   }
 
   return (
-    <div class="sleep-page">
+    <div class="page page--full sleep-page">
       <div class="sleep-header">
         <h1>Sleep Quality</h1>
         <select value={daysBack.value} onChange={handleDaysChange} class="days-select">

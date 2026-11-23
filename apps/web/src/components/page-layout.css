@@ -1,9 +1,3 @@
-.data-sources-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .data-sources-page .page-header {
   margin-bottom: 2rem;
 }
@@ -50,10 +44,6 @@
 }
 
 @media (max-width: 639px) {
-  .data-sources-page {
-    padding: 1rem;
-  }
-
   .data-sources-page h1 {
     font-size: 1.5rem;
   }

@@ -633,14 +633,14 @@ export function MealDetail() {
 
   if (isLoading) {
     return (
-      <div class="meal-detail-page">
+      <div class="page page--full meal-detail-page">
         <p class="loading">Loading...</p>
       </div>
     )
   }
   if (!meal) {
     return (
-      <div class="meal-detail-page">
+      <div class="page page--full meal-detail-page">
         <p>Meal not found.</p>
       </div>
     )
@@ -694,7 +694,7 @@ export function MealDetail() {
   }
 
   return (
-    <div class="meal-detail-page">
+    <div class="page page--full meal-detail-page">
       <div class="detail-header">
         <a href={`/meals?date=${format(meal.time, 'yyyy-MM-dd')}`} class="back-link">
           &larr; Back

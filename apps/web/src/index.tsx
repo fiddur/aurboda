@@ -19,7 +19,7 @@ import { NotFound } from './pages/_404.jsx'
 import { shouldShowGuestBar, shouldShowNav, shouldShowPlanBanner, shouldShowSiteFooter } from './shell.js'
 import { auth } from './state/auth.js'
 import { queryClient } from './state/queryClient.js'
-import './style.css'
+import './style.scss'
 
 const ActivityTypeItem = lazyPage(() => import('./pages/ActivityTypeItem/index.jsx'), 'ActivityTypeItem')
 const ActivityTypeMeta = lazyPage(() => import('./pages/ActivityTypeMeta/index.jsx'), 'ActivityTypeMeta')

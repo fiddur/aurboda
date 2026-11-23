@@ -1,9 +1,3 @@
-.entity-detail-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .deleted-banner {
   display: flex;
   align-items: center;
@@ -1227,10 +1221,6 @@ details.list-field-detail:not([open]) > summary h3 {
 }
 
 @media (max-width: 639px) {
-  .entity-detail-page {
-    padding: 1rem;
-  }
-
   .entity-info h2 {
     font-size: 1.25rem;
   }

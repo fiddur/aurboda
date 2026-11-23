@@ -1,9 +1,3 @@
-.activity-type-item-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .activity-type-item-back {
   display: inline-block;
   margin-bottom: 0.75rem;
@@ -160,10 +154,6 @@
 }
 
 @media (max-width: 640px) {
-  .activity-type-item-page {
-    padding: 1rem;
-  }
-
   .activity-type-item-sets {
     min-width: 8rem;
   }

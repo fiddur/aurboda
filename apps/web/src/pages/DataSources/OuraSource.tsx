@@ -198,7 +198,7 @@ export function OuraSource() {
   if (!isLoggedIn) return <LoginRequiredToFinish provider="oura" providerName="Oura" />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Oura Ring</h1>
       </div>
