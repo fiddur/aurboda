@@ -51,9 +51,11 @@ import {
   isEntryEmpty,
   tagChips,
 } from './entry-form'
+import { EntryNeighbors } from './EntryNeighbors'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
 import { MentionEditor } from './MentionEditor'
+import { neighborAnchorKey } from './neighbors'
 import { Recorder } from './Recorder'
 import { RelatedRow } from './Related'
 import { addLink, personLink, type RelatedLink, refusedLinkKeys } from './related'
@@ -805,6 +807,8 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         </button>
         <StatusLine status={status} problem={saveProblem} isNew={!idRef.current} />
       </div>
+
+      <EntryNeighbors id={idRef.current} loaded={loaded} anchorKey={neighborAnchorKey(form)} />
 
       {loadError && (
         <p class="journal-error" role="alert">

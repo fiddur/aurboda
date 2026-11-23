@@ -2,6 +2,7 @@ import {
   addNoteBodySchema,
   DELETED_NOTE_RETENTION_DAYS,
   isKnownTimezone,
+  noteNeighborsQuerySchema,
   notesQueryRangeSchema,
   notesQuerySchema,
   notesSearchQuerySchema,
@@ -13,6 +14,7 @@ import { z } from 'zod'
 import {
   addNote,
   deleteNoteById,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
@@ -91,6 +93,18 @@ export const registerNoteTools = (server: McpServer, user: string) => {
       const result = await searchNotesForUser(user, params)
       if (!result.success) return errorResponse(result.error)
       return params.tz ? tzJsonResponse(result, params.tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'get_note_neighbors',
+    "The Journal entries just before (older, previous) and after (newer, next) one entry, in the Journal list's order: the free-standing timed and day entries, newest first by their time or day.",
+    { id: z.string().uuid().describe('Journal entry (note) id'), ...noteNeighborsQuerySchema.shape },
+    async ({ id, tz }) => {
+      const neighbors = await getJournalNeighbors(user, id, tz)
+      if (!neighbors) return errorResponse('Journal entry not found')
+      const result = { data: neighbors, success: true }
+      return tz ? tzJsonResponse(result, tz) : jsonResponse(result)
     },
   )
 

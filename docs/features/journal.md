@@ -172,6 +172,12 @@ February. A `day` entry sorts at the start of its date in your timezone. The
 full-text index covers the first 100 000 characters of an entry. See
 [Comments → Finding comments](./comments.md#finding-comments).
 
+An open entry links to the one before and after it in that same order, unfiltered:
+`←` the older, `→` the newer, and the arrow keys step through them when no text field
+has focus. `GET /notes/:id/neighbors` (MCP `get_note_neighbors`) answers them as
+`previous` (older) and `next` (newer), each with its `date` or `start_time`, `title`
+and `excerpt`; an id that is not a live entry is a `404`.
+
 The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns the
 `day` entries of the window's dates alongside the timed ones; the daily summary
 lists the day's `day` entries under `notes`, each with its `attachments` like any
@@ -260,6 +266,7 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/:id`                                    | `get_note`                      |
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
+| `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
