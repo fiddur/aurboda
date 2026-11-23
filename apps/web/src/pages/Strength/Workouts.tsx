@@ -113,6 +113,7 @@ export function StrengthWorkouts() {
           </div>
         </div>
       ) : (
+        !plans.isLoading &&
         openPlans.length === 0 && (
           <div class="strength-start-actions">
             <button
