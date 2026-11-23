@@ -10,6 +10,7 @@ import {
   replaceFirst,
   stillUploading,
   uploadPlaceholder,
+  withoutUploadPlaceholders,
 } from './image-upload'
 
 describe('uploadPlaceholder and stillUploading', () => {
@@ -117,5 +118,17 @@ describe('messageForFailure', () => {
       'Could not send that picture. Please try again.',
     )
     expect(messageForFailure('odd')).toBe('Could not send that picture. Please try again.')
+  })
+})
+
+describe('withoutUploadPlaceholders', () => {
+  test('drops every picture still on its way, with its line', () => {
+    const text = `Morning\n${uploadPlaceholder('a [1].jpg')}\n${uploadPlaceholder('b.png')}\nafter`
+    expect(withoutUploadPlaceholders(text)).toBe('Morning\nafter')
+  })
+
+  test('leaves text with no placeholder as it is', () => {
+    const text = 'Morning\n![Uploading coffee.jpg…]()\n![](attachment:x)'
+    expect(withoutUploadPlaceholders(text)).toBe(text)
   })
 })

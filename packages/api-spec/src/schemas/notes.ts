@@ -10,7 +10,7 @@ import {
   queryBooleanSchema,
   UUID_RE,
 } from './common.ts'
-import { noteAttachmentSchema } from './note-attachments.ts'
+import { INLINE_PICTURE_HINT, noteAttachmentSchema } from './note-attachments.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 /**
@@ -395,8 +395,7 @@ const checkAnchoredShape = (ctx: CheckContext, body: NoteShapeInput): void => {
 export const addNoteBodySchema = z
   .object({
     content: z.string().meta({
-      description:
-        'Note content (markdown). May be empty only for `entity_type` "time" or "day"; #hashtags in it become tags.',
+      description: `Note content (markdown). May be empty only for \`entity_type\` "time" or "day"; #hashtags in it become tags. ${INLINE_PICTURE_HINT}`,
     }),
     date: dateOnlySchema.optional().meta({
       description: "Only for `entity_type: 'day'` (required there) — the calendar date, YYYY-MM-DD",
@@ -446,10 +445,12 @@ export type AddNoteBody = z.infer<typeof addNoteBodySchema>
  */
 export const updateNoteBodySchema = z
   .object({
-    content: z.string().optional().meta({
-      description:
-        'Updated note content (markdown). May be empty only on a comment with `entity_type` "time" or "day".',
-    }),
+    content: z
+      .string()
+      .optional()
+      .meta({
+        description: `Updated note content (markdown). May be empty only on a comment with \`entity_type\` "time" or "day". ${INLINE_PICTURE_HINT}`,
+      }),
     date: dateOnlySchema.optional().meta({
       description:
         "New calendar date (YYYY-MM-DD). Only for a comment with `entity_type` 'time' or 'day': on a 'time' comment it makes it a 'day' entry and drops its times. Not together with start_time/end_time.",

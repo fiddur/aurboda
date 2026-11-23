@@ -8,6 +8,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { CommentThread } from '../../components/CommentThread'
 import {
+  insertOnOwnLine,
+  stillUploading,
+  withoutUploadPlaceholders,
+} from '../../components/MarkdownEditor/image-upload'
+import {
   addReply,
   apiErrorMessage,
   createJournalEntry,
@@ -23,6 +28,7 @@ import {
   uploadNoteAttachment,
 } from '../../state/api'
 import { auth } from '../../state/auth'
+import { ATTACHMENT_SCHEME } from '../../utils/attachment-ref'
 import { renderMarkdown } from '../../utils/markdown'
 import { PictureThumb, PictureViewer, RecordingPlayer } from './Attachments'
 import { type AutosaveStatus, autosaveLabel, createAutosaver, type SaveOutcome } from './autosave'
@@ -54,6 +60,7 @@ import {
 import { type EntryMode, initialEntryMode } from './entry-mode'
 import { EntryNeighbors } from './EntryNeighbors'
 import { EntryReadView } from './EntryReadView'
+import { attachmentImageMarkdown, withoutInline } from './inline-pictures'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
 import { MentionEditor } from './MentionEditor'
@@ -78,6 +85,13 @@ const uploadProblem = (error: unknown): string => {
 }
 
 const sortByPosition = (list: NoteAttachment[]) => [...list].sort((a, b) => a.position - b.position)
+
+/** The entry as it may be saved while pictures are still on their way: without their placeholders. */
+const savable = (form: EntryForm): EntryForm =>
+  stillUploading(form.content) ? { ...form, content: withoutUploadPlaceholders(form.content) } : form
+
+const withPictureAtEnd = (content: string, attachmentId: string): string =>
+  insertOnOwnLine(content, content.length, attachmentImageMarkdown(attachmentId)).value
 
 const TagEditor = ({
   tags,
@@ -338,25 +352,32 @@ const DraftOffer = ({
 const EditorFiles = ({
   noteId,
   attachments,
+  content,
   busy,
   problem,
   removed,
   onOpen,
   onRemove,
+  onPutInText,
   onUndo,
 }: {
   noteId: string | undefined
   attachments: NoteAttachment[]
+  content: string
   busy: string | undefined
   problem: string | undefined
   removed: NoteAttachment | undefined
   onOpen: (attachment: NoteAttachment) => void
   onRemove: (attachment: NoteAttachment) => void
+  onPutInText: (attachment: NoteAttachment) => void
   onUndo: () => void
 }) => {
-  const pictures = attachments.filter((a) => a.kind === 'image')
+  const pictures = withoutInline(
+    attachments.filter((a) => a.kind === 'image'),
+    content,
+  )
   const recordings = attachments.filter((a) => a.kind === 'audio')
-  if (attachments.length === 0 && !busy && !problem && !removed) return null
+  if (pictures.length === 0 && recordings.length === 0 && !busy && !problem && !removed) return null
   return (
     <div class="journal-editor-files">
       {noteId && pictures.length > 0 && (
@@ -369,6 +390,14 @@ const EditorFiles = ({
                 label={`Picture ${index + 1} of ${pictures.length}`}
                 onOpen={() => onOpen(picture)}
               />
+              <button
+                type="button"
+                class="journal-link-btn"
+                onClick={() => onPutInText(picture)}
+                aria-label={`Put picture ${index + 1} in the text`}
+              >
+                Put in text
+              </button>
               <button
                 type="button"
                 class="journal-link-btn"
@@ -469,7 +498,12 @@ const EntryText = ({
   onDone: () => void
 }) =>
   mode === 'read' ? (
-    <EntryReadView content={editor.value} onEdit={onEdit} />
+    <EntryReadView
+      content={editor.value}
+      noteId={editor.noteId}
+      onEdit={onEdit}
+      onOpenPicture={editor.onOpenPicture}
+    />
   ) : (
     <div class="journal-write">
       <MentionEditor {...editor} />
@@ -525,7 +559,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const [showHistory, setShowHistory] = useState(false)
   const [busy, setBusy] = useState<string | undefined>(undefined)
   const [fileProblem, setFileProblem] = useState<string | undefined>(undefined)
-  const [viewing, setViewing] = useState<NoteAttachment | undefined>(undefined)
+  const [viewing, setViewing] = useState<string | undefined>(undefined)
   const [removed, setRemoved] = useState<NoteAttachment | undefined>(undefined)
   const [deleted, setDeleted] = useState(false)
   const deletedRef = useRef(false)
@@ -563,7 +597,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       if (idRef.current) return idRef.current
       if (creating.current) return creating.current
       creating.current = (async () => {
-        const note = await createJournalEntry(formToCreateBody(sent))
+        const note = await createJournalEntry(formToCreateBody(savable(sent)))
         const id = note.id!
         idRef.current = id
         moveDraft(storage, NEW_ENTRY_KEY, id)
@@ -581,7 +615,8 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   )
 
   const save = useCallback(
-    async (sent: EntryForm): Promise<SaveOutcome> => {
+    async (edited: EntryForm): Promise<SaveOutcome> => {
+      const sent = savable(edited)
       const problem = entryFormProblem(sent)
       setSaveProblem(problem)
       if (problem) throw new Error(problem)
@@ -733,18 +768,27 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     removeDraft(storage, offer?.key ?? draftKey())
   }
 
+  const ensureEntry = async (): Promise<string> => {
+    await autosaver.flush()
+    return createEntry(formRef.current)
+  }
+
+  const keepFile = async (id: string, file: Blob, name: string | undefined): Promise<NoteAttachment> => {
+    const attachment = await uploadNoteAttachment(id, file, name)
+    setAttachments(sortByPosition([...attachmentsRef.current, attachment]))
+    return attachment
+  }
+
   const addFiles = async (
     files: readonly Blob[],
     names: string[] = files.map((f) => (f instanceof File ? f.name : '')),
   ) => {
     setFileProblem(undefined)
     try {
-      await autosaver.flush()
-      const id = await createEntry(formRef.current)
+      const id = await ensureEntry()
       for (const [index, file] of files.entries()) {
         setBusy(files.length > 1 ? `Adding ${index + 1} of ${files.length}…` : 'Adding…')
-        const attachment = await uploadNoteAttachment(id, file, names[index] || undefined)
-        setAttachments(sortByPosition([...attachmentsRef.current, attachment]))
+        await keepFile(id, file, names[index] || undefined)
       }
       void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY })
     } catch (error) {
@@ -752,6 +796,17 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     } finally {
       setBusy(undefined)
     }
+  }
+
+  const uploadInline = async (file: File): Promise<{ url: string }> => {
+    const attachment = await keepFile(await ensureEntry(), file, file.name || undefined)
+    void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY })
+    return { url: `${ATTACHMENT_SCHEME}${attachment.id}` }
+  }
+
+  const putInText = (attachment: NoteAttachment) => {
+    patch({ content: withPictureAtEnd(formRef.current.content, attachment.id) })
+    startEditing(false)
   }
 
   const removeAttachment = async (attachment: NoteAttachment) => {
@@ -884,7 +939,10 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
               patch({ content, related: addLink(formRef.current.related, personLink(person)) })
             }
             onBlur={flush}
-            attachPictures={(files) => void addFiles(files)}
+            noteId={idRef.current}
+            upload={uploadInline}
+            uploadFailureMessage={uploadProblem}
+            onOpenPicture={setViewing}
           />
 
           <RelatedRow
@@ -897,11 +955,13 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
           <EditorFiles
             noteId={idRef.current}
             attachments={attachments}
+            content={form.content}
             busy={busy}
             problem={fileProblem}
             removed={removed}
-            onOpen={setViewing}
+            onOpen={(attachment) => setViewing(attachment.id)}
             onRemove={(attachment) => void removeAttachment(attachment)}
+            onPutInText={putInText}
             onUndo={() => void undoRemove()}
           />
 
@@ -956,7 +1016,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       )}
 
       {viewing && idRef.current && (
-        <PictureViewer noteId={idRef.current} attachment={viewing} onClose={() => setViewing(undefined)} />
+        <PictureViewer noteId={idRef.current} attachmentId={viewing} onClose={() => setViewing(undefined)} />
       )}
     </div>
   )

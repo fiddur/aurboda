@@ -53,8 +53,11 @@ optional end time, or **No time of day** with a date. It opens on "now".
 - **History** lists the earlier versions of the text (see revisions below), each
   with **Restore this version**, which makes it the current text through an
   ordinary save.
-- **Pictures**: **Add pictures** (several at once, or the camera on a phone), or
-  drop or paste them in; they are attached in the order chosen. **Record** captures
+- **Pictures**: a picture pasted or dropped into the text (or picked with the
+  picture button above it) goes into the text where the cursor is; **Add pictures**
+  (several at once, or the camera on a phone) adds them below the text instead, in
+  the order chosen, and **Put in text** moves one of those to the end of the text.
+  See [Pictures in the text](#pictures-in-the-text). **Record** captures
   a voice note with the microphone, which the browser asks for the first time.
   Pictures open full size; recordings play inline. Removing one shows **Undo** for
   a few seconds, and it can be restored for 30 days.
@@ -254,6 +257,20 @@ page order, each with `id`, `kind` (`image` or `audio`), `mime`, `size`,
   the entry already holds 30). `?purge=true` removes it at once. Deleting the
   entry needs nothing more: its attachments come back when it is restored, and go
   when it is purged.
+
+### Pictures in the text
+
+Every picture is an attachment of its entry; the text shows one in place with a
+markdown image whose URL names it: `![caption](attachment:<attachment id>)`. It
+only ever refers to an attachment of the same entry. The web draws it from the
+attachment's bytes (fetched with the token, like the thumbnails), in the list at
+400 px and in the entry at 2000 px, and a tap opens it full size; an attachment
+that is gone shows "Picture missing". Pictures the text shows this way are left
+out of the thumbnails below it, and the entry's excerpt (on a person's or an
+activity's page, and the previous/next links) skips lines that are only pictures.
+Over REST and MCP it is the same: upload with `POST /notes/:id/attachments` or
+`add_note_attachment`, then put the line in `content` with `update_note`. Deleting
+the line leaves the attachment, back among the thumbnails.
 
 ### Transcribing a photographed page
 

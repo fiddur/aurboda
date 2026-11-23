@@ -93,6 +93,7 @@ describe('note attachment tools', () => {
     ])
     expect(tools.get('get_note_attachment')!.description).toContain('needs_text: true')
     expect(tools.get('add_note_attachment')!.description).toContain('4 MB')
+    expect(tools.get('add_note_attachment')?.description).toContain('](attachment:<attachment id>)')
   })
 
   test('add_note_attachment stores the decoded file', async () => {
