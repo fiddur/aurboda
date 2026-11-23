@@ -14,7 +14,7 @@ export interface UploadUrlToolsDeps {
 }
 
 const DESCRIPTION = `Get a short-lived, single-use URL to upload a file to, so the file's bytes never pass through MCP (which carries them base64-encoded, at most about 3 MB). Use it for anything larger than a few hundred kB, or for a file on disk. Targets:
-- note_attachment: a picture or a recording (PNG, JPEG, WebP, GIF; WebM, Ogg, MP4/M4A, MP3, WAV) attached to a journal entry; needs note_id. Answers like add_note_attachment.
+- note_attachment: a picture or a recording (PNG, JPEG, WebP, GIF, HEIC; WebM, Ogg, MP4/M4A, MP3, WAV) attached to a journal entry; needs note_id. Answers like add_note_attachment.
 - feed_image: a picture to embed in markdown by its public URL. Answers like add_feed_image.
 - challenge_banner: the banner of one of your hosted challenges; needs challenge_id. Answers the updated challenge.
 - profile_avatar: your profile picture. Answers its URL.

@@ -148,6 +148,38 @@ describe('sync router', () => {
       expect(response.status).toBe(400)
       expect(mockDeps.processDailyAggregate).not.toHaveBeenCalled()
     })
+
+    const aggregate = { data_origins: ['app1'], date: '2024-01-15', metric: 'steps', value: 1000 }
+
+    test.each([{}, { tz_follows_device: true }])(
+      "stores the phone's zone while the zone follows the phone (%o)",
+      async (settings) => {
+        vi.mocked(mockDeps.processDailyAggregate).mockResolvedValueOnce('Europe/Stockholm')
+        vi.mocked(mockDeps.getSettings).mockResolvedValueOnce(settings)
+
+        const response = await request(createTestApp())
+          .post('/sync/daily-aggregates')
+          .send({ data: [aggregate] })
+
+        expect(response.status).toBe(200)
+        expect(mockDeps.upsertUserSettings).toHaveBeenCalledWith('testuser', {
+          device_timezone: 'Europe/Stockholm',
+        })
+      },
+    )
+
+    test('leaves a zone chosen by hand alone (tz_follows_device false)', async () => {
+      vi.mocked(mockDeps.processDailyAggregate).mockResolvedValueOnce('Europe/Stockholm')
+      vi.mocked(mockDeps.getSettings).mockResolvedValueOnce({ tz_follows_device: false })
+
+      const response = await request(createTestApp())
+        .post('/sync/daily-aggregates')
+        .send({ data: [aggregate] })
+
+      expect(response.status).toBe(200)
+      expect(mockDeps.processDailyAggregate).toHaveBeenCalledTimes(1)
+      expect(mockDeps.upsertUserSettings).not.toHaveBeenCalled()
+    })
   })
 
   describe('oura endpoints', () => {

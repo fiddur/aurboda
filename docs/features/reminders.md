@@ -20,8 +20,12 @@ Times are read in the user's time zone (`tz` in the user settings, stored as `de
 UTC when unset). The web sets it from the browser the first time a signed-in page loads without
 one, and Settings → Time zone (`/settings#time-zone`) changes it; `PATCH /user/settings { "tz":
 "Europe/Stockholm" }` or the `update_user_settings` MCP tool do the same, and `"tz": null` clears it.
-The Android app also writes the phone's zone each time it syncs Health Connect, and the last writer
-wins: a zone chosen in Settings is replaced by the phone's at its next sync. A reminder has an occurrence on each local date whose weekday it lists, at `time_of_day`
+The Android app also writes the phone's zone each time it syncs Health Connect, but only while
+**Use my phone's time zone** (`tz_follows_device`, on by default) is on. A zone chosen by hand wins:
+picking one in Settings, or setting `tz` over REST or MCP without `tz_follows_device`, turns the
+switch off, so the phone's zone no longer replaces it; ticking the box again (`"tz_follows_device":
+true`) follows the phone from its next sync, and clearing `tz` follows it as well. The zone the web
+adopts from the browser keeps the switch on. A reminder has an occurrence on each local date whose weekday it lists, at `time_of_day`
 on that date. A time skipped by the spring-forward clock change moves to the instant the clocks
 jump (02:30 becomes 03:00); a time that happens twice in the autumn uses the first.
 
@@ -46,7 +50,7 @@ also carries the earliest of them and the time zone.
 
 ## Web
 
-`/reminders` (linked from the `/notifications` header) lists the reminders with their schedule
+`/reminders` (under **Setup** in the menu, and linked from the `/notifications` header) lists the reminders with their schedule
 ("Every day at 20:00", "Weekdays at 07:30", "Mon, Wed, Fri at 07:30"), the page each opens, an on/off
 switch, **Edit** and **Delete**. The form asks for a name, optional text, a time (a time off the
 five-minute grid is rounded to the nearest step), the days (all on by default), and the page to

@@ -495,6 +495,7 @@ export interface UserSettings {
   sensitivity_areas?: string[] // Sensitivity areas to track in meals
   tag_mappings?: Record<string, string> // Tag name mappings from UUIDs to display names
   training_load?: TrainingLoadSettings // Training load (Banister model) parameters
+  tz_follows_device?: boolean // false once a zone is chosen by hand: the Android sync then leaves device_timezone alone (unset = true)
   garmin_disabled_data_types?: GarminDataType[] // Garmin data types to skip during sync
   gravl_api_token?: string // Gravl personal access token (used when no OAuth grant exists)
   home_assistant_url?: string // Home Assistant base URL (origin + path, no trailing slash)
