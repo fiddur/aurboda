@@ -29,6 +29,7 @@ import {
   getValueHistogramsForWindows,
 } from '../../db/index.ts'
 import {
+  bestSet,
   combineMeasures,
   fieldValue,
   type FieldValue,
@@ -42,6 +43,8 @@ import {
   parseFieldPath,
   recordsFor,
 } from '../activity-measures.ts'
+import { loadExerciseEntryResolver } from '../item-value-identities.ts'
+import { type ExerciseEntryResolver, exerciseGroupFields } from '../muscle-group-measures.ts'
 import { getEffectiveHrZones } from '../settings.ts'
 import { mergeHistograms, summarizeHistogram, type ValueDistributionRow } from './value-histogram.ts'
 import { placesOfWindows } from './window-places.ts'
@@ -271,34 +274,56 @@ export const groupSessions = (
 /**
  * Group newest-first sessions by an item value: one group per normalised value, spelled as in the
  * most recent session, a session in every group it has an item for and in the no-value group when
- * it has none. Each group's measures combine its members' measures over that value's items.
- * `pooledHr` holds the pooled HR under `groupKey(normalized value)`.
+ * it has none. Each group's measures combine its members' measures over that value's items, and
+ * its best set is the heaviest of those items. With `resolveEntry` (a catalogue-backed item path) a
+ * matched value also says what exercise it is. `pooledHr` holds the pooled HR under
+ * `groupKey(normalized value)`.
  */
 export const groupSessionsByItem = (
   sessions: ActivitySession[],
   itemGroups: Map<string, ItemGroup[]>,
   pooledHr: Map<string, ValueDistributionRow>,
+  resolveEntry?: ExerciseEntryResolver,
 ): ActivitySessionGroup[] => {
   const byValue = new Map<
     string,
-    { value: string | null; sessions: ActivitySession[]; measures: ActivityMeasures[] }
+    {
+      value: string | null
+      sessions: ActivitySession[]
+      measures: ActivityMeasures[]
+      items: Record<string, unknown>[]
+    }
   >()
-  const add = (key: string, value: string | null, session: ActivitySession, measures?: ActivityMeasures) => {
-    const group = byValue.getOrInsertComputed(key, () => ({ measures: [], sessions: [], value }))
+  const add = (
+    key: string,
+    value: string | null,
+    session: ActivitySession,
+    items?: Record<string, unknown>[],
+  ) => {
+    const group = byValue.getOrInsertComputed(key, () => ({ items: [], measures: [], sessions: [], value }))
     group.sessions.push(session)
-    if (measures) group.measures.push(measures)
+    if (items) {
+      group.measures.push(measureItems(items))
+      group.items.push(...items)
+    }
   }
   for (const session of sessions) {
     const groups = itemGroups.get(session.id) ?? []
     if (groups.length === 0) add(groupKey(null), null, session)
-    for (const g of groups) add(groupKey(g.normalized), g.value, session, measureItems(g.items))
+    for (const g of groups) add(groupKey(g.normalized), g.value, session, g.items)
   }
 
   return [...byValue.entries()]
-    .map(([key, { value, sessions: members, measures }]) => ({
-      ...summarizeGroup(value, members, pooledHr.get(key)),
-      measures: value === null ? undefined : nonEmpty(combineMeasures(measures)),
-    }))
+    .map(([key, { value, sessions: members, measures, items }]) =>
+      value === null
+        ? summarizeGroup(value, members, pooledHr.get(key))
+        : {
+            ...summarizeGroup(value, members, pooledHr.get(key)),
+            ...exerciseGroupFields(resolveEntry?.(value)),
+            best_set: bestSet(items),
+            measures: nonEmpty(combineMeasures(measures)),
+          },
+    )
     .toSorted(byRecency)
 }
 
@@ -411,6 +436,13 @@ const groupMembership = (
 const itemGroupsFor = (activities: MergedActivity[], path: ItemPath): Map<MergedActivity, ItemGroup[]> =>
   new Map(activities.map((a) => [a, groupItemsByKey(listItems(a.data, path.field), path.key)]))
 
+const groupEntryResolver = async (
+  user: string,
+  activityType: string,
+  groupBy: string | undefined,
+): Promise<ExerciseEntryResolver | undefined> =>
+  groupBy === undefined ? undefined : loadExerciseEntryResolver(user, activityType, groupBy)
+
 export const queryActivitySessions = async (
   user: string,
   activityType: string,
@@ -447,12 +479,13 @@ export const queryActivitySessions = async (
   const windows = timed.map((a) => ({ end: a.end_time!, start: a.start_time }))
 
   const itemGroups = groupItem ? itemGroupsFor(activities, groupItem) : undefined
-  const [zoneSecs, histograms, places] = await Promise.all([
+  const [zoneSecs, histograms, places, resolveEntry] = await Promise.all([
     timed.length === 0
       ? Promise.resolve([])
       : getEffectiveHrZones(user).then(({ zones }) => getHrZoneSecsForWindows(user, windows, zones)),
     getValueHistogramsForWindows(user, 'heart_rate', windows),
     groupBy === PLACE_GROUP ? sessionPlaces(user, activities) : undefined,
+    groupItem ? groupEntryResolver(user, activityType, groupBy) : undefined,
   ])
   const hrDistributions = distributionsByKey(timed, histograms, groupMembership(groupBy, itemGroups, places))
 
@@ -475,6 +508,7 @@ export const queryActivitySessions = async (
         sessions,
         new Map([...itemGroups].flatMap(([a, g]) => (a.id === undefined ? [] : [[sessionId(a), g]]))),
         hrDistributions,
+        resolveEntry,
       )
     : groupBy
       ? groupSessions(sessions, groupBy, hrDistributions)

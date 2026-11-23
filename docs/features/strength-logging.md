@@ -14,7 +14,7 @@ The Strength page has four tabs, each at its own address, under the heading **St
 | Muscles   | `/strength`           | The score card, a status line and one list of every muscle group: recovery, sets and score (see below) |
 | Workouts  | `/strength/workouts`  | Start: an unfinished session, planned and saved workouts, a session without a plan, recent sessions    |
 | Progress  | `/strength/progress`  | The [strength score](strength-score.md) of `sets.exercise`: cards and the score over time              |
-| Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time         |
+| Exercises | `/strength/exercises` | "Your exercises": every exercise done, filtered by name, muscle group and equipment (see below)        |
 
 The tabs are plain links, so each can be bookmarked and the back button steps between them; on a
 phone the tab bar scrolls sideways. The old address `/strength/muscles` leads to `/strength`, keeping
@@ -47,6 +47,29 @@ and plan pages below have no tab bar.
   muscle group page and the Exercises tab.
 - A line under the list counts the sets of exercises not matched to the catalogue, with a link to
   match them.
+
+### The Exercises tab
+
+"Your exercises" lists every exercise done in the period (90 days, 1 year, 2 years or all time),
+from the grouped sessions answer (`GET /activity-types/strength_training/sessions?group_by=sets.exercise`),
+filtered on the page:
+
+- **Controls**: a search field, **Muscle group** ("All muscles" or one of the 17 groups; kept in
+  the address as `?muscle=<group>`, which the Muscles tab's rows link to), **Equipment** ("Any
+  equipment" or what the listed exercises use), **Period** and **Sort** (recently done, most done,
+  best e1RM, max weight, best set, volume, points, name).
+- **A muscle group** keeps the exercises that work it: those that mainly work it (recruitment
+  weight 0.75 or more) first, then those that also work it, with a line counting both. The "No
+  exercise" row shows only without a muscle or equipment filter.
+- **Each exercise** shows its name (to the exercise page), its muscle groups (the main ones first,
+  the others muted, at most four and "+n"; "Not matched" links to matching it to the catalogue),
+  Done, Last, Best e1RM, Max weight, Best set ("24 kg × 9"), Volume, Sets and Points: the
+  [strength score](strength-score.md) of the lift it counts as, today's whatever the period,
+  muted when the lift is not among its group's counted lifts and "–" when it is no scoring lift.
+  From 700 px wide this is a table; narrower, each exercise is a three-line row.
+- **Not done in the last 90 days**: with a muscle group chosen that belongs to a score group, the
+  lifts of that group without a set in the score's window.
+- The aliases of exercise names are listed under it, each deletable.
 
 ### The Workouts tab
 

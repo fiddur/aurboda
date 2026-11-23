@@ -95,6 +95,25 @@ export const measureItems = (items: Item[]): ActivityMeasures => {
   })
 }
 
+export interface BestSet {
+  weight: number
+  reps: number
+}
+
+/** The heaviest working set with a weight and reps, ties on weight going to more reps. */
+export const bestSet = (items: Item[]): BestSet | undefined => {
+  let best: BestSet | undefined
+  for (const item of items.filter(isWorkingItem)) {
+    const weight = positive(item.weight)
+    const reps = positive(item.reps)
+    if (weight === undefined || reps === undefined) continue
+    if (best === undefined || weight > best.weight || (weight === best.weight && reps > best.reps)) {
+      best = { reps, weight }
+    }
+  }
+  return best
+}
+
 export const combineMeasures = (list: ActivityMeasures[]): ActivityMeasures => {
   const combined: ActivityMeasures = {}
   for (const measures of list) {

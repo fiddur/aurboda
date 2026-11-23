@@ -3,6 +3,7 @@ import type { StoredExerciseCatalogEntry } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
+  exerciseGroupFields,
   measuresByMuscleGroup,
   muscleGroupContributions,
   muscleGroupSplit,
@@ -38,6 +39,28 @@ const set = (exercise: string, weight: number, reps: number, set_type = 'normal'
   reps,
   set_type,
   weight,
+})
+
+describe('exerciseGroupFields', () => {
+  test('a matched exercise: its key, equipment and muscle groups by weight, then catalogue order', () => {
+    expect(exerciseGroupFields({ ...bench, equipment: ['barbell'] })).toEqual({
+      catalog_key: 'bench_press',
+      equipment: ['barbell'],
+      muscle_groups: [
+        { muscle_group: 'chest', weight: 1 },
+        { muscle_group: 'shoulders', weight: 0.5 },
+        { muscle_group: 'triceps', weight: 0.5 },
+      ],
+    })
+  })
+
+  test('an entry without muscle data has no muscle groups', () => {
+    expect(exerciseGroupFields(plank)).toEqual({ catalog_key: 'plank', equipment: [], muscle_groups: [] })
+  })
+
+  test('an unmatched value says nothing', () => {
+    expect(exerciseGroupFields(undefined)).toEqual({})
+  })
 })
 
 describe('muscleGroupWeights', () => {
