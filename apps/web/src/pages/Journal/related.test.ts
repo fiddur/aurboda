@@ -36,6 +36,8 @@ import {
   relatedHref,
   removeLink,
   reportLabel,
+  zonedDate,
+  zonedTime,
   reportLink,
   reportOptions,
   sameLinks,
@@ -360,5 +362,34 @@ describe('relatedFilterLinks', () => {
       { entity_id: id, entity_type: 'person', label: 'Anna' },
     ])
     expect(relatedFilterLinks(undefined, 'Anyone')).toEqual([])
+  })
+})
+
+describe('labels in the user zone', () => {
+  const instant = new Date('2026-11-20T23:30:00Z')
+
+  test('format the date and time in the given zone, as the server does', () => {
+    expect(zonedDate(instant, 'Asia/Tokyo')).toBe('2026-11-21')
+    expect(zonedTime(instant, 'Asia/Tokyo')).toBe('08:30')
+    expect(zonedTime(new Date('2026-11-20T00:05:00Z'), 'UTC')).toBe('00:05')
+    expect(mealLabel({ meal_type: 'breakfast', time: instant }, 'Asia/Tokyo')).toBe('Breakfast 08:30')
+    expect(reportLabel({ date: instant, report_type: 'blood_panel' }, 'Asia/Tokyo')).toBe(
+      'Blood Panel, 2026-11-21',
+    )
+    expect(checkInLabel({ answered_at: instant.toISOString(), form_name: 'Morning' }, 'Asia/Tokyo')).toBe(
+      'Morning 08:30',
+    )
+    expect(
+      activityLabel(
+        { activity_type: 'walking', start_time: instant, title: 'Walk' },
+        undefined,
+        'Asia/Tokyo',
+      ),
+    ).toBe('Walk, 2026-11-21')
+  })
+
+  test('fall back to the browser zone without one, or with one the browser does not know', () => {
+    expect(zonedDate(instant)).toBe(zonedDate(instant, 'Not/AZone'))
+    expect(zonedTime(instant)).toBe(zonedTime(instant, 'Not/AZone'))
   })
 })

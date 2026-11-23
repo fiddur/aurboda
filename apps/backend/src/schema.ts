@@ -186,6 +186,7 @@ export const tableCreationOrder = [
   'note_links_indexes',
   'note_links_more_targets',
   'note_links_activity_delete_trigger',
+  'note_link_dismissals',
   'note_templates',
   'shared_dashboards',
   'shared_dashboards_indexes',

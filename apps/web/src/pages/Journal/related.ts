@@ -114,23 +114,43 @@ export const personLink = (person: Pick<Person, 'id' | 'name'>): RelatedLink => 
 export const activityRowId = (activity: Pick<Activity, 'id'>): string =>
   (activity.id ?? '').replace(/^merged:/, '')
 
+const zonedParts = (instant: Date, tz: string, options: Intl.DateTimeFormatOptions): string | undefined => {
+  try {
+    return new Intl.DateTimeFormat('sv-SE', { ...options, timeZone: tz }).format(instant)
+  } catch {
+    return undefined
+  }
+}
+
+/** YYYY-MM-DD in the zone `tz` (the user's configured one, as the server labels in), else the browser's. */
+export const zonedDate = (instant: Date, tz?: string): string =>
+  (tz && zonedParts(instant, tz, { day: '2-digit', month: '2-digit', year: 'numeric' })) ||
+  format(instant, 'yyyy-MM-dd')
+
+/** HH:mm in the zone `tz`, else the browser's. */
+export const zonedTime = (instant: Date, tz?: string): string =>
+  (tz && zonedParts(instant, tz, { hour: '2-digit', hourCycle: 'h23', minute: '2-digit' })) ||
+  format(instant, 'HH:mm')
+
 /** Its title, else its type's name, and its local date (a sleep's, the morning it ended): as the server labels it. */
 export const activityLabel = (
   activity: Pick<Activity, 'title' | 'activity_type' | 'start_time' | 'end_time'>,
   typeName: (type: string) => string = toDisplayName,
+  tz?: string,
 ): string => {
   const dated = isSleep(activity) && activity.end_time ? activity.end_time : activity.start_time
-  return `${activity.title?.trim() || typeName(activity.activity_type)}, ${format(dated, 'yyyy-MM-dd')}`
+  return `${activity.title?.trim() || typeName(activity.activity_type)}, ${zonedDate(dated, tz)}`
 }
 
 export const activityLink = (
   activity: Pick<Activity, 'id' | 'title' | 'activity_type' | 'start_time' | 'end_time'>,
   typeName?: (type: string) => string,
+  tz?: string,
 ): RelatedLink => ({
   activity_type: activity.activity_type,
   entity_id: activityRowId(activity),
   entity_type: 'activity',
-  label: activityLabel(activity, typeName),
+  label: activityLabel(activity, typeName, tz),
 })
 
 /** A meal's type with a capital, as the meals page writes it, or "Meal" when it has none. */
@@ -140,39 +160,43 @@ const mealTypeName = (type: string | undefined): string => {
 }
 
 /** "Lunch 12:30": its type and local time, as the server labels it. */
-export const mealLabel = (meal: Pick<Meal, 'meal_type' | 'time'>): string =>
-  `${mealTypeName(meal.meal_type)} ${format(meal.time, 'HH:mm')}`
+export const mealLabel = (meal: Pick<Meal, 'meal_type' | 'time'>, tz?: string): string =>
+  `${mealTypeName(meal.meal_type)} ${zonedTime(meal.time, tz)}`
 
-export const mealLink = (meal: Pick<Meal, 'id' | 'meal_type' | 'time'>): RelatedLink => ({
+export const mealLink = (meal: Pick<Meal, 'id' | 'meal_type' | 'time'>, tz?: string): RelatedLink => ({
   entity_id: meal.id ?? '',
   entity_type: 'meal',
-  label: mealLabel(meal),
+  label: mealLabel(meal, tz),
 })
 
 export const reportTypeName = (type: string): string =>
   type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
 
 /** "Blood Panel, 2026-11-20": its type and local date, as the server labels it. */
-export const reportLabel = (report: Pick<Report, 'report_type' | 'date'>): string =>
-  `${reportTypeName(report.report_type)}, ${format(report.date, 'yyyy-MM-dd')}`
+export const reportLabel = (report: Pick<Report, 'report_type' | 'date'>, tz?: string): string =>
+  `${reportTypeName(report.report_type)}, ${zonedDate(report.date, tz)}`
 
-export const reportLink = (report: Pick<Report, 'id' | 'report_type' | 'date'>): RelatedLink => ({
+export const reportLink = (
+  report: Pick<Report, 'id' | 'report_type' | 'date'>,
+  tz?: string,
+): RelatedLink => ({
   entity_id: report.id ?? '',
   entity_type: 'report',
-  label: reportLabel(report),
+  label: reportLabel(report, tz),
 })
 
 /** "Morning 07:45": its form's name and the local time it was answered, as the server labels it. */
-export const checkInLabel = (checkIn: Pick<CheckIn, 'form_name' | 'answered_at'>): string =>
-  `${checkIn.form_name} ${format(new Date(checkIn.answered_at), 'HH:mm')}`
+export const checkInLabel = (checkIn: Pick<CheckIn, 'form_name' | 'answered_at'>, tz?: string): string =>
+  `${checkIn.form_name} ${zonedTime(new Date(checkIn.answered_at), tz)}`
 
 export const checkInLink = (
   checkIn: Pick<CheckIn, 'id' | 'form_id' | 'form_name' | 'answered_at'>,
+  tz?: string,
 ): RelatedLink => ({
   entity_id: checkIn.id,
   entity_type: 'check_in',
   form_id: checkIn.form_id,
-  label: checkInLabel(checkIn),
+  label: checkInLabel(checkIn, tz),
 })
 
 /** The local day `date` (YYYY-MM-DD), from its start to the next day's. */

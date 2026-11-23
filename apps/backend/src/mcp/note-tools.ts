@@ -1,8 +1,10 @@
 import {
   addNoteBodySchema,
   DELETED_NOTE_RETENTION_DAYS,
+  dismissNoteLinkSuggestionBodySchema,
   isKnownTimezone,
   mergeNoteTagsBodySchema,
+  noteLinkSuggestionsPageQuerySchema,
   noteNeighborsQuerySchema,
   noteTagsListQuerySchema,
   notesQueryRangeSchema,
@@ -28,6 +30,11 @@ import {
   searchNotesForUser,
   updateNote,
 } from '../services/mutations.ts'
+import {
+  dismissNoteLinkSuggestion,
+  getNoteLinkSuggestions,
+  listNoteLinkSuggestionsPage,
+} from '../services/note-link-suggestions.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 const noteIdSchema = (what: string) => z.string().uuid().describe(`The ID of the note to ${what}`)
@@ -109,6 +116,42 @@ export const registerNoteTools = (server: McpServer, user: string) => {
       if (!neighbors) return errorResponse('Journal entry not found')
       const result = { data: neighbors, success: true }
       return tz ? tzJsonResponse(result, tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'get_note_link_suggestions',
+    'Suggest what a journal entry ("time" or "day" note) could be related to and is not yet: the people whose name is written in its title or text (reason "name_in_text"; archived people are never suggested), for an entry written before noon the sleep that ended that morning ("night_sleep"), and the activities that started on its day ("same_day"). Suggestions only: nothing is linked until update_note with related — pass the existing links too, since related replaces the list, and expected_updated_at. Never change the entry\'s text to link it. A suggestion the user turns down: dismiss_note_link_suggestion.',
+    { id: z.string().uuid().describe('Journal entry (note) id') },
+    async ({ id }) => {
+      const result = await getNoteLinkSuggestions(user, id)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'list_note_link_suggestions',
+    "Walk the journal for links to suggest: a page of journal entries, newest first, each with its excerpt, current links (related), updated_at and suggestions (as get_note_link_suggestions makes them). Only entries with a suggestion are listed, so a page may hold fewer entries than limit, or none, while next_cursor is still set: keep paging until it is absent. unlinked_only (default true) leaves out entries already related to anything; from/to are local dates. Suggestions only: show them to the user, and link only what they accept, with update_note (related = the existing links plus the accepted ones, expected_updated_at = the entry's updated_at). Never change an entry's text. dismiss_note_link_suggestion records the refused ones so the next pass skips them.",
+    { ...noteLinkSuggestionsPageQuerySchema.shape },
+    async (params) => {
+      const result = await listNoteLinkSuggestionsPage(user, params)
+      if (!result.success) return errorResponse(result.error)
+      return params.tz ? tzJsonResponse(result, params.tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'dismiss_note_link_suggestion',
+    'Stop suggesting a person or an activity for one journal entry, when the user has turned it down: get_note_link_suggestions and list_note_link_suggestions leave it out from then on. Links nothing and changes nothing else; dismissing twice is the same as once.',
+    {
+      id: z.string().uuid().describe('Journal entry (note) id'),
+      ...dismissNoteLinkSuggestionBodySchema.shape,
+    },
+    async ({ id, ...input }) => {
+      const result = await dismissNoteLinkSuggestion(user, id, input)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result)
     },
   )
 
