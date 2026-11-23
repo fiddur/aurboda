@@ -1,4 +1,4 @@
-import type { Note, NoteConflictResponse } from '@aurboda/api-spec'
+import type { Note, NoteConflictResponse, NoteRelatedEntityType } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -10,7 +10,7 @@ export interface JournalQuery {
   on_this_day?: string
   needs_text?: boolean
   include_comments?: boolean
-  related?: { type: 'person' | 'activity'; id: string }
+  related?: { type: NoteRelatedEntityType; id: string }
   cursor?: string
   limit?: number
   tz?: string

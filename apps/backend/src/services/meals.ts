@@ -1,4 +1,9 @@
-import { type FrequentFoodItem, type FrequentMeal, NUTRIENT_FIELD_NAMES } from '@aurboda/api-spec'
+import {
+  type FrequentFoodItem,
+  type FrequentMeal,
+  type JournalEntryRef,
+  NUTRIENT_FIELD_NAMES,
+} from '@aurboda/api-spec'
 
 import {
   deleteMeal as dbDeleteMeal,
@@ -31,7 +36,7 @@ import {
   type MergedFoodItem,
   resolveFoodItemDisplay,
 } from './food-items.ts'
-import { syncNoteTimesForEntity } from './notes.ts'
+import { listJournalEntryRefs, syncNoteTimesForEntity } from './notes.ts'
 
 interface FoodItemInput {
   food_item_id?: string
@@ -97,6 +102,7 @@ interface MealResponse {
   nutrient_data_incomplete?: boolean
   sensitivities?: string[]
   created_at: string
+  journal_entries?: JournalEntryRef[]
 }
 
 /**
@@ -700,8 +706,11 @@ export async function getMeal(user: string, id: string): Promise<MealResult> {
     return { error: 'Meal not found', errorCode: 'not_found', success: false }
   }
 
-  const [enriched] = await attachFoodItems(user, [meal])
-  return { data: formatMeal(enriched), success: true }
+  const [[enriched], journalEntries] = await Promise.all([
+    attachFoodItems(user, [meal]),
+    listJournalEntryRefs(user, 'meal', [meal.id]),
+  ])
+  return { data: { ...formatMeal(enriched), journal_entries: journalEntries }, success: true }
 }
 
 export async function queryMeals(

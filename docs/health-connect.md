@@ -43,7 +43,10 @@ These metrics use Health Connect's built-in deduplication to avoid double-counti
 These are sent as daily aggregates (one value per day) rather than raw records. Each aggregate
 carries the phone's IANA timezone, and the backend stores it at that zone's local midnight, so a
 day's total lands on the phone's local day rather than the UTC one (UTC midnight when the timezone
-is missing or invalid).
+is missing or invalid). The sync also stores the phone's zone as the user's time zone (`tz` in the
+settings), but only while **Use my phone's time zone** (`tz_follows_device`) is on, which it is
+until a zone is chosen by hand in Settings → Time zone or set over the API (see
+[Reminders: When a reminder fires](features/reminders.md#when-a-reminder-fires)).
 
 ### Activities
 

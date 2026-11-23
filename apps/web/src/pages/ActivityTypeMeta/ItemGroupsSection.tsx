@@ -1,13 +1,23 @@
-import type { ActivityMeasure, ActivitySessionGroup, DataItemFieldDefinition } from '@aurboda/api-spec'
-
+import {
+  type ActivityMeasure,
+  type ActivitySessionGroup,
+  type DataItemFieldDefinition,
+  STRENGTH_SCORE_WINDOW_DAYS,
+} from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useState } from 'preact/hooks'
 
 import { fieldLabel, itemPageHref, type ListFieldDefinition } from '../../components/sessions/sessionView'
 import { deleteItemValueAliasApi, fetchActivitySessions, fetchItemValueAliases } from '../../state/api'
-import { formatMeasure } from '../../utils/measures'
-import { filterItemGroups, type ItemGroupSortKey, sortItemGroups } from './itemGroups'
+import { formatBestSet, formatMeasure } from '../../utils/measures'
+import {
+  filterItemGroups,
+  groupPoints,
+  type ItemGroupSortKey,
+  type PointsByValue,
+  sortItemGroups,
+} from './itemGroups'
 import '../../components/sessions/sessions.css'
 
 const LOOKBACK_OPTIONS = [
@@ -23,8 +33,15 @@ const SORT_OPTIONS: { label: string; value: ItemGroupSortKey }[] = [
   { label: 'Best e1RM', value: 'e1rm' },
   { label: 'Max weight', value: 'max_weight' },
   { label: 'Volume', value: 'volume' },
+  { label: 'Points', value: 'points' },
   { label: 'Name', value: 'name' },
 ]
+
+/** Strength-only columns: the set behind the best e1RM, and the strength score's points linked to `pointsHref`. */
+export interface StrengthColumns {
+  points: PointsByValue
+  pointsHref: string
+}
 
 const MeasureCell = ({
   group,
@@ -43,20 +60,27 @@ const MeasureCell = ({
   )
 }
 
+const PointsCell = ({ points, href }: { points: number | undefined; href: string }) => (
+  <td class="session-num">{points === undefined ? '–' : <a href={href}>{points}</a>}</td>
+)
+
 const ItemGroupsTable = ({
   groups,
   name,
   path,
   item,
+  strength,
 }: {
   groups: ActivitySessionGroup[]
   name: string
   path: string
   item: DataItemFieldDefinition
+  strength?: StrengthColumns
 }) => {
   const [sortKey, setSortKey] = useState<ItemGroupSortKey>('recent')
   const [filter, setFilter] = useState('')
-  const shown = sortItemGroups(filterItemGroups(groups, filter), sortKey)
+  const shown = sortItemGroups(filterItemGroups(groups, filter), sortKey, strength?.points)
+  const sortOptions = strength ? SORT_OPTIONS : SORT_OPTIONS.filter((o) => o.value !== 'points')
 
   return (
     <>
@@ -75,7 +99,7 @@ const ItemGroupsTable = ({
             value={sortKey}
             onChange={(e) => setSortKey((e.target as HTMLSelectElement).value as ItemGroupSortKey)}
           >
-            {SORT_OPTIONS.map((o) => (
+            {sortOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -97,10 +121,28 @@ const ItemGroupsTable = ({
               <th scope="col" class="session-num" title="Best estimated one-rep max (Epley)">
                 Best e1RM
               </th>
+              {strength && (
+                <th scope="col" class="session-num" title="The working set the best e1RM comes from">
+                  Best set
+                </th>
+              )}
+              {strength && (
+                <th
+                  scope="col"
+                  class="session-num"
+                  title={`Strength score points of the last ${STRENGTH_SCORE_WINDOW_DAYS} days, whatever the period`}
+                >
+                  Points
+                </th>
+              )}
               <th scope="col" class="session-num session-opt">
                 Max weight
               </th>
-              <th scope="col" class="session-num" title="Weight × reps over the period">
+              <th
+                scope="col"
+                class={strength ? 'session-num session-opt' : 'session-num'}
+                title="Weight × reps over the period"
+              >
                 Volume
               </th>
               <th scope="col" class="session-num session-opt" title="Working sets over the period">
@@ -111,7 +153,7 @@ const ItemGroupsTable = ({
           <tbody>
             {shown.length === 0 && (
               <tr>
-                <td colSpan={7} class="session-muted">
+                <td colSpan={strength ? 9 : 7} class="session-muted">
                   No match.
                 </td>
               </tr>
@@ -128,8 +170,12 @@ const ItemGroupsTable = ({
                 <td class="session-num">{g.count}×</td>
                 <td class="session-date session-opt">{format(new Date(g.last_start_time), 'yyyy-MM-dd')}</td>
                 <MeasureCell group={g} measure="e1rm" />
+                {strength && <td class="session-num">{g.best_set ? formatBestSet(g.best_set) : '–'}</td>}
+                {strength && (
+                  <PointsCell points={groupPoints(g, strength.points)} href={strength.pointsHref} />
+                )}
                 <MeasureCell group={g} measure="max_weight" optional />
-                <MeasureCell group={g} measure="volume" />
+                <MeasureCell group={g} measure="volume" optional={strength !== undefined} />
                 <MeasureCell group={g} measure="set_count" optional />
               </tr>
             ))}
@@ -190,12 +236,14 @@ export function ItemGroupsSection({
   list,
   item,
   heading = `By ${fieldLabel(item).toLowerCase()}`,
+  strength,
 }: {
   name: string
   path: string
   list: ListFieldDefinition
   item: DataItemFieldDefinition
   heading?: string
+  strength?: StrengthColumns
 }) {
   const [lookback, setLookback] = useState(90)
 
@@ -235,7 +283,7 @@ export function ItemGroupsSection({
             No sessions with {fieldLabel(list).toLowerCase()} in this period.
           </p>
         ) : (
-          <ItemGroupsTable groups={groups} name={name} path={path} item={item} />
+          <ItemGroupsTable groups={groups} name={name} path={path} item={item} strength={strength} />
         ))}
       <ItemValueAliases name={name} path={path} />
     </section>

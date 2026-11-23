@@ -58,10 +58,11 @@ and the triceps recover faster: `0.42 × 0.5 ^ (14 / 24)` = 0.28 left, recovery 
 
 ## In the web app
 
-- **Strength page, Muscles tab** (`/strength/muscles`): the type page's "Muscle recovery" section
-  (below) for strength training: every group below 100, the most tired first, each with its
-  percentage, a bar and when it is ready ("Ready in 5 h", "Ready tomorrow"), followed by "Sets per
-  muscle group".
+- **Strength page, Muscles tab** (`/strength`): one list of every muscle group combining its
+  recovery (percentage, a bar and, below the ready percent, the hours or day until ready), its sets
+  and its strength score; an opened row says how recovered the group is, when it is ready ("Ready
+  in 5 h", "Ready tomorrow") and links its newest session. A status line above names the groups
+  still recovering. See [Strength session logging](strength-logging.md#the-muscles-tab).
 - **Exercise picker**: the muscle group filter shows the recovery next to every group below 100
   ("Chest · 64 %").
 - **Type page**: a "Muscle recovery" section with every group below 100 (green from 80), above

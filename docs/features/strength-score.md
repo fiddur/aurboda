@@ -85,7 +85,10 @@ the history has no points; each lift's best set (by e1RM) is still given, withou
   card names the highest and lowest scored groups (`Triceps 128 · Quadriceps 93`) once at least
   two groups have a score and they differ.
 - **Strength page, Progress tab** (`/strength/progress`): the score page's content for strength
-  training, under the Strength page's tabs.
+  training, under the Strength page's tabs, without the per-group lists of lifts.
+- **Strength page, Muscles tab** (`/strength`): the overall score as a card linking to Progress,
+  and per muscle group row its score group's points and 30-day change; an opened row lists that
+  group's lifts as the score page does.
 - **Type page**: a "Strength score" section above "Sets per muscle group".
 - **Muscle group page**: the group's score as a card and its score over the period chosen on the
   page (the Back score on the Lats and Middle back pages).

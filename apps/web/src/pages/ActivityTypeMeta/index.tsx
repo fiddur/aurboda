@@ -769,7 +769,7 @@ export function ActivityTypeMeta() {
       />
 
       {name === 'strength_training' && (
-        <a href="/strength" class="btn-primary activity-type-meta-log-session">
+        <a href="/strength/workouts" class="btn-primary activity-type-meta-log-session">
           Log a session
         </a>
       )}

@@ -2,6 +2,7 @@ import type { ActivityItemGroup, ActivityItemHistory, ExerciseCatalogEntry } fro
 
 import { type QueryClient, useQuery } from '@tanstack/react-query'
 import { subDays } from 'date-fns'
+import { useState } from 'preact/hooks'
 
 import type { LiveApi } from './saveQueue'
 
@@ -18,8 +19,9 @@ import {
 } from '../../state/api'
 import { muscleTiers } from '../ActivityTypeItem/catalogEntryView'
 import { SETS_PATH, STRENGTH_QUERY_KEYS, STRENGTH_TYPE } from './constants'
+import { readLiveDraft } from './draftStorage'
 import { isInProgress, type SetRow } from './sessionModel'
-import { REPEAT_DAYS } from './startModel'
+import { REPEAT_DAYS, unfinishedDraft, unfinishedOnServer } from './startModel'
 
 const FIVE_MIN = 5 * 60 * 1000
 
@@ -60,6 +62,13 @@ export const useRecentStrengthSessions = () =>
     queryKey: ['activities', STRENGTH_TYPE, 'strength-recent'],
     staleTime: 60 * 1000,
   })
+
+export const useUnfinishedSession = () => {
+  const [local, setLocal] = useState(() => readLiveDraft())
+  const sessions = useRecentStrengthSessions()
+  const unfinished = unfinishedDraft(local, unfinishedOnServer(sessions.data ?? [], new Date()))
+  return { local, sessions, setLocal, unfinished }
+}
 
 export const useStrengthPlan = (id: string | undefined, enabled = true) =>
   useQuery({

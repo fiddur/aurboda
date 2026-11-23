@@ -1,4 +1,4 @@
-import type { UserSettingsResponse } from '@aurboda/api-spec'
+import type { UpdateSettingsInput, UserSettingsResponse } from '@aurboda/api-spec'
 
 import { describe, expect, test, vi } from 'vitest'
 
@@ -36,12 +36,13 @@ describe('timezoneToAdopt', () => {
   })
 })
 
-const saved = (tz: string) => ({ success: true, tz }) as unknown as UserSettingsResponse
+const saved = (update: UpdateSettingsInput) =>
+  ({ success: true, ...update }) as unknown as UserSettingsResponse
 
 describe('createTimezoneAdopter', () => {
-  test('an unset zone gets one save, and the answer is handed on', async () => {
+  test('an unset zone gets one save, still following the phone, and the answer is handed on', async () => {
     const adopt = createTimezoneAdopter()
-    const save = vi.fn(async (tz: string) => saved(tz))
+    const save = vi.fn(async (update: UpdateSettingsInput) => saved(update))
     const onSaved = vi.fn()
     const args = { browserTz: 'Europe/Stockholm', onSaved, save, storedTz: null, user: 'ada' }
 
@@ -49,13 +50,13 @@ describe('createTimezoneAdopter', () => {
     await adopt(args)
 
     expect(save).toHaveBeenCalledTimes(1)
-    expect(save).toHaveBeenCalledWith('Europe/Stockholm')
-    expect(onSaved).toHaveBeenCalledWith(saved('Europe/Stockholm'))
+    expect(save).toHaveBeenCalledWith({ tz: 'Europe/Stockholm', tz_follows_device: true })
+    expect(onSaved).toHaveBeenCalledWith(saved({ tz: 'Europe/Stockholm', tz_follows_device: true }))
   })
 
   test('a stored zone gets no save', async () => {
     const adopt = createTimezoneAdopter()
-    const save = vi.fn(async (tz: string) => saved(tz))
+    const save = vi.fn(async (update: UpdateSettingsInput) => saved(update))
 
     await adopt({ browserTz: 'Europe/Stockholm', onSaved: vi.fn(), save, storedTz: 'UTC', user: 'ada' })
     await adopt({ browserTz: 'Europe/Stockholm', onSaved: vi.fn(), save, storedTz: undefined, user: 'ada' })
@@ -80,7 +81,7 @@ describe('createTimezoneAdopter', () => {
 
   test('another user signing in on the same page gets their own try', async () => {
     const adopt = createTimezoneAdopter()
-    const save = vi.fn(async (tz: string) => saved(tz))
+    const save = vi.fn(async (update: UpdateSettingsInput) => saved(update))
 
     await adopt({ browserTz: 'Europe/Stockholm', onSaved: vi.fn(), save, storedTz: null, user: 'ada' })
     await adopt({ browserTz: 'Europe/Stockholm', onSaved: vi.fn(), save, storedTz: null, user: 'bob' })

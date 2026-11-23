@@ -153,7 +153,7 @@ export interface NoteData {
   replies?: NoteReplyData[]
   /** On a journal entry (a `time` or `day` root): its live pictures and recordings, in page order. */
   attachments?: NoteAttachment[]
-  /** On a thread root: the people and activities it is related to whose targets are live. */
+  /** On a thread root: what it is related to whose targets are live. */
   related?: NoteRelated[]
 }
 
@@ -270,17 +270,39 @@ const entryAttachments = (
 const localDate = (instant: Date, tz: string): string =>
   Temporal.Instant.fromEpochMilliseconds(instant.getTime()).toZonedDateTimeISO(tz).toPlainDate().toString()
 
+const localTime = (instant: Date, tz: string): string =>
+  Temporal.Instant.fromEpochMilliseconds(instant.getTime())
+    .toZonedDateTimeISO(tz)
+    .toPlainTime()
+    .toString({ smallestUnit: 'minute' })
+
+const titleCase = (type: string): string =>
+  type.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase())
+
 /**
- * A link's label: the person's name, or the activity's name and its local date in `tz`. A sleep is
- * dated by the morning it ended, as the editor's picker lists it.
+ * A link's label in `tz`: the person's name; the activity's name and local date (a sleep is dated
+ * by the morning it ended, as the editor's picker lists it); the meal's type and local time; the
+ * report's type and local date; the check-in's form name and local time.
  */
 export const noteRelatedLabel = (
-  link: Pick<NoteLinkRecord, 'name' | 'start_time' | 'end_time' | 'activity_type'>,
+  link: Pick<NoteLinkRecord, 'entity_type' | 'name' | 'start_time' | 'end_time' | 'activity_type'>,
   tz: string,
 ): string => {
   if (link.start_time === null) return link.name
-  const dated = link.activity_type === 'sleep' && link.end_time !== null ? link.end_time : link.start_time
-  return `${link.name}, ${localDate(dated, tz)}`
+  switch (link.entity_type) {
+    case 'meal': {
+      const type = link.name.trim()
+      return `${type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Meal'} ${localTime(link.start_time, tz)}`
+    }
+    case 'report':
+      return `${titleCase(link.name)}, ${localDate(link.start_time, tz)}`
+    case 'check_in':
+      return `${link.name} ${localTime(link.start_time, tz)}`
+    default: {
+      const dated = link.activity_type === 'sleep' && link.end_time !== null ? link.end_time : link.start_time
+      return `${link.name}, ${localDate(dated, tz)}`
+    }
+  }
 }
 
 /** The visible links of the thread roots among `notes`, labelled, in one batched lookup. */
@@ -295,6 +317,7 @@ const relatedFor = async (user: string, notes: DbNote[]): Promise<Map<string, No
       id,
       list.map((link) => ({
         ...(link.activity_type === null ? {} : { activity_type: link.activity_type }),
+        ...(link.form_id === null ? {} : { form_id: link.form_id }),
         entity_id: link.entity_id,
         entity_type: link.entity_type,
         label: noteRelatedLabel(link, tz),
@@ -341,9 +364,12 @@ const createdNoteData = async (user: string, note: DbNote, related: boolean): Pr
 const relatedKinds: { type: NoteRelatedEntityType; label: string }[] = [
   { label: 'person', type: 'person' },
   { label: 'activity', type: 'activity' },
+  { label: 'meal', type: 'meal' },
+  { label: 'report', type: 'report' },
+  { label: 'check-in', type: 'check_in' },
 ]
 
-/** Why the links are refused (on a reply, or naming the targets that are not a live person or activity), or null. */
+/** Why the links are refused (on a reply, or naming the targets that are not live), or null. */
 const checkRelated = async (
   user: string,
   related: NoteLinkInput[] | undefined,
@@ -369,7 +395,7 @@ export const journalExcerpt = (content: string): string =>
     .trim()
     .slice(0, JOURNAL_ENTRY_EXCERPT_MAX)
 
-/** The live notes related to any of `targetIds`, newest first, as a person's or an activity's page lists them. */
+/** The live notes related to any of `targetIds`, newest first, as a target's page lists them. */
 export async function listJournalEntryRefs(
   user: string,
   targetType: NoteRelatedEntityType,

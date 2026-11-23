@@ -454,7 +454,7 @@ const EditorTools = ({
       <input
         type="file"
         class="md-editor-visually-hidden"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif"
         multiple
         onChange={(e) => {
           const input = e.currentTarget
@@ -640,7 +640,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         const refused = refusedLinkKeys(apiErrorMessage(error, ''), sent.related)
         if (refused.size > 0) {
           setGoneLinks(refused)
-          setSaveProblem('a related person or activity was removed. Remove the marked link.')
+          setSaveProblem('something it is related to was removed. Remove the marked link.')
         }
         throw error
       }

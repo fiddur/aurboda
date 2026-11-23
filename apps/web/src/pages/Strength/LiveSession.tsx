@@ -316,7 +316,7 @@ export const LiveSession = ({
       queue.dispose()
       clearLiveDraft()
       await invalidateStrengthQueries(queryClient)
-      route(id ? detailUrl(id) : '/strength')
+      route(id ? detailUrl(id) : '/strength/workouts')
     } catch {
       finishingRef.current = false
       setFinishing(false)

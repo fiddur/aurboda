@@ -60,7 +60,7 @@ const MuscleLinks = ({
   </p>
 )
 
-export const GroupSection = ({
+export const GroupLifts = ({
   field,
   group,
   name,
@@ -73,12 +73,7 @@ export const GroupSection = ({
   const done = group.lifts.filter((l) => l.best !== undefined)
   const rest = group.lifts.filter((l) => l.best === undefined)
   return (
-    <section class="activity-type-item-section">
-      <div class="strength-score-row strength-score-group-heading">
-        <h2>{group.name}</h2>
-        <span class="strength-score-points">{pointsLabel(group.score)}</span>
-      </div>
-      <MuscleLinks field={field} group={group} name={name} />
+    <>
       {done.length === 0 && (
         <p class="activity-type-item-empty">
           No weighted set of a lift that counts toward {group.name} in the last 90 days.
@@ -99,6 +94,25 @@ export const GroupSection = ({
           <p class="strength-score-muted">{rest.map((l) => l.name).join(', ')}</p>
         </details>
       )}
-    </section>
+    </>
   )
 }
+
+export const GroupSection = ({
+  field,
+  group,
+  name,
+}: {
+  field: string
+  group: StrengthScoreGroupResult
+  name: string
+}) => (
+  <section class="activity-type-item-section">
+    <div class="strength-score-row strength-score-group-heading">
+      <h2>{group.name}</h2>
+      <span class="strength-score-points">{pointsLabel(group.score)}</span>
+    </div>
+    <MuscleLinks field={field} group={group} name={name} />
+    <GroupLifts field={field} group={group} name={name} />
+  </section>
+)

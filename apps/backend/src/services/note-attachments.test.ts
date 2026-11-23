@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -8,6 +10,7 @@ import type { Note } from '../db/types.ts'
 import {
   addNoteAttachment,
   assistantNoteImage,
+  decodeHeic,
   deleteNoteAttachment,
   getNoteAttachmentContent,
   getNoteAttachmentForAssistant,
@@ -18,6 +21,7 @@ import {
   processNoteImage,
   restoreNoteAttachmentById,
   hasMp4VideoTrack,
+  isHeic,
   resizeNoteImage,
   sniffAudioMime,
 } from './note-attachments.ts'
@@ -135,8 +139,100 @@ describe('processNoteImage', () => {
     expect([small.width, small.height]).toEqual([300, 200])
   })
 
-  test('refuses what is not a PNG, JPEG, WebP or GIF', async () => {
+  test('refuses what is not a PNG, JPEG, WebP, GIF or HEIC', async () => {
     await expect(processNoteImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'))).rejects.toThrow()
+  })
+})
+
+/**
+ * A 64×32 HEVC-coded HEIC, red with a blue top-left quarter, whose `irot` property turns it a
+ * quarter anticlockwise: shown upright it is 32×64 with the blue quarter at the bottom left.
+ */
+const rotatedHeic = () => readFile(join(__dirname, '__fixtures__/rotated-64x32.heic'))
+
+const ftyp = (major: string, ...compatible: string[]) => {
+  const body = Buffer.from(`${major}\0\0\0\0${compatible.join('')}`, 'latin1')
+  const head = Buffer.alloc(8)
+  head.writeUInt32BE(8 + body.length, 0)
+  head.write('ftyp', 4, 'latin1')
+  return Buffer.concat([head, body, Buffer.alloc(16)])
+}
+
+describe('isHeic', () => {
+  test.each([
+    ['heic', ftyp('heic', 'mif1', 'heic')],
+    ['heix', ftyp('heix', 'mif1', 'heix')],
+    ['mif1 naming heic as compatible', ftyp('mif1', 'mif1', 'heic')],
+    ['msf1 naming hevc as compatible', ftyp('msf1', 'msf1', 'hevc')],
+  ])('knows a %s file', (_name, bytes) => {
+    expect(isHeic(bytes)).toBe(true)
+  })
+
+  test.each([
+    ['AVIF', ftyp('avif', 'mif1', 'miaf', 'MA1B')],
+    ['mif1 alone', ftyp('mif1', 'mif1', 'miaf')],
+    ['M4A recording', ftyp('M4A ', 'M4A ', 'isom', 'mp42')],
+    ['brand past the ftyp box', Buffer.concat([ftyp('mif1', 'mif1').subarray(0, 20), Buffer.from('heic')])],
+    ['JPEG', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])],
+    ['too short', Buffer.from('\0\0\0\x18ftyp', 'latin1')],
+  ])('refuses %s', (_name, bytes) => {
+    expect(isHeic(bytes)).toBe(false)
+  })
+
+  test('knows the fixture', async () => {
+    expect(isHeic(await rotatedHeic())).toBe(true)
+  })
+})
+
+describe('decodeHeic', () => {
+  const images = (width: number, height: number) => {
+    const decode = vi.fn(async () => ({ data: new Uint8ClampedArray(width * height * 4), height, width }))
+    const dispose = vi.fn()
+    return { decode, dispose, list: Object.assign([{ decode, height, width }], { dispose }) }
+  }
+
+  test('decodes the first picture and frees the decoder', async () => {
+    const { decode, dispose, list } = images(4, 2)
+    const decoded = await decodeHeic(Buffer.alloc(0), async () => list)
+    expect([decoded.width, decoded.height]).toEqual([4, 2])
+    expect(decode).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+
+  test('refuses a picture larger than any upload may be before decoding a pixel', async () => {
+    const { decode, dispose, list } = images(20_000, 17_000)
+    await expect(decodeHeic(Buffer.alloc(0), async () => list)).rejects.toThrow('too large')
+    expect(decode).not.toHaveBeenCalled()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+})
+
+describe('processNoteImage with a HEIC', () => {
+  test('decodes it, turns it as the file says and stores WebP', async () => {
+    const stored = await processNoteImage(await rotatedHeic())
+
+    expect(stored).toMatchObject({ height: 64, kind: 'image', mime: 'image/webp', width: 32 })
+    const { data, info } = await sharp(stored.bytes).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect([info.width, info.height]).toEqual([32, 64])
+    const pixel = (x: number, y: number) => [...data.subarray((y * 32 + x) * 3, (y * 32 + x) * 3 + 3)]
+    const [r1, , b1] = pixel(8, 48)
+    expect(b1).toBeGreaterThan(200)
+    expect(r1).toBeLessThan(50)
+    const [r2, , b2] = pixel(24, 16)
+    expect(r2).toBeGreaterThan(200)
+    expect(b2).toBeLessThan(50)
+  })
+
+  test('stores it with metadata stripping on as well', async () => {
+    const stored = await processNoteImage(await rotatedHeic(), { stripMetadata: true })
+    expect([stored.width, stored.height]).toEqual([32, 64])
+    expect((await sharp(stored.bytes).metadata()).exif).toBeUndefined()
+  })
+
+  test('refuses a HEIC that does not decode', async () => {
+    const broken = (await rotatedHeic()).subarray(0, 200)
+    await expect(processNoteImage(broken)).rejects.toThrow()
+    expect(await processNoteAttachment(broken)).toBeNull()
   })
 })
 

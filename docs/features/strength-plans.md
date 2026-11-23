@@ -37,7 +37,7 @@ name (case-insensitive); ties by creation.
 
 ## In the web app
 
-- **Strength start page** (`/strength`): "Planned workouts" lists the open plans, those with a day
+- **Strength page, Workouts tab** (`/strength/workouts`): "Planned workouts" lists the open plans, those with a day
   first (a day that has passed is marked), then the routines, each with **Start** and **Edit**,
   and a "Plan a workout" link.
 - **Start** opens the live session (`/strength/live?plan=<id>`) with the planned sets prefilled
