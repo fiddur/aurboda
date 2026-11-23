@@ -58,6 +58,7 @@ vi.mock('./services/mutations', () => ({
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
   deleteNoteById: vi.fn(),
+  getJournalNeighbors: vi.fn(),
   getNoteForUser: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
   getNoteRevisionsById: vi.fn(),
@@ -2373,6 +2374,7 @@ describe('MCP Server', () => {
 
       for (const name of [
         'get_note',
+        'get_note_neighbors',
         'search_notes',
         'list_note_revisions',
         'restore_note',
@@ -2459,6 +2461,32 @@ describe('MCP Server', () => {
         q: 'walk',
         tags: 'travel',
       })
+    })
+
+    test('get_note_neighbors answers the older and newer entries, or an error for a non-entry', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const id = '00000000-0000-4000-8000-000000000000'
+      vi.mocked(mutations.getJournalNeighbors).mockResolvedValueOnce({
+        previous: { entity_type: 'time', excerpt: 'Older', id, start_time: '2024-01-14T07:00:00.000Z' },
+      })
+
+      const { toolResult } = await callNoteTool(app, token, 'get_note_neighbors', { id, tz: 'UTC' })
+      expect(toolResult.data.previous.excerpt).toBe('Older')
+      expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('testuser', id, 'UTC')
+
+      vi.mocked(mutations.getJournalNeighbors).mockResolvedValueOnce(null)
+      const missing = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { id }, name: 'get_note_neighbors' },
+        })
+      const parsed = parseSSEResponse(missing.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toBe('Journal entry not found')
+      expect(mutations.getJournalNeighbors).toHaveBeenLastCalledWith('testuser', id, undefined)
     })
 
     test('add_note, update_note and search_notes take related and its filter', async () => {

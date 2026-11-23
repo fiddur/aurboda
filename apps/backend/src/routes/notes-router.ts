@@ -5,6 +5,9 @@ import {
   deleteNoteQuerySchema,
   type DeleteNoteResponse,
   type NoteConflictResponse,
+  type NoteNeighborsQuery,
+  noteNeighborsQuerySchema,
+  type NoteNeighborsResponse,
   type NoteResponse,
   type NoteRevisionsResponse,
   type NotesQuery,
@@ -22,6 +25,7 @@ import {
 import {
   addNote,
   deleteNoteById,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
@@ -165,6 +169,17 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     }
     res.json({ data: result.data, success: true })
   })
+
+  router.get<{ id: string }, NoteNeighborsResponse, unknown, NoteNeighborsQuery>(
+    '/:id/neighbors',
+    authMiddleware,
+    validateQuery(noteNeighborsQuerySchema),
+    async (req, res) => {
+      const neighbors = await getJournalNeighbors(req.user!, req.params.id, req.query.tz)
+      if (!neighbors) return res.status(404).json({ error: 'Journal entry not found', success: false })
+      res.json({ data: neighbors, success: true })
+    },
+  )
 
   return router
 }

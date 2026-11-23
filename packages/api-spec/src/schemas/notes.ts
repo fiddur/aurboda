@@ -718,3 +718,46 @@ export const noteRevisionsResponseSchema = createDataArrayResponseSchema(noteRev
 })
 
 export type NoteRevisionsResponse = z.infer<typeof noteRevisionsResponseSchema>
+
+export const noteNeighborSchema = z
+  .object({
+    date: noteDateSchema.optional(),
+    entity_type: entityTypeSchema,
+    excerpt: z.string().meta({
+      description: `The first non-empty line of the text, at most ${JOURNAL_ENTRY_EXCERPT_MAX} characters (may be empty)`,
+    }),
+    id: z.string().uuid().meta({ description: 'Note ID' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'When a `time` entry is anchored' }),
+    title: noteTitleResponseSchema.optional(),
+  })
+  .meta({ description: 'A Journal entry next to another one', id: 'NoteNeighbor' })
+
+export type NoteNeighbor = z.infer<typeof noteNeighborSchema>
+
+export const noteNeighborsQuerySchema = z
+  .object({
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone a `day` entry's date is read in (default: the user's timezone)",
+    }),
+  })
+  .meta({ id: 'NoteNeighborsQuery' })
+
+export type NoteNeighborsQuery = z.infer<typeof noteNeighborsQuerySchema>
+
+export const noteNeighborsSchema = z
+  .object({
+    next: noteNeighborSchema.optional().meta({ description: 'The newer entry, if any' }),
+    previous: noteNeighborSchema.optional().meta({ description: 'The older entry, if any' }),
+  })
+  .meta({
+    description: "The Journal entries just before and after one entry, in the Journal's order",
+    id: 'NoteNeighbors',
+  })
+
+export type NoteNeighbors = z.infer<typeof noteNeighborsSchema>
+
+export const noteNeighborsResponseSchema = createDataResponseSchema(noteNeighborsSchema).meta({
+  id: 'NoteNeighborsResponse',
+})
+
+export type NoteNeighborsResponse = z.infer<typeof noteNeighborsResponseSchema>

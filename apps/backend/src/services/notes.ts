@@ -40,7 +40,10 @@ import {
   notesSearchRootTypes,
   parseNotesSearchEntityTypes,
   parseNotesSearchTags,
+  NOTES_SEARCH_DEFAULT_ENTITY_TYPES,
   type NoteAttachment,
+  type NoteNeighbor,
+  type NoteNeighbors,
   type NoteRelated,
   type NoteRelatedEntityType,
 } from '@aurboda/api-spec'
@@ -53,6 +56,7 @@ import {
   listLiveLinkTargetIds as dbListLiveLinkTargetIds,
   listNotesRelatedTo as dbListNotesRelatedTo,
   getNoteById as dbGetNoteById,
+  getNoteNeighbors as dbGetNoteNeighbors,
   getNoteRevisions as dbGetNoteRevisions,
   getNoteRoot as dbGetNoteRoot,
   getNotesForEntity as dbGetNotesForEntity,
@@ -378,6 +382,35 @@ export async function listJournalEntryRefs(
     start_time: n.start_time?.toISOString(),
     title: n.title ?? undefined,
   }))
+}
+
+export const toNoteNeighbor = (note: DbNote): NoteNeighbor => ({
+  date: note.entity_type === 'day' ? note.date : undefined,
+  entity_type: note.entity_type,
+  excerpt: journalExcerpt(note.content),
+  id: note.id,
+  start_time: note.entity_type === 'day' ? undefined : note.start_time?.toISOString(),
+  title: note.title || undefined,
+})
+
+/**
+ * The Journal entries just before (older) and after (newer) one entry, in the Journal list's
+ * order with no filters; null when `id` is not a live Journal entry.
+ */
+export async function getJournalNeighbors(
+  user: string,
+  id: string,
+  tz?: string,
+): Promise<NoteNeighbors | null> {
+  const found = await dbGetNoteNeighbors(user, id, {
+    entity_types: [...NOTES_SEARCH_DEFAULT_ENTITY_TYPES],
+    tz: tz ?? (await getUserTimezone(user)),
+  })
+  if (!found) return null
+  return {
+    next: found.next ? toNoteNeighbor(found.next) : undefined,
+    previous: found.previous ? toNoteNeighbor(found.previous) : undefined,
+  }
 }
 
 /** A real calendar date in YYYY-MM-DD, not just the shape of one. */

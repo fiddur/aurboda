@@ -7,6 +7,7 @@ import { useEffect } from 'preact/hooks'
 
 import { fieldLabel } from '../../components/sessions/sessionView'
 import { fetchActivityNeighbors } from '../../state/api'
+import { isTyping } from '../../utils/isTyping'
 import { timelineHref } from '../Timeline/viewHash'
 import '../../components/sessions/sessions.css'
 
@@ -20,10 +21,6 @@ const NeighborText = ({ n }: { n: ActivityNeighbor }) => (
     {n.title && <span class="activity-neighbors-title"> · {n.title}</span>}
   </>
 )
-
-const isTyping = (target: EventTarget | null): boolean =>
-  target instanceof HTMLElement &&
-  (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName))
 
 const NeighborsRow = ({
   activityId,

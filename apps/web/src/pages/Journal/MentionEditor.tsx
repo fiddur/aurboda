@@ -92,6 +92,10 @@ const menuStyle = (placement: MentionPlacement | null): JSX.CSSProperties =>
       }
     : { visibility: 'hidden' }
 
+/** While a new person is being saved after the `@query` has gone, only that item stays: no one else can be picked then. */
+const menuItems = (items: MentionItem<Person>[], typing: boolean): MentionItem<Person>[] =>
+  typing ? items : items.filter((item) => item.kind === 'new')
+
 /**
  * The entry's text, where typing `@` offers the user's people, and adding the typed name as a new
  * one: arrow keys and Enter (or a tap) pick, Esc closes. Picking writes the name in place of the
@@ -103,12 +107,15 @@ export const MentionEditor = ({
   onMention,
   onBlur,
   attachPictures,
+  autoFocus,
 }: {
   value: string
   onChange: (content: string) => void
   onMention: (content: string, person: Person) => void
   onBlur: () => void
   attachPictures: (files: File[]) => void
+  /** Focus the text with the caret at its end once shown. */
+  autoFocus?: boolean
 }) => {
   const peopleQuery = usePeople()
   const allPeople = peopleQuery.data?.people ?? []
@@ -128,7 +135,10 @@ export const MentionEditor = ({
   const typed = caret === undefined ? null : mentionAt(value, caret)
   const mention = typed && typed.start !== dismissed ? typed : null
   const shownMention = mention ?? (addNew.isPending ? creating : null)
-  const items = shownMention && peopleQuery.data ? mentionItems(people, allPeople, shownMention.query) : []
+  const items = menuItems(
+    shownMention && peopleQuery.data ? mentionItems(people, allPeople, shownMention.query) : [],
+    mention !== null,
+  )
   const open = shownMention !== null && items.length > 0
 
   const readCaret = () => setCaret(textareaRef.current?.selectionStart ?? undefined)
@@ -192,6 +202,19 @@ export const MentionEditor = ({
   })
 
   useEffect(() => {
+    if (!autoFocus) return
+    const frame = requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      textarea.focus({ preventScroll: true })
+      const end = textarea.value.length
+      textarea.setSelectionRange(end, end)
+    })
+    return () => cancelAnimationFrame(frame)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when first shown
+  }, [])
+
+  useEffect(() => {
     if (open) menuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [open, choice])
 
@@ -207,6 +230,7 @@ export const MentionEditor = ({
         }}
         placeholder="Write what happened, what you thought, how it felt…"
         rows={10}
+        autoGrow
         ariaLabel="Entry text"
         onBlur={() => {
           setCaret(undefined)

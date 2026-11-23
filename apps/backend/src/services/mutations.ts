@@ -1207,6 +1207,7 @@ export type { RestoreResult } from './restore.ts'
 export {
   addNote,
   deleteNoteById,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
