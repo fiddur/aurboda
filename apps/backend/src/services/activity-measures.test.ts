@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  bestSet,
   combineMeasures,
   groupItemsByKey,
   isWorkingItem,
@@ -137,6 +138,26 @@ describe('measureItems', () => {
   test('no working items → no measures', () => {
     expect(measureItems([])).toEqual({})
     expect(measureItems([set('Bench', 40, 10, { set_type: 'warmup' })])).toEqual({})
+  })
+})
+
+describe('bestSet', () => {
+  test('the heaviest working set, warm-ups left out', () => {
+    expect(
+      bestSet([set('Squat', 120, 3, { set_type: 'warmup' }), set('Squat', 100, 5), set('Squat', 90, 8)]),
+    ).toEqual({ reps: 5, weight: 100 })
+  })
+
+  test('a tie on weight goes to more reps', () => {
+    expect(bestSet([set('Squat', 100, 5), set('Squat', 100, 7), set('Squat', 100, 6)])).toEqual({
+      reps: 7,
+      weight: 100,
+    })
+  })
+
+  test('none without a set that has both a weight and reps', () => {
+    expect(bestSet([set('Plank', null, null, { time: 60 }), set('Pull-up', null, 10)])).toBeUndefined()
+    expect(bestSet([set('Bench', 0, 10), set('Bench', 50, null)])).toBeUndefined()
   })
 })
 

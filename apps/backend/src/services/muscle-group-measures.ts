@@ -1,5 +1,6 @@
 import {
   type ActivityMeasures,
+  type ActivitySessionGroup,
   type ExerciseMuscle,
   type ExerciseMuscleGroup,
   exerciseMuscleGroups,
@@ -33,6 +34,23 @@ export const muscleGroupWeights = (
   }
   return weights
 }
+
+/** What a matched exercise is: its catalogue key, the muscle groups it works by weight, its equipment. */
+export const exerciseGroupFields = (
+  entry: StoredExerciseCatalogEntry | undefined,
+): Pick<ActivitySessionGroup, 'catalog_key' | 'equipment' | 'muscle_groups'> =>
+  entry === undefined
+    ? {}
+    : {
+        catalog_key: entry.key,
+        equipment: entry.equipment,
+        muscle_groups: (Object.entries(muscleGroupWeights(entry)) as [ExerciseMuscleGroup, number][])
+          .toSorted(
+            ([a, wa], [b, wb]) =>
+              wb - wa || exerciseMuscleGroups.indexOf(a) - exerciseMuscleGroups.indexOf(b),
+          )
+          .map(([muscle_group, weight]) => ({ muscle_group, weight })),
+      }
 
 /** A muscle group's measures; `muscle_group` null, with `in_catalogue`, for exercises that train none. */
 export interface MuscleGroupBucket {

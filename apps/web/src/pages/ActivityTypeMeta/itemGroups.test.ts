@@ -62,6 +62,34 @@ describe('sortItemGroups', () => {
   })
 })
 
+describe('sortItemGroups by best set and points', () => {
+  const heavy = group('Heavy', { best_set: { reps: 3, weight: 100 } })
+  const heavier = group('Heavier', { best_set: { reps: 5, weight: 100 } })
+  const light = group('Light', { best_set: { reps: 12, weight: 40 } })
+  const bodyweight = group('Bodyweight')
+
+  test('best set by weight, then reps, sets missing last', () => {
+    expect(values(sortItemGroups([bodyweight, light, heavy, none, heavier], 'best_set'))).toEqual([
+      'Heavier',
+      'Heavy',
+      'Light',
+      'Bodyweight',
+      null,
+    ])
+  })
+
+  test('points from the given lookup, highest first, none last', () => {
+    const points: Record<string, number> = { Heavy: 80, Light: 95 }
+    const pointsOf = (g: ActivitySessionGroup) => points[String(g.value)]
+    expect(values(sortItemGroups([bodyweight, heavy, none, light], 'points', pointsOf))).toEqual([
+      'Light',
+      'Heavy',
+      'Bodyweight',
+      null,
+    ])
+  })
+})
+
 describe('filterItemGroups', () => {
   test('keeps every group while the query is blank', () => {
     expect(filterItemGroups(groups, '')).toBe(groups)

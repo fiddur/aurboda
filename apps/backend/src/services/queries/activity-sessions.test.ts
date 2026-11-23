@@ -1,4 +1,4 @@
-import type { ActivityTypeDefinition } from '@aurboda/api-spec'
+import type { ActivitySession, ActivityTypeDefinition, StoredExerciseCatalogEntry } from '@aurboda/api-spec'
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -10,6 +10,7 @@ import {
   buildSessions,
   groupKey,
   groupSessions,
+  groupSessionsByItem,
   queryActivitySessions,
   sessionsOptionsFromQuery,
   withPlace,
@@ -18,9 +19,11 @@ import {
 vi.mock('../../db', () => ({
   expandActivityTypes: vi.fn().mockImplementation((_user: string, types: string[]) => Promise.resolve(types)),
   getActivities: vi.fn(),
+  getActivityTypeDefinition: vi.fn().mockResolvedValue(undefined),
   getActivityTypeDefinitions: vi.fn(),
   getHrZoneSecsForWindows: vi.fn(),
   getValueHistogramsForWindows: vi.fn(),
+  listItemValueIdentities: vi.fn().mockResolvedValue([]),
   getUserSettings: vi.fn().mockResolvedValue(null),
 }))
 
@@ -548,5 +551,75 @@ describe('queryActivitySessions over list items', () => {
       volume: 1080,
     })
     expect(s3Session.fields).toEqual({ location: 'Gym' })
+  })
+})
+
+describe('groupSessionsByItem', () => {
+  const session = (id: string, startIso: string): ActivitySession => ({
+    activity_type: 'strength_training',
+    fields: {},
+    id,
+    start_time: at(startIso).toISOString(),
+  })
+  const sets = (exercise: string, ...pairs: [number | null, number | null, string?][]) => ({
+    items: pairs.map(([weight, reps, set_type]) => ({ exercise, reps, set_type, weight })),
+    normalized: exercise.toLowerCase(),
+    value: exercise,
+  })
+  const pushdown: StoredExerciseCatalogEntry = {
+    aliases: [],
+    category: 'strength',
+    equipment: ['cable'],
+    key: 'triceps_pushdown',
+    muscles: { forearms: 0.25, triceps: 1 },
+    name: 'Triceps Pushdown',
+    same_as: { bodybuild: 'x' },
+    search_terms: [],
+  }
+  const resolve = (value: string) => (value.toLowerCase() === 'pushdown' ? pushdown : undefined)
+
+  const a = session('a', '2026-09-01T17:00:00Z')
+  const b = session('b', '2026-09-08T17:00:00Z')
+  const c = session('c', '2026-09-09T17:00:00Z')
+  const itemGroups = new Map([
+    ['a', [sets('Pushdown', [40, 12], [50, 9]), sets('Cable fly', [null, 12])]],
+    ['b', [sets('Pushdown', [60, 15, 'warmup'], [50, 11], [45, 12])]],
+    ['c', []],
+  ])
+  const groups = groupSessionsByItem([c, b, a], itemGroups, new Map(), resolve)
+  const of = (value: string | null) => groups.find((g) => g.value === value)!
+
+  test('a matched value says what exercise it is, with the best set of all its sessions', () => {
+    expect(of('Pushdown')).toMatchObject({
+      best_set: { reps: 11, weight: 50 },
+      catalog_key: 'triceps_pushdown',
+      equipment: ['cable'],
+      muscle_groups: [
+        { muscle_group: 'triceps', weight: 1 },
+        { muscle_group: 'forearms', weight: 0.25 },
+      ],
+    })
+  })
+
+  test('an unmatched value has no catalogue fields, nor a best set without a weighted set', () => {
+    const fly = of('Cable fly')
+    expect(fly.catalog_key).toBeUndefined()
+    expect(fly.muscle_groups).toBeUndefined()
+    expect(fly.equipment).toBeUndefined()
+    expect(fly.best_set).toBeUndefined()
+  })
+
+  test('the no-value group has neither', () => {
+    const none = of(null)
+    expect(none.catalog_key).toBeUndefined()
+    expect(none.best_set).toBeUndefined()
+    expect(none.measures).toBeUndefined()
+  })
+
+  test('without a catalogue the groups still get their best set', () => {
+    const plain = groupSessionsByItem([c, b, a], itemGroups, new Map()).find((g) => g.value === 'Pushdown')!
+    expect(plain.catalog_key).toBeUndefined()
+    expect(plain.muscle_groups).toBeUndefined()
+    expect(plain.best_set).toEqual({ reps: 11, weight: 50 })
   })
 })

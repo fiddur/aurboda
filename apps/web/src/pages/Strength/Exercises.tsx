@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import { categoricalItemFields, itemPath } from '../../components/sessions/sessionView'
 import { fetchActivityTypeDefinitions } from '../../state/api'
-import { ItemGroupsSection } from '../ActivityTypeMeta/ItemGroupsSection'
 import { SETS_PATH, STRENGTH_TYPE } from './constants'
+import { ExerciseList } from './ExerciseList'
 import { StrengthHeader } from './StrengthHeader'
 import '../ActivityTypeMeta/style.css'
 import './style.css'
@@ -33,15 +33,7 @@ export function StrengthExercises() {
           No strength sessions yet. <a href="/strength/workouts">Start or log one</a>
         </p>
       )}
-      {field && (
-        <ItemGroupsSection
-          name={STRENGTH_TYPE}
-          path={SETS_PATH}
-          list={field.list}
-          item={field.item}
-          heading="Your exercises"
-        />
-      )}
+      {field && <ExerciseList list={field.list} item={field.item} />}
     </div>
   )
 }
