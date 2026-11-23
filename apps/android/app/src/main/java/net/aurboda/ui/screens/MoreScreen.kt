@@ -74,8 +74,7 @@ private val NOTIFICATIONS_DESTINATION = MoreDestination.Web(notificationsLink.hr
  * app's own entries. Web entries open the page embedded; Live and Account stay native.
  */
 val moreMenu: MoreMenu = MoreMenu(
-    top = listOf(notificationsLink.toMoreItem()) +
-        appOnlyLinks.filter { it.href == "/reminders" }.map { it.toMoreItem() },
+    top = listOf(notificationsLink.toMoreItem()),
     sections = navSections.map { section ->
         MoreSection(
             id = section.id,
@@ -85,7 +84,7 @@ val moreMenu: MoreMenu = MoreMenu(
         )
     },
     bottom = listOf(helpLink.toMoreItem(), settingsLink.toMoreItem()) +
-        appOnlyLinks.filter { it.href != "/reminders" }.map { it.toMoreItem() } +
+        appOnlyLinks.map { it.toMoreItem() } +
         listOf(
             MoreItem("Live sensors", MoreDestination.Live, "📡"),
             MoreItem("Account & server", MoreDestination.Account, "👤"),

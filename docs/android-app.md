@@ -55,9 +55,9 @@ sections open and close, closed at first, and which are open is remembered on th
 (`MenuSectionsStore`, `AppState.openMenuSections`). An entry that is also a bottom tab — **Feed**,
 under Sharing — switches to that tab (`mainTabForPath`) instead of opening the page inside More.
 
-Around the sections sit the entries only the app has. On top are **Notifications** (the web
-`/notifications` page, see [Notifications](features/notifications.md)) and **Reminders** (the web
-`/reminders` page, see [Reminders](features/reminders.md)); at the bottom **Help & support** and
+Around the sections sit the entries only the app has. On top is **Notifications** (the web
+`/notifications` page, see [Notifications](features/notifications.md)); **Reminders** is under
+Setup, as in the web menu (see [Reminders](features/reminders.md)); at the bottom **Help & support** and
 **Settings** (in the web menu's footer), the **Audit log** (reached from Settings on the web), and
 the two native-only screens, **Live** sensors ([BLE](#live-sensors)) and **Account** (server URL,
 logout). Home and Add are bottom tabs, not hub entries. **Admin** is left out: the app does not know

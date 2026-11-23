@@ -46,7 +46,7 @@ also carries the earliest of them and the time zone.
 
 ## Web
 
-`/reminders` (linked from the `/notifications` header) lists the reminders with their schedule
+`/reminders` (under **Setup** in the menu, and linked from the `/notifications` header) lists the reminders with their schedule
 ("Every day at 20:00", "Weekdays at 07:30", "Mon, Wed, Fri at 07:30"), the page each opens, an on/off
 switch, **Edit** and **Delete**. The form asks for a name, optional text, a time (a time off the
 five-minute grid is rounded to the nearest step), the days (all on by default), and the page to
