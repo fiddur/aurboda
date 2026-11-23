@@ -206,6 +206,17 @@ export const systemTables: Record<string, string> = {
     END $$
   `,
 
+  // A link suggestion the user turned down for one journal entry, so it is not offered again.
+  note_link_dismissals: `
+    CREATE TABLE IF NOT EXISTS note_link_dismissals (
+      note_id     UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_id   UUID NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (note_id, entity_type, entity_id)
+    )
+  `,
+
   // The meals, reports and check-ins removed for good take their links with them, as activities
   // do above. A check-in goes for good when purged, when an answer replaces a skip, and when its
   // form is purged (the cascade fires this trigger too).

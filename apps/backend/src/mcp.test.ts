@@ -2423,6 +2423,9 @@ describe('MCP Server', () => {
       for (const name of [
         'get_note',
         'get_note_neighbors',
+        'get_note_link_suggestions',
+        'list_note_link_suggestions',
+        'dismiss_note_link_suggestion',
         'search_notes',
         'list_note_revisions',
         'list_note_tags',
