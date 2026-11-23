@@ -54,7 +54,7 @@ import { deleteFeedQuoteAuthorizationsForPost, hasLocations, hasTimeSeries } fro
 import { type ArticleSelectorNames, articleBlockFigureUrl, articleSelectorNames } from '../article.ts'
 import { challengeWinners } from '../challenge-results.ts'
 import { CHART_HEIGHT, CHART_WIDTH } from '../charts/chart-svg.ts'
-import { formatExerciseLine, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
+import { formatExerciseLines, resolvePostExercises, toStructuredExercise } from '../feed-exercises.ts'
 import { resolveStandingsChart } from '../feed-structured-challenge.ts'
 import { resolveExerciseTrendSeries } from '../feed-structured-exercise.ts'
 import { getSettings } from '../settings.ts'
@@ -139,6 +139,8 @@ export interface DeliverablePost {
   include_map: boolean
   /** Share the session's exercises (sets, e1RM, volume, records). */
   include_exercises: boolean
+  /** Add each shared exercise's trend; effective only with `include_exercises`. */
+  include_exercise_trends: boolean
   /** Capability token appended to `followers`-only image URLs (see `imageAttachments`). */
   image_token: string
   tags?: readonly string[]
@@ -276,7 +278,7 @@ const buildFeedNoteParts = async (
   // article block images); unknown/invalid falls back to UTC inside the formatter.
   const settings = await getSettings(user).catch(() => null)
   const { content, name } = feedPostContent(activity.title, activity.activity_type, scalars, {
-    exerciseLines: exercises.map(formatExerciseLine),
+    exerciseLines: formatExerciseLines(exercises, { trend: post.include_exercise_trends }),
     mentions: post.mentions,
     message: post.message ?? undefined,
     windowLabel: formatActivityWindow(

@@ -37,6 +37,7 @@ const record = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord =>
   id: RULE_ID,
   include_chart: false,
   include_map: false,
+  include_exercise_trends: false,
   include_exercises: false,
   included_metrics: [],
   max_age_hours: 24,
@@ -264,6 +265,35 @@ describe('autoshare rule delay_minutes', () => {
     expect(res.status).toBe(200)
     expect(vi.mocked(db.updateAutoshareRule).mock.calls[0]?.[2]).toEqual({ delay_minutes: 30 })
     expect((await supertest(buildApp()).patch(`/${RULE_ID}`).send({ delay_minutes: 5 })).status).toBe(400)
+  })
+})
+
+describe('autoshare rule exercise trends', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.insertAutoshareRule).mockImplementation(async (_user, input) => record(input))
+    vi.mocked(db.updateAutoshareRule).mockImplementation(async (_user, _id, patch) => record(patch))
+  })
+
+  test('defaults to off on create, keeps a given value and returns it', async () => {
+    const plain = await supertest(buildApp()).post('/').send({ name: 'Anything' })
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[0]?.[1].include_exercise_trends).toBe(false)
+    expect(plain.body.rule.include_exercise_trends).toBe(false)
+    const res = await supertest(buildApp())
+      .post('/')
+      .send({ include_exercise_trends: true, include_exercises: true, name: 'Lifts' })
+    expect(vi.mocked(db.insertAutoshareRule).mock.calls[1]?.[1]).toMatchObject({
+      include_exercise_trends: true,
+      include_exercises: true,
+    })
+    expect(res.body.rule.include_exercise_trends).toBe(true)
+  })
+
+  test('is optional on update and patched as sent', async () => {
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ include_exercise_trends: true })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.updateAutoshareRule).mock.calls[0]?.[2]).toEqual({ include_exercise_trends: true })
+    expect(res.body.rule.include_exercise_trends).toBe(true)
   })
 })
 
