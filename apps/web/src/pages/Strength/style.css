@@ -78,8 +78,8 @@
 }
 
 .strength-page .btn-danger {
-  background: #b91c1c;
-  color: white;
+  background: var(--red-700);
+  color: var(--white);
   border: none;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;
@@ -112,7 +112,7 @@
 }
 
 .strength-error {
-  color: #b91c1c;
+  color: var(--red-700);
   font-size: 0.9rem;
 }
 
@@ -472,7 +472,7 @@ button.strength-set-row:hover {
 }
 
 .strength-plan-overdue {
-  color: #f57c00;
+  color: var(--orange-l48);
 }
 
 .strength-plan-note {
@@ -641,6 +641,6 @@ button.strength-set-row:hover {
 
 @media (prefers-color-scheme: dark) {
   .strength-error {
-    color: #fca5a5;
+    color: var(--red-300);
   }
 }

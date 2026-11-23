@@ -4,8 +4,8 @@
 }
 
 .mastodon-status {
-  background: #282c37;
-  color: #fff;
+  background: var(--blue-l19);
+  color: var(--white);
   border-radius: 8px;
   padding: 16px;
   font-family: Roboto, 'Segoe UI', system-ui, sans-serif;
@@ -15,7 +15,7 @@
 }
 
 .mastodon-status a {
-  color: #8c8dff;
+  color: var(--indigo-l77);
   text-decoration: none;
 }
 
@@ -36,7 +36,7 @@
   border-radius: 8px;
   object-fit: cover;
   flex-shrink: 0;
-  background: #393f4f;
+  background: var(--blue-l27);
 }
 
 .mastodon-status-ident {
@@ -55,7 +55,7 @@
 
 .mastodon-status-handle,
 .mastodon-status-time {
-  color: #9baec8;
+  color: var(--blue-l70);
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -87,8 +87,8 @@
 .mastodon-status-content blockquote {
   margin: 0 0 22px;
   padding-left: 10px;
-  border-left: 3px solid #606984;
-  color: #c0cdd9;
+  border-left: 3px solid var(--blue-l45);
+  color: var(--blue-l80);
 }
 
 .mastodon-status-content pre,
@@ -116,7 +116,7 @@
   padding: 0;
   border: none;
   background: none;
-  color: #8c8dff;
+  color: var(--indigo-l77);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -128,7 +128,7 @@
   margin-top: 16px;
   border-radius: 8px;
   overflow: hidden;
-  background: #191b22;
+  background: var(--neutral-l11p6);
 }
 
 .mastodon-media--two,
@@ -172,9 +172,9 @@
   width: 100%;
   height: 100%;
   min-height: 120px;
-  color: #9baec8;
+  color: var(--blue-l70);
   font-size: 14px;
-  background: #313543;
+  background: var(--blue-l22p7);
 }
 
 .mastodon-media-alt {
@@ -183,8 +183,8 @@
   left: 6px;
   padding: 0 4px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
-  color: #fff;
+  background: var(--black-a65);
+  color: var(--white);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -201,15 +201,15 @@
 .mastodon-hashtag {
   padding: 0 6px;
   border-radius: 4px;
-  background: rgba(140, 141, 255, 0.1);
-  color: #9baec8;
+  background: var(--indigo-l77-a10);
+  color: var(--blue-l70);
   font-size: 13px;
   line-height: 22px;
 }
 
 .mastodon-status-footer {
   margin-top: 12px;
-  color: #9baec8;
+  color: var(--blue-l70);
   font-size: 13px;
 }
 

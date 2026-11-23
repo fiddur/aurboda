@@ -22,7 +22,7 @@
 .places-header h1 {
   margin: 0;
   font-size: 1.5rem;
-  color: #1f2937;
+  color: var(--color-text-strong-3);
 }
 
 .date-nav {
@@ -33,21 +33,21 @@
 
 .date-nav button {
   padding: 0.375rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  background: white;
+  background: var(--color-surface-raised-3);
   cursor: pointer;
   font-size: 1rem;
 }
 
 .date-nav button:hover {
-  background: #f3f4f6;
-  border-color: #3b82f6;
+  background: var(--gray-100);
+  border-color: var(--blue-500);
 }
 
 .date-nav input[type='date'] {
   padding: 0.375rem 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   font-size: 0.9rem;
 }
@@ -66,9 +66,9 @@
   width: 400px;
   min-width: 280px;
   max-width: 100%;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
-  background: white;
+  background: var(--white);
   overflow: hidden;
 }
 
@@ -79,11 +79,11 @@
 }
 
 .places-list-footer {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
   padding: 0.5rem 1rem;
   font-size: 0.85em;
-  color: #6b7280;
-  background: #f9fafb;
+  color: var(--gray-500);
+  background: var(--gray-50);
 }
 
 .place-item {
@@ -95,11 +95,11 @@
 }
 
 .place-item:hover {
-  background: #f3f4f6;
+  background: var(--gray-100);
 }
 
 .place-item.selected {
-  background: #e0f2fe;
+  background: var(--sky-100);
 }
 
 .place-item-header {
@@ -109,7 +109,7 @@
 }
 
 .place-time {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.9em;
   min-width: 100px;
 }
@@ -124,35 +124,35 @@
 }
 
 .place-address {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85em;
   margin-top: 0.25rem;
 }
 
 .place-duration {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.8em;
   margin-top: 0.25rem;
 }
 
 .transit-item {
-  border-left: 2px dashed #d1d5db;
+  border-left: 2px dashed var(--gray-300);
   margin-left: 0.5rem;
   padding: 0.25rem 0.5rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.9em;
 }
 
 .named-places {
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
 }
 
 .named-places h2 {
   margin: 0 0 0.5rem 0.25rem;
   font-size: 1rem;
-  color: #1f2937;
+  color: var(--color-text-strong-3);
 }
 
 .named-places ul {
@@ -162,7 +162,7 @@
 }
 
 .named-places-empty {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.9em;
   padding: 0.25rem 0.5rem;
 }
@@ -171,13 +171,13 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  border-left: 3px solid #22c55e;
+  border-left: 3px solid var(--green-500);
   border-radius: 6px;
   margin-bottom: 0.25rem;
 }
 
 .named-place-row:hover {
-  background: #f3f4f6;
+  background: var(--gray-100);
 }
 
 .named-place-main {
@@ -204,7 +204,7 @@
 }
 
 .named-place-meta {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.8em;
 }
 
@@ -212,16 +212,16 @@
   flex-shrink: 0;
   margin-right: 0.5rem;
   padding: 0.25rem 0.625rem;
-  border: 1px solid #fca5a5;
+  border: 1px solid var(--red-300);
   border-radius: 4px;
-  background: white;
-  color: #dc2626;
+  background: var(--white);
+  color: var(--red-600);
   font-size: 0.85em;
   cursor: pointer;
 }
 
 .named-place-delete:hover:not(:disabled) {
-  background: #fef2f2;
+  background: var(--red-50);
 }
 
 .named-place-delete:disabled {
@@ -232,10 +232,10 @@
 .map-container {
   flex: 1;
   min-width: 300px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   overflow: hidden;
-  background: #f5f5f5;
+  background: var(--neutral-l96);
 }
 
 .map-placeholder {
@@ -243,7 +243,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #9ca3af;
+  color: var(--gray-400);
 }
 
 .map-container .leaflet-container {
@@ -257,7 +257,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--black-a50);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -265,21 +265,21 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--white);
   border-radius: 8px;
   padding: 1.5rem;
   width: 90%;
   max-width: 400px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 25px -5px var(--black-a10);
 }
 
 .modal-content h3 {
   margin: 0 0 1rem 0;
-  color: #1f2937;
+  color: var(--color-text-strong-3);
 }
 
 .modal-address {
-  color: #6b7280;
+  color: var(--gray-500);
   margin-bottom: 1rem;
   font-size: 0.9em;
 }
@@ -292,13 +292,13 @@
   display: block;
   margin-bottom: 0.25rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-default-2);
 }
 
 .modal-field input {
   width: 100%;
   padding: 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   font-size: 1rem;
   box-sizing: border-box;
@@ -306,13 +306,13 @@
 
 .modal-field input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 2px var(--blue-500-a20);
 }
 
 .modal-field input:disabled {
-  background: #f3f4f6;
-  color: #6b7280;
+  background: var(--gray-100);
+  color: var(--gray-500);
   cursor: not-allowed;
 }
 
@@ -321,7 +321,7 @@
   align-items: center;
   gap: 0.5rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -333,11 +333,11 @@
 .modal-hint {
   margin-top: 0.25rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .modal-hint code {
-  background: #f3f4f6;
+  background: var(--gray-100);
   padding: 0 0.25rem;
   border-radius: 3px;
   font-size: 0.85em;
@@ -357,26 +357,26 @@
 }
 
 .modal-actions button:first-child {
-  background: white;
-  border: 1px solid #d1d5db;
+  background: var(--white);
+  border: 1px solid var(--gray-300);
 }
 
 .modal-actions button:first-child:hover {
-  background: #f3f4f6;
+  background: var(--gray-100);
 }
 
 .btn-primary {
-  background: #3b82f6;
+  background: var(--blue-500);
   border: none;
-  color: white;
+  color: var(--white);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--blue-600);
 }
 
 .btn-primary:disabled {
-  background: #93c5fd;
+  background: var(--blue-300);
   cursor: not-allowed;
 }
 
@@ -384,107 +384,90 @@
 .error {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 @media (prefers-color-scheme: dark) {
-  .places-header h1 {
-    color: #f3f4f6;
-  }
-
   .date-nav button {
-    background: #374151;
-    border-color: #4b5563;
-    color: #e5e7eb;
+    border-color: var(--gray-600);
+    color: var(--gray-200);
   }
 
   .date-nav button:hover {
-    background: #4b5563;
+    background: var(--gray-600);
   }
 
   .date-nav input[type='date'] {
-    background: #374151;
-    border-color: #4b5563;
-    color: #e5e7eb;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
   }
 
   .places-list {
-    background: #1f2937;
-    border-color: #374151;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .places-list-footer {
-    background: #111827;
-    border-color: #374151;
-    color: #9ca3af;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-400);
   }
 
   .place-item:hover {
-    background: #374151;
+    background: var(--gray-700);
   }
 
   .place-item.selected {
-    background: #1e3a5f;
+    background: var(--blue-l24p5-c65);
   }
 
   .named-places {
-    border-color: #374151;
-  }
-
-  .named-places h2 {
-    color: #f3f4f6;
+    border-color: var(--gray-700);
   }
 
   .named-places-empty,
   .named-place-meta {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .named-place-row:hover {
-    background: #374151;
+    background: var(--gray-700);
   }
 
   .named-place-delete {
-    background: #374151;
-    border-color: #7f1d1d;
-    color: #fca5a5;
+    background: var(--gray-700);
+    border-color: var(--red-900);
+    color: var(--red-300);
   }
 
   .named-place-delete:hover:not(:disabled) {
-    background: #4b5563;
+    background: var(--gray-600);
   }
 
   .map-container {
-    border-color: #374151;
-    background: #1f2937;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 
   .modal-content {
-    background: #1f2937;
-  }
-
-  .modal-content h3 {
-    color: #f3f4f6;
-  }
-
-  .modal-field label {
-    color: #e5e7eb;
+    background: var(--gray-800);
   }
 
   .modal-field input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #e5e7eb;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
   }
 
   .modal-actions button:first-child {
-    background: #374151;
-    border-color: #4b5563;
-    color: #e5e7eb;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
   }
 }
 

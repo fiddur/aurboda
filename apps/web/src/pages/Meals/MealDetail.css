@@ -68,35 +68,35 @@
 }
 
 .save-pending {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .save-ok {
-  color: #166534;
-  background: #dcfce7;
+  color: var(--green-800);
+  background: var(--green-100);
 }
 
 .save-error {
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--red-800);
+  background: var(--red-100);
 }
 
 .detail-source-caption {
   margin: 0 0 0.5rem 0;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .detail-card {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
-  background: #fff;
+  background: var(--white);
 }
 
 .detail-row {
   display: flex;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--gray-100);
   gap: 1rem;
   align-items: flex-start;
 }
@@ -107,14 +107,14 @@
 
 .detail-row label {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.85rem;
   min-width: 90px;
   padding-top: 0.125rem;
 }
 
 .detail-value {
-  color: #374151;
+  color: var(--gray-700);
   font-size: 0.9rem;
 }
 
@@ -124,10 +124,10 @@
   flex: 1;
   padding: 0.375rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
   font-family: inherit;
 }
 
@@ -147,9 +147,9 @@
 
 .nutrient-breakdown {
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--neutral-l98);
 }
 
 .nutrient-placeholder {
@@ -181,11 +181,11 @@
 .nutrient-group h4 {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   text-transform: uppercase;
   margin: 0 0 0.25rem;
   padding-bottom: 0.125rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .nutrient-line {
@@ -193,7 +193,7 @@
   justify-content: space-between;
   font-size: 0.75rem;
   padding: 0.125rem 0;
-  color: #374151;
+  color: var(--gray-700);
 }
 
 .nutrient-line span:last-child {
@@ -205,10 +205,10 @@
 .type-editor input {
   padding: 0.375rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
 }
 
 .macros-grid {
@@ -225,17 +225,17 @@
 
 .macro-input span {
   font-size: 0.7rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .macro-input input {
   width: 70px;
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
 }
 
 .flags-editor {
@@ -249,7 +249,7 @@
   align-items: center;
   gap: 0.25rem;
   font-size: 0.85rem;
-  color: #4b5563;
+  color: var(--gray-600);
   cursor: pointer;
 }
 
@@ -269,9 +269,9 @@
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.5rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 6px;
-  background: #fafafa;
+  background: var(--neutral-l98);
 }
 
 .food-row-top {
@@ -291,7 +291,7 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--gray-500);
   padding-left: 0.25rem;
 }
 
@@ -301,7 +301,7 @@
 
 .food-row-item-link {
   white-space: nowrap;
-  color: #2563eb;
+  color: var(--blue-600);
   text-decoration: none;
 }
 
@@ -317,17 +317,17 @@
 
 .food-row-macros span {
   font-size: 0.65rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .food-row-macros input {
   width: 55px;
   padding: 0.2rem 0.3rem;
   font-size: 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 3px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
 }
 
 .food-name-input {
@@ -346,37 +346,36 @@
 .food-portion-picker {
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  background: #fff;
-  color: #374151;
+  background: var(--color-surface-raised);
+  color: var(--gray-700);
   max-width: 8rem;
 }
 
 .food-portion-unit {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.8rem;
   white-space: nowrap;
 }
 
 @media (prefers-color-scheme: dark) {
   .food-portion-picker {
-    background: #1f2937;
-    border-color: #374151;
-    color: #e5e7eb;
+    border-color: var(--gray-700);
+    color: var(--gray-200);
   }
   .food-portion-unit {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 }
 
 .food-item-edit-row input {
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--gray-700);
+  background: var(--white);
 }
 
 .btn-add-item {
@@ -396,13 +395,13 @@
   display: inline-block;
   padding: 0.125rem 0.5rem;
   font-size: 0.75rem;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--sky-100);
+  color: var(--sky-700);
   text-decoration: none;
 }
 
 a.detail-food-link:hover {
-  background: #bae6fd;
+  background: var(--sky-200);
   border-radius: 10px;
 }
 
@@ -420,7 +419,7 @@ a.detail-food-link:hover {
   padding: 0.375rem 0.75rem;
   font-size: 0.85rem;
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -439,22 +438,22 @@ a.detail-food-link:hover {
 .meal-detail-page .btn-secondary {
   padding: 0.375rem 0.75rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
+  border: 1px solid var(--gray-300);
+  background: var(--color-surface-raised-3);
+  color: var(--color-text-default);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .meal-detail-page .btn-secondary:hover {
-  background: #f3f4f6;
+  background: var(--color-surface-hover);
 }
 
 .incomplete-notice {
   font-size: 0.8rem;
-  color: #d97706;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--amber-600);
+  background: var(--amber-50);
+  border: 1px solid var(--amber-200);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   margin-top: 0.5rem;
@@ -462,40 +461,35 @@ a.detail-food-link:hover {
 
 @media (prefers-color-scheme: dark) {
   .incomplete-notice {
-    color: #f59e0b;
-    background: #1c1917;
-    border-color: #78350f;
+    color: var(--amber-500);
+    background: var(--stone-900);
+    border-color: var(--amber-900);
   }
 
   .nutrient-breakdown {
-    border-color: #374151;
-    background: #1f2937;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 
   .nutrient-group h4 {
-    color: #9ca3af;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .nutrient-line {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .detail-card {
-    background: #1f2937;
-    border-color: #374151;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .detail-row {
-    border-color: #374151;
-  }
-
-  .detail-row label {
-    color: #9ca3af;
+    border-color: var(--gray-700);
   }
 
   .detail-value {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .detail-row input[type='text'],
@@ -508,41 +502,31 @@ a.detail-food-link:hover {
   .macro-input input,
   .food-item-edit-row input,
   .food-row-macros input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-300);
   }
 
   .food-item-edit-row {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  .food-row-macros span {
-    color: #9ca3af;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .macro-input span {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .flag-check {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .detail-food-chip {
-    background: #1e3a5f;
-    color: #7dd3fc;
+    background: var(--blue-l24p5-c65);
+    color: var(--sky-300);
   }
 
   .meal-detail-page .btn-secondary {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-
-  .meal-detail-page .btn-secondary:hover {
-    background: #4b5563;
+    border-color: var(--gray-600);
   }
 }
 

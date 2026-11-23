@@ -10,20 +10,20 @@
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--neutral-l88);
   border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: save-status-spin 0.6s linear infinite;
 }
 
 .save-status-indicator .status-checkmark {
-  color: #22c55e;
+  color: var(--green-500);
   font-size: 1.1rem;
   font-weight: bold;
 }
 
 .save-status-indicator .status-error-icon {
-  color: #dc2626;
+  color: var(--red-600);
   font-size: 1.1rem;
   font-weight: bold;
 }
@@ -34,15 +34,15 @@
 }
 
 .save-status-indicator.text.saving {
-  color: #888;
+  color: var(--neutral-l53);
 }
 
 .save-status-indicator.text.saved {
-  color: #4caf50;
+  color: var(--green-l49);
 }
 
 .save-status-indicator.text.error {
-  color: #f44336;
+  color: var(--red-l58);
 }
 
 @keyframes save-status-spin {
@@ -53,26 +53,26 @@
 
 @media (prefers-color-scheme: dark) {
   .save-status-indicator .status-spinner {
-    border-color: #555;
+    border-color: var(--neutral-l33);
   }
 
   .save-status-indicator .status-checkmark {
-    color: #4ade80;
+    color: var(--green-400);
   }
 
   .save-status-indicator .status-error-icon {
-    color: #ef4444;
+    color: var(--red-500);
   }
 
   .save-status-indicator.text.saving {
-    color: #aaa;
+    color: var(--neutral-l67);
   }
 
   .save-status-indicator.text.saved {
-    color: #4ade80;
+    color: var(--green-400);
   }
 
   .save-status-indicator.text.error {
-    color: #ef4444;
+    color: var(--red-500);
   }
 }

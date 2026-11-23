@@ -19,17 +19,11 @@
 
 .public-exercise-manage {
   margin-left: 0.5rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.95rem;
   text-decoration: none;
 }
 
 .public-exercise-manage:hover {
   color: var(--color-accent);
-}
-
-@media (prefers-color-scheme: dark) {
-  .public-exercise-manage {
-    color: #9ca3af;
-  }
 }

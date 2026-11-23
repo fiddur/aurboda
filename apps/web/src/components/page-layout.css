@@ -5,12 +5,12 @@
 .data-sources-page h1 {
   font-size: 1.75rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-strong);
   margin: 0 0 0.5rem 0;
 }
 
 .data-sources-page .page-subtitle {
-  color: #4b5563;
+  color: var(--gray-600);
   font-size: 1rem;
   line-height: 1.6;
   max-width: 700px;
@@ -19,27 +19,19 @@
 .data-sources-page h2 {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-default-2);
   margin: 0 0 1rem 0;
 }
 
 .data-sources-page .loading {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 @media (prefers-color-scheme: dark) {
-  .data-sources-page h1 {
-    color: #f9fafb;
-  }
-
   .data-sources-page .page-subtitle {
-    color: #9ca3af;
-  }
-
-  .data-sources-page h2 {
-    color: #e5e7eb;
+    color: var(--gray-400);
   }
 }
 

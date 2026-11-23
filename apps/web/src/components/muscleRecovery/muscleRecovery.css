@@ -1,7 +1,7 @@
 .muscle-recovery {
-  --muscle-recovery-ready: var(--color-success, #10b981);
-  --muscle-recovery-recovering: #f57c00;
-  --muscle-recovery-fatigued: var(--color-error, #e53e3e);
+  --muscle-recovery-ready: var(--color-success, var(--emerald-500));
+  --muscle-recovery-recovering: var(--orange-l48);
+  --muscle-recovery-fatigued: var(--color-error, var(--red-l57p1-c167));
 
   display: flex;
   flex-direction: column;

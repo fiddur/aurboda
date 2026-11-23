@@ -24,7 +24,7 @@
 
 .activity-stat-label {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .activity-stat-zones {
@@ -37,10 +37,4 @@
 
 .activity-stat-zone strong {
   font-weight: 600;
-}
-
-@media (prefers-color-scheme: dark) {
-  .activity-stat-label {
-    color: #9ca3af;
-  }
 }

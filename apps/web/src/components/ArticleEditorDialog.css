@@ -16,12 +16,12 @@
 .article-field-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--gray-600);
 }
 
 .article-input {
   padding: 0.45rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font: inherit;
   width: 100%;
@@ -42,10 +42,10 @@
 }
 
 .article-block {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   padding: 0.6rem 0.75rem;
-  background: #fafafa;
+  background: var(--color-surface-subtle-3);
 }
 
 .article-block-head {
@@ -58,7 +58,7 @@
 .article-block-kind {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #4b5563;
+  color: var(--gray-600);
 }
 
 .article-block-controls {
@@ -67,14 +67,14 @@
 }
 
 .btn-icon {
-  border: 1px solid #d1d5db;
-  background: #fff;
+  border: 1px solid var(--gray-300);
+  background: var(--color-surface-raised-2);
   border-radius: 6px;
   width: 1.9rem;
   height: 1.9rem;
   line-height: 1;
   cursor: pointer;
-  color: #4b5563;
+  color: var(--color-text-secondary-2);
 }
 
 .btn-icon:disabled {
@@ -96,24 +96,21 @@
 @media (prefers-color-scheme: dark) {
   .article-field-label,
   .article-block-kind {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .article-input {
-    background: #111827;
-    border-color: #374151;
-    color: #e5e7eb;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-200);
   }
 
   .article-block {
-    background: #1f2937;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .btn-icon {
-    background: #111827;
-    border-color: #374151;
-    color: #d1d5db;
+    border-color: var(--gray-700);
   }
 }
 
@@ -121,7 +118,7 @@
   margin-right: auto;
   align-self: center;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .article-close-confirm {
@@ -132,9 +129,9 @@
   gap: 0.5rem;
   margin-top: 1rem;
   padding: 0.6rem 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
-  background: #f9fafb;
+  background: var(--color-surface-subtle);
   font-weight: 600;
 }
 
@@ -145,13 +142,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .article-saved-at {
-    color: #9ca3af;
-  }
-
   .article-close-confirm {
-    background: #1f2937;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 

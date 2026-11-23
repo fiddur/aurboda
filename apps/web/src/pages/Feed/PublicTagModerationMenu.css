@@ -28,13 +28,13 @@
 
 .tag-moderation .confirm-inline .btn-danger {
   background: transparent;
-  border: 1px solid #ef4444;
-  color: #ef4444;
+  border: 1px solid var(--red-500);
+  color: var(--red-500);
 }
 
 .tag-moderation .confirm-inline .btn-danger:hover:not(:disabled) {
-  background: #ef4444;
-  color: white;
+  background: var(--red-500);
+  color: var(--white);
 }
 
 .tag-moderation .confirm-inline .btn-danger:disabled {
@@ -61,11 +61,5 @@
 }
 
 .tag-moderation-error {
-  color: #b91c1c;
-}
-
-@media (prefers-color-scheme: dark) {
-  .tag-moderation-error {
-    color: #f87171;
-  }
+  color: var(--color-danger-text-4);
 }

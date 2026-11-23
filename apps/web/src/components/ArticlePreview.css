@@ -1,7 +1,7 @@
 .article-pane-switch {
   display: flex;
   gap: 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
   margin-bottom: 0.75rem;
 }
 
@@ -54,8 +54,8 @@
   margin: 0 0 0.6rem;
   padding: 0.4rem 0.6rem;
   border-radius: 6px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--amber-100);
+  color: var(--amber-800);
   font-size: 0.85rem;
 }
 
@@ -77,11 +77,11 @@
 
 @media (prefers-color-scheme: dark) {
   .article-pane-switch {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .article-preview-error {
-    background: #422006;
-    color: #fcd34d;
+    background: var(--yellow-950);
+    color: var(--amber-300);
   }
 }

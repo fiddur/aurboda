@@ -8,35 +8,35 @@
 .sleep-page h1 {
   font-size: 2rem;
   margin: 0;
-  color: #1f2937;
+  color: var(--color-text-strong-3);
 }
 
 .sleep-page h2 {
   font-size: 1.25rem;
   margin: 0 0 1rem 0;
-  color: #374151;
-  border-bottom: 2px solid #3b82f6;
+  color: var(--color-text-default);
+  border-bottom: 2px solid var(--blue-500);
   padding-bottom: 0.5rem;
 }
 
 .sleep-page .days-select {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 8px;
-  background: white;
-  color: #374151;
+  background: var(--color-surface-raised);
+  color: var(--gray-700);
   cursor: pointer;
 }
 
 .sleep-page .days-select:hover {
-  border-color: #3b82f6;
+  border-color: var(--blue-500);
 }
 
 .sleep-page .loading {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .sleep-page .stats-section {
@@ -50,33 +50,33 @@
 }
 
 .sleep-page .stat-card {
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 12px;
   padding: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
 }
 
 .sleep-page .stat-label {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   margin-bottom: 0.25rem;
 }
 
 .sleep-page .stat-value {
   font-size: 1.75rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--color-text-strongest-2);
 }
 
 .sleep-page .stat-value .stat-unit {
   font-size: 1rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--gray-500);
   margin-left: 0.125rem;
 }
 
 .sleep-page .stat-value .no-data {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 1.25rem;
 }
 
@@ -87,15 +87,15 @@
 }
 
 .sleep-page .stat-trend .trend-positive {
-  color: #059669;
+  color: var(--emerald-600);
 }
 
 .sleep-page .stat-trend .trend-negative {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .sleep-page .stat-trend .trend-neutral {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .sleep-page .sleep-debt-severity {
@@ -103,27 +103,27 @@
   font-weight: 500;
   padding: 0.125rem 0.5rem;
   border-radius: 4px;
-  color: white;
+  color: var(--white);
 }
 
 .sleep-page .sleep-debt-explainer {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0.75rem 0;
 }
 
 .sleep-page .stat-description {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   margin-top: 0.25rem;
 }
 
 .sleep-page .chart-section {
   margin-bottom: 2rem;
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 12px;
   padding: 1.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
 }
 
 .sleep-page .chart-container {
@@ -138,7 +138,7 @@
 .sleep-page .chart-placeholder {
   text-align: center;
   padding: 2rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.9rem;
 }
 
@@ -154,7 +154,7 @@
   align-items: center;
   gap: 0.375rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .sleep-page .legend-color {
@@ -164,72 +164,54 @@
 }
 
 .sleep-page .legend-color.green {
-  background: #22c55e;
+  background: var(--green-500);
 }
 
 .sleep-page .legend-color.yellow {
-  background: #f59e0b;
+  background: var(--amber-500);
 }
 
 .sleep-page .legend-color.red {
-  background: #ef4444;
+  background: var(--red-500);
 }
 
 .sleep-page .info-section {
   text-align: center;
   padding: 1rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.9rem;
 }
 
 @media (prefers-color-scheme: dark) {
-  .sleep-page h1 {
-    color: #f3f4f6;
-  }
-
   .sleep-page h2 {
-    color: #d1d5db;
-    border-color: #60a5fa;
+    border-color: var(--blue-400);
   }
 
   .sleep-page .days-select {
-    background: #1f2937;
-    border-color: #374151;
-    color: #d1d5db;
+    border-color: var(--gray-700);
+    color: var(--gray-300);
   }
 
   .sleep-page .days-select:hover {
-    border-color: #60a5fa;
+    border-color: var(--blue-400);
   }
 
   .sleep-page .stat-card,
   .sleep-page .chart-section {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  .sleep-page .stat-label {
-    color: #9ca3af;
-  }
-
-  .sleep-page .stat-value {
-    color: #f9fafb;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .sleep-page .stat-trend .trend-positive {
-    color: #34d399;
+    color: var(--emerald-400);
   }
 
   .sleep-page .stat-trend .trend-negative {
-    color: #f87171;
+    color: var(--red-400);
   }
 
   .sleep-page .stat-trend .trend-neutral {
-    color: #9ca3af;
-  }
-
-  .sleep-page .legend-item {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 }
 

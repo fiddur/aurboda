@@ -10,7 +10,7 @@
   position: relative;
   height: 10px;
   border-radius: 5px;
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
   overflow: visible;
 }
 
@@ -21,16 +21,16 @@
 }
 
 .ref-range-low {
-  background: #fef3c7;
+  background: var(--color-warning-soft);
   border-radius: 5px 0 0 5px;
 }
 
 .ref-range-normal {
-  background: #d1fae5;
+  background: var(--emerald-100);
 }
 
 .ref-range-high {
-  background: #fef3c7;
+  background: var(--color-warning-soft);
   border-radius: 0 5px 5px 0;
 }
 
@@ -41,7 +41,7 @@
   height: 14px;
   border-radius: 2px;
   transform: translateX(-2px);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px var(--black-a20);
 }
 
 .ref-range-marker-label {
@@ -51,7 +51,7 @@
   transform: translateX(-50%);
   font-size: 0.6rem;
   line-height: 1;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
@@ -74,7 +74,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.65rem;
-  color: #9ca3af;
+  color: var(--color-text-faint);
 }
 
 .ref-range-label-spacer {
@@ -82,27 +82,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .ref-range-track {
-    background: #374151;
-  }
-
-  .ref-range-low {
-    background: #78350f;
-  }
-
   .ref-range-normal {
-    background: #064e3b;
-  }
-
-  .ref-range-high {
-    background: #78350f;
-  }
-
-  .ref-range-labels {
-    color: #6b7280;
-  }
-
-  .ref-range-marker-label {
-    color: #9ca3af;
+    background: var(--emerald-900);
   }
 }

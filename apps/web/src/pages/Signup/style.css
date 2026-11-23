@@ -72,7 +72,7 @@
 }
 
 .signup-page .error {
-  color: #d32f2f;
+  color: var(--color-danger-text-3);
   margin: 0.5rem 0 0;
 }
 
@@ -91,7 +91,7 @@
 
 .signup-page button.primary {
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
 }
 
@@ -121,12 +121,6 @@
 
 .login-link a:hover {
   text-decoration: underline;
-}
-
-@media (prefers-color-scheme: dark) {
-  .signup-page .error {
-    color: #ff6b6b;
-  }
 }
 
 @media (max-width: 639px) {
