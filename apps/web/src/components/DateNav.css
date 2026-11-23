@@ -8,9 +8,9 @@
 .date-nav .nav-btn {
   padding: 0.25rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
+  border: 1px solid var(--gray-300);
+  background: var(--color-surface-raised-3);
+  color: var(--color-text-default);
   border-radius: 4px;
   cursor: pointer;
   line-height: 1;
@@ -18,7 +18,7 @@
 }
 
 .date-nav .nav-btn:hover:not(:disabled) {
-  background: #f3f4f6;
+  background: var(--color-surface-hover);
 }
 
 .date-nav .nav-btn:disabled {
@@ -36,7 +36,7 @@
 .nav-date-label {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-default);
   min-width: 100px;
   text-align: center;
   padding: 0.25rem 0.5rem;
@@ -47,7 +47,7 @@
 }
 
 .nav-date-label:hover {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 .nav-range-label {
@@ -61,7 +61,7 @@
 .nav-range-btn {
   border: none;
   background: none;
-  color: #374151;
+  color: var(--color-text-default);
   font-size: 0.9rem;
   font-weight: 500;
   padding: 0.125rem 0.25rem;
@@ -70,7 +70,7 @@
 }
 
 .nav-range-btn:hover {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 /* Hidden native date picker, positioned absolutely so the popup appears near the label */
@@ -89,28 +89,6 @@
 
 @media (prefers-color-scheme: dark) {
   .date-nav .nav-btn {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-
-  .date-nav .nav-btn:hover:not(:disabled) {
-    background: #4b5563;
-  }
-
-  .nav-date-label {
-    color: #d1d5db;
-  }
-
-  .nav-date-label:hover {
-    background: #374151;
-  }
-
-  .nav-range-btn {
-    color: #d1d5db;
-  }
-
-  .nav-range-btn:hover {
-    background: #374151;
+    border-color: var(--gray-600);
   }
 }

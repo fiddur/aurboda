@@ -54,7 +54,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 15%);
+  box-shadow: 0 6px 18px var(--black-a15);
 }
 
 .with-options button {
@@ -94,7 +94,7 @@
 }
 
 .with-error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .with-line a {

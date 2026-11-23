@@ -15,9 +15,9 @@
   width: 280px;
   min-width: 220px;
   padding: 0.75rem;
-  background: #f9fafb;
+  background: var(--color-surface-subtle);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   align-self: flex-start;
 }
 
@@ -66,25 +66,25 @@
   align-items: center;
   gap: 0.3rem;
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 20px;
   padding: 0.2rem 0.625rem;
   font-size: 0.8rem;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   transition:
     background 0.15s,
     color 0.15s;
 }
 
 .data-type-btn:hover {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--gray-100);
+  color: var(--gray-700);
 }
 
 .data-type-btn.active {
-  color: #374151;
-  background: #f9fafb;
+  color: var(--color-text-default);
+  background: var(--gray-50);
 }
 
 .data-type-btn-all {
@@ -116,7 +116,7 @@
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.625rem 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
   text-decoration: none;
   color: inherit;
 }
@@ -126,7 +126,7 @@
 }
 
 .data-item.clickable:hover {
-  background: #f9fafb;
+  background: var(--color-surface-subtle);
   border-radius: 6px;
   margin: 0 -0.25rem;
   padding-left: 0.5rem;
@@ -149,23 +149,23 @@
 
 .data-item-label {
   font-weight: 500;
-  color: #1f2937;
+  color: var(--color-text-strong-2);
   font-size: 0.9rem;
 }
 
 .data-item-detail {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .data-status {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .data-error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 @media (max-width: 48em) {
@@ -193,38 +193,23 @@
 
 @media (prefers-color-scheme: dark) {
   .data-sidebar {
-    background: #1f2937;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .data-type-btn {
-    color: #9ca3af;
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .data-type-btn:hover {
-    background: #374151;
-    color: #d1d5db;
+    background: var(--gray-700);
+    color: var(--gray-300);
   }
 
   .data-type-btn.active {
-    color: #d1d5db;
-    background: #1f2937;
+    background: var(--gray-800);
   }
 
   .data-item {
-    border-color: #374151;
-  }
-
-  .data-item.clickable:hover {
-    background: #1f2937;
-  }
-
-  .data-item-label {
-    color: #e5e7eb;
-  }
-
-  .data-item-detail {
-    color: #9ca3af;
+    border-color: var(--gray-700);
   }
 }

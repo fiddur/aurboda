@@ -34,7 +34,7 @@
 
 .public-profile-header .public-handle {
   margin: 0.25rem 0 0;
-  color: #6b7280;
+  color: var(--gray-500);
   overflow-wrap: anywhere;
 }
 
@@ -55,16 +55,16 @@
   height: 80px;
   border-radius: 50%;
   object-fit: cover;
-  background: #0001;
+  background: var(--black-a6p7);
   flex-shrink: 0;
 }
 
 .public-profile .public-muted {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .public-profile .public-loading {
-  color: #6b7280;
+  color: var(--gray-500);
   padding: 2rem 0;
 }
 
@@ -89,10 +89,10 @@
 .public-item-list a {
   display: block;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   text-decoration: none;
-  color: #111827;
+  color: var(--color-text-strongest);
 }
 
 .public-item-list a:hover {
@@ -102,22 +102,21 @@
 
 @media (prefers-color-scheme: dark) {
   .public-profile h1 {
-    color: #f3f4f6;
+    color: var(--gray-100);
   }
 
   .public-profile .public-muted,
   .public-profile-header .public-handle,
   .public-profile .public-loading {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .public-section h2 {
-    color: #f3f4f6;
+    color: var(--gray-100);
   }
 
   .public-item-list a {
-    border-color: #374151;
-    background: #1f2937;
-    color: #f3f4f6;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 }

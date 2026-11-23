@@ -19,27 +19,19 @@
 .timeline-chart {
   margin: 0;
   padding: 0.5rem 0.25rem 0.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color-surface-raised-2);
 }
 
 @media (prefers-color-scheme: dark) {
   .timeline-chart {
-    border-color: #374151;
-    background: #111827;
+    border-color: var(--gray-700);
   }
 }
 
 .timeline-challenge-spec,
 .timeline-challenge-asof {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.85rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  .timeline-challenge-spec,
-  .timeline-challenge-asof {
-    color: #9ca3af;
-  }
 }

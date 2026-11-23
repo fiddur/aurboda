@@ -66,6 +66,40 @@ file it imports, with no further configuration).
     `@use '../../styles/mixins';`), then `@include mixins.phone { ... }`.
 - New style files are `.scss`. Existing `.css` files are converted when they are next reworked.
 
+### Colours
+
+`_tokens.scss` is the only style sheet with colour literals. It has two tiers:
+
+- **Palette**: one custom property per raw colour, the same in light and dark mode. A Tailwind
+  colour is named after its Tailwind step (`--gray-700: #374151`, `--red-600`, `--amber-100`,
+  `--white`, `--black`). Any other colour is named by hue family and HSL lightness, a form no
+  Tailwind step has: `--neutral-l20` is `#333333`, `--green-l49` is `#4caf50`. Where two colours
+  share that, the lightness gets a decimal (`--neutral-l12p2`), and then the chroma
+  (`--blue-l18p4-c64`). A translucent colour adds its alpha in percent: `--black-a10` is
+  `rgba(0, 0, 0, 0.1)`, `--gray-900-a95`.
+- **Semantic** (`--color-*`): a role whose colour changes with the mode. Its light value is set
+  in `:root` and its dark value in the `prefers-color-scheme: dark` block, both as palette
+  references. Besides the brand tokens above there are text ranks (`--color-text-strongest`,
+  `-strong`, `-default`, `-secondary`, `-muted-2`, `-subtle`, `-faint`), surfaces
+  (`--color-surface-raised`, `-subtle`, `-sunken`, `-hover`, `-strong`, `-tooltip`),
+  `--color-border-strong`, and status colours (`--color-danger-text`, `--color-warning-soft`,
+  `--color-success-soft`, `--color-info-text`, ...). A numbered variant (`-2`, `-3`) is the same
+  role with a different light or dark value; the unnumbered one is the most used.
+
+A rule uses a semantic token where its colour changes with the mode, and so needs no dark
+override; it uses a palette property where the colour is the same in both modes. For a new
+colour: reuse a token whose light and dark values are the ones you want; else add a palette
+property named as above (and, for a colour that changes with the mode, a `--color-*` token
+with both values) to `_tokens.scss`. Do not reuse a token for a different role only because
+its values match today.
+
+`scripts/check-style-colors.mjs`, part of `pnpm check`, fails on a colour literal (hex,
+`rgb()`, `rgba()`, `hsl()`, `hsla()` or a CSS colour name) in any `.css` or `.scss` file under
+`apps/web/src` other than `_tokens.scss`. It ignores comments, quoted strings, `url(...)`
+arguments, and names in font, animation, transition and grid-area values; `transparent`,
+`currentColor` and the CSS-wide keywords are not colour literals. Colours in `.ts` and `.tsx`
+files (charts, canvas, inline styles) are not checked.
+
 ### Page layout
 
 Every routed page's root element carries `page` and at most one width modifier; its own

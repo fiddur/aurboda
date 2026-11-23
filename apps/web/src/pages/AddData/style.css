@@ -20,7 +20,7 @@
 
 .add-more-label {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-weight: 500;
 }
 
@@ -29,7 +29,7 @@
   display: inline-block;
   width: 36px;
   height: 20px;
-  background: #d1d5db;
+  background: var(--color-surface-strong-2);
   border-radius: 10px;
   transition: background 0.2s ease;
   cursor: pointer;
@@ -45,10 +45,10 @@
   left: 2px;
   width: 16px;
   height: 16px;
-  background: white;
+  background: var(--white);
   border-radius: 50%;
   transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px var(--black-a20);
 }
 
 .toggle-switch.active .toggle-knob {
@@ -59,7 +59,7 @@
   display: flex;
   gap: 0;
   margin-bottom: 1.5rem;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--gray-200);
 }
 
 .add-data-tab {
@@ -71,12 +71,12 @@
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   transition: all 0.15s ease;
 }
 
 .add-data-tab:hover {
-  color: #374151;
+  color: var(--gray-700);
 }
 
 .add-data-tab.active {
@@ -99,7 +99,7 @@
 .add-form .form-field label {
   font-weight: 500;
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .add-form .form-field input,
@@ -107,7 +107,7 @@
 .add-form .form-field textarea {
   padding: 0.5rem;
   font-size: 0.95rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -171,7 +171,7 @@
   padding: 0.5rem 1.5rem;
   font-size: 0.9rem;
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -189,7 +189,7 @@
 
 .add-form .form-hint {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: var(--color-text-faint);
   margin-top: -0.125rem;
 }
 
@@ -209,53 +209,37 @@
 
 .add-success {
   padding: 0.75rem 1rem;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: var(--color-success-soft);
+  border: 1px solid var(--green-200);
   border-radius: 6px;
-  color: #166534;
+  color: var(--green-800);
   font-size: 0.9rem;
   margin-bottom: 1rem;
 }
 
 .add-error {
   padding: 0.75rem 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--red-50);
+  border: 1px solid var(--red-200);
   border-radius: 6px;
-  color: #991b1b;
+  color: var(--color-danger-text-5);
   font-size: 0.9rem;
   margin-bottom: 1rem;
 }
 
 @media (prefers-color-scheme: dark) {
   .add-data-tabs {
-    border-color: #374151;
-  }
-
-  .add-data-tab {
-    color: #9ca3af;
-  }
-
-  .add-more-label {
-    color: #9ca3af;
-  }
-
-  .toggle-switch {
-    background: #4b5563;
+    border-color: var(--gray-700);
   }
 
   .add-data-tab:hover {
-    color: #d1d5db;
-  }
-
-  .add-form .form-field label {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .add-form .form-field input,
   .add-form .form-field select,
   .add-form .form-field textarea {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .add-form .form-field input:focus,
@@ -264,20 +248,14 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
-  .add-form .form-hint {
-    color: #6b7280;
-  }
-
   .add-success {
-    background: #052e16;
-    border-color: #166534;
-    color: #86efac;
+    border-color: var(--green-800);
+    color: var(--green-300);
   }
 
   .add-error {
-    background: #450a0a;
-    border-color: #7f1d1d;
-    color: #fca5a5;
+    background: var(--red-950);
+    border-color: var(--red-900);
   }
 }
 
@@ -291,7 +269,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 1.5rem;
-  border: 2px dashed #d1d5db;
+  border: 2px dashed var(--gray-300);
   border-radius: 8px;
   cursor: pointer;
   transition:
@@ -311,17 +289,17 @@
 .fit-upload-label {
   font-weight: 600;
   font-size: 0.95rem;
-  color: #374151;
+  color: var(--color-text-default-2);
 }
 
 .fit-upload-hint {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: var(--color-text-faint);
 }
 
 .form-divider {
   text-align: center;
-  color: #9ca3af;
+  color: var(--color-text-faint);
   font-size: 0.85rem;
   margin: 1rem 0;
   position: relative;
@@ -334,7 +312,7 @@
   top: 50%;
   width: 40%;
   height: 1px;
-  background: #e5e7eb;
+  background: var(--color-surface-strong);
 }
 
 .form-divider::before {
@@ -347,24 +325,7 @@
 
 @media (prefers-color-scheme: dark) {
   .fit-upload-area {
-    border-color: #4b5563;
-  }
-
-  .fit-upload-label {
-    color: #e5e7eb;
-  }
-
-  .fit-upload-hint {
-    color: #6b7280;
-  }
-
-  .form-divider {
-    color: #6b7280;
-  }
-
-  .form-divider::before,
-  .form-divider::after {
-    background: #374151;
+    border-color: var(--gray-600);
   }
 }
 

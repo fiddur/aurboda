@@ -2,7 +2,7 @@
    every page that renders the card (the feed, the home timeline, the public
    profile) is styled without depending on any one page's stylesheet. */
 .feed-post {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   padding: 0.875rem 1rem;
   margin-bottom: 0.75rem;
@@ -23,7 +23,7 @@
   height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  background: #f3f4f6;
+  background: var(--gray-100);
   flex-shrink: 0;
 }
 
@@ -35,17 +35,17 @@
 
 .feed-post-name {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--gray-800);
 }
 
 .feed-post-handle {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .feed-post-reply-marker {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-style: italic;
 }
 
@@ -62,7 +62,7 @@
 
 .feed-post-content {
   margin-top: 0.5rem;
-  color: #1f2937;
+  color: var(--gray-800);
   overflow-wrap: anywhere;
 }
 
@@ -114,13 +114,13 @@
 }
 
 .challenge-podium-total {
-  color: #6b7280;
+  color: var(--gray-500);
   font-variant-numeric: tabular-nums;
 }
 
 .challenge-podium-count {
   margin: 0.4rem 0 0;
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
 }
 
@@ -132,13 +132,7 @@
 /* The activity's own date/window — quieter than the message/stats. */
 .feed-post-window {
   font-size: 0.85rem;
-  color: #6b7280;
-}
-
-@media (prefers-color-scheme: dark) {
-  .feed-post-window {
-    color: #9ca3af;
-  }
+  color: var(--color-text-muted-2);
 }
 
 .feed-post-tags {
@@ -170,7 +164,7 @@
   max-width: 100%;
   height: auto;
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
 }
 
 .feed-post-footer {
@@ -185,7 +179,7 @@
 /* Article posts: title + prose/chart blocks rendered inline in the card. */
 .article-content {
   margin-top: 0.5rem;
-  color: #1f2937;
+  color: var(--gray-800);
   overflow-wrap: anywhere;
 }
 
@@ -193,7 +187,7 @@
   font-size: 1.2rem;
   font-weight: 700;
   margin: 0 0 0.5rem;
-  color: #111827;
+  color: var(--color-text-strongest);
 }
 
 .article-prose {
@@ -221,25 +215,25 @@
 .article-chart-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--color-text-secondary-2);
   margin-bottom: 0.2rem;
 }
 
 .article-chart-meta {
   font-weight: 400;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   margin-left: 0.5rem;
 }
 
 .article-chart-note {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font-style: italic;
 }
 
 .article-chart-caption {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin-top: 0.25rem;
   text-align: center;
 }
@@ -251,77 +245,61 @@
 
 .article-scatter-annot {
   font-size: 12px;
-  fill: #4b5563;
+  fill: var(--gray-600);
 }
 
 .article-scatter-axis {
   font-size: 11px;
-  fill: #6b7280;
+  fill: var(--color-chart-axis);
 }
 
 @media (prefers-color-scheme: dark) {
   .feed-post {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .feed-post-name,
   .feed-post-content,
   .article-content {
-    color: #e5e7eb;
+    color: var(--gray-200);
   }
 
   .challenge-podium-total,
   .challenge-podium-count {
-    color: #9ca3af;
-  }
-
-  .article-title {
-    color: #f3f4f6;
-  }
-
-  .article-chart-title {
-    color: #d1d5db;
-  }
-
-  .article-chart-meta {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .article-scatter-annot {
-    fill: #d1d5db;
-  }
-
-  .article-scatter-axis {
-    fill: #9ca3af;
+    fill: var(--gray-300);
   }
 
   .feed-post-avatar,
   .feed-post-image {
-    border-color: #374151;
-    background: #1f2937;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 }
 
 .feed-post-replies-toggle {
   margin-top: 0.5rem;
   padding: 0.25rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .feed-post-replies-status {
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .feed-post-replies {
   margin-top: 0.5rem;
-  border-left: 2px solid #e5e7eb;
+  border-left: 2px solid var(--gray-200);
   padding-left: 0.75rem;
   display: flex;
   flex-direction: column;
@@ -330,7 +308,7 @@
 
 .feed-post-reply-author {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .feed-post-reply-author a {
@@ -348,12 +326,11 @@
 
 @media (prefers-color-scheme: dark) {
   .feed-post-replies {
-    border-left-color: #374151;
+    border-left-color: var(--gray-700);
   }
 
   .feed-post-replies-toggle {
-    border-color: #4b5563;
-    color: #9ca3af;
+    border-color: var(--gray-600);
   }
 }
 
@@ -362,7 +339,7 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin-bottom: 0.75rem;
 }
 
@@ -370,7 +347,7 @@
 .feed-post-boost-marker {
   margin: 0 0 0.4rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .feed-post-boost-marker a {
@@ -398,20 +375,20 @@
 }
 
 .feed-post-action:hover {
-  border-color: #d1d5db;
+  border-color: var(--gray-300);
   opacity: 0.85;
 }
 
 .feed-post-action.active {
   filter: none;
   opacity: 1;
-  background: #fef3c7;
-  border-color: #fde68a;
+  background: var(--amber-100);
+  border-color: var(--amber-200);
 }
 
 .feed-post-action--boost.active {
-  background: #d1fae5;
-  border-color: #a7f3d0;
+  background: var(--emerald-100);
+  border-color: var(--emerald-200);
 }
 
 .feed-post-action-error {
@@ -427,12 +404,12 @@
   margin-right: auto;
   align-self: center;
   padding: 0.15rem 0.5rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 999px;
   background: transparent;
   cursor: pointer;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .feed-post-reactions {
@@ -459,7 +436,7 @@
 
 .feed-post-reaction-handle,
 .feed-post-reactions-status {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
 }
 
@@ -475,25 +452,25 @@
   .feed-post-reaction-chips,
   .feed-post-reaction-handle,
   .feed-post-reactions-status {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .feed-post-action:hover {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .feed-post-action.active {
-    background: #4d3c11;
-    border-color: #78350f;
+    background: var(--amber-l18);
+    border-color: var(--amber-900);
   }
 
   .feed-post-action--boost.active {
-    background: #0f3f30;
-    border-color: #065f46;
+    background: var(--teal-l15);
+    border-color: var(--emerald-800);
   }
 
   .feed-post-reaction-chips {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
@@ -501,7 +478,7 @@
 .feed-post-reply-mine {
   margin-left: 0.35rem;
   padding: 0.05rem 0.35rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 999px;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -520,7 +497,7 @@
   width: 100%;
   box-sizing: border-box;
   padding: 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 8px;
   font: inherit;
   font-size: 0.9rem;
@@ -537,7 +514,7 @@
   flex-basis: 100%;
   order: 99;
   margin-top: 0.5rem;
-  border-left: 2px solid #e5e7eb;
+  border-left: 2px solid var(--gray-200);
   padding-left: 0.75rem;
   display: flex;
   flex-direction: column;
@@ -555,16 +532,16 @@
 
 @media (prefers-color-scheme: dark) {
   .feed-post-comments {
-    border-left-color: #374151;
+    border-left-color: var(--gray-700);
   }
 
   .feed-post-reply-mine {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .feed-reply-text {
-    border-color: #4b5563;
-    background: #111827;
-    color: #e5e7eb;
+    border-color: var(--gray-600);
+    background: var(--gray-900);
+    color: var(--gray-200);
   }
 }

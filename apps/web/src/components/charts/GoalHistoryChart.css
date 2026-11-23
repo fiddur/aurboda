@@ -10,8 +10,8 @@
 .goal-history-tooltip {
   position: absolute;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
+  background: var(--color-surface-tooltip);
+  color: var(--white);
   padding: 0.375rem 0.625rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -25,11 +25,5 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9ca3af;
-}
-
-@media (prefers-color-scheme: dark) {
-  .goal-history-tooltip {
-    background: rgba(17, 24, 39, 0.95);
-  }
+  color: var(--gray-400);
 }

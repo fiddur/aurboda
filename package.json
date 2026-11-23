@@ -13,7 +13,7 @@
     "test:android": "cd apps/android && ./gradlew test",
     "build": "pnpm --filter aurboda-web build && pnpm build:android",
     "build:android": "cd apps/android && ./gradlew assembleGithubDebug",
-    "check": "pnpm format:check && pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check && pnpm --filter @aurboda/api-spec check",
+    "check": "pnpm format:check && node scripts/check-style-colors.mjs && pnpm --filter aurboda-backend check && pnpm --filter aurboda-web check && pnpm --filter @aurboda/api-spec check",
     "fix": "oxlint --fix && oxfmt .",
     "format:check": "oxfmt --check ."
   },

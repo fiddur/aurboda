@@ -69,7 +69,7 @@ header.app-header {
 }
 
 .nav-mobile-home {
-  color: #fff;
+  color: var(--white);
   padding: 0.75rem;
   text-decoration: none;
 }
@@ -85,7 +85,7 @@ header.app-header {
 }
 
 .nav-mobile-title {
-  color: #fff;
+  color: var(--white);
   font-weight: 600;
   padding: 0.75rem 0.5rem;
   min-width: 0;
@@ -97,7 +97,7 @@ header.app-header {
 .hamburger-btn {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--white);
   font-size: 1.4rem;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
@@ -111,7 +111,7 @@ header.app-header {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--black-a40);
   z-index: 200;
 }
 
@@ -139,11 +139,11 @@ header.app-header {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid var(--white-a20);
 }
 
 .drawer-title {
-  color: #fff;
+  color: var(--white);
   font-weight: 600;
   font-size: 1rem;
 }
@@ -151,7 +151,7 @@ header.app-header {
 .drawer-close-btn {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--white);
   font-size: 1rem;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
@@ -192,7 +192,7 @@ header.app-header {
 
 .nav-drawer a.active {
   background-color: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .nav-drawer a:hover {
@@ -221,7 +221,7 @@ header.app-header {
 
 .drawer-section-toggle.active {
   background-color: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .dropdown-arrow {
@@ -279,11 +279,11 @@ main > div > * {
   text-align: right;
   font-size: 0.75rem;
   padding: 0.5rem 1rem;
-  color: #888;
+  color: var(--color-text-subtle-2);
 }
 
 .site-footer a {
-  color: #888;
+  color: var(--color-text-subtle-2);
 }
 
 .site-footer-with-tagline {
@@ -301,23 +301,13 @@ main > div > * {
   color: var(--color-accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  .site-footer {
-    color: #666;
-  }
-
-  .site-footer a {
-    color: #666;
-  }
-}
-
 /*
  * Shared button classes used across pages and dialogs. Several page stylesheets restyle them, but
  * those load only with their page; this base keeps a button styled on pages that load none of them.
  */
 .btn-primary {
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;
@@ -355,8 +345,8 @@ main > div > * {
 }
 
 .btn-danger {
-  background: #dc2626;
-  color: white;
+  background: var(--red-600);
+  color: var(--white);
   border: none;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;
@@ -367,5 +357,5 @@ main > div > * {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--red-700);
 }

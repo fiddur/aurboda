@@ -74,7 +74,7 @@
 }
 
 .strength-score-expiring {
-  color: #f57c00;
+  color: var(--orange-l48);
 }
 
 .strength-score-more {

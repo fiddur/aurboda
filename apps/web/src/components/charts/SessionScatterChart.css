@@ -21,8 +21,8 @@
 .session-scatter-tooltip {
   position: absolute;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
+  background: var(--color-surface-tooltip);
+  color: var(--white);
   padding: 0.375rem 0.625rem;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -83,10 +83,4 @@
 
 .session-scatter-legend-count {
   color: var(--color-text-muted);
-}
-
-@media (prefers-color-scheme: dark) {
-  .session-scatter-tooltip {
-    background: rgba(17, 24, 39, 0.95);
-  }
 }

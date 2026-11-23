@@ -35,15 +35,15 @@
   font-weight: 500;
   font-size: 14px;
   letter-spacing: 0.25px;
-  color: #1f1f1f;
-  background: #ffffff;
-  border-color: #747775;
+  color: var(--neutral-l12p2);
+  background: var(--white);
+  border-color: var(--neutral-l46p1);
   border-radius: 20px;
   min-height: 40px;
 }
 
 .oidc-buttons .oidc-button.google:hover:not(:disabled) {
-  background: #f8f9fa;
+  background: var(--neutral-l97p6);
 }
 
 .oidc-buttons .oidc-button .google-mark {
@@ -53,22 +53,18 @@
 }
 
 .oidc-buttons .error {
-  color: #d32f2f;
+  color: var(--color-danger-text-3);
   margin: 0;
 }
 
 @media (prefers-color-scheme: dark) {
   .oidc-buttons .oidc-button.google {
-    color: #e3e3e3;
-    background: #131314;
-    border-color: #8e918f;
+    color: var(--neutral-l89);
+    background: var(--neutral-l8);
+    border-color: var(--neutral-l56);
   }
 
   .oidc-buttons .oidc-button.google:hover:not(:disabled) {
-    background: #1f1f20;
-  }
-
-  .oidc-buttons .error {
-    color: #ff6b6b;
+    background: var(--neutral-l12p4);
   }
 }

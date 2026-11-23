@@ -51,7 +51,7 @@ a.recent-activities-row:focus-visible {
 .recent-activities-initial {
   font-size: 0.875rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--white);
 }
 
 .recent-activities-text {

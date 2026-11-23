@@ -23,11 +23,5 @@
 
 .copy-link-feedback {
   font-size: 0.8rem;
-  color: #6b7280;
-}
-
-@media (prefers-color-scheme: dark) {
-  .copy-link-feedback {
-    color: #9ca3af;
-  }
+  color: var(--color-text-muted-2);
 }

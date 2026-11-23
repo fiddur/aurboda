@@ -6,7 +6,7 @@
   width: 100%;
   aspect-ratio: 1;
   max-height: 600px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   overflow: hidden;
   margin-top: 1rem;
@@ -21,14 +21,14 @@
   width: 14px;
   height: 14px;
   background: var(--color-primary);
-  border: 2px solid white;
+  border: 2px solid var(--white);
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 4px var(--black-a40);
 }
 
 @media (prefers-color-scheme: dark) {
   .activity-map-container {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 

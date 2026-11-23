@@ -1,5 +1,5 @@
 .shared-dashboards-intro {
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0 0 1.25rem;
 }
 
@@ -12,7 +12,7 @@
 
 .shared-dashboards-create select {
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.9rem;
 }
@@ -20,13 +20,13 @@
 .shared-dashboards-create input {
   flex: 1 1 220px;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.9rem;
 }
 
 .shared-dashboards-empty {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .shared-dashboards-list {
@@ -44,7 +44,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
 }
 
@@ -56,14 +56,14 @@
   font-size: 1rem;
   font-weight: 600;
   background: transparent;
-  color: #111827;
+  color: var(--color-text-strongest);
 }
 
 .shared-dashboard-name:hover,
 .shared-dashboard-name:focus {
-  border-color: #d1d5db;
-  background: #fff;
-  color: #111827;
+  border-color: var(--gray-300);
+  background: var(--white);
+  color: var(--gray-900);
 }
 
 .shared-dashboard-actions {
@@ -72,9 +72,9 @@
 }
 
 .shared-dashboard-actions .btn-danger {
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--red-50);
+  color: var(--red-700);
+  border: 1px solid var(--red-200);
   border-radius: 6px;
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
@@ -82,50 +82,46 @@
 }
 
 .shared-dashboard-actions .btn-danger:hover {
-  background: #fee2e2;
+  background: var(--red-100);
 }
 
 @media (prefers-color-scheme: dark) {
   .shared-dashboards h1 {
-    color: #f3f4f6;
+    color: var(--gray-100);
   }
 
   .shared-dashboards-intro,
   .shared-dashboards-empty {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .shared-dashboards-create input,
   .shared-dashboards-create select {
-    background: #111827;
-    border-color: #374151;
-    color: #f3f4f6;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-100);
   }
 
   .shared-dashboard-row {
-    border-color: #374151;
-    background: #1f2937;
-  }
-
-  .shared-dashboard-name {
-    color: #f3f4f6;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 
   .shared-dashboard-name:hover,
   .shared-dashboard-name:focus {
-    background: #111827;
-    border-color: #4b5563;
-    color: #f3f4f6;
+    background: var(--gray-900);
+    border-color: var(--gray-600);
+    color: var(--gray-100);
   }
 
   .shared-dashboard-actions .btn-danger {
-    background: #3f1d1d;
-    border-color: #7f1d1d;
-    color: #fca5a5;
+    background: var(--red-l18);
+    border-color: var(--red-900);
+    color: var(--red-300);
   }
 
   .shared-dashboard-actions .btn-danger:hover {
-    background: #4c1d1d;
+    background: var(--red-l21);
   }
 }
 
@@ -140,13 +136,7 @@
 
 .shared-exercise-item {
   font-size: 0.875rem;
-  color: #6b7280;
-}
-
-@media (prefers-color-scheme: dark) {
-  .shared-exercise-item {
-    color: #9ca3af;
-  }
+  color: var(--color-text-muted-2);
 }
 
 .home-dashboard-name {
@@ -156,13 +146,7 @@
 .home-dashboard-hint {
   flex: 1 1 auto;
   font-size: 0.875rem;
-  color: #6b7280;
-}
-
-@media (prefers-color-scheme: dark) {
-  .home-dashboard-hint {
-    color: #9ca3af;
-  }
+  color: var(--color-text-muted-2);
 }
 
 .period-lock-editor {
@@ -172,7 +156,7 @@
   align-items: center;
   gap: 0.5rem 0.75rem;
   padding-top: 0.5rem;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--gray-100);
   font-size: 0.9rem;
 }
 
@@ -184,13 +168,13 @@
 
 .period-lock-mode select {
   padding: 0.35rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.9rem;
 }
 
 .period-lock-hint {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .period-lock-confirm {
@@ -201,16 +185,12 @@
 
 @media (prefers-color-scheme: dark) {
   .period-lock-editor {
-    border-top-color: #374151;
+    border-top-color: var(--gray-700);
   }
 
   .period-lock-mode select {
-    background: #111827;
-    border-color: #374151;
-    color: #f3f4f6;
-  }
-
-  .period-lock-hint {
-    color: #9ca3af;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-100);
   }
 }

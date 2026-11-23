@@ -1,9 +1,9 @@
 .import-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
   padding: 1rem 1.25rem;
   margin-bottom: 1.5rem;
-  background: #fafafa;
+  background: var(--color-surface-subtle-3);
 }
 
 .import-panel-header {
@@ -18,13 +18,13 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-text-strong-2);
 }
 
 .import-panel-attribution {
   margin: 0 0 0.75rem;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   line-height: 1.4;
 }
 
@@ -39,18 +39,18 @@
 }
 
 .import-job-running {
-  background: #eff6ff;
-  color: #1e40af;
+  background: var(--blue-50);
+  color: var(--blue-800);
 }
 
 .import-job-completed {
-  background: #ecfdf5;
-  color: #065f46;
+  background: var(--emerald-50);
+  color: var(--emerald-800);
 }
 
 .import-job-failed {
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--red-50);
+  color: var(--red-800);
 }
 
 .import-progress-row {
@@ -62,53 +62,44 @@
 
 .import-progress-bar {
   height: 6px;
-  background: #dbeafe;
+  background: var(--blue-100);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .import-progress-fill {
   height: 100%;
-  background: #2563eb;
+  background: var(--blue-600);
   transition: width 200ms ease-out;
 }
 
 .import-error {
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
-  color: #991b1b;
+  color: var(--red-800);
 }
 
 @media (prefers-color-scheme: dark) {
   .import-panel {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  .import-panel-header h3 {
-    color: #e5e7eb;
-  }
-
-  .import-panel-attribution {
-    color: #9ca3af;
+    border-color: var(--gray-700);
   }
 
   .import-job-running {
-    background: #1e3a8a;
-    color: #dbeafe;
+    background: var(--blue-900);
+    color: var(--blue-100);
   }
 
   .import-job-completed {
-    background: #064e3b;
-    color: #d1fae5;
+    background: var(--emerald-900);
+    color: var(--emerald-100);
   }
 
   .import-job-failed {
-    background: #7f1d1d;
-    color: #fee2e2;
+    background: var(--red-900);
+    color: var(--red-100);
   }
 
   .import-progress-bar {
-    background: #1e3a8a;
+    background: var(--blue-900);
   }
 }

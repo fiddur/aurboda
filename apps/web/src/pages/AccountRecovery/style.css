@@ -8,15 +8,9 @@
 }
 
 .recovery-page .recovery-message.error {
-  color: #d32f2f;
+  color: var(--color-danger-text-3);
 }
 
 .recovery-page a {
   color: var(--color-accent);
-}
-
-@media (prefers-color-scheme: dark) {
-  .recovery-page .recovery-message.error {
-    color: #ff6b6b;
-  }
 }

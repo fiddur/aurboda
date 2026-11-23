@@ -9,7 +9,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .timeline-exercises ul {
@@ -37,8 +37,8 @@
   display: inline-block;
   padding: 0 0.35rem;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text-3);
   font-size: 0.7rem;
   font-weight: 600;
   line-height: 1.4;
@@ -55,17 +55,12 @@
 }
 
 .timeline-exercise-summary {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 @media (prefers-color-scheme: dark) {
   .timeline-exercises-heading,
   .timeline-exercise-summary {
-    color: #9ca3af;
-  }
-
-  .timeline-exercise-pr {
-    background: #78350f;
-    color: #fde68a;
+    color: var(--gray-400);
   }
 }

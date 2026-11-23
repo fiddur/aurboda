@@ -14,12 +14,12 @@
 }
 
 .au-muted {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
 }
 
 .au-error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .au-badge {
@@ -49,7 +49,7 @@
 .au-table th {
   text-align: left;
   padding: 0;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--gray-200);
   white-space: nowrap;
 }
 
@@ -57,7 +57,7 @@
   background: none;
   border: none;
   padding: 0.5rem;
-  color: #6b7280;
+  color: var(--gray-500);
   font: inherit;
   font-size: 0.75rem;
   font-weight: 500;
@@ -72,8 +72,8 @@
 
 .au-table td {
   padding: 0.5rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #374151;
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--gray-700);
   vertical-align: top;
   white-space: nowrap;
 }
@@ -83,7 +83,7 @@
 }
 
 .au-row:hover {
-  background: #f9fafb;
+  background: var(--color-surface-subtle);
 }
 
 .au-name {
@@ -100,7 +100,7 @@
 }
 
 .au-sub {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.75rem;
 }
 
@@ -112,7 +112,7 @@
 }
 
 .au-facts dt {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.75rem;
   text-transform: uppercase;
 }
@@ -137,7 +137,7 @@
 }
 
 .au-plan-muted {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .au-plan-warn,
@@ -149,13 +149,13 @@
 }
 
 .au-plan-warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--amber-100);
+  color: var(--amber-800);
 }
 
 .au-plan-bad {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--red-100);
+  color: var(--red-800);
 }
 
 .au-plan-form {
@@ -171,7 +171,7 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--gray-500);
   text-transform: uppercase;
 }
 
@@ -191,42 +191,38 @@
   .au-muted,
   .au-sort,
   .au-facts dt {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .au-sub {
-    color: #6b7280;
+    color: var(--gray-500);
   }
 
   .au-table th {
-    border-bottom-color: #444;
+    border-bottom-color: var(--neutral-l27);
   }
 
   .au-table td {
-    border-bottom-color: #333;
-    color: #e5e7eb;
-  }
-
-  .au-row:hover {
-    background: #1f2937;
+    border-bottom-color: var(--neutral-l20);
+    color: var(--gray-200);
   }
 
   .au-error {
-    color: #f87171;
+    color: var(--red-400);
   }
 
   .au-plan-muted,
   .au-plan-form label {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .au-plan-warn {
-    background: #451a03;
-    color: #fde68a;
+    background: var(--amber-950);
+    color: var(--amber-200);
   }
 
   .au-plan-bad {
-    background: #450a0a;
-    color: #fecaca;
+    background: var(--red-950);
+    color: var(--red-200);
   }
 }

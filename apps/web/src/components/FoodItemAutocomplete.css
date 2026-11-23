@@ -8,10 +8,10 @@
   width: 100%;
   padding: 0.25rem 0.375rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
-  color: #374151;
-  background: #fff;
+  color: var(--color-text-default);
+  background: var(--color-surface-raised-3);
   box-sizing: border-box;
 }
 
@@ -24,11 +24,11 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  background: #fff;
-  border: 1px solid #d1d5db;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--gray-300);
   border-top: none;
   border-radius: 0 0 6px 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px var(--black-a10);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -44,89 +44,61 @@
 
 .autocomplete-option:hover,
 .autocomplete-option.active {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 .ac-name {
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .ac-cal {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.7rem;
 }
 
 .autocomplete-create {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
 }
 
 .autocomplete-create .ac-name {
-  color: #2563eb;
+  color: var(--color-info-text);
   font-weight: 500;
 }
 
 @media (prefers-color-scheme: dark) {
   .food-autocomplete input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #d1d5db;
+    border-color: var(--gray-600);
   }
 
   .autocomplete-dropdown {
-    background: #1f2937;
-    border-color: #4b5563;
-  }
-
-  .autocomplete-option:hover,
-  .autocomplete-option.active {
-    background: #374151;
-  }
-
-  .ac-name {
-    color: #d1d5db;
-  }
-
-  .ac-cal {
-    color: #9ca3af;
+    border-color: var(--gray-600);
   }
 
   .autocomplete-create {
-    border-top-color: #4b5563;
-  }
-
-  .autocomplete-create .ac-name {
-    color: #60a5fa;
+    border-top-color: var(--gray-600);
   }
 }
 
 .autocomplete-barcode {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
 }
 
 .autocomplete-barcode .ac-name {
-  color: #2563eb;
+  color: var(--color-info-text);
   font-weight: 500;
 }
 
 .autocomplete-barcode .ac-error {
   display: block;
   margin-top: 0.15rem;
-  color: #b91c1c;
+  color: var(--color-danger-text-2);
   font-weight: 400;
   font-size: 0.75rem;
 }
 
 @media (prefers-color-scheme: dark) {
   .autocomplete-barcode {
-    border-top-color: #4b5563;
-  }
-
-  .autocomplete-barcode .ac-name {
-    color: #60a5fa;
-  }
-
-  .autocomplete-barcode .ac-error {
-    color: #fca5a5;
+    border-top-color: var(--gray-600);
   }
 }
 
@@ -147,22 +119,11 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   cursor: pointer;
 }
 
 .ac-scan:hover,
 .ac-scan:focus-visible {
-  color: #2563eb;
-}
-
-@media (prefers-color-scheme: dark) {
-  .ac-scan {
-    color: #9ca3af;
-  }
-
-  .ac-scan:hover,
-  .ac-scan:focus-visible {
-    color: #60a5fa;
-  }
+  color: var(--color-info-text);
 }

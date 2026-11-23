@@ -13,7 +13,7 @@
   font-size: 1.75rem;
   font-weight: 600;
   margin: 0;
-  color: #1f2937;
+  color: var(--color-text-strong);
 }
 
 .activity-type-meta-icon-placeholder {
@@ -22,10 +22,10 @@
   justify-content: center;
   width: 2.5rem;
   height: 2.5rem;
-  background: #f3f4f6;
-  border: 2px dashed #d1d5db;
+  background: var(--color-surface-sunken);
+  border: 2px dashed var(--gray-300);
   border-radius: 8px;
-  color: #9ca3af;
+  color: var(--color-text-faint);
   font-size: 1.25rem;
   font-weight: 600;
 }
@@ -40,8 +40,8 @@
 .activity-type-meta-category-badge {
   font-size: 0.8rem;
   padding: 0.2rem 0.6rem;
-  background: #eff6ff;
-  color: #2563eb;
+  background: var(--color-info-soft);
+  color: var(--color-info-text);
   border-radius: 999px;
   font-weight: 500;
 }
@@ -51,27 +51,27 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--black-a10);
 }
 
 .activity-type-meta-name-muted {
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: var(--color-text-faint);
   font-family: monospace;
 }
 
 .activity-type-meta-section {
   margin-bottom: 2rem;
   padding: 1.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 10px;
-  background: #fff;
+  background: var(--color-surface-raised);
 }
 
 .activity-type-meta-section h2 {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-default-2);
   margin: 0 0 1rem;
 }
 
@@ -88,11 +88,11 @@
 
 .activity-type-meta-section-header select {
   padding: 0.375rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.85rem;
-  color: #374151;
-  background: #fff;
+  color: var(--color-text-default-2);
+  background: var(--color-surface-raised-2);
 }
 
 .activity-type-meta-settings-grid {
@@ -110,13 +110,13 @@
 .activity-type-meta-field-label {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .activity-type-meta-text-input {
   padding: 0.5rem 0.75rem;
   font-size: 0.9rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -158,7 +158,7 @@
   gap: 0.5rem;
   margin-top: 1rem;
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--color-text-default);
   cursor: pointer;
   flex-direction: row;
 }
@@ -168,12 +168,6 @@
   height: 1rem;
   accent-color: var(--color-accent);
   cursor: pointer;
-}
-
-@media (prefers-color-scheme: dark) {
-  .activity-type-meta-timeline-toggle {
-    color: #d1d5db;
-  }
 }
 
 .activity-type-meta-trend-value {
@@ -186,12 +180,12 @@
 .activity-type-meta-trend-number {
   font-size: 2rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--color-text-strong);
 }
 
 .activity-type-meta-trend-unit {
   font-size: 0.9rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .activity-type-meta-recent-list {
@@ -205,7 +199,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #f3f4f6;
+  border: 1px solid var(--gray-100);
   border-radius: 6px;
   font-size: 0.85rem;
   text-decoration: none;
@@ -213,21 +207,21 @@
 }
 
 .activity-type-meta-recent-item:hover {
-  background: #f9fafb;
+  background: var(--gray-50);
 }
 
 .activity-type-meta-recent-time {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .activity-type-meta-recent-title {
   font-weight: 500;
-  color: #374151;
+  color: var(--color-text-default-2);
 }
 
 .activity-type-meta-recent-duration {
   font-size: 0.8rem;
-  color: #9ca3af;
+  color: var(--gray-400);
 }
 
 .activity-type-meta-strength-score-value {
@@ -245,7 +239,7 @@
 }
 
 .activity-type-meta-empty {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.9rem;
   text-align: center;
   padding: 1rem;
@@ -260,24 +254,24 @@
 .activity-type-meta-link {
   display: inline-block;
   padding: 0.5rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 6px;
   text-decoration: none;
   font-size: 0.85rem;
-  color: #374151;
+  color: var(--color-text-default);
   transition: all 0.15s;
 }
 
 .activity-type-meta-link:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
+  background: var(--gray-100);
+  border-color: var(--gray-300);
 }
 
 .activity-type-meta-page .btn-primary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -296,43 +290,43 @@
 .activity-type-meta-page .error {
   text-align: center;
   padding: 1rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .activity-type-meta-page .error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .activity-type-meta-page .btn-secondary {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   background: transparent;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  border: 1px solid var(--gray-300);
+  color: var(--gray-700);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .activity-type-meta-page .btn-secondary:hover {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 .activity-type-meta-page .btn-danger {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-  background: #dc2626;
-  color: white;
+  background: var(--red-600);
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .activity-type-meta-page .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--red-700);
 }
 
 .activity-type-meta-merge-desc {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
   margin-bottom: 0.75rem;
 }
@@ -352,14 +346,14 @@
 .activity-type-meta-merge-form select,
 .activity-type-meta-merge-form input {
   padding: 0.5rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   font-size: 0.85rem;
 }
 
 .activity-type-meta-merge-form code {
   font-size: 0.8rem;
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
   padding: 0.1rem 0.3rem;
   border-radius: 2px;
 }
@@ -382,20 +376,20 @@
 .activity-type-meta-schema-table th {
   text-align: left;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .activity-type-meta-schema-table td {
   padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--gray-100);
 }
 
 .activity-type-meta-schema-input {
   padding: 0.375rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   background: transparent;
   color: inherit;
@@ -413,144 +407,95 @@
   align-items: flex-start;
   gap: 0.375rem;
   padding-left: 0.75rem;
-  border-left: 2px solid #e5e7eb;
+  border-left: 2px solid var(--gray-200);
   overflow-x: auto;
 }
 
 .btn-icon-small {
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--gray-400);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0.25rem 0.5rem;
 }
 
 .btn-icon-small:hover {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 @media (prefers-color-scheme: dark) {
-  .activity-type-meta-title-row h1 {
-    color: #f9fafb;
-  }
-
   .activity-type-meta-icon-placeholder {
-    background: #374151;
-    border-color: #4b5563;
-    color: #6b7280;
-  }
-
-  .activity-type-meta-category-badge {
-    background: #1e3a5f;
-    color: #60a5fa;
-  }
-
-  .activity-type-meta-name-muted {
-    color: #6b7280;
+    border-color: var(--gray-600);
   }
 
   .activity-type-meta-section {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  .activity-type-meta-section h2 {
-    color: #e5e7eb;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-section-header select {
-    background: #111827;
-    border-color: #4b5563;
-    color: #e5e7eb;
+    border-color: var(--gray-600);
   }
 
   .activity-type-meta-text-input {
-    border-color: #4b5563;
-    background: #374151;
-    color: #f9fafb;
+    border-color: var(--gray-600);
+    background: var(--gray-700);
+    color: var(--gray-50);
   }
 
   .activity-type-meta-text-input:focus {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
-  .activity-type-meta-field-label {
-    color: #9ca3af;
-  }
-
-  .activity-type-meta-trend-number {
-    color: #f9fafb;
-  }
-
-  .activity-type-meta-trend-unit {
-    color: #9ca3af;
-  }
-
   .activity-type-meta-recent-item {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-recent-item:hover {
-    background: #111827;
-  }
-
-  .activity-type-meta-recent-time {
-    color: #9ca3af;
-  }
-
-  .activity-type-meta-recent-title {
-    color: #e5e7eb;
+    background: var(--gray-900);
   }
 
   .activity-type-meta-link {
-    border-color: #374151;
-    color: #d1d5db;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-link:hover {
-    background: #374151;
-    border-color: #4b5563;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
   }
 
   .activity-type-meta-page .btn-secondary {
-    border-color: #4b5563;
-    color: #d1d5db;
-  }
-
-  .activity-type-meta-page .btn-secondary:hover {
-    background: #374151;
+    border-color: var(--gray-600);
+    color: var(--gray-300);
   }
 
   .activity-type-meta-merge-form select,
   .activity-type-meta-merge-form input {
-    background: #374151;
-    border-color: #4b5563;
-    color: #f9fafb;
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+    color: var(--gray-50);
   }
 
   .activity-type-meta-merge-form code {
-    background: #374151;
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .activity-type-meta-schema-table th {
-    border-color: #374151;
-    color: #9ca3af;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-schema-table td {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-item-fields {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .activity-type-meta-schema-input {
-    border-color: #4b5563;
-    background: #374151;
-    color: #f9fafb;
+    border-color: var(--gray-600);
+    background: var(--gray-700);
+    color: var(--gray-50);
   }
 }
 
@@ -582,7 +527,7 @@
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--color-text-default-2);
 }
 
 .activity-type-meta-alias-list {
@@ -598,7 +543,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.375rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .activity-type-meta-page .activity-type-meta-alias-delete {
@@ -612,19 +557,15 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .activity-type-meta-aliases h3 {
-    color: #e5e7eb;
-  }
-
   .activity-type-meta-alias-list li {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
 .activity-type-meta-unmapped-summary {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .activity-type-meta-unmapped-note {
@@ -645,7 +586,7 @@
   justify-content: space-between;
   gap: 0.5rem 1rem;
   padding: 0.625rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
   font-size: 0.85rem;
 }
 
@@ -692,12 +633,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .activity-type-meta-unmapped-summary {
-    color: #d1d5db;
-  }
-
   .activity-type-meta-unmapped-row {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }
 
@@ -721,15 +658,15 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.3rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--gray-100);
   font-size: 0.85rem;
-  color: #374151;
+  color: var(--gray-700);
 }
 
 .activity-type-meta-muscle-summary-head {
   font-size: 0.75rem;
-  color: #6b7280;
-  border-bottom-color: #e5e7eb;
+  color: var(--gray-500);
+  border-bottom-color: var(--gray-200);
 }
 
 .activity-type-meta-muscle-summary-name {
@@ -745,18 +682,18 @@
 .activity-type-meta-muscle-summary-bar {
   height: 0.5rem;
   border-radius: 4px;
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
   overflow: hidden;
 }
 
 .activity-type-meta-muscle-summary-bar span {
   display: block;
   height: 100%;
-  background: #8b5cf6;
+  background: var(--violet-500);
 }
 
 .activity-type-meta-muscle-summary-untrained {
-  color: #9ca3af;
+  color: var(--gray-400);
 }
 
 .activity-type-meta-muscle-summary-short {
@@ -792,19 +729,15 @@
 
 @media (prefers-color-scheme: dark) {
   .activity-type-meta-muscle-summary-row {
-    color: #e5e7eb;
-    border-bottom-color: #374151;
+    color: var(--gray-200);
+    border-bottom-color: var(--gray-700);
   }
 
   .activity-type-meta-muscle-summary-head {
-    color: #9ca3af;
-  }
-
-  .activity-type-meta-muscle-summary-bar {
-    background: #374151;
+    color: var(--gray-400);
   }
 
   .activity-type-meta-muscle-summary-untrained {
-    color: #6b7280;
+    color: var(--gray-500);
   }
 }

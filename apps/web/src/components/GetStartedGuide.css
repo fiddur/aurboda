@@ -61,7 +61,7 @@
 .get-started-step.done .get-started-status {
   border-color: var(--color-primary);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--white);
 }
 
 .get-started-body {
