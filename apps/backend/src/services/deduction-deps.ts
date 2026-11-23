@@ -310,8 +310,8 @@ const getEnrichTargets = async (
 
 /**
  * A pair (activity, person) is decided once per rule and recorded in `rule_activity_people`, so a
- * person taken off by hand stays off. A group with a link no rule recorded has its people set by
- * hand and gets nobody. Every pair is decided against the state before this call's own writes.
+ * person taken off by hand stays off. A group with a link no rule added (`added`) has its people
+ * set by hand and gets nobody. Every pair is decided against the state before this call's own writes.
  * The rule id is compared as text: the preview's rule id is no uuid, and a dry run writes nothing.
  * No notification: people are no rule condition, so nothing re-evaluates.
  */
@@ -338,7 +338,7 @@ const addActivityPeople = async (
         JOIN people p ON p.id = ap.person_id AND p.deleted_at IS NULL
        WHERE NOT EXISTS (
          SELECT 1 FROM group_rows g2 JOIN rule_activity_people r ON r.activity_id = g2.row_id
-          WHERE g2.target_id = g.target_id AND r.person_id = ap.person_id)
+          WHERE g2.target_id = g.target_id AND r.person_id = ap.person_id AND r.added)
     ),
     to_link AS (
       SELECT u.activity_id, u.person_id FROM undecided u
@@ -353,8 +353,11 @@ const addActivityPeople = async (
       ? `WITH ${decisions} SELECT DISTINCT activity_id FROM to_link`
       : `WITH ${decisions},
          recorded AS (
-           INSERT INTO rule_activity_people (rule_id, activity_id, person_id)
-           SELECT $3::text::uuid, activity_id, person_id FROM undecided
+           INSERT INTO rule_activity_people (rule_id, activity_id, person_id, added)
+           SELECT $3::text::uuid, u.activity_id, u.person_id,
+                  EXISTS (SELECT 1 FROM to_link l
+                           WHERE l.activity_id = u.activity_id AND l.person_id = u.person_id)
+             FROM undecided u
            ON CONFLICT DO NOTHING
          ),
          inserted AS (

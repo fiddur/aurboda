@@ -179,6 +179,27 @@ describe('a rule adding people to activities (integration)', () => {
     expect(await namesOn(user, [fikaId])).toEqual([])
   })
 
+  test('a person set by hand who is also on a rule still counts as set by hand', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const cleo = await insertPerson(user, { name: 'Cleo' })
+    await meditation(user)
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    expect((await updateActivity(user, fikaId, { people: [anna.id] })).success).toBe(true)
+    const rule = await fikaRule(user, [anna.id])
+    const deps = createDefaultEngineDeps()
+
+    await evaluateAllRules(user, [rule], window, deps)
+    const widened = (await updateDeductionRule(user, rule.id, { output_people: [anna.id, bo.id] }))!
+    const second = await fikaRule(user, [cleo.id])
+    expect((await evaluateRule(user, widened, window, deps, true)).would_affect).toBe(0)
+    await evaluateAllRules(user, [widened, second], window, deps)
+
+    expect(await namesOn(user, [fikaId])).toEqual(['Anna'])
+  })
+
   test('an activity whose people were set by hand gets nobody from the rule, even once emptied', async () => {
     const user = getTestUser()
     await ensureType(user, 'fika')

@@ -59,6 +59,7 @@ export const peopleTables: Record<string, string> = {
       rule_id     UUID NOT NULL REFERENCES deduction_rules(id) ON DELETE CASCADE,
       activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
       person_id   UUID NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+      added       BOOLEAN NOT NULL DEFAULT false,
       PRIMARY KEY (rule_id, activity_id, person_id)
     )
   `,
