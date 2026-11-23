@@ -1602,7 +1602,7 @@ export function AdminSettings() {
       return null
     }
     return (
-      <div class="admin-settings-page">
+      <div class="page page--full admin-settings-page">
         <h1>Admin Settings</h1>
         <p>You do not have permission to access this page.</p>
       </div>
@@ -1611,7 +1611,7 @@ export function AdminSettings() {
 
   if (isLoading) {
     return (
-      <div class="admin-settings-page">
+      <div class="page page--full admin-settings-page">
         <h1>Admin Settings</h1>
         <p class="loading">Loading...</p>
       </div>
@@ -1619,7 +1619,7 @@ export function AdminSettings() {
   }
 
   return (
-    <div class="admin-settings-page">
+    <div class="page page--full admin-settings-page">
       <h1>Admin Settings</h1>
       <p>
         <a href="/admin/users">Users</a>: storage, incoming data and use per user.

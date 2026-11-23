@@ -1185,7 +1185,7 @@ export const Timeline = () => {
   ])
 
   return (
-    <div class={`timeline-view${isFullscreen ? ' timeline-fullscreen' : ''}`}>
+    <div class={`page page--full timeline-view${isFullscreen ? ' timeline-fullscreen' : ''}`}>
       <TimelineControls
         orientation={orientation}
         setOrientation={setOrientation}

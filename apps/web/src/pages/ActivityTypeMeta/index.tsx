@@ -759,7 +759,7 @@ export function ActivityTypeMeta() {
   const { displayName, icon, color, category, showOnTimeline, isDuration } = resolveTypeDef(typeDef, name)
 
   return (
-    <div class="activity-type-meta-page">
+    <div class="page page--full activity-type-meta-page">
       <ActivityTypeHeader
         name={name}
         displayName={displayName}

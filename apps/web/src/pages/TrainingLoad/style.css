@@ -1,8 +1,4 @@
 .training-load-page {
-  width: 100%;
-  max-width: 1100px;
-  padding: 1.5rem 2rem;
-  box-sizing: border-box;
   color: var(--color-text);
 }
 
@@ -316,10 +312,6 @@
 }
 
 @media (max-width: 639px) {
-  .training-load-page {
-    padding: 1rem;
-  }
-
   .tl-summary {
     grid-template-columns: minmax(0, 1fr);
   }

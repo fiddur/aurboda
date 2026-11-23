@@ -122,14 +122,14 @@ export function DeductionRules() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage deduction rules.</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Deduction Rules</h1>
         <p class="page-subtitle">

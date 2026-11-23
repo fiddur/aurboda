@@ -1,9 +1,3 @@
-.admin-settings-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .admin-settings-page h1 {
   font-size: 1.75rem;
   margin-bottom: 1.5rem;
@@ -239,10 +233,6 @@
 }
 
 @media (max-width: 639px) {
-  .admin-settings-page {
-    padding: 1rem;
-  }
-
   .admin-settings-page h1 {
     font-size: 1.5rem;
   }

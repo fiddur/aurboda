@@ -640,7 +640,7 @@ export function GarminSource() {
   if (!isLoggedIn) return <LoginRequiredToFinish provider="garmin" providerName="Garmin" />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Garmin</h1>
       </div>

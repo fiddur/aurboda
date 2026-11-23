@@ -8,7 +8,7 @@ import './style.css'
 
 export function StrengthMuscles() {
   return (
-    <div class="strength-page strength-page-wide">
+    <div class="page page--wide strength-page strength-page-wide">
       <h1>Strength</h1>
       <StrengthTabs />
       <MuscleRecoverySection name={STRENGTH_TYPE} path={SETS_PATH} />

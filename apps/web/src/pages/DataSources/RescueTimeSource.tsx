@@ -79,7 +79,7 @@ export function RescueTimeSource() {
   if (!isLoggedIn) return <LoginRequired />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>RescueTime</h1>
       </div>

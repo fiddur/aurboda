@@ -142,7 +142,7 @@ export function StrengthScore() {
   const typeName = definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
 
   return (
-    <div class="activity-type-item-page">
+    <div class="page page--full activity-type-item-page">
       <a href={`/activity-type/${encodeURIComponent(name)}`} class="activity-type-item-back">
         ← {typeName}
       </a>

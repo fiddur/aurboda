@@ -1223,7 +1223,7 @@ export function Chart() {
 
   if (!isLoggedIn) {
     return (
-      <div class="chart-page">
+      <div class="page page--full chart-page">
         <div class="chart-login-prompt">
           <h2>Please log in to explore charts</h2>
           <a href="/login">Log in</a>
@@ -1247,7 +1247,7 @@ export function Chart() {
     ) : null
 
   return (
-    <div class="chart-page">
+    <div class="page page--full chart-page">
       <h1>Chart Explorer</h1>
       <p class="chart-page-description">
         Explore time-weighted averages (EMA) or raw bucketed data for activity types and metrics. Screentime

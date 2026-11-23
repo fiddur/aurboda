@@ -1061,14 +1061,14 @@ export const EntityDetail = () => {
 
   if (!VALID_ENTITY_TYPES.has(entityType) && rawEntityType !== 'tag') {
     return (
-      <div class="entity-detail-page">
+      <div class="page page--full entity-detail-page">
         <p class="error">Unknown entity type: {rawEntityType}</p>
       </div>
     )
   }
 
   return (
-    <div class="entity-detail-page">
+    <div class="page page--full entity-detail-page">
       {entityType === 'activity' && <ActivityContent entityId={entityId} />}
       {entityType === 'productivity' && <ProductivityContent entityId={entityId} />}
       {entityType === 'metric' && <MetricContent entityId={entityId} />}

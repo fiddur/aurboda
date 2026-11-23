@@ -104,7 +104,7 @@ export function Segments() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to see your segments.</p>
       </div>
     )
@@ -123,7 +123,7 @@ export function Segments() {
     navigate(`/segments${searchFromSegmentsQuery({ ...segmentsQuery, ...change })}`)
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Segments</h1>
         <p class="page-subtitle">

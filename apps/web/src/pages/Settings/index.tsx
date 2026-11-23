@@ -185,7 +185,7 @@ export function Settings() {
 
   if (!isLoggedIn) {
     return (
-      <div class="settings-page">
+      <div class="page page--full settings-page">
         <h1>Settings</h1>
         <p>Please log in to view and edit your settings.</p>
       </div>
@@ -194,7 +194,7 @@ export function Settings() {
 
   if (isLoading) {
     return (
-      <div class="settings-page">
+      <div class="page page--full settings-page">
         <h1>Settings</h1>
         <p class="loading">Loading...</p>
       </div>
@@ -204,7 +204,7 @@ export function Settings() {
   const displayZones = hrZones ?? defaultHrZoneThresholds
 
   return (
-    <div class="settings-page">
+    <div class="page page--full settings-page">
       <h1>Settings</h1>
 
       <PlanSettings />

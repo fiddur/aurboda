@@ -71,7 +71,7 @@ export const PastSession = ({ edit, back }: { edit?: EditTarget; back?: string }
   const canSave = !saving && (edit !== undefined || loggedSetCount(blocks) > 0)
 
   return (
-    <div class="strength-page">
+    <div class="page page--narrow strength-page">
       <header class="strength-sticky-header">
         <h1>{edit ? 'Edit session' : 'Log a past session'}</h1>
         <div class="strength-row-actions">

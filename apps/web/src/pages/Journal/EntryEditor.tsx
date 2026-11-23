@@ -270,7 +270,7 @@ const History = ({ id, onRestore }: { id: string; onRestore: (revision: NoteRevi
 }
 
 const DeletedNotice = ({ onUndo }: { onUndo: () => void }) => (
-  <div class="journal-page journal-editor-page">
+  <div class="page journal-page journal-editor-page">
     <div class="journal-card journal-deleted-notice" role="status">
       <p>
         Entry deleted.{' '}
@@ -798,7 +798,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const flush = () => void autosaver.flush()
 
   return (
-    <div class="journal-page journal-editor-page">
+    <div class="page journal-page journal-editor-page">
       <div class="journal-editor-top">
         <button type="button" class="journal-link-btn" onClick={() => void leave()}>
           ← Journal

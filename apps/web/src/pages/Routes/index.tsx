@@ -44,7 +44,7 @@ export function Routes() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to see your routes.</p>
       </div>
     )
@@ -63,7 +63,7 @@ export function Routes() {
     navigate(`/routes${searchFromRoutesQuery({ ...routesQuery, ...change })}`)
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Routes</h1>
         <p class="page-subtitle">

@@ -53,7 +53,7 @@ export function ChallengeJoin() {
 
   if (!challengeUrl) {
     return (
-      <div class="challenges-page">
+      <div class="page challenges-page">
         <h1>Join a challenge</h1>
         <p class="public-muted">No challenge URL was provided.</p>
       </div>
@@ -62,7 +62,7 @@ export function ChallengeJoin() {
 
   if (!isLoggedIn) {
     return (
-      <div class="challenges-page">
+      <div class="page challenges-page">
         <h1>Join a challenge</h1>
         <p>
           Please <a href={`/login?next=${encodeURIComponent(joinPagePath(challengeUrl, confirm))}`}>log in</a>{' '}
@@ -81,7 +81,7 @@ export function ChallengeJoin() {
 
   if (!confirm) {
     return (
-      <div class="challenges-page">
+      <div class="page challenges-page">
         <h1>Joining challenge…</h1>
         {joinError}
         {!joinMutation.isError && (
@@ -93,7 +93,7 @@ export function ChallengeJoin() {
 
   if (!previewQuery.data) {
     return (
-      <div class="challenges-page">
+      <div class="page challenges-page">
         <h1>Join a challenge</h1>
         {previewQuery.isError ? (
           <p class="challenges-empty">
@@ -133,7 +133,7 @@ function ChallengeJoinConfirm({
 }) {
   const hostUrl = hostProfileUrl(challenge.share_url)
   return (
-    <div class="challenges-page challenge-join-confirm">
+    <div class="page challenges-page challenge-join-confirm">
       <h1>{challenge.name}</h1>
       <p>Hosted by {hostUrl ? <a href={hostUrl}>{challenge.host_handle}</a> : challenge.host_handle}</p>
       <p class="challenge-view-meta">

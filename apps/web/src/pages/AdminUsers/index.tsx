@@ -107,7 +107,7 @@ export function AdminUsers() {
   const onSort = (key: SortKey) => setSort((current) => nextSort(current, key))
 
   return (
-    <div class="admin-users-page">
+    <div class="page page--full admin-users-page">
       <p class="au-back">
         <a href="/admin">← Admin Settings</a>
       </p>

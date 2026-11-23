@@ -936,14 +936,14 @@ function NewCategoryPage({ categoryId }: { categoryId: string }) {
   if (created) {
     // Category was created — re-render will load the real detail page
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <nav class="category-breadcrumb">
         <a href="/screentime-categories">Categories</a>
         <span class="breadcrumb-separator">&gt;</span>
@@ -1040,7 +1040,7 @@ export function CategoryDetail() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to view category details.</p>
       </div>
     )
@@ -1048,7 +1048,7 @@ export function CategoryDetail() {
 
   if (categoryLoading) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading...</p>
       </div>
     )
@@ -1095,7 +1095,7 @@ function ExistingCategoryPage({
   const currentIcon = icons[categoryIconKey(category.name)] ?? ''
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <CategoryBreadcrumb categories={allCategories} category={category} />
 
       <div class="category-header">

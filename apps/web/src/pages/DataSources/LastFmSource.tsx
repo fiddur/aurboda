@@ -62,7 +62,7 @@ export function LastFmSource() {
   if (!isLoggedIn) return <LoginRequired />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Last.fm</h1>
       </div>

@@ -49,7 +49,7 @@ export function Goals() {
 
   if (!isLoggedIn) {
     return (
-      <div class="goals-page">
+      <div class="page page--full goals-page">
         <h1>Goals</h1>
         <p>Please log in to view your goals.</p>
       </div>
@@ -58,7 +58,7 @@ export function Goals() {
 
   if (settingsLoading || progressLoading) {
     return (
-      <div class="goals-page">
+      <div class="page page--full goals-page">
         <h1>Goals</h1>
         <p class="loading">Loading...</p>
       </div>
@@ -69,7 +69,7 @@ export function Goals() {
 
   if (goals.length === 0) {
     return (
-      <div class="goals-page">
+      <div class="page page--full goals-page">
         <h1>Goals</h1>
         <GoalsSettings goals={goals} initialGoal={initialGoal} />
       </div>
@@ -83,7 +83,7 @@ export function Goals() {
   const allSameWindow = firstWindow !== undefined && windowedGoals.every((g) => g.window === firstWindow)
 
   return (
-    <div class="goals-page">
+    <div class="page page--full goals-page">
       <h1>Goals</h1>
 
       <div class="goals-list">

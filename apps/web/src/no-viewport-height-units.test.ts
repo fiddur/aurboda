@@ -8,7 +8,7 @@ const srcDir = fileURLToPath(new URL('.', import.meta.url))
 const viewportHeightUnit = /\b\d*\.?\d+(?:[dsl]?vh|vmin)\b/i
 
 const allowlist: Record<string, string> = {
-  'style.css':
+  'style.scss':
     'root heights (html/body/#app are pinned by the native viewport fix); .app-content above 60em is #1356',
   'components/Sidebar.css': 'the sidebar is hidden in embed mode',
   'pages/Meals/style.css': 'sticky panel inside @media (min-width: 900px): tablets only, #1356',
@@ -19,7 +19,7 @@ const cssFiles = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) return cssFiles(path)
-    return entry.name.endsWith('.css') ? [path] : []
+    return /\.s?css$/.test(entry.name) ? [path] : []
   })
 
 describe('web CSS', () => {

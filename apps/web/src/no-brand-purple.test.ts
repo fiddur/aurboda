@@ -13,7 +13,7 @@ const sourceFiles = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) return sourceFiles(path)
-    return /\.(css|tsx?)$/.test(entry.name) && !isTest(entry.name) ? [path] : []
+    return /\.(s?css|tsx?)$/.test(entry.name) && !isTest(entry.name) ? [path] : []
   })
 
 describe('web colours', () => {
@@ -27,7 +27,7 @@ describe('web colours', () => {
 
     expect(
       offenders,
-      'Use the colour tokens in style.css (or CHART_PRIMARY from theme.ts for charts); see docs/web-theme.md.',
+      'Use the colour tokens in styles/_tokens.scss (or CHART_PRIMARY from theme.ts for charts); see docs/web-theme.md.',
     ).toEqual([])
   })
 })

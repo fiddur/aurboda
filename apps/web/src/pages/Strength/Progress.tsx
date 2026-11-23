@@ -5,7 +5,7 @@ import './style.css'
 
 export function StrengthProgress() {
   return (
-    <div class="strength-page strength-page-wide">
+    <div class="page page--wide strength-page strength-page-wide">
       <h1>Strength</h1>
       <StrengthTabs />
       <p class="strength-muted">Best lifts of the last 90 days</p>

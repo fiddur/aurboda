@@ -1,8 +1,5 @@
 .admin-users-page {
-  width: 100%;
   min-width: 0;
-  padding: 2rem;
-  box-sizing: border-box;
 }
 
 .admin-users-page h1 {
@@ -188,12 +185,6 @@
   font-size: 0.9rem;
   text-transform: none;
   padding: 0.35rem 0.5rem;
-}
-
-@media (max-width: 639px) {
-  .admin-users-page {
-    padding: 1rem;
-  }
 }
 
 @media (prefers-color-scheme: dark) {

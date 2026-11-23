@@ -305,7 +305,7 @@ export function Correlations() {
   const comparisonGroup = activityImpact ? comparisonAsGroup(activityImpact) : null
 
   return (
-    <div class="correlations-page">
+    <div class="page page--full correlations-page">
       <div class="correlations-header">
         <h1>Analyze</h1>
         {activeTab.value === 'context' && (
