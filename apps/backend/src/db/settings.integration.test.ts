@@ -400,6 +400,24 @@ describe('Settings Integration Tests', () => {
     })
   })
 
+  describe('User Settings with the time zone choice', () => {
+    test('stores a zone chosen by hand with tz_follows_device false, and clears both', async () => {
+      const user = getTestUser()
+
+      await upsertUserSettings(user, { device_timezone: 'Europe/Stockholm', tz_follows_device: false })
+
+      const stored = await getUserSettings(user)
+      expect(stored?.device_timezone).toBe('Europe/Stockholm')
+      expect(stored?.tz_follows_device).toBe(false)
+
+      await upsertUserSettings(user, {}, ['device_timezone', 'tz_follows_device'])
+
+      const cleared = await getUserSettings(user)
+      expect(cleared?.device_timezone).toBeUndefined()
+      expect(cleared?.tz_follows_device).toBeUndefined()
+    })
+  })
+
   describe('User Settings with the get-started guide state', () => {
     test('stores the dismissal and manual steps, and clears them', async () => {
       const user = getTestUser()

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import * as db from '../db/index.ts'
 import { loadMetricCatalog } from './metric-catalog.ts'
+import * as notesSvc from './notes.ts'
 import {
   addReport,
   deleteReportById,
@@ -13,6 +14,8 @@ import {
 } from './reports.ts'
 
 const TX = vi.hoisted(() => ({ tx: true }))
+
+vi.mock('./notes.ts', () => ({ listJournalEntryRefs: vi.fn().mockResolvedValue([]) }))
 
 vi.mock('../db', () => ({
   adoptCatalogMetric: vi.fn((_db: unknown, definition: { unit: string }) => Promise.resolve(definition.unit)),
@@ -169,11 +172,16 @@ describe('getReport', () => {
       report_type: 'inbody',
     })
 
+    const entry = { entity_type: 'day' as const, excerpt: 'Results in', id: 'note-1' }
+    vi.mocked(notesSvc.listJournalEntryRefs).mockResolvedValueOnce([entry])
+
     const result = await getReport('testuser', 'report-1')
 
     expect(result.success).toBe(true)
     expect(result.data!.date).toBe('2025-05-08T09:23:00.000Z')
     expect(result.data!.entries[0].metric).toBe('weight')
+    expect(notesSvc.listJournalEntryRefs).toHaveBeenCalledWith('testuser', 'report', ['report-1'])
+    expect(result.data!.journal_entries).toEqual([entry])
   })
 
   test('returns error when not found', async () => {

@@ -8,8 +8,10 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   fetchActivityById,
   fetchDeletedEntries,
+  fetchMeal,
   fetchNoteTags,
   fetchNoteTemplates,
+  fetchReport,
   type JournalQuery,
   restoreJournalEntry,
   restoreNoteTemplate,
@@ -33,15 +35,17 @@ import {
   tagsFromQuery,
 } from './journal-list'
 import { tagOptions } from './journal-tags'
-import { ActivityOptions, PeopleOptions, RelatedChips, usePeople } from './Related'
+import { RelatedChips, RelatedTabs, usePeople } from './Related'
 import {
   activityLabel,
+  mealLabel,
   type RelatedFilter,
   relatedFilterFromQuery,
   relatedFilterHref,
   relatedFilterLabel,
   relatedFilterLinks,
   type RelatedLink,
+  reportLabel,
 } from './related'
 import { DELETED_TEMPLATES_KEY, TEMPLATES_KEY, TemplateManager, useTemplates } from './Templates'
 
@@ -353,11 +357,23 @@ const RelatedToButton = ({
     queryFn: () => fetchActivityById(related!.id),
     queryKey: ['journal-related-activity', related?.id],
   })
-  const label = relatedFilterLabel(
-    related,
-    people.data?.people ?? [],
-    activity.data ? activityLabel(activity.data.activity) : undefined,
-  )
+  const meal = useQuery({
+    enabled: related?.type === 'meal',
+    queryFn: () => fetchMeal(related!.id),
+    queryKey: ['journal-related-meal', related?.id],
+  })
+  const report = useQuery({
+    enabled: related?.type === 'report',
+    queryFn: () => fetchReport(related!.id),
+    queryKey: ['journal-related-report', related?.id],
+  })
+  const targetLabel = (): string | undefined => {
+    if (related?.type === 'activity' && activity.data) return activityLabel(activity.data.activity)
+    if (related?.type === 'meal' && meal.data) return mealLabel(meal.data)
+    if (related?.type === 'report' && report.data) return reportLabel(report.data)
+    return undefined
+  }
+  const label = relatedFilterLabel(related, people.data?.people ?? [], targetLabel())
   return (
     <span class="journal-related-filter">
       <span>Related to</span>
@@ -373,7 +389,7 @@ const RelatedToButton = ({
   )
 }
 
-/** "Related to": a person, or an activity of any day, picked from People and Activities tabs. */
+/** "Related to": a person, a report, or an activity, meal or check-in of any day, picked from a tab per kind. */
 const RelatedToPicker = ({
   related,
   today,
@@ -383,29 +399,17 @@ const RelatedToPicker = ({
   today: string
   onPick: (related: RelatedFilter) => void
 }) => {
-  const [tab, setTab] = useState<'person' | 'activity'>(related?.type ?? 'person')
   const links = relatedFilterLinks(related, '')
   const take = (link: RelatedLink) => onPick({ id: link.entity_id, type: link.entity_type })
   return (
     <div class="journal-card journal-related-picker" aria-label="Related to">
-      <div class="journal-related-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === 'person'} onClick={() => setTab('person')}>
-          People
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'activity'}
-          onClick={() => setTab('activity')}
-        >
-          Activities
-        </button>
-      </div>
-      {tab === 'person' ? (
-        <PeopleOptions links={links} onAdd={take} allowNew={false} />
-      ) : (
-        <ActivityOptions entryDate={today} links={links} onAdd={take} />
-      )}
+      <RelatedTabs
+        entryDate={today}
+        links={links}
+        onAdd={take}
+        initial={related?.type}
+        allowNewPerson={false}
+      />
     </div>
   )
 }
