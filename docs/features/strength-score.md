@@ -143,7 +143,8 @@ goals, correlations, the Data page, the data export and the MCP metric tools.
 
 - **Unit** `points`, a level (averaged, never summed), higher is better. Source `aurboda`.
 - **One value per local day** in the user's time zone, from the day of the first scored set through
-  today. A past day's value is the score at the end of that day; today's is the score now. The
+  today. A past day's value is the score at the end of that day; today's is the score when it was
+  last recalculated, so a best set that leaves the 90 days during the day shows from the next day. The
   value is stamped at local noon of its day (today, before noon, at the current minute, so no value
   lies in the future). A day on which a group, or the overall score, has no score stores nothing for
   that metric. Without sex or a bodyweight nothing is stored, and values stored earlier are removed.
