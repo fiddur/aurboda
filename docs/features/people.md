@@ -185,8 +185,9 @@ period, `types` and `data_filter`; an unknown or deleted person is a `400` namin
 
 A [deduction rule](deduction-rules.md#adding-people-output_people) can add people too: its
 `output_people` are added to the With field of each activity it creates, enriches or retypes. A rule
-only ever adds people, never removes them, so taking a person off the rule leaves the activities it
-already touched as they are.
+never removes people, so taking a person off the rule leaves the activities it already touched as they
+are. It adds each person to an activity once, so a person taken off by hand stays off, and it adds
+nobody to an activity whose people were set by hand.
 
 ## Journal entries
 
