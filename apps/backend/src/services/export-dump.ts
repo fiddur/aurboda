@@ -41,12 +41,14 @@ export const connectionFromEnv = (env: NodeJS.ProcessEnv = process.env): PgConne
  * reads exactly what the user can; `--no-owner --no-privileges` leave ownership to whoever
  * restores it, so the dump restores under any role name. `spatial_ref_sys` belongs to PostGIS,
  * which fills it on `CREATE EXTENSION`; its rows in a dump would only fail to restore as the user.
+ * `upload_urls` holds short-lived upload credentials, which have no place in an export.
  */
 export const pgDumpArgs = (user: string, conn: PgConnection): string[] => [
   '--format=plain',
   '--no-owner',
   '--no-privileges',
   '--exclude-table-data=public.spatial_ref_sys',
+  '--exclude-table-data=public.upload_urls',
   `--role=${user}`,
   `--dbname=${userDbName(user)}`,
   ...(conn.host ? [`--host=${conn.host}`] : []),

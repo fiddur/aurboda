@@ -2,12 +2,12 @@
 import type { RequestHandler } from 'express'
 
 import { singleUpload } from '../api/upload.ts'
-import { deleteProfileAvatar, upsertProfileAvatar } from '../db/index.ts'
-import { isAllowedImageType, processAvatar } from '../services/avatar.ts'
-import { buildProfileUrl } from '../services/share-urls.ts'
+import { deleteProfileAvatar } from '../db/index.ts'
+import { isAllowedImageType } from '../services/avatar.ts'
+import { PROFILE_AVATAR_MAX_BYTES, setProfileAvatar } from '../services/profile-avatar.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 
-const upload = singleUpload({ field: 'avatar', fields: 2, fileSize: 10 * 1024 * 1024 })
+const upload = singleUpload({ field: 'avatar', fields: 2, fileSize: PROFILE_AVATAR_MAX_BYTES })
 
 export const createProfileRouter = (
   authMiddleware: RequestHandler,
@@ -40,17 +40,13 @@ export const createProfileRouter = (
         return
       }
 
-      let processed
-      try {
-        processed = await processAvatar(file.buffer)
-      } catch {
+      const result = await setProfileAvatar(user, file.buffer, webHost)
+      if (!result.ok) {
         res.status(400).json({ error: 'Could not process image', success: false })
         return
       }
-
-      await upsertProfileAvatar(user, processed.content_type, processed.data)
       onAvatarChanged?.(user)
-      res.json({ success: true, url: `${buildProfileUrl(webHost, user)}/avatar.png` })
+      res.json({ success: true, url: result.url })
     },
   )
 

@@ -14,6 +14,7 @@ import { singleUpload } from '../api/upload.ts'
 import { deleteFeedImage, listFeedImages } from '../db/index.ts'
 import { isAllowedImageType } from '../services/avatar.ts'
 import {
+  ADD_FEED_IMAGE_FAILURE_STATUS,
   addFeedImage,
   addFeedImageFailureMessage,
   type AddFeedImageResult,
@@ -44,8 +45,6 @@ const imageUpload = singleUpload({
   tooLargeMessage: PICTURE_TOO_LARGE_MESSAGE,
 })
 
-const FAILURE_STATUS = { limit: 409, unsupported: 415 } as const
-
 export const createFeedImagesRouter = (
   authMiddleware: RequestHandler,
   apiBaseUrl: string,
@@ -67,7 +66,7 @@ export const createFeedImagesRouter = (
       const result = await deps.addFeedImage(user, file.buffer)
       if (!result.ok) {
         return res
-          .status(FAILURE_STATUS[result.reason])
+          .status(ADD_FEED_IMAGE_FAILURE_STATUS[result.reason])
           .json({ error: addFeedImageFailureMessage(result.reason), success: false })
       }
       res.status(201).json({ image: serializeFeedImage(apiBaseUrl, user, result.image), success: true })

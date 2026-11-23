@@ -76,3 +76,5 @@ export const addFeedImage = async (
 
 export const addFeedImageFailureMessage = (reason: 'limit' | 'unsupported'): string =>
   reason === 'limit' ? PICTURE_LIMIT_MESSAGE : UNSUPPORTED_PICTURE_MESSAGE
+
+export const ADD_FEED_IMAGE_FAILURE_STATUS = { limit: 409, unsupported: 415 } as const

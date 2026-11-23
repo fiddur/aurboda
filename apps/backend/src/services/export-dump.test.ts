@@ -84,6 +84,7 @@ describe('pgDumpArgs', () => {
       '--no-owner',
       '--no-privileges',
       '--exclude-table-data=public.spatial_ref_sys',
+      '--exclude-table-data=public.upload_urls',
       '--role=alice',
       '--dbname=aurboda_alice',
       '--host=db',
@@ -98,6 +99,7 @@ describe('pgDumpArgs', () => {
       '--no-owner',
       '--no-privileges',
       '--exclude-table-data=public.spatial_ref_sys',
+      '--exclude-table-data=public.upload_urls',
       '--role=alice',
       '--dbname=aurboda_alice',
     ])

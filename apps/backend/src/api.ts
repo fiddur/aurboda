@@ -45,6 +45,7 @@ import {
   insertLocations,
   insertPlace,
   findActivityByExternalId,
+  findLiveUploadUrl,
   insertRawRecord,
   insertTimeSeries,
   listChallengesAwaitingResult,
@@ -72,6 +73,7 @@ import {
   setTimelineEntryReplyInfo,
   setTimelineEntryStructured,
   softDeleteSupersededLocations,
+  spendUploadUrl,
   updateDetectedLocation,
   upsertActivityTrack,
   upsertSyncState,
@@ -110,6 +112,7 @@ import {
 } from './routes/challenge-thread-federation-router.ts'
 import { createFeedTombstoneRouter } from './routes/feed-tombstone-router.ts'
 import { createOAuthRouter } from './routes/oauth-router.ts'
+import { createUploadRouter } from './routes/uploads-router.ts'
 import { createAccountDeleter } from './services/account-deletion.ts'
 import { startVerification } from './services/account-email.ts'
 import { createAccountGate, gateSyncProvider, safeIsReadOnly, safeRefusal } from './services/account-gate.ts'
@@ -295,6 +298,7 @@ import {
   type TrackAnalyseQueue,
   type TrackBackfillQueue,
 } from './services/track-queues.ts'
+import { defaultUploadHandlers, runUpload } from './services/upload-urls.ts'
 import {
   createUsageRecorder,
   installUsageRecorder,
@@ -1405,6 +1409,21 @@ const main = async () => {
   httpd.use(
     createActorHtmlRouter({
       origin: webHost,
+      userExists: async (username) => (await listUserNames(userDb)).includes(username),
+    }),
+  )
+
+  // Upload URLs take the raw bytes with any content type, so the global JSON parser must not get
+  // to a body sent as `application/json` first.
+  const uploadHandlers = defaultUploadHandlers(webHost)
+  httpd.use(
+    '/uploads',
+    createUploadRouter({
+      findLive: findLiveUploadUrl,
+      isDeletedUser,
+      run: (user, url, buffer) =>
+        runUpload(user, url, buffer, { apiBaseUrl, handlers: uploadHandlers, onProfileChanged, webHost }),
+      spend: spendUploadUrl,
       userExists: async (username) => (await listUserNames(userDb)).includes(username),
     }),
   )
