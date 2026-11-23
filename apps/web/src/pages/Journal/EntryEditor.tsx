@@ -454,7 +454,7 @@ const EditorTools = ({
       <input
         type="file"
         class="md-editor-visually-hidden"
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif"
         multiple
         onChange={(e) => {
           const input = e.currentTarget

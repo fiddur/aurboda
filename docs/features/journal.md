@@ -237,6 +237,17 @@ page order, each with `id`, `kind` (`image` or `audio`), `mime`, `size`,
   removes it from pictures added from then on; pictures already stored stay as
   they are. The downscaled previews (`?max_edge=`) and the copy an assistant gets
   carry no metadata either way.
+- **A HEIC picture** (an iPhone photo; HEVC-coded HEIF, recognised by the brands
+  its `ftyp` box names) is taken too. The bundled libvips cannot decode HEVC, so
+  the server decodes it in-process with `heic-decode` (libheif compiled to
+  WebAssembly), turned and mirrored as the file says, and then treats it like any
+  other picture: fitted inside 3000 px and stored as WebP. The decoder hands over
+  pixels only, so a HEIC picture keeps **no metadata** -- no time, camera or GPS
+  position -- whatever `journal_strip_metadata` says. A HEIC with more pixels
+  than any upload may have (16383 × 16383) is refused before it is decoded, and
+  one that does not decode is a `400` like any other unreadable file. Avatars,
+  feed pictures and challenge banners still refuse HEIC. An AVIF is not a HEIC
+  and is refused, as before.
 - **A recording** is stored exactly as recorded, as WebM, Ogg, MP4/M4A, MP3 or WAV
   -- the type its first bytes say, not the client's -- with whatever metadata the
   recorder wrote into the file (a phone's voice memo can carry where it was made),
