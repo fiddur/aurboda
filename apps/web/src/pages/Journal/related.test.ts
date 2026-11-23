@@ -23,6 +23,8 @@ import {
   refusedLinkKeys,
   relatedFilterFromQuery,
   relatedFilterHref,
+  relatedFilterLabel,
+  relatedFilterLinks,
   relatedHref,
   removeLink,
   sameLinks,
@@ -235,5 +237,34 @@ describe('Enter and Tab in the @ menu', () => {
     expect(highlighted([fresh], 0, false)).toBe(-1)
     expect(highlighted([fresh], 0, true)).toBe(0)
     expect(highlighted([person, fresh], 0, false)).toBe(0)
+  })
+})
+
+describe('relatedFilterLabel', () => {
+  const id = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
+  const people = [{ id, name: 'Anna' }]
+
+  test('Anyone without a filter', () => {
+    expect(relatedFilterLabel(undefined, people, undefined)).toBe('Anyone')
+  })
+
+  test("a person's name, or Someone while it is unknown", () => {
+    expect(relatedFilterLabel({ id, type: 'person' }, people, undefined)).toBe('Anna')
+    expect(relatedFilterLabel({ id, type: 'person' }, [], undefined)).toBe('Someone')
+  })
+
+  test("an activity's label once loaded", () => {
+    expect(relatedFilterLabel({ id, type: 'activity' }, people, 'Walk, 2026-11-20')).toBe('Walk, 2026-11-20')
+    expect(relatedFilterLabel({ id, type: 'activity' }, people, undefined)).toBe('This activity')
+  })
+})
+
+describe('relatedFilterLinks', () => {
+  test('the filter as one link, none without one', () => {
+    const id = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
+    expect(relatedFilterLinks({ id, type: 'person' }, 'Anna')).toEqual([
+      { entity_id: id, entity_type: 'person', label: 'Anna' },
+    ])
+    expect(relatedFilterLinks(undefined, 'Anyone')).toEqual([])
   })
 })

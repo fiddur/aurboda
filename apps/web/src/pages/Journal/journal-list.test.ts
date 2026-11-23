@@ -14,6 +14,7 @@ import {
   isUnfiltered,
   type JournalFilters,
   journalQueryFor,
+  tagsFromQuery,
 } from './journal-list'
 
 const local = (y: number, m: number, d: number, h = 12, min = 0) =>
@@ -134,5 +135,19 @@ describe('journalQueryFor', () => {
       related,
     })
     expect(isUnfiltered({ ...filters, related }, '')).toBe(false)
+  })
+})
+
+describe('tagsFromQuery', () => {
+  test('the ?tag= the list opens with, as stored', () => {
+    expect(tagsFromQuery({ tag: '#Running' })).toEqual(['running'])
+    expect(tagsFromQuery({ tag: 'löpning' })).toEqual(['löpning'])
+  })
+
+  test('none without one, or for one that is not a tag', () => {
+    expect(tagsFromQuery({})).toEqual([])
+    expect(tagsFromQuery({ tag: '' })).toEqual([])
+    expect(tagsFromQuery({ tag: '123' })).toEqual([])
+    expect(tagsFromQuery({ person: 'x' })).toEqual([])
   })
 })

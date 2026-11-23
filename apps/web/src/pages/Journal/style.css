@@ -978,3 +978,48 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.journal-tags-page h1 {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 1.7rem;
+}
+
+.journal-tag-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.journal-tag-list > li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.journal-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.journal-tag-row .journal-chip {
+  text-decoration: none;
+}
+
+.journal-tag-merge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.journal-tag-merge input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.journal-tag-merge p {
+  flex-basis: 100%;
+  margin: 0;
+}

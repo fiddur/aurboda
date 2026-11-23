@@ -243,6 +243,21 @@ export const relatedFilterFromQuery = (
 export const relatedFilterHref = (filter: RelatedFilter): string =>
   `/journal?${filter.type}=${encodeURIComponent(filter.id)}`
 
+/** What the "Related to" button shows: Anyone, the person's name, or the activity's label once loaded. */
+export const relatedFilterLabel = (
+  filter: RelatedFilter | undefined,
+  people: readonly Pick<Person, 'id' | 'name'>[],
+  activity: string | undefined,
+): string => {
+  if (!filter) return 'Anyone'
+  if (filter.type === 'activity') return activity ?? 'This activity'
+  return people.find((person) => person.id === filter.id)?.name ?? 'Someone'
+}
+
+/** The filter as the single link the picker leaves out of its options. */
+export const relatedFilterLinks = (filter: RelatedFilter | undefined, label: string): RelatedLink[] =>
+  filter ? [{ entity_id: filter.id, entity_type: filter.type, label }] : []
+
 /** A related entry's heading: its title, else its date ("Fri 20 Nov 2026"). */
 export const journalRefHeading = (ref: Pick<JournalEntryRef, 'title' | 'date' | 'start_time'>): string => {
   if (ref.title?.trim()) return ref.title.trim()
