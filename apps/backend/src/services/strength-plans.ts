@@ -68,7 +68,6 @@ export const unknownExerciseKey = (
 
 export type PlanSetEntry = (set: StrengthPlanSet) => StoredExerciseCatalogEntry | undefined
 
-/** A set's catalogue entry: by its `exercise_key`, else by its name through the user's resolver. */
 export const planSetEntry =
   (catalog: StoredExerciseCatalog, byName: ExerciseEntryResolver | undefined): PlanSetEntry =>
   (set) =>

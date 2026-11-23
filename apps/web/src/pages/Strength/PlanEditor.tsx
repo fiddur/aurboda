@@ -46,7 +46,6 @@ const PlanSessions = ({ sessions }: { sessions: StrengthPlan['sessions'] }) =>
 
 interface SourceSession {
   blocks: ExerciseBlock[]
-  /** The session to tie to the new plan; absent when its data cannot be changed safely or it has a plan. */
   link_id?: string
 }
 

@@ -345,6 +345,12 @@ describe('readinessLine', () => {
     expect(readinessLine(['chest'], undefined, now)).toBeUndefined()
   })
 
+  it('leaves out a group the recovery does not know', () => {
+    const r = recovery([group('chest', 100)])
+    expect(readinessLine(['chest', 'triceps'], r, now)).toBe('Chest is ready')
+    expect(readinessLine(['triceps'], r, now)).toBeUndefined()
+  })
+
   it('says every group is ready', () => {
     const r = recovery([
       group('chest', 100),

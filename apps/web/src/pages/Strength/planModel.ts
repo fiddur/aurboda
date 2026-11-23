@@ -121,7 +121,6 @@ export const lastDoneLabel = (sessions: StrengthPlan['sessions'], now: Date): st
   return `Last done ${format(newest, isSameYear(newest, now) ? 'EEE d MMM' : 'EEE d MMM yyyy')}`
 }
 
-/** The saved workout (a plan without a day) a session was started from, while it is still open. */
 export const savedAsPlan = <T extends Pick<StrengthPlan, 'id' | 'planned_for'>>(
   planId: string | undefined,
   plans: T[],

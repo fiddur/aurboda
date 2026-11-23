@@ -29,7 +29,6 @@ export const exerciseMuscleGroupSchema = z.enum(exerciseMuscleGroups).meta({
 
 export type ExerciseMuscleGroup = z.infer<typeof exerciseMuscleGroupSchema>
 
-/** The weight from which a catalogue exercise counts as mainly working a muscle (its primary muscles). */
 export const EXERCISE_PRIMARY_MUSCLE_WEIGHT = 0.75
 
 /** The display name of the muscle group of exercises that resolve to no catalogue entry. */
