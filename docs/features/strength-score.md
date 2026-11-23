@@ -76,16 +76,21 @@ the history has no points; each lift's best set (by e1RM) is still given, withou
 
 - **The score page** (`/activity-type/<type>/strength-score/<item path>`, for strength training
   `/activity-type/strength_training/strength-score/sets.exercise`): the overall score with its
-  change over the last 30 days, the score over time (overall or one muscle group, over 90 days, a
-  year or three years) and, per group, the lifts done in the last 90 days with the set each is
+  change over the last 30 days, the score over time (overall, one muscle group, or all groups with
+  history as one line each, over 90 days, a year or three years) and, per group, the lifts done in the last 90 days with the set each is
   scored on, its estimated one-rep max, the weight that would score 100 points and whether it
   counts toward the group. A lift whose best set leaves the 90 days within two weeks says so. The
   reference lifts not done are listed under each group. Without sex or a bodyweight the page says
   what to add and still lists the best sets. Beside the score cards, a **Strongest and weakest**
   card names the highest and lowest scored groups (`Triceps 128 · Quadriceps 93`) once at least
   two groups have a score and they differ.
-- **Strength page, Progress tab** (`/strength/progress`): the score page's content for strength
-  training, under the Strength page's tabs, without the per-group lists of lifts.
+- **Strength page, Progress tab** (`/strength/progress`): the score cards and chart for strength
+  training, without the per-group lists of lifts, then what moved in 30 days and the lifts about
+  to leave the 90 days (see [the Progress tab](strength-logging.md#the-progress-tab)). Its score
+  chart has the ⋮ menu for overall or one group, pointing at the [stored
+  metrics](#stored-as-daily-metrics) (`strength_score`, `strength_score_<group>`): open in the
+  Chart Explorer (a daily trend of the mean with the shortest half-life, 7 days), add to a
+  dashboard as a trend chart or a sparkline card, or set a goal. "All muscle groups" has no menu.
 - **Strength page, Muscles tab** (`/strength`): the overall score as a card linking to Progress,
   and per muscle group row its score group's points and 30-day change; an opened row lists that
   group's lifts as the score page does.

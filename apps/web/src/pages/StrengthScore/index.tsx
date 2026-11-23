@@ -1,4 +1,5 @@
 import type { StrengthScore as Score, StrengthScoreGroup, StrengthScoreMissing } from '@aurboda/api-spec'
+import type { ComponentChildren } from 'preact'
 
 import { useQuery } from '@tanstack/react-query'
 import { useRoute } from 'preact-iso'
@@ -48,7 +49,7 @@ export const MissingNotice = ({ missing }: { missing: StrengthScoreMissing[] }) 
   )
 }
 
-const ScoreCards = ({ field, name, score }: { field: string; name: string; score: Score }) => {
+export const ScoreCards = ({ field, name, score }: { field: string; name: string; score: Score }) => {
   const history = useStrengthScoreHistory(name, field, STRENGTH_SCORE_PERIODS[0].value)
   const change = scoreChange(history.data, CHANGE_DAYS)
   const extremes = strongestAndWeakest(score)
@@ -79,49 +80,43 @@ const ScoreCards = ({ field, name, score }: { field: string; name: string; score
   )
 }
 
-const Body = ({
-  field,
-  name,
-  score,
-  withoutGroups,
-}: {
-  field: string
-  name: string
-  score: Score
-  withoutGroups: boolean
-}) => {
-  const groupNames: Partial<Record<StrengthScoreGroup, string>> = Object.fromEntries(
-    score.groups.map((g) => [g.group, g.name]),
-  )
-  return (
-    <>
-      <MissingNotice missing={score.missing} />
-      {score.missing.length === 0 && (
-        <>
-          <ScoreCards field={field} name={name} score={score} />
-          <ScoreHistory field={field} groupNames={groupNames} name={name} />
-        </>
-      )}
-      {!withoutGroups &&
-        score.groups.map((g) => <GroupSection key={g.group} field={field} group={g} name={name} />)}
-      <p class="activity-type-item-caption">
-        {CAPTION}{' '}
-        <a href={`/activity-type/${encodeURIComponent(name)}#${unmappedSectionId(field)}`}>
-          see the unmatched ones
-        </a>
-      </p>
-    </>
-  )
-}
+export const ScoreCaption = ({ field, name }: { field: string; name: string }) => (
+  <p class="activity-type-item-caption">
+    {CAPTION}{' '}
+    <a href={`/activity-type/${encodeURIComponent(name)}#${unmappedSectionId(field)}`}>
+      see the unmatched ones
+    </a>
+  </p>
+)
 
-export function StrengthScoreContent({
+export const scoreGroupNames = (score: Score): Partial<Record<StrengthScoreGroup, string>> =>
+  Object.fromEntries(score.groups.map((g) => [g.group, g.name]))
+
+const Body = ({ field, name, score }: { field: string; name: string; score: Score }) => (
+  <>
+    <MissingNotice missing={score.missing} />
+    {score.missing.length === 0 && (
+      <>
+        <ScoreCards field={field} name={name} score={score} />
+        <ScoreHistory field={field} groupNames={scoreGroupNames(score)} name={name} />
+      </>
+    )}
+    {score.groups.map((g) => (
+      <GroupSection key={g.group} field={field} group={g} name={name} />
+    ))}
+    <ScoreCaption field={field} name={name} />
+  </>
+)
+
+/** The loading and retry states of the score, and `children` with it once loaded. */
+export function StrengthScoreLoader({
+  children,
   field,
   name,
-  withoutGroups = false,
 }: {
+  children: (score: Score) => ComponentChildren
   field: string
   name: string
-  withoutGroups?: boolean
 }) {
   const query = useStrengthScore(name, field)
   return (
@@ -140,7 +135,7 @@ export function StrengthScoreContent({
           </button>
         </p>
       )}
-      {query.data && <Body field={field} name={name} score={query.data} withoutGroups={withoutGroups} />}
+      {query.data && children(query.data)}
     </>
   )
 }
@@ -167,7 +162,9 @@ export function StrengthScore() {
         <h1>Strength score</h1>
         <p class="activity-type-item-subtitle">{typeName} · best lifts of the last 90 days</p>
       </header>
-      <StrengthScoreContent field={field} name={name} />
+      <StrengthScoreLoader field={field} name={name}>
+        {(score) => <Body field={field} name={name} score={score} />}
+      </StrengthScoreLoader>
     </div>
   )
 }

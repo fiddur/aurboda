@@ -13,7 +13,7 @@ The Strength page has four tabs, each at its own address, under the heading **St
 | --------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
 | Muscles   | `/strength`           | The score card, a status line and one list of every muscle group: recovery, sets and score (see below) |
 | Workouts  | `/strength/workouts`  | Start: an unfinished session, planned and saved workouts, a session without a plan, recent sessions    |
-| Progress  | `/strength/progress`  | The [strength score](strength-score.md) of `sets.exercise`: cards and the score over time              |
+| Progress  | `/strength/progress`  | The [strength score](strength-score.md) over time, what moved, lifts about to leave, sets per week     |
 | Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time         |
 
 The tabs are plain links, so each can be bookmarked and the back button steps between them; on a
@@ -47,6 +47,28 @@ and plan pages below have no tab bar.
   muscle group page and the Exercises tab.
 - A line under the list counts the sets of exercises not matched to the catalogue, with a link to
   match them.
+
+### The Progress tab
+
+Top to bottom, under the line "Best lifts of the last 90 days":
+
+- **The score cards**: the [strength score](strength-score.md), its change over 30 days and the
+  strongest and weakest group. Without sex or a bodyweight, the notice saying what to add instead,
+  and nothing below but the sets chart.
+- **Score over time**: overall, one muscle group, or "All muscle groups" (one line per group, with
+  a legend), over 90 days, a year or three years. For overall or one group its ⋮ menu opens the
+  stored score metric in the Chart Explorer, adds it to a dashboard as a chart or a sparkline card,
+  or sets a goal on it.
+- **What moved in 30 days**: the groups whose score differs from 30 days ago, first or lost scores
+  first, then the largest change: "91 → 110 +19" with the reason, a new best lift of the last 30
+  days ("New best: Bench press, 80 kg × 5 on" and the day, linking to the session), a better lift
+  that left the 90 days (and the best one now), or every lift having left. A closing line names
+  the unchanged groups and those with no score yet.
+- **Leaving the 90 days soon**: the counted lifts whose best set leaves the 90 days within 30 days,
+  soonest first, with their points, groups, set and "leaves in N days".
+- **Sets per week**: the weekly sets per muscle group as stacked bars, as on the type page, with
+  its period and ⋮ menu.
+- The explanation of the score, with a link to the exercises not matched to the catalogue.
 
 ### The Workouts tab
 

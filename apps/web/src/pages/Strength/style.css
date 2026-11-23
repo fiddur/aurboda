@@ -891,3 +891,42 @@ button.strength-set-row:hover {
     gap: 16px;
   }
 }
+
+.strength-progress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.strength-progress-item {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.strength-progress-item p {
+  margin: 0.125rem 0 0;
+}
+
+.strength-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  min-width: 0;
+}
+
+.strength-progress-row > a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.strength-progress-change {
+  margin-left: 0.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.strength-progress-closing {
+  margin: 0.75rem 0 0;
+}

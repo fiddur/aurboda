@@ -6,12 +6,16 @@ import {
   type StrengthScoreGroupResult,
   strengthScoreGroups,
   type StrengthScoreHistory,
+  type StrengthScoreHistoryPoint,
   type StrengthScoreLift,
   type StrengthScoreMissing,
   type StrengthScoreSet,
 } from '@aurboda/api-spec'
 import { differenceInCalendarDays, endOfDay, startOfDay, subDays } from 'date-fns'
 
+import type { LineSeriesData } from '../../components/charts/TrendLineChart'
+
+import { SERIES_COLORS } from '../../components/charts/breakdown'
 import { formatDay } from '../../components/RecordCard'
 import { formatMeasure } from '../../utils/measures'
 
@@ -43,6 +47,10 @@ export const strengthScorePeriod = (days: number, now: Date): StrengthScorePerio
 
 export type ScoreSeriesKey = StrengthScoreGroup | 'overall'
 
+export const ALL_GROUPS = 'all'
+
+export type ScoreSeriesChoice = ScoreSeriesKey | typeof ALL_GROUPS
+
 const pointValue = (point: StrengthScoreHistory['points'][number], key: ScoreSeriesKey) =>
   key === 'overall' ? point.score : point.groups[key]
 
@@ -55,18 +63,28 @@ export const scoreSeries = (
     return value === null || value === undefined ? [] : [{ date: p.at, value }]
   })
 
+/** The latest point at least `days` before the last one. */
+export const pointBefore = (
+  history: StrengthScoreHistory | null | undefined,
+  days: number,
+): StrengthScoreHistoryPoint | undefined => {
+  const points = history?.points ?? []
+  const last = points.at(-1)
+  if (!last) return undefined
+  const cutoff = new Date(last.at).getTime() - days * DAY_MS
+  return points.findLast((p) => new Date(p.at).getTime() <= cutoff)
+}
+
 /** The last point's score of `key` against that of the latest point at least `days` before it. */
 export const scoreChange = (
   history: StrengthScoreHistory | null | undefined,
   days: number,
   key: ScoreSeriesKey = 'overall',
 ): number | undefined => {
-  const points = history?.points ?? []
-  const last = points.at(-1)
+  const last = history?.points.at(-1)
   const lastValue = last ? pointValue(last, key) : undefined
   if (!last || lastValue === null || lastValue === undefined) return undefined
-  const cutoff = new Date(last.at).getTime() - days * DAY_MS
-  const before = points.findLast((p) => new Date(p.at).getTime() <= cutoff)
+  const before = pointBefore(history, days)
   const beforeValue = before ? pointValue(before, key) : undefined
   if (beforeValue === null || beforeValue === undefined) return undefined
   return lastValue - beforeValue
@@ -82,9 +100,20 @@ export const groupsWithHistory = (history: StrengthScoreHistory | null | undefin
     (g) => (history?.points ?? []).filter((p) => p.groups[g] !== undefined).length >= 2,
   )
 
+/** One line per group with history, each group keeping its colour whichever others are shown. */
+export const allGroupsSeries = (
+  history: StrengthScoreHistory | null | undefined,
+  groupNames: Partial<Record<StrengthScoreGroup, string>>,
+): LineSeriesData[] =>
+  groupsWithHistory(history).map((g) => ({
+    color: SERIES_COLORS[strengthScoreGroups.indexOf(g) % SERIES_COLORS.length],
+    data: scoreSeries(history, g),
+    name: groupNames[g] ?? g,
+  }))
+
 export type LiftNote = 'counted' | 'expiring' | 'not_counted'
 
-const daysLeft = (lift: StrengthScoreLift, now: Date): number | undefined =>
+export const daysLeft = (lift: StrengthScoreLift, now: Date): number | undefined =>
   lift.expires_at === undefined
     ? undefined
     : Math.max(differenceInCalendarDays(new Date(lift.expires_at), now), 0)
@@ -96,7 +125,7 @@ export const liftNote = (lift: StrengthScoreLift, now: Date): LiftNote | undefin
   return left !== undefined && left <= EXPIRING_DAYS ? 'expiring' : 'counted'
 }
 
-const leavesIn = (days: number): string => {
+export const leavesIn = (days: number): string => {
   if (days === 0) return 'today'
   return days === 1 ? 'tomorrow' : `in ${days} days`
 }
