@@ -1,9 +1,10 @@
 /**
  * Pictures and recordings on journal entries. A picture is re-encoded on the way in (upright, at
  * most NOTE_IMAGE_MAX_EDGE px, WebP), keeping its metadata unless the owner's
- * `journal_strip_metadata` setting says to remove it; a recording is kept as it was recorded, once
- * its first bytes say it is one of the accepted containers. Attachments are only ever reached
- * through their live entry, so deleting, restoring or purging the entry needs nothing here.
+ * `journal_strip_metadata` setting says to remove it (a HEIC has none left once decoded); a
+ * recording is kept as it was recorded, once its first bytes say it is one of the accepted
+ * containers. Attachments are only ever reached through their live entry, so deleting, restoring
+ * or purging the entry needs nothing here.
  */
 import {
   DELETED_NOTE_RETENTION_DAYS,
@@ -16,6 +17,8 @@ import {
   type NoteAttachment,
   type NoteAudioMime,
 } from '@aurboda/api-spec'
+import heicDecode, { type DecodedHeicImage, type HeicImages } from 'heic-decode'
+import sharp, { type Sharp } from 'sharp'
 
 import {
   getDeletedNoteAttachments,
@@ -36,7 +39,7 @@ import {
   softDeleteNoteAttachment,
 } from '../db/index.ts'
 import { UUID_RE } from '../utils.ts'
-import { assertAllowedFormat, uploadedImage } from './avatar.ts'
+import { assertAllowedFormat, MAX_UPLOAD_PIXELS, uploadedImage } from './avatar.ts'
 import { createRenderCache } from './render-cache.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -111,22 +114,78 @@ export const sniffAudioMime = (buffer: Buffer): NoteAudioMime | null => {
   return null
 }
 
+/**
+ * HEVC-coded HEIF brands. `mif1`/`msf1` alone do not count: AVIF names them too, and an AVIF also
+ * names `avif`, never one of these.
+ */
+const HEVC_FTYP_BRANDS = new Set(['heic', 'heim', 'heis', 'heix', 'hevc', 'hevm', 'hevs', 'hevx'])
+
+/** Whether the `ftyp` box's major or a compatible brand says HEVC-coded HEIF, which sharp cannot decode. */
+export const isHeic = (buffer: Buffer): boolean => {
+  if (buffer.length < 12 || ascii(buffer, 4, 8) !== 'ftyp') return false
+  if (HEVC_FTYP_BRANDS.has(ascii(buffer, 8, 12))) return true
+  const end = Math.min(buffer.readUInt32BE(0), buffer.length)
+  for (let at = 16; at + 4 <= end; at += 4) {
+    if (HEVC_FTYP_BRANDS.has(ascii(buffer, at, at + 4))) return true
+  }
+  return false
+}
+
+export type DecodeHeicImages = (input: { buffer: Uint8Array }) => Promise<HeicImages>
+
+/**
+ * The first top-level picture of a HEIC file as RGBA, already turned and mirrored as the file says.
+ * Its size is checked before any pixel is decoded, against the same ceiling as every other upload.
+ */
+export const decodeHeic = async (
+  buffer: Buffer,
+  decodeAll: DecodeHeicImages = heicDecode.all,
+): Promise<DecodedHeicImage> => {
+  const images = await decodeAll({ buffer })
+  try {
+    const [primary] = images
+    if (!primary) throw new Error('HEIC file has no picture')
+    if (primary.width * primary.height > MAX_UPLOAD_PIXELS) {
+      throw new Error(`HEIC picture too large: ${primary.width}x${primary.height}`)
+    }
+    return await primary.decode()
+  } finally {
+    images.dispose()
+  }
+}
+
+/**
+ * The picture to re-encode, upright. A HEIC goes through the WASM decoder, since the bundled libvips
+ * has no HEVC; it carries no EXIF once decoded, so nothing of it is kept. Anything else must be a
+ * PNG, JPEG, WebP or GIF, and `.rotate()` applies its EXIF orientation and resets the tag to 1, so
+ * a viewer does not turn the kept picture a second time.
+ */
+const uprightPicture = async (buffer: Buffer): Promise<Sharp> => {
+  if (!isHeic(buffer)) {
+    await assertAllowedFormat(buffer)
+    return uploadedImage(buffer).rotate()
+  }
+  const { data, height, width } = await decodeHeic(buffer)
+  return sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
+    limitInputPixels: MAX_UPLOAD_PIXELS,
+    raw: { channels: 4, height, width },
+  })
+}
+
 export interface NoteImageOptions {
   /** Drop the EXIF (time, camera, GPS position), ICC and XMP metadata instead of keeping it. */
   stripMetadata: boolean
 }
 
 /**
- * Throws when the bytes are not a PNG, JPEG, WebP or GIF, whatever the client claimed. `.rotate()`
- * applies the EXIF orientation and resets the tag to 1, so a viewer does not turn the kept picture
- * a second time; sharp writes no metadata unless asked to, so stripping is leaving it out.
+ * Throws when the bytes are not a PNG, JPEG, WebP, GIF or HEIC, whatever the client claimed. sharp
+ * writes no metadata unless asked to, so stripping is leaving it out.
  */
 export const processNoteImage = async (
   buffer: Buffer,
   { stripMetadata }: NoteImageOptions = { stripMetadata: false },
 ): Promise<NewNoteAttachment> => {
-  await assertAllowedFormat(buffer)
-  const upright = uploadedImage(buffer).rotate()
+  const upright = await uprightPicture(buffer)
   const { data, info } = await (stripMetadata ? upright : upright.keepMetadata())
     .resize({
       fit: 'inside',

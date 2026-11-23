@@ -74,15 +74,34 @@ const maxOf = (values: number[]): number | undefined => (values.length > 0 ? Mat
 const withoutAbsent = (m: Partial<Record<ActivityMeasure, number | undefined>>): ActivityMeasures =>
   Object.fromEntries(Object.entries(m).filter(([, v]) => v !== undefined)) as ActivityMeasures
 
-export const measureItems = (items: Item[]): ActivityMeasures => {
-  const working = items.filter(isWorkingItem)
-  if (working.length === 0) return {}
-  const loaded = working.flatMap((item) => {
+export interface WeightedSet {
+  weight: number
+  reps: number
+}
+
+const loadedSets = (working: Item[]): WeightedSet[] =>
+  working.flatMap((item) => {
     const weight = positive(item.weight)
     const reps = positive(item.reps)
     return weight !== undefined && reps !== undefined ? [{ reps, weight }] : []
   })
-  const e1rm = maxOf(loaded.map(({ reps, weight }) => weight * (1 + reps / 30)))
+
+const epleyOf = ({ reps, weight }: WeightedSet): number => weight * (1 + reps / 30)
+
+/** The working set `measureItems`' e1rm comes from, the first of equals. */
+export const bestE1rmSet = (items: Item[]): WeightedSet | undefined => {
+  let best: WeightedSet | undefined
+  for (const set of loadedSets(items.filter(isWorkingItem))) {
+    if (best === undefined || epleyOf(set) > epleyOf(best)) best = set
+  }
+  return best
+}
+
+export const measureItems = (items: Item[]): ActivityMeasures => {
+  const working = items.filter(isWorkingItem)
+  if (working.length === 0) return {}
+  const loaded = loadedSets(working)
+  const e1rm = maxOf(loaded.map(epleyOf))
   const repCounts = working.flatMap((item) => positive(item.reps) ?? [])
   return withoutAbsent({
     e1rm: e1rm === undefined ? undefined : round1(e1rm),
@@ -93,25 +112,6 @@ export const measureItems = (items: Item[]): ActivityMeasures => {
     total_reps: repCounts.length > 0 ? repCounts.reduce((sum, r) => sum + r, 0) : undefined,
     volume: loaded.length > 0 ? loaded.reduce((sum, { reps, weight }) => sum + weight * reps, 0) : undefined,
   })
-}
-
-export interface BestSet {
-  weight: number
-  reps: number
-}
-
-/** The heaviest working set with a weight and reps, ties on weight going to more reps. */
-export const bestSet = (items: Item[]): BestSet | undefined => {
-  let best: BestSet | undefined
-  for (const item of items.filter(isWorkingItem)) {
-    const weight = positive(item.weight)
-    const reps = positive(item.reps)
-    if (weight === undefined || reps === undefined) continue
-    if (best === undefined || weight > best.weight || (weight === best.weight && reps > best.reps)) {
-      best = { reps, weight }
-    }
-  }
-  return best
 }
 
 export const combineMeasures = (list: ActivityMeasures[]): ActivityMeasures => {

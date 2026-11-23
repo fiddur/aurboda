@@ -16,7 +16,7 @@ import type { ItemGroupSortKey } from '../ActivityTypeMeta/itemGroups'
 
 import { fieldLabel, type ListFieldDefinition } from '../../components/sessions/sessionView'
 import { fetchActivitySessions } from '../../state/api'
-import { formatMeasure } from '../../utils/measures'
+import { formatBestSet, formatMeasure } from '../../utils/measures'
 import { ItemValueAliases } from '../ActivityTypeMeta/ItemGroupsSection'
 import { unmappedSectionId } from '../ActivityTypeMeta/UnmappedItemValuesSection'
 import { useStrengthScore } from '../StrengthScore/queries'
@@ -26,7 +26,6 @@ import {
   exercisePoints,
   exerciseSummaryLine,
   filterExercises,
-  formatBestSet,
   liftsNotDone,
   muscleGroupOptions,
   muscleSearch,
@@ -121,7 +120,7 @@ const ExerciseTable = ({
           <th scope="col" class="strength-exercise-num">
             Max weight
           </th>
-          <th scope="col" class="strength-exercise-num" title="The heaviest working set">
+          <th scope="col" class="strength-exercise-num" title="The working set the best e1RM comes from">
             Best set
           </th>
           <th scope="col" class="strength-exercise-num" title="Weight × reps over the period">

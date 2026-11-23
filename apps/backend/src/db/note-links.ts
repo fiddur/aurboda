@@ -15,12 +15,16 @@ export interface NoteLinkInput {
 export interface NoteLinkRecord {
   entity_type: NoteRelatedEntityType
   entity_id: string
-  /** The person's name; the activity's title, else its type's display name, else its type. */
+  /**
+   * The person's name; the activity's title, else its type's display name, else its type; the
+   * meal's type ('' when it has none); the report's type; the check-in's form name.
+   */
   name: string
-  /** An activity's start; null for a person. */
+  /** An activity's start, a meal's time, a report's date, a check-in's answer time; null for a person. */
   start_time: Date | null
   end_time: Date | null
   activity_type: string | null
+  form_id: string | null
 }
 
 /** A note related to a target, with what a journal entry reference shows. */
@@ -33,11 +37,30 @@ export interface RelatedNoteRecord {
   content: string
 }
 
-/** Whether the target of the link aliased `l` is live: a soft-deleted person or activity hides it. */
+/** The table each kind of target lives in, and whether it is soft-deleted. */
+const TARGET_TABLES: Record<NoteRelatedEntityType, { table: string; softDeleted: boolean }> = {
+  activity: { softDeleted: true, table: 'activities' },
+  check_in: { softDeleted: true, table: 'check_ins' },
+  meal: { softDeleted: false, table: 'meals' },
+  person: { softDeleted: true, table: 'people' },
+  report: { softDeleted: false, table: 'reports' },
+}
+
+const liveTargetCondition = (type: NoteRelatedEntityType, alias: string): string =>
+  TARGET_TABLES[type].softDeleted ? ` AND ${alias}.deleted_at IS NULL` : ''
+
+/** Whether the target of the link aliased `l` is live: a soft-deleted target hides it. */
 const LINK_TARGET_IS_LIVE = `CASE l.entity_type
-       WHEN 'person' THEN EXISTS (SELECT 1 FROM people p WHERE p.id = l.entity_id AND p.deleted_at IS NULL)
-       ELSE EXISTS (SELECT 1 FROM activities a WHERE a.id = l.entity_id AND a.deleted_at IS NULL)
+${Object.entries(TARGET_TABLES)
+  .map(
+    ([type, { table }]) =>
+      `       WHEN '${type}' THEN EXISTS (SELECT 1 FROM ${table} t WHERE t.id = l.entity_id${liveTargetCondition(type as NoteRelatedEntityType, 't')})`,
+  )
+  .join('\n')}
+       ELSE false
      END`
+
+const TYPE_ORDER = `array_position(ARRAY['person', 'activity', 'meal', 'report', 'check_in'], l.entity_type)`
 
 /** For the alias `n`: the note has a visible link to the target in the two parameters. */
 export const relatedToCondition = (typeParam: string, idParam: string): string =>
@@ -91,17 +114,25 @@ export const getNoteLinksForNoteIds = async (
     start_time: Date | null
     end_time: Date | null
     activity_type: string | null
+    form_id: string | null
   }>(
     user,
     `SELECT l.note_id, l.entity_type, l.entity_id::text AS entity_id,
-            COALESCE(p.name, NULLIF(a.title, ''), d.display_name, a.activity_type) AS name,
-            a.start_time, a.end_time, a.activity_type
+            COALESCE(p.name, NULLIF(a.title, ''), d.display_name, a.activity_type, m.meal_type,
+                     r.report_type, f.name, '') AS name,
+            COALESCE(a.start_time, m.time, r.report_date, c.answered_at) AS start_time,
+            a.end_time, a.activity_type, f.id::text AS form_id
        FROM note_links l
        LEFT JOIN people p ON l.entity_type = 'person' AND p.id = l.entity_id AND p.deleted_at IS NULL
        LEFT JOIN activities a ON l.entity_type = 'activity' AND a.id = l.entity_id AND a.deleted_at IS NULL
        LEFT JOIN activity_type_definitions d ON d.name = a.activity_type
-      WHERE l.note_id = ANY($1::uuid[]) AND (p.id IS NOT NULL OR a.id IS NOT NULL)
-      ORDER BY l.note_id, l.entity_type DESC, name, l.entity_id`,
+       LEFT JOIN meals m ON l.entity_type = 'meal' AND m.id = l.entity_id
+       LEFT JOIN reports r ON l.entity_type = 'report' AND r.id = l.entity_id
+       LEFT JOIN check_ins c ON l.entity_type = 'check_in' AND c.id = l.entity_id AND c.deleted_at IS NULL
+       LEFT JOIN check_in_forms f ON f.id = c.form_id
+      WHERE l.note_id = ANY($1::uuid[])
+        AND (p.id IS NOT NULL OR a.id IS NOT NULL OR m.id IS NOT NULL OR r.id IS NOT NULL OR c.id IS NOT NULL)
+      ORDER BY l.note_id, ${TYPE_ORDER}, start_time, name, l.entity_id`,
     [noteIds],
   )
   const byNote = new Map<string, NoteLinkRecord[]>()
@@ -111,6 +142,7 @@ export const getNoteLinksForNoteIds = async (
       end_time: row.end_time === null ? null : new Date(row.end_time),
       entity_id: row.entity_id,
       entity_type: row.entity_type,
+      form_id: row.form_id,
       name: row.name,
       start_time: row.start_time === null ? null : new Date(row.start_time),
     })
@@ -161,7 +193,7 @@ export const listNotesRelatedTo = async (
   }))
 }
 
-/** The ids among `ids` that are a live person or activity, as the database spells them. */
+/** The ids among `ids` that are a live target of the type, as the database spells them. */
 export const listLiveLinkTargetIds = async (
   user: string,
   targetType: NoteRelatedEntityType,
@@ -169,10 +201,10 @@ export const listLiveLinkTargetIds = async (
 ): Promise<string[]> => {
   const wellFormed = ids.filter((id) => UUID_RE.test(id))
   if (wellFormed.length === 0) return []
-  const table = targetType === 'person' ? 'people' : 'activities'
   const result = await query<{ id: string }>(
     user,
-    `SELECT id::text AS id FROM ${table} WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+    `SELECT t.id::text AS id FROM ${TARGET_TABLES[targetType].table} t
+      WHERE t.id = ANY($1::uuid[])${liveTargetCondition(targetType, 't')}`,
     [wellFormed],
   )
   return result.rows.map((row) => row.id)

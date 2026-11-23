@@ -29,7 +29,7 @@ import {
   getValueHistogramsForWindows,
 } from '../../db/index.ts'
 import {
-  bestSet,
+  bestE1rmSet,
   combineMeasures,
   fieldValue,
   type FieldValue,
@@ -275,8 +275,8 @@ export const groupSessions = (
  * Group newest-first sessions by an item value: one group per normalised value, spelled as in the
  * most recent session, a session in every group it has an item for and in the no-value group when
  * it has none. Each group's measures combine its members' measures over that value's items, and
- * its best set is the heaviest of those items. With `resolveEntry` (a catalogue-backed item path) a
- * matched value also says what exercise it is. `pooledHr` holds the pooled HR under
+ * its best set is the one its e1rm comes from. With `resolveEntry` (a catalogue-backed item path)
+ * a matched value also says what exercise it is. `pooledHr` holds the pooled HR under
  * `groupKey(normalized value)`.
  */
 export const groupSessionsByItem = (
@@ -294,23 +294,18 @@ export const groupSessionsByItem = (
       items: Record<string, unknown>[]
     }
   >()
-  const add = (
-    key: string,
-    value: string | null,
-    session: ActivitySession,
-    items?: Record<string, unknown>[],
-  ) => {
-    const group = byValue.getOrInsertComputed(key, () => ({ items: [], measures: [], sessions: [], value }))
-    group.sessions.push(session)
-    if (items) {
-      group.measures.push(measureItems(items))
-      group.items.push(...items)
+  const add = (key: string, value: string | null, session: ActivitySession, group?: ItemGroup) => {
+    const entry = byValue.getOrInsertComputed(key, () => ({ items: [], measures: [], sessions: [], value }))
+    entry.sessions.push(session)
+    if (group) {
+      entry.measures.push(measureItems(group.items))
+      entry.items.push(...group.items)
     }
   }
   for (const session of sessions) {
     const groups = itemGroups.get(session.id) ?? []
     if (groups.length === 0) add(groupKey(null), null, session)
-    for (const g of groups) add(groupKey(g.normalized), g.value, session, g.items)
+    for (const g of groups) add(groupKey(g.normalized), g.value, session, g)
   }
 
   return [...byValue.entries()]
@@ -320,7 +315,7 @@ export const groupSessionsByItem = (
         : {
             ...summarizeGroup(value, members, pooledHr.get(key)),
             ...exerciseGroupFields(resolveEntry?.(value)),
-            best_set: bestSet(items),
+            best_set: bestE1rmSet(items),
             measures: nonEmpty(combineMeasures(measures)),
           },
     )

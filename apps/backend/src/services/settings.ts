@@ -231,6 +231,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   timeline_show_replies: true,
   training_load: true,
   tz: true,
+  tz_follows_device: true,
 })
 
 const withDefaults = (settings: UserSettings) =>
@@ -406,7 +407,8 @@ const applyUpdate = (
  * The stored keys an update writes and the ones it clears. A `null` (or an empty display name)
  * clears the stored key so the field falls back to its default — `undefined` would be dropped by
  * the merge in `upsertUserSettings` and silently keep the old value. The field list is derived
- * from the schema so it stays in sync with api-spec.
+ * from the schema so it stays in sync with api-spec. A zone set without `tz_follows_device` is a
+ * hand choice, so the phone stops replacing it; clearing the zone follows the phone again.
  */
 const storedUpdates = (
   data: UpdateSettingsInput,
@@ -422,6 +424,10 @@ const storedUpdates = (
   }
   if (input.tz === null) clear.push('device_timezone')
   else if (input.tz !== undefined) updates.device_timezone = input.tz
+  if (input.tz_follows_device === undefined) {
+    if (input.tz === null) clear.push('tz_follows_device')
+    else if (input.tz !== undefined) updates.tz_follows_device = false
+  }
   if (updates.feed_default_tags) updates.feed_default_tags = normalizeTags(updates.feed_default_tags)
   if (updates.hidden_pages) updates.hidden_pages = keepHideableMenuPaths(updates.hidden_pages)
   const haUrl = updates.home_assistant_url

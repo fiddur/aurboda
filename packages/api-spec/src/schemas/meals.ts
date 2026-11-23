@@ -6,6 +6,7 @@ import {
   createDataResponseSchema,
   iso8601DateTimeSchema,
 } from './common.ts'
+import { journalEntryRefsSchema } from './notes.ts'
 
 /** A flexible string, not a closed enum, so sources can pass their own types. */
 export const mealTypeSchema = z.string().min(1).max(50).meta({
@@ -248,7 +249,16 @@ export const mealsQuerySchema = z
 
 export type MealsQuery = z.infer<typeof mealsQuerySchema>
 
-export const mealResponseSchema = createDataResponseSchema(mealSchema).meta({
+export const mealDetailSchema = mealSchema
+  .extend({ journal_entries: journalEntryRefsSchema.optional() })
+  .meta({
+    description: 'A meal, with the journal entries related to it when read by its ID',
+    id: 'MealDetail',
+  })
+
+export type MealDetail = z.infer<typeof mealDetailSchema>
+
+export const mealResponseSchema = createDataResponseSchema(mealDetailSchema).meta({
   id: 'MealResponse',
 })
 

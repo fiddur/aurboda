@@ -536,6 +536,11 @@ describe('queryActivitySessions over list items', () => {
       volume: 1325,
     })
     expect(result.groups![2]!.measures).toBeUndefined()
+    expect(result.groups?.map((g) => g.best_set)).toEqual([
+      { reps: 3, weight: 85 },
+      { reps: 5, weight: 105 },
+      undefined,
+    ])
     expect(result.groups![0]).toMatchObject({
       first_start_time: '2026-08-01T17:00:00.000Z',
       last_start_time: '2026-09-08T17:00:00.000Z',

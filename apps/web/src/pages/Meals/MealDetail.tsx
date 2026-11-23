@@ -21,6 +21,7 @@ import {
 import { createDebouncedFlusher } from '../../utils/debouncedFlusher'
 import { LocationInfo, MEAL_LOCATION_WINDOW_MS } from '../EntityDetail/LocationInfo'
 import { NotesSection } from '../EntityDetail/NotesSection'
+import { JournalEntryRefs } from '../Journal/JournalEntryRefs'
 import './MealDetail.css'
 import { editItemsToBody, type FoodItemEdit, mealItemsToEdit, scaleNutrient } from './mealItems'
 import { DEFAULT_CUSTOM_TYPE, MEAL_TYPES, resolveMealTypeChange } from './mealTypes'
@@ -816,6 +817,13 @@ export function MealDetail() {
       </div>
 
       <NotesSection entityType="meal" entityId={id} />
+      {(meal.journal_entries ?? []).length > 0 && (
+        <JournalEntryRefs
+          title="Mentioned in the journal"
+          entries={meal.journal_entries ?? []}
+          filter={{ id, type: 'meal' }}
+        />
+      )}
     </div>
   )
 }

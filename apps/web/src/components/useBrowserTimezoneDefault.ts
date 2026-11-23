@@ -24,7 +24,7 @@ export const useBrowserTimezoneDefault = () => {
     void adopt({
       browserTz: browserTimezone(),
       onSaved: (settings) => queryClient.setQueryData(['userSettings'], settings),
-      save: (tz) => updateUserSettings({ tz }),
+      save: updateUserSettings,
       storedTz,
       user,
     })
