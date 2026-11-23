@@ -11,7 +11,7 @@ import {
 } from './related'
 import './style.css'
 
-/** The journal entries related to a person or an activity, newest first, each opening the entry. */
+/** The journal entries related to a person, an activity, a meal or a report, newest first, each opening the entry. */
 export const JournalEntryRefs = ({
   title,
   entries,

@@ -11,6 +11,7 @@ import {
   createDataResponseSchema,
   iso8601DateTimeSchema,
 } from './common.ts'
+import { journalEntryRefsSchema } from './notes.ts'
 
 export const confidenceSchema = z.enum(['measured', 'estimated', 'derived']).meta({
   description: 'Confidence level: measured (direct), estimated (indirect), or derived (calculated)',
@@ -156,7 +157,16 @@ export const reportsQuerySchema = z
 
 export type ReportsQuery = z.infer<typeof reportsQuerySchema>
 
-export const reportResponseSchema = createDataResponseSchema(reportSchema).meta({
+export const reportDetailSchema = reportSchema
+  .extend({ journal_entries: journalEntryRefsSchema.optional() })
+  .meta({
+    description: 'A report, with the journal entries related to it when read by its ID',
+    id: 'ReportDetail',
+  })
+
+export type ReportDetail = z.infer<typeof reportDetailSchema>
+
+export const reportResponseSchema = createDataResponseSchema(reportDetailSchema).meta({
   id: 'ReportResponse',
 })
 

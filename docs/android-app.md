@@ -291,6 +291,27 @@ The decision is a pure, unit-tested helper: `ui/screens/WebLink.kt`
 (`isExternalLink`). Non-http(s) schemes (`mailto:`, `tel:`, …) are treated as
 external.
 
+## Generated API models
+
+The native screens read the API through the Kotlin models `pnpm generate` writes from the
+`@aurboda/api-spec` OpenAPI document (`net.aurboda.api.models`, under
+`packages/api-spec/generated/kotlin`). Two parts of that document are not usable natively, and the
+app embeds the web pages for both:
+
+- **The feed is not in the Kotlin models.** The OpenAPI document (`generated/openapi.yaml`)
+  describes `/feed/*` and `GET /people/{id}/posts` in full, but the Kotlin generator cannot express
+  their structured payload, so it reads `generated/openapi.kotlin.yaml` instead: the same document
+  without those paths and without every schema only they reach. The skipped paths are one list,
+  `kotlinSkippedPaths` in `packages/api-spec/src/openapi-kotlin-filter.ts`. The Feed tab embeds the
+  web feed; the old post notifier's `/feed/timeline` and `/feed/following` reads parse raw JSON.
+- **Some correlation models compile but do not decode.** The generator flattens a discriminated
+  union into one class with every variant's fields, so kotlinx cannot decode
+  `CorrelationSelector` (and `CorrelationSelectorOutput`), the generic correlation's lag-result
+  union (`GenericCorrelationDataPostTriggerValue`, the values of `post_trigger`) or the other
+  union-valued classes (`GenericCorrelationBodyOutcome`, `GenericCorrelationDataOutcome`,
+  `GenericCorrelationDataBaseline`). The app embeds the correlation pages and reads none of them;
+  they need hand-written serializers before it ever reads correlations natively.
+
 ## Login screen
 
 The login screen (`ui/screens/LoginScreen.kt`) is native, since it works logged out: the server

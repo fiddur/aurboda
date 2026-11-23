@@ -96,6 +96,8 @@ export interface CheckInsFilter {
   entity_id?: string
   deleted?: boolean
   limit?: number
+  from?: string
+  to?: string
 }
 
 export const fetchCheckIns = async (filter: CheckInsFilter = {}): Promise<CheckInsResponse> => {

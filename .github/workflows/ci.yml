@@ -86,6 +86,9 @@ jobs:
       - name: Run TypeScript checks and lint
         run: pnpm check
 
+      - name: Run api-spec tests
+        run: pnpm --filter @aurboda/api-spec test
+
       - name: Run backend tests
         run: pnpm --filter aurboda-backend test
 
