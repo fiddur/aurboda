@@ -20,6 +20,18 @@
   flex-wrap: wrap;
 }
 
+.strength-score-history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.strength-score-history-controls select {
+  max-width: 100%;
+}
+
 .strength-score-row {
   display: flex;
   align-items: baseline;

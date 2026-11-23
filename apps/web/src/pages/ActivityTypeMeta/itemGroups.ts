@@ -1,28 +1,20 @@
-import type { ActivitySessionGroup, StrengthScore } from '@aurboda/api-spec'
+import type { ActivitySessionGroup } from '@aurboda/api-spec'
 
 import { type Comparable, compare } from '../../components/sessions/sessionView'
 
-export type ItemGroupSortKey = 'recent' | 'count' | 'e1rm' | 'max_weight' | 'volume' | 'points' | 'name'
+export type ItemGroupSortKey =
+  | 'recent'
+  | 'count'
+  | 'e1rm'
+  | 'max_weight'
+  | 'best_set'
+  | 'volume'
+  | 'points'
+  | 'name'
 
-export type PointsByValue = ReadonlyMap<string, number>
+export type GroupPoints = (g: ActivitySessionGroup) => number | undefined
 
-const valueKey = (value: string | number | boolean): string => String(value).trim().toLowerCase()
-
-/** Each scored lift's points by its exercise, trimmed and lowercased; the highest where several lifts share one. */
-export const pointsByExercise = (score: StrengthScore | null | undefined): Map<string, number> => {
-  const points = new Map<string, number>()
-  for (const lift of score?.groups.flatMap((g) => g.lifts) ?? []) {
-    if (lift.best === undefined || lift.score === null) continue
-    const key = valueKey(lift.best.value)
-    points.set(key, Math.max(points.get(key) ?? lift.score, lift.score))
-  }
-  return points
-}
-
-export const groupPoints = (g: ActivitySessionGroup, points: PointsByValue | undefined): number | undefined =>
-  g.value === null ? undefined : points?.get(valueKey(g.value))
-
-const sortValue = (g: ActivitySessionGroup, key: ItemGroupSortKey, points?: PointsByValue): Comparable => {
+const sortValue = (g: ActivitySessionGroup, key: ItemGroupSortKey, pointsOf?: GroupPoints): Comparable => {
   switch (key) {
     case 'recent':
       return g.last_start_time
@@ -32,22 +24,30 @@ const sortValue = (g: ActivitySessionGroup, key: ItemGroupSortKey, points?: Poin
     case 'max_weight':
     case 'volume':
       return g.measures?.[key]
+    case 'best_set':
+      return g.best_set?.weight
     case 'points':
-      return groupPoints(g, points)
+      return pointsOf?.(g)
     case 'name':
       return g.value === null ? undefined : String(g.value)
   }
 }
 
-/** Name sorts ascending, everything else descending; missing values and the no-value group go last. */
+/**
+ * Name sorts ascending, everything else descending (the best set by weight, then reps); missing values
+ * and the no-value group go last. `pointsOf` gives the points the `points` key sorts by.
+ */
 export const sortItemGroups = (
   groups: ActivitySessionGroup[],
   key: ItemGroupSortKey,
-  points?: PointsByValue,
+  pointsOf?: GroupPoints,
 ): ActivitySessionGroup[] =>
   groups.toSorted((a, b) => {
     if ((a.value === null) !== (b.value === null)) return a.value === null ? 1 : -1
-    return compare(sortValue(a, key, points), sortValue(b, key, points), key !== 'name')
+    return (
+      compare(sortValue(a, key, pointsOf), sortValue(b, key, pointsOf), key !== 'name') ||
+      (key === 'best_set' ? compare(a.best_set?.reps, b.best_set?.reps, true) : 0)
+    )
   })
 
 /** Groups whose value contains the query, ignoring case; the no-value group only while the query is blank. */

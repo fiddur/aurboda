@@ -8,7 +8,9 @@ import type {
 
 import { describe, expect, test } from 'vitest'
 
+import { SERIES_COLORS } from '../../components/charts/breakdown'
 import {
+  allGroupsSeries,
   averageLabel,
   bestSetLabel,
   changeLabel,
@@ -19,6 +21,7 @@ import {
   liftNote,
   liftNoteLabel,
   missingText,
+  pointBefore,
   pointsLabel,
   scoreChange,
   scoredGroupCount,
@@ -130,6 +133,50 @@ describe('scoreSeries', () => {
   test('is empty without history', () => {
     expect(scoreSeries(history([]), 'overall')).toEqual([])
     expect(scoreSeries(undefined, 'overall')).toEqual([])
+  })
+})
+
+describe('pointBefore', () => {
+  test('is the latest point at least the days before the last one', () => {
+    const h = history([
+      { at: at(1), groups: {}, score: 80 },
+      { at: at(8), groups: {}, score: 85 },
+      { at: at(15), groups: {}, score: 88 },
+      { at: at(38), groups: {}, score: 92 },
+    ])
+    expect(pointBefore(h, 30)?.at).toBe(at(8))
+  })
+
+  test('is undefined without history or a point far enough back', () => {
+    expect(pointBefore(undefined, 30)).toBeUndefined()
+    expect(pointBefore(history([{ at: at(10), groups: {}, score: 80 }]), 30)).toBeUndefined()
+  })
+})
+
+describe('allGroupsSeries', () => {
+  test('one line per group with history, coloured by its place among all groups', () => {
+    const h = history([
+      { at: at(1), groups: { back: 70, biceps: 60, chest: 90 }, score: 90 },
+      { at: at(8), groups: { back: 75, chest: 95 }, score: 90 },
+    ])
+    expect(allGroupsSeries(h, { back: 'Back', chest: 'Chest' })).toEqual([
+      {
+        color: SERIES_COLORS[0],
+        data: [
+          { date: at(1), value: 90 },
+          { date: at(8), value: 95 },
+        ],
+        name: 'Chest',
+      },
+      {
+        color: SERIES_COLORS[2],
+        data: [
+          { date: at(1), value: 70 },
+          { date: at(8), value: 75 },
+        ],
+        name: 'Back',
+      },
+    ])
   })
 })
 

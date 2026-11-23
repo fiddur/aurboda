@@ -222,7 +222,10 @@ Where item paths are accepted:
   a set for (sessions without one in the no-value group), each group with its members' measures
   for that exercise combined (volume, set count and total reps summed, the rest at their
   maximum) and, with an e1RM, its `best_set` (`weight` and `reps`): the working set that e1RM
-  comes from.
+  comes from. On a catalogue-backed path a group whose exercise is matched to the
+  [exercise catalogue](exercise-catalog.md) also has `catalog_key`, `muscle_groups`
+  (`{ muscle_group, weight }` per group it works, highest weight first, then the catalogue's
+  order; 0.75 or more means it mainly works the group) and `equipment`.
   `filter_field=sets.exercise&filter_value=Bench Press` keeps the sessions with that exercise,
   each with its matching `items`, their `measures` and the `records` it set, judged against all
   earlier sessions even when `start` cuts them off.

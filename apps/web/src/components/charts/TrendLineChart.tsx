@@ -23,6 +23,8 @@ export interface TrendLineChartProps {
   compact?: boolean
   /** Multiple named series — renders overlaid lines. Overrides data/color when present. */
   multiSeries?: LineSeriesData[]
+  /** With `multiSeries`: lines only, without the filled area under each, which many series turn to mud. */
+  linesOnly?: boolean
   /**
    * Fixed x-axis domain [start, end]. When set, the axis spans this range
    * regardless of the data extent (e.g. a challenge's full timespan even when
@@ -78,15 +80,18 @@ function renderAreaAndLine(
   y: d3.ScaleLinear<number, number>,
   innerHeight: number,
   color: string,
+  withArea = true,
 ) {
-  const area = d3
-    .area<ParsedPoint>()
-    .x((d) => x(d.date))
-    .y0(innerHeight)
-    .y1((d) => y(d.value))
-    .curve(d3.curveMonotoneX)
+  if (withArea) {
+    const area = d3
+      .area<ParsedPoint>()
+      .x((d) => x(d.date))
+      .y0(innerHeight)
+      .y1((d) => y(d.value))
+      .curve(d3.curveMonotoneX)
 
-  g.append('path').datum(parsedData).attr('fill', color).attr('fill-opacity', 0.2).attr('d', area)
+    g.append('path').datum(parsedData).attr('fill', color).attr('fill-opacity', 0.2).attr('d', area)
+  }
 
   const line = d3
     .line<ParsedPoint>()
@@ -127,6 +132,7 @@ function renderMultiSeries(
   compact: boolean,
   dateDomain: [Date, Date],
   axis: TimeAxisLayout,
+  linesOnly: boolean,
 ): {
   x: d3.ScaleTime<number, number>
   y: d3.ScaleLinear<number, number>
@@ -159,7 +165,7 @@ function renderMultiSeries(
 
   for (const s of parsedSeries) {
     if (s.data.length < 2) continue
-    renderAreaAndLine(g, s.data, x, y, innerHeight, s.color)
+    renderAreaAndLine(g, s.data, x, y, innerHeight, s.color, !linesOnly)
   }
 
   renderAxes(g, x, y, innerHeight, axis)
@@ -397,6 +403,7 @@ export function TrendLineChart({
   width,
   compact = false,
   multiSeries,
+  linesOnly = false,
   xDomain,
 }: TrendLineChartProps) {
   const { element: container, ref: containerRef, width: measuredWidth } = useMeasuredWidth<HTMLDivElement>()
@@ -437,7 +444,16 @@ export function TrendLineChart({
 
     if (series) {
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`)
-      const result = renderMultiSeries(g, series, innerWidth, innerHeight, compact, dateDomain, axis)
+      const result = renderMultiSeries(
+        g,
+        series,
+        innerWidth,
+        innerHeight,
+        compact,
+        dateDomain,
+        axis,
+        linesOnly,
+      )
 
       if (!compact && tooltipRef.current && result) {
         attachMultiSeriesTooltip(
@@ -477,6 +493,7 @@ export function TrendLineChart({
     container,
     compact,
     multiSeries,
+    linesOnly,
     xDomainStartMs,
     xDomainEndMs,
   ])
