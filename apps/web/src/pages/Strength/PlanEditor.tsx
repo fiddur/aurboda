@@ -64,7 +64,7 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
       if (plan) await updateStrengthPlan(plan.id, body)
       else await createStrengthPlan(body)
       await invalidatePlans(queryClient)
-      route('/strength')
+      route('/strength/workouts')
     } catch {
       setError('The plan could not be saved. Try again.')
       setBusy(false)
@@ -78,7 +78,7 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
     try {
       await deleteStrengthPlan(plan.id)
       await invalidatePlans(queryClient)
-      route('/strength')
+      route('/strength/workouts')
     } catch {
       setError('The plan could not be deleted. Try again.')
       setBusy(false)
@@ -167,7 +167,7 @@ const ExistingPlan = ({ id }: { id: string }) => {
         <p class={isNotFound(query.error) ? undefined : 'strength-error'}>
           {isNotFound(query.error) ? 'This plan no longer exists.' : 'The plan could not be loaded.'}
         </p>
-        <a href="/strength">Back to strength training</a>
+        <a href="/strength/workouts">Back to strength training</a>
       </div>
     )
   }

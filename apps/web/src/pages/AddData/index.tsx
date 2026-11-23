@@ -324,7 +324,7 @@ const AddActivityForm = ({ onCreated, initialTime }: FormProps) => {
 
       {activityType === 'strength_training' && (
         <p class="form-hint add-strength-link">
-          Logging a workout? <a href="/strength">Use the strength session page</a>
+          Logging a workout? <a href="/strength/workouts">Use the strength session page</a>
         </p>
       )}
 

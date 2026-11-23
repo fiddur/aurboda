@@ -32,6 +32,7 @@
     "express": "^5.1.0",
     "fflate": "0.8.3",
     "fit-file-parser": "^2.3.3",
+    "heic-decode": "2.1.0",
     "jsdom": "^26.1.0",
     "marked": "^17.0.3",
     "multer": "^2.1.1",

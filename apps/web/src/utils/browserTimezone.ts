@@ -1,4 +1,4 @@
-import type { UserSettingsResponse } from '@aurboda/api-spec'
+import type { UpdateSettingsInput, UserSettingsResponse } from '@aurboda/api-spec'
 
 const resolvedTimezone = (): string | undefined => Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -20,11 +20,14 @@ interface AdoptArgs {
   user: string
   storedTz: string | null | undefined
   browserTz: string | null
-  save: (tz: string) => Promise<UserSettingsResponse>
+  save: (update: UpdateSettingsInput) => Promise<UserSettingsResponse>
   onSaved: (settings: UserSettingsResponse) => void
 }
 
-/** Saves the browser's zone for a user without one, at most once per user for the adopter's lifetime, even when it fails. */
+/**
+ * Saves the browser's zone for a user without one, at most once per user for the adopter's lifetime, even
+ * when it fails. The zone is derived from the device, not chosen by hand, so the phone may still replace it.
+ */
 export const createTimezoneAdopter = () => {
   const tried = new Set<string>()
   return async ({ user, storedTz, browserTz, save, onSaved }: AdoptArgs): Promise<void> => {
@@ -32,7 +35,7 @@ export const createTimezoneAdopter = () => {
     if (!tz || tried.has(user)) return
     tried.add(user)
     try {
-      onSaved(await save(tz))
+      onSaved(await save({ tz, tz_follows_device: true }))
     } catch {
       // A failure is not retried during this page load; the next load tries again.
     }

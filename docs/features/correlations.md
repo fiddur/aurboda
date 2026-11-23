@@ -120,7 +120,7 @@ An Explore link whose trigger and outcome are filled in runs the analysis once w
 
 The sensitivity flags you put on food items (gluten, dairy, alcohol, ...) can be analysed like anything else. Only a day you marked as a **complete meal log** says that a flagged food was _not_ eaten: on another day the meal may just not be logged.
 
-**In Explore** (Continuous mode), pick **meal sensitivity** and a flag in the trigger or outcome picker. The daily value is the number of meals that day carrying the flag. A day is known when it has a meal or is marked complete; there a day without a flagged meal counts as 0. Any other day is left out, not counted as 0. The axis reads "Meals with gluten (count)".
+**In Explore**, pick **meal sensitivity** and a flag in the trigger picker (both modes) or the outcome picker (Continuous mode). The daily value is the number of meals that day carrying the flag, counted on the meal's local date in your time zone; in Event mode a day with at least one such meal is an event. A day is known when it has a meal or is marked complete; there a day without a flagged meal counts as 0. Any other day is left out, not counted as 0. The axis reads "Meals with gluten (count)".
 
 **The next night**: a night's sleep score (and Garmin's overnight HRV) is stamped on the day the night ends. So `lag_days: 1` (**Outcome lag (days)** 1) pairs the meals of a day with the sleep that follows that evening; `lag_days: 0` would pair them with the night before. "Do I sleep worse after gluten?" is trigger **meal sensitivity → gluten**, outcome **metric → sleep_score** (or `hrv_rmssd`), lag 1, and the binary trigger makes the group comparison the headline.
 

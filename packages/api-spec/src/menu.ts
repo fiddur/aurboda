@@ -56,7 +56,8 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         href: '/strength',
         label: 'Strength',
-        description: 'Start or log a session, and follow your strength score, exercises and muscle recovery.',
+        description:
+          'See how each muscle stands, start or plan a workout, and follow your strength score and exercises.',
       },
       {
         href: '/training-load',
@@ -134,6 +135,7 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Rules',
         description: 'Create activities from your data automatically.',
       },
+      { href: '/reminders', label: 'Reminders', description: 'Recurring reminders to log or do something.' },
       { href: '/admin', label: 'Admin', description: 'Server settings and users.', adminOnly: true },
     ],
   },
@@ -147,12 +149,6 @@ export const NOTIFICATIONS_LINK: NavLink = { href: '/notifications', label: 'Not
 
 /** Pages that only the Android app's More tab lists; on the web they are reached from other pages. */
 export const APP_ONLY_LINKS: NavLink[] = [
-  {
-    href: '/reminders',
-    label: 'Reminders',
-    icon: '⏰',
-    description: 'Your recurring reminders, under Inbox in the app.',
-  },
   { href: '/audit-log', label: 'Audit log', icon: '📋', description: 'Recent syncs, imports and errors.' },
 ]
 

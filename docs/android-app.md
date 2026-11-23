@@ -19,7 +19,7 @@ A bottom navigation bar (`ui/screens/MainScreen.kt`, tabs in `AppState.kt`'s
 | More | Hub      | Native list of everything else (`ui/screens/MoreScreen.kt`)                     |
 
 The Add tab's Activity form starts with **Log a strength session**, which opens the web
-[strength session page](features/strength-logging.md) (`/strength`) in the More tab's web view:
+[strength session page](features/strength-logging.md) (`/strength/workouts`) in the More tab's web view:
 sets are logged there, not natively. The form's data fields are sent as the type's `data_schema`
 declares them (numbers as JSON numbers, a decimal comma accepted, booleans as booleans); a number
 field that does not parse, or falls outside the field's `min` and `max` ("Must be between 0 and 10"),
@@ -55,9 +55,9 @@ sections open and close, closed at first, and which are open is remembered on th
 (`MenuSectionsStore`, `AppState.openMenuSections`). An entry that is also a bottom tab — **Feed**,
 under Sharing — switches to that tab (`mainTabForPath`) instead of opening the page inside More.
 
-Around the sections sit the entries only the app has. On top are **Notifications** (the web
-`/notifications` page, see [Notifications](features/notifications.md)) and **Reminders** (the web
-`/reminders` page, see [Reminders](features/reminders.md)); at the bottom **Help & support** and
+Around the sections sit the entries only the app has. On top is **Notifications** (the web
+`/notifications` page, see [Notifications](features/notifications.md)); **Reminders** is under
+Setup, as in the web menu (see [Reminders](features/reminders.md)); at the bottom **Help & support** and
 **Settings** (in the web menu's footer), the **Audit log** (reached from Settings on the web), and
 the two native-only screens, **Live** sensors ([BLE](#live-sensors)) and **Account** (server URL,
 logout). Home and Add are bottom tabs, not hub entries. **Admin** is left out: the app does not know
