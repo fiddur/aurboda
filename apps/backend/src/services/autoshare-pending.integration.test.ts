@@ -26,6 +26,7 @@ const rule = (over: Partial<AutoshareRuleRecord> = {}): AutoshareRuleRecord => (
   enabled_at: T0,
   id: '9d0124e7-d161-4855-a54f-fa8bdb45c4f2',
   include_chart: false,
+  include_exercise_trends: false,
   include_exercises: false,
   include_map: false,
   included_metrics: [],

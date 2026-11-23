@@ -467,6 +467,10 @@ button.strength-set-row:hover {
   flex-direction: column;
 }
 
+.strength-repeat-text a {
+  align-self: flex-start;
+}
+
 .strength-plan-name {
   overflow-wrap: anywhere;
 }

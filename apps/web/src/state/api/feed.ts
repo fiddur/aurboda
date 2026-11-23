@@ -86,7 +86,12 @@ export const previewShare = async (
   activityId: string,
   body: Pick<
     ShareActivityBody,
-    'include_exercises' | 'included_metrics' | 'mention_people' | 'message' | 'tags'
+    | 'include_exercise_trends'
+    | 'include_exercises'
+    | 'included_metrics'
+    | 'mention_people'
+    | 'message'
+    | 'tags'
   >,
 ): Promise<SharePreviewResponse> => {
   const response = await axios.post<SharePreviewResponse>(

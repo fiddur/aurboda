@@ -43,6 +43,7 @@ const ruleInput = (over: Partial<AutoshareRuleInput> = {}): AutoshareRuleInput =
   delay_minutes: 10,
   include_chart: false,
   include_map: true,
+  include_exercise_trends: false,
   include_exercises: false,
   included_metrics: ['duration', 'distance'],
   max_age_hours: 24,
@@ -110,6 +111,23 @@ describe('Auto-share rules integration', () => {
       (await updateAutoshareRule(user, created.id, { include_exercises: false }))?.include_exercises,
     ).toBe(false)
     expect((await getAutoshareRules(user))[0]?.include_exercises).toBe(false)
+  })
+
+  test('stores the exercise trends opt-in and patches it', async () => {
+    const user = getTestUser()
+    expect((await insertAutoshareRule(user, ruleInput())).include_exercise_trends).toBe(false)
+    const created = await insertAutoshareRule(
+      user,
+      ruleInput({ include_exercise_trends: true, include_exercises: true, name: 'Lifts' }),
+    )
+    expect(created.include_exercise_trends).toBe(true)
+    expect(
+      (await updateAutoshareRule(user, created.id, { include_exercise_trends: false }))
+        ?.include_exercise_trends,
+    ).toBe(false)
+    expect((await getAutoshareRules(user)).find((r) => r.id === created.id)?.include_exercise_trends).toBe(
+      false,
+    )
   })
 
   test('patches predicate/template fields; null clears the nullable ones', async () => {
@@ -222,6 +240,7 @@ describe('Auto-share rules integration', () => {
       autoshare_rule_id: rule.id,
       include_chart: false,
       include_map: false,
+      include_exercise_trends: false,
       include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
@@ -253,6 +272,7 @@ describe('Auto-share rules integration', () => {
       activity_id: a2,
       include_chart: false,
       include_map: false,
+      include_exercise_trends: false,
       include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
@@ -277,6 +297,7 @@ describe('Auto-share rules integration', () => {
       activity_id: activityId,
       include_chart: false,
       include_map: false,
+      include_exercise_trends: false,
       include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
@@ -487,6 +508,7 @@ describe('Auto-share rules integration', () => {
       activity_id: a2,
       include_chart: false,
       include_map: false,
+      include_exercise_trends: false,
       include_exercises: false,
       included_metrics: ['duration'],
       series_metrics: [],
@@ -511,6 +533,7 @@ describe('Auto-share rules integration', () => {
         activity_id: activityId,
         include_chart: false,
         include_map: false,
+        include_exercise_trends: false,
         include_exercises: false,
         included_metrics: ['duration'],
         series_metrics: [],
