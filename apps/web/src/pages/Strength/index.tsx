@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { sessionUrl, STRENGTH_TYPE } from './constants'
+import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft, readLiveDraft } from './draftStorage'
 import { PlannedWorkouts } from './PlannedWorkouts'
 import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
@@ -155,7 +155,7 @@ export function Strength() {
           {candidates.map((c) => (
             <li key={c.id} class="strength-card strength-repeat">
               <div class="strength-repeat-text">
-                <span>{sessionDateLabel(c.start_time, c.minutes)}</span>
+                <a href={detailUrl(c.id)}>{sessionDateLabel(c.start_time, c.minutes)}</a>
                 <span class="strength-muted">{exerciseListLabel(c.names)}</span>
               </div>
               <button

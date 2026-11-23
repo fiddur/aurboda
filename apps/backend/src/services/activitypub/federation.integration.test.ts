@@ -542,6 +542,41 @@ describe('Feed federation actor + WebFinger', () => {
     expect(content).toContain(`<p>${link('aurboda', 'aurboda')}</p>`)
   })
 
+  test("an activity Note adds each exercise's trend only when the post shares both", async () => {
+    const user = getTestUser()
+    const lift = (day: string, weight: number) =>
+      insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets: [{ exercise: 'Bench Press', reps: 8, weight }] },
+        end_time: new Date(`${day}T08:55:00Z`),
+        source: 'gravl',
+        start_time: new Date(`${day}T08:00:00Z`),
+        title: 'Push day',
+      })
+    await lift('2026-06-24', 70)
+    const activityId = await lift('2026-07-01', 80)
+    const activity = {
+      activity_type: 'strength_training',
+      end_time: new Date('2026-07-01T08:55:00Z'),
+      start_time: new Date('2026-07-01T08:00:00Z'),
+      title: 'Push day',
+    }
+    const ctx = await fed.createContext(new URL(ORIGIN))
+    const contentOf = async (overrides: Partial<FeedPostInput>) => {
+      const post = await sharePost(user, activityId, overrides)
+      const note = await (await buildFeedCreate(ctx, user, post, activity, `${ORIGIN}/api`)).getObject()
+      return note instanceof Note ? (note.content?.toString() ?? '') : ''
+    }
+
+    expect(await contentOf({ include_exercise_trends: true, include_exercises: true })).toContain(
+      'Bench Press: 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM · PR weight · trend e1RM 85.2 kg ↗ 101.3 kg, volume 537.8 kg ↗ 640 kg',
+    )
+    const exercisesOnly = await contentOf({ include_exercises: true })
+    expect(exercisesOnly).toContain('Bench Press: 8×80 kg')
+    expect(exercisesOnly).not.toContain('trend')
+    expect(await contentOf({ include_exercise_trends: true })).not.toContain('Bench Press')
+  })
+
   test('an activity Note mentions only the people switched on, by account, and nothing else about anyone', async () => {
     const user = getTestUser()
     const activityId = await insertExercise(user)

@@ -126,6 +126,10 @@ export const shareActivityBodySchema = z
       description:
         "Share each exercise of the session (a list field's categorical item, e.g. a strength session's sets by exercise) with its sets, e1RM, volume and the records it set",
     }),
+    include_exercise_trends: z.boolean().default(false).meta({
+      description:
+        "Also share each exercise's trend (the decaying best of e1RM and volume before and after this session); only with `include_exercises`",
+    }),
     include_map: z
       .boolean()
       .default(false)
@@ -160,6 +164,10 @@ export const updateFeedPostBodySchema = z
       .boolean()
       .optional()
       .meta({ description: "Share the session's exercises with their sets, e1RM, volume and records" }),
+    include_exercise_trends: z.boolean().optional().meta({
+      description:
+        "Also share each exercise's trend (the decaying best of e1RM and volume before and after this session); only with `include_exercises`",
+    }),
     include_map: z.boolean().optional().meta({ description: 'Attach a rendered route-map image' }),
     included_metrics: z
       .array(scalarMetricKeySchema)
@@ -653,6 +661,10 @@ export const feedPostSchema = z
     include_exercises: z
       .boolean()
       .meta({ description: "Whether the session's exercises (sets, e1RM, volume, records) are shared" }),
+    include_exercise_trends: z.boolean().meta({
+      description:
+        "Whether each shared exercise's trend (e1RM and volume before and after this session) is shared; effective only with `include_exercises`",
+    }),
     include_map: z.boolean().meta({ description: 'Whether a route-map image is attached' }),
     included_metrics: z.array(z.string()).meta({ description: 'Shared scalar-summary metric keys' }),
     // Present only for `reply` posts: what this post answers. The handle is a

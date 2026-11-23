@@ -232,6 +232,16 @@ explicit metric selection that bounds what is shared:
   native card renders as a list under the stats. Off by default in the API; the share
   dialog offers the checkbox only when the preview finds exercises in the session
   (`has_exercises` on the preview response), checked for a new share.
+- **`include_exercise_trends`** — with `include_exercises`, also share each exercise's
+  trend: the decaying best of its e1RM and volume just before and after this session (the
+  same trend the session page shows; the longest hold, else the best set, for an exercise
+  without either). It is appended to the exercise's line in the Note content, e.g.
+  `… · PR e1RM · trend e1RM 98 kg ↗ 101.3 kg, volume 640 kg` (an arrow where the session
+  lifted the trend, just the value where it did not), and is left out the first time an
+  exercise is done. Content only: `quant:exercises` and the structured payload do not
+  carry it. Off by default; stored as sent, but it shares nothing while
+  `include_exercises` is off. The share dialog's **Trend per exercise** checkbox sits under
+  the exercises one and is disabled while that is unticked.
 - **`message`** — an optional personal message (plain text, linebreaks preserved)
   shown at the top of the post. The share dialog prefills it from the activity's
   description (its user-typed comments) — always shown editable before sharing, so
@@ -1386,8 +1396,8 @@ resolving.
 - **Share** — an activity's detail page has a **Share to feed** button. It opens a dialog
   to write an optional personal message (prefilled from the activity's description /
   comments, fully editable), pick the summary metrics, optionally opt into full series,
-  share a strength session's exercises (offered when it has any, checked by default),
-  and choose the audience — with a **live preview** (#902) of the exact federated
+  share a strength session's exercises (offered when it has any, checked by default)
+  and, separately, each exercise's trend (unchecked by default), and choose the audience — with a **live preview** (#902) of the exact federated
   content (resolved server-side through the same code path as delivery, debounced) and
   which images would attach, so what leaves the instance is visible before Share. The **owner's own feed** renders each activity post with the
   **same native card component a subscribing Aurboda peer's timeline uses** — the owner-facing

@@ -18,6 +18,7 @@ export interface RuleFormState {
   activityType: string
   conditions: DataFilterRow[]
   delayMinutes: string
+  includeExerciseTrends: boolean
   includeExercises: boolean
   includeMap: boolean
   maxAgeHours: string
@@ -36,6 +37,7 @@ export const emptyRuleFormState = (): RuleFormState => ({
   activityType: '',
   conditions: [],
   delayMinutes: String(DEFAULT_DELAY_MINUTES),
+  includeExerciseTrends: false,
   includeExercises: false,
   includeMap: false,
   maxAgeHours: String(DEFAULT_MAX_AGE_HOURS),
@@ -68,6 +70,7 @@ export const ruleToFormState = (rule: AutoshareRule): RuleFormState => {
     activityType: rule.activity_types.length === 1 ? (rule.activity_types[0] ?? '') : '',
     conditions: rule.data_filters.map(dataFilterToRow),
     delayMinutes: String(rule.delay_minutes),
+    includeExerciseTrends: rule.include_exercise_trends,
     includeExercises: rule.include_exercises,
     includeMap: rule.include_map,
     maxAgeHours: String(rule.max_age_hours),
@@ -101,6 +104,7 @@ const templateFields = (state: RuleFormState) => ({
   data_filters: state.conditions.map(rowToDataFilter),
   delay_minutes: state.delayMinutes.trim() === '' ? DEFAULT_DELAY_MINUTES : Number(state.delayMinutes),
   include_chart: state.series.has('heart_rate'),
+  include_exercise_trends: state.includeExerciseTrends,
   include_exercises: state.includeExercises,
   include_map: state.includeMap,
   included_metrics: orderedPick(

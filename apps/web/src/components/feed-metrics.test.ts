@@ -6,6 +6,7 @@ import {
   buildShareBody,
   DEFAULT_SUMMARY,
   defaultsFromChart,
+  initialIncludeExerciseTrends,
   initialIncludeExercises,
   initialSeriesSelection,
   offersExercises,
@@ -83,6 +84,7 @@ describe('buildShareBody', () => {
     canChart: true,
     canExercises: true,
     canMap: true,
+    includeExerciseTrends: false,
     includeExercises: false,
     includeMap: false,
     message: '',
@@ -135,6 +137,14 @@ describe('buildShareBody', () => {
     )
     expect(buildShareBody({ ...base, includeExercises: false }).include_exercises).toBe(false)
   })
+
+  it('shares the exercise trends only with the exercises', () => {
+    const on = { ...base, includeExerciseTrends: true, includeExercises: true }
+    expect(buildShareBody(on).include_exercise_trends).toBe(true)
+    expect(buildShareBody({ ...on, includeExercises: false }).include_exercise_trends).toBe(false)
+    expect(buildShareBody({ ...on, canExercises: false }).include_exercise_trends).toBe(false)
+    expect(buildShareBody({ ...on, includeExerciseTrends: false }).include_exercise_trends).toBe(false)
+  })
 })
 
 describe('exercises opt-in', () => {
@@ -150,6 +160,12 @@ describe('exercises opt-in', () => {
     expect(initialIncludeExercises()).toBe(true)
     expect(initialIncludeExercises({ include_exercises: false })).toBe(false)
     expect(initialIncludeExercises({ include_exercises: true })).toBe(true)
+  })
+
+  it('starts the trends unchecked for a new share and follows the post when editing', () => {
+    expect(initialIncludeExerciseTrends()).toBe(false)
+    expect(initialIncludeExerciseTrends({ include_exercise_trends: false })).toBe(false)
+    expect(initialIncludeExerciseTrends({ include_exercise_trends: true })).toBe(true)
   })
 })
 
@@ -172,6 +188,7 @@ describe('metric labels', () => {
 describe('previewSelection', () => {
   const body = {
     include_chart: false,
+    include_exercise_trends: false,
     include_exercises: false,
     include_map: false,
     included_metrics: ['duration'],
@@ -181,7 +198,8 @@ describe('previewSelection', () => {
   }
 
   it('keeps only what the preview renders: the summary metrics, the message and the exercises', () => {
-    expect(previewSelection(body, true)).toEqual({
+    expect(previewSelection(body, true, false)).toEqual({
+      include_exercise_trends: false,
       include_exercises: true,
       included_metrics: ['duration'],
       message: 'hi',
@@ -192,21 +210,29 @@ describe('previewSelection', () => {
     const toggled = {
       ...body,
       include_chart: true,
+      include_exercise_trends: false,
       include_exercises: false,
       include_map: true,
       series_metrics: ['heart_rate' as const],
       visibility: 'followers' as const,
     }
-    expect(JSON.stringify(previewSelection(toggled, false))).toBe(
-      JSON.stringify(previewSelection(body, false)),
+    expect(JSON.stringify(previewSelection(toggled, false, false))).toBe(
+      JSON.stringify(previewSelection(body, false, false)),
     )
   })
 
+  it('carries the exercise trends only with the exercises', () => {
+    expect(previewSelection(body, true, true).include_exercise_trends).toBe(true)
+    expect(previewSelection(body, false, true).include_exercise_trends).toBe(false)
+  })
+
   it('carries the mentions, since the preview shows them', () => {
-    expect(previewSelection({ ...body, mention_people: ['p1'] }, false)).toMatchObject({
+    expect(previewSelection({ ...body, mention_people: ['p1'] }, false, false)).toMatchObject({
       mention_people: ['p1'],
     })
-    expect(previewSelection({ ...body, mention_people: [] }, false)).not.toHaveProperty('mention_people')
+    expect(previewSelection({ ...body, mention_people: [] }, false, false)).not.toHaveProperty(
+      'mention_people',
+    )
   })
 })
 
@@ -271,6 +297,7 @@ describe('shareableSummaryOptions', () => {
       canChart: true,
       canExercises: false,
       canMap: false,
+      includeExerciseTrends: false,
       includeExercises: false,
       includeMap: false,
       message: '',

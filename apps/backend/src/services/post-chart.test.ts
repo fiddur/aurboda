@@ -67,6 +67,7 @@ const makePost = (overrides: Partial<FeedPostRecord> = {}): FeedPostRecord => ({
   in_reply_to_handle: null,
   in_reply_to_uri: null,
   include_chart: true,
+  include_exercise_trends: false,
   include_exercises: false,
   include_map: true,
   included_metrics: [],
