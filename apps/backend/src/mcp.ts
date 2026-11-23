@@ -99,6 +99,7 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { registerUploadUrlTools } from './mcp/upload-url-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { checkInDeps } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -299,6 +300,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webHost: deps.webHost,
   })
   registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
+  registerUploadUrlTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
   registerChallengeTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,

@@ -267,7 +267,7 @@ export const noteAttachmentFailure = (reason: NoteAttachmentFailure): { status: 
 const fail = <T>(reason: NoteAttachmentFailure): NoteAttachmentResult<T> => ({ ok: false, reason })
 
 /** The live journal entry the attachments hang off, or why there is none. */
-const findEntry = async (
+export const findAttachmentEntry = async (
   user: string,
   noteId: string,
   deps: NoteAttachmentDeps,
@@ -285,7 +285,7 @@ export const addNoteAttachment = async (
   buffer: Buffer,
   deps: NoteAttachmentDeps = defaultNoteAttachmentDeps,
 ): Promise<NoteAttachmentResult<NoteAttachment>> => {
-  const entry = await findEntry(user, noteId, deps)
+  const entry = await findAttachmentEntry(user, noteId, deps)
   if (typeof entry === 'string') return fail(entry)
   if (buffer.length > NOTE_ATTACHMENT_MAX_BYTES) return fail('too_large')
   const [usage, stripMetadata] = await Promise.all([deps.getUsage(user, noteId), deps.getStripMetadata(user)])
@@ -380,7 +380,7 @@ export const listDeletedNoteAttachments = async (
   noteId: string,
   deps: NoteAttachmentDeps = defaultNoteAttachmentDeps,
 ): Promise<NoteAttachmentResult<NoteAttachment[]>> => {
-  const entry = await findEntry(user, noteId, deps)
+  const entry = await findAttachmentEntry(user, noteId, deps)
   if (typeof entry === 'string') return fail(entry)
   const deleted = await deps.listDeleted(user, noteId)
   return { ok: true, value: deleted.map(toNoteAttachmentData) }
@@ -392,7 +392,7 @@ export const listNoteAttachments = async (
   noteId: string,
   deps: NoteAttachmentDeps = defaultNoteAttachmentDeps,
 ): Promise<NoteAttachmentResult<NoteAttachment[]>> => {
-  const entry = await findEntry(user, noteId, deps)
+  const entry = await findAttachmentEntry(user, noteId, deps)
   if (typeof entry === 'string') return fail(entry)
   const live = await deps.listLive(user, [noteId])
   return { ok: true, value: (live.get(noteId) ?? []).map(toNoteAttachmentData) }

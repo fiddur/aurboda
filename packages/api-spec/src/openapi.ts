@@ -382,6 +382,12 @@ import {
 } from './schemas/sync.ts'
 import { activityTrackResponseSchema, trackBackfillResponseSchema } from './schemas/tracks.ts'
 import {
+  createUploadUrlBodySchema,
+  UPLOAD_URL_TTL_MINUTES,
+  uploadResultResponseSchema,
+  uploadUrlResponseSchema,
+} from './schemas/uploads.ts'
+import {
   webauthnAuthOptionsBodySchema,
   webauthnAuthOptionsResponseSchema,
   webauthnAuthVerifyBodySchema,
@@ -5759,6 +5765,128 @@ const openApiDocument = createDocument({
         tags: ['Settings'],
       },
     },
+    '/uploads': {
+      post: {
+        description: `Mint a short-lived, single-use upload URL for one target: \`note_attachment\` (a picture or a recording on a journal entry, needs \`note_id\`), \`feed_image\` (a picture to embed in markdown), \`challenge_banner\` (needs \`challenge_id\`) or \`profile_avatar\`. The URL is good for one upload within ${UPLOAD_URL_TTL_MINUTES} minutes and takes the raw bytes without an Authorization header (\`curl -T photo.jpg '<upload_url>'\`), so a client that cannot send multipart or large bodies itself can hand it on. Minting draws on the account's upload budget.`,
+        requestBody: {
+          content: { 'application/json': { schema: createUploadUrlBodySchema } },
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadUrlResponseSchema } },
+            description: 'The upload URL',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A missing or unexpected id for the target, or a note that is not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The journal entry or challenge was not found',
+          },
+          429: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account has used its upload budget for now',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create an upload URL',
+        tags: ['Uploads'],
+      },
+    },
+    '/uploads/{username}/{token}': {
+      post: {
+        description:
+          'Upload the file as multipart/form-data, in field `file`, to a URL from `POST /uploads`. Otherwise the same as the PUT.',
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              schema: z.object({
+                file: z.string().meta({ description: 'The file', format: 'binary' }),
+              }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({
+            token: z.string().meta({ description: 'The URL token' }),
+            username: z.string().meta({ description: 'The account the URL was minted for' }),
+          }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadResultResponseSchema } },
+            description: 'What the upload stored, by target',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, or a file the target cannot use',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The URL is unknown, expired or already used, or its entry or challenge is gone',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large; the URL can still be used',
+          },
+          415: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a picture Aurboda can use (feed_image)',
+          },
+        },
+        summary: 'Upload a file (multipart)',
+        tags: ['Uploads'],
+      },
+      put: {
+        description: `Upload a file to a URL from \`POST /uploads\`: the body is the file's raw bytes, with any content type, and no Authorization header is needed, since the URL is the credential. The URL works once, within ${UPLOAD_URL_TTL_MINUTES} minutes of minting: a stored upload or a refused file uses it up, while a body over \`max_bytes\` (413) or an empty one (400) leaves it usable. The answer is what the target's own upload would answer, under \`data\` with its \`target\`. An unknown, expired or used URL answers 404 without saying which.`,
+        requestBody: {
+          content: {
+            'application/octet-stream': {
+              schema: z.string().meta({ description: 'The file', format: 'binary' }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({
+            token: z.string().meta({ description: 'The URL token' }),
+            username: z.string().meta({ description: 'The account the URL was minted for' }),
+          }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadResultResponseSchema } },
+            description: 'What the upload stored, by target',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, or a file the target cannot use',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The URL is unknown, expired or already used, or its entry or challenge is gone',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large; the URL can still be used',
+          },
+          415: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a picture Aurboda can use (feed_image)',
+          },
+        },
+        summary: 'Upload a file',
+        tags: ['Uploads'],
+      },
+    },
   },
   servers: [
     { description: 'Production', url: 'https://aurboda.net/api' },
@@ -5796,6 +5924,11 @@ const openApiDocument = createDocument({
       name: 'People',
     },
     { description: 'User settings and preferences', name: 'Settings' },
+    {
+      description:
+        'Short-lived, single-use URLs for uploading files without multipart or an Authorization header',
+      name: 'Uploads',
+    },
     {
       description: 'Data synchronization with external services',
       name: 'Sync',

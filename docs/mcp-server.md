@@ -204,18 +204,18 @@ comments. See [Comments](features/comments.md) for the data model and
 
 Pictures and recordings on journal entries, and entry templates:
 
-| Tool                            | What it does                                                                                                                                        |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit |
-| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                          |
-| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                     |
-| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                     |
-| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                    |
-| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                 |
-| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                       |
-| `update_note_template`          | Change a template's name or text                                                                                                                    |
-| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                        |
-| `restore_note_template`         | Restore a deleted template                                                                                                                          |
+| Tool                            | What it does                                                                                                                                                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit; larger files go through [`create_upload_url`](#uploading-files) |
+| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                                                                                           |
+| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                                                                                      |
+| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                                                                                      |
+| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                                                                                     |
+| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                                                                                  |
+| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                                                                                        |
+| `update_note_template`          | Change a template's name or text                                                                                                                                                                                     |
+| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                                                                                         |
+| `restore_note_template`         | Restore a deleted template                                                                                                                                                                                           |
 
 To transcribe photographed diary pages: `search_notes` with `needs_text: true`, then
 `get_note_attachment` for each page in `position` order, then `update_note` with the
@@ -292,6 +292,30 @@ The rules that publish new activities to the feed. See [Auto-share rules](featur
 | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `list_autoshare_rules`, `add_autoshare_rule`, `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule` | Manage the rules, like `/autoshare-rules`                                                               |
 | `skip_autoshare`                                                                                                         | Keep one activity (`activity_id`) and its merge group from being auto-shared; fails when already shared |
+
+### Uploading files
+
+MCP carries a file base64-encoded inside a JSON request of at most 4 MB, so `add_note_attachment`
+and `add_feed_image` suit small files only. For anything larger than a few hundred kB, or a file
+on disk, `create_upload_url` (REST: `POST /uploads`) mints a short-lived, single-use URL for one
+target, and the client sends the raw bytes there with any HTTP client:
+
+| `target`           | Needs          | Stores                                    | Answers like                  |
+| ------------------ | -------------- | ----------------------------------------- | ----------------------------- |
+| `note_attachment`  | `note_id`      | A picture or recording on a journal entry | `add_note_attachment` (20 MB) |
+| `feed_image`       |                | A picture to embed in markdown            | `add_feed_image` (10 MB)      |
+| `challenge_banner` | `challenge_id` | The banner of a hosted challenge          | `POST /challenges/:id/banner` |
+| `profile_avatar`   |                | The profile picture                       | `POST /profile/avatar`        |
+
+The tool answers `{ success, data: { upload_url, expires_at, max_bytes, target, method } }`.
+The URL works once, within 15 minutes, and needs no `Authorization` header: the token in it is
+the credential (only its SHA-256 is stored). Send the file with `curl -T photo.jpg '<upload_url>'`
+(`PUT`, raw bytes, any content type) or `curl -F file=@photo.jpg '<upload_url>'` (`POST`
+multipart, field `file`). The upload answers `201` with `{ success, data: { target, ... } }`
+holding what the target's own upload would (`attachment`, `image`, `challenge` or `url`), or
+that upload's error. A body over `max_bytes` (`413`) or an empty one (`400`) leaves the URL
+usable; any other answer uses it up. An unknown, expired or used URL answers `404`. Minting draws
+on the account's upload budget; the uploads themselves are limited per client IP.
 
 ## Endpoint
 

@@ -845,6 +845,14 @@ export {
 } from './mcp-sessions.ts'
 
 export {
+  findLiveUploadUrl,
+  insertUploadUrl,
+  spendUploadUrl,
+  type NewUploadUrl,
+  type UploadUrlRecord,
+} from './upload-urls.ts'
+
+export {
   cleanupAuditLog,
   insertAuditLog,
   queryAuditLog,

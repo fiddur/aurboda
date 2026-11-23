@@ -6,7 +6,6 @@ import type { RequestHandler } from 'express'
  * host is always a member of their own challenge.
  */
 import {
-  type Challenge,
   type ChallengeMembersResponse,
   type ChallengeParticipationResponse,
   type ChallengeParticipationsResponse,
@@ -44,7 +43,6 @@ import type { FeedDeliver } from './feed-router.ts'
 
 import { singleUpload } from '../api/upload.ts'
 import {
-  type ChallengeRecord,
   createChallenge,
   deleteChallenge,
   deleteChallengeBanner,
@@ -52,11 +50,10 @@ import {
   listChallengeMembers,
   listChallenges,
   removeChallengeMember,
-  upsertChallengeBanner,
   upsertChallengeMember,
 } from '../db/index.ts'
-import { isAllowedImageType, processBanner } from '../services/avatar.ts'
-import { bannerUrlFor } from '../services/challenge-banner.ts'
+import { isAllowedImageType } from '../services/avatar.ts'
+import { CHALLENGE_BANNER_MAX_BYTES, setChallengeBanner } from '../services/challenge-banner.ts'
 import {
   JoinChallengeError,
   joinChallenge,
@@ -64,13 +61,8 @@ import {
   previewChallenge,
 } from '../services/challenge-federation.ts'
 import { listParticipationsFresh } from '../services/challenge-participation-sync.ts'
-import { announcementPending } from '../services/challenge-results.ts'
-import {
-  effectiveBucketSize,
-  serializeParticipation,
-  specToApi,
-  toSpecFields,
-} from '../services/challenge-spec.ts'
+import { serializeChallenge } from '../services/challenge-serialize.ts'
+import { effectiveBucketSize, serializeParticipation, toSpecFields } from '../services/challenge-spec.ts'
 import { getChallengeStandings } from '../services/challenge-standings.ts'
 import { createThreadDeps, type ThreadFederation } from '../services/challenge-thread-remote.ts'
 import {
@@ -85,33 +77,15 @@ import {
   getJoinedChallenge,
   type JoinedChallengeDeps,
 } from '../services/joined-challenge.ts'
-import { buildProfileUrl, buildShareUrl } from '../services/share-urls.ts'
-import { isPublicToVisibility, visibilityToIsPublic } from '../services/visibility.ts'
+import { buildProfileUrl } from '../services/share-urls.ts'
+import { visibilityToIsPublic } from '../services/visibility.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
-const bannerUpload = singleUpload({ field: 'banner', fields: 2, fileSize: 10 * 1024 * 1024 })
+const bannerUpload = singleUpload({ field: 'banner', fields: 2, fileSize: CHALLENGE_BANNER_MAX_BYTES })
 
 const joinErrorStatus = (error: JoinChallengeError): 400 | 404 | 502 =>
   error.kind === 'invalid_url' ? 400 : error.kind === 'not_found' ? 404 : 502
-
-const serialize = (record: ChallengeRecord, webHost: string, username: string): Challenge => ({
-  announce_winner: record.announce_winner,
-  announcement_pending: announcementPending(record, new Date()),
-  banner_url: bannerUrlFor(record, webHost, username),
-  created_at: record.created_at.toISOString(),
-  end_ts: record.end_ts.toISOString(),
-  id: record.id,
-  name: record.name,
-  result_published_at: record.result_published_at?.toISOString() ?? null,
-  share_url: buildShareUrl(webHost, username, record.slug),
-  slug: record.slug,
-  spec: specToApi(record.spec),
-  start_ts: record.start_ts.toISOString(),
-  timezone: record.timezone,
-  updated_at: record.updated_at.toISOString(),
-  visibility: isPublicToVisibility(record.is_public),
-})
 
 export const createChallengesRouter = (
   authMiddleware: RequestHandler,
@@ -133,7 +107,7 @@ export const createChallengesRouter = (
   router.get<Record<string, never>, ChallengesResponse>('/', authMiddleware, async (req, res) => {
     const user = req.user!
     const records = await listChallenges(user)
-    res.json({ challenges: records.map((r) => serialize(r, webHost, user)), success: true })
+    res.json({ challenges: records.map((r) => serializeChallenge(r, webHost, user)), success: true })
   })
 
   router.post<Record<string, never>, ChallengeResponse, CreateChallengeBody>(
@@ -158,7 +132,7 @@ export const createChallengesRouter = (
         kind: 'local',
         local_user: user,
       })
-      res.json({ challenge: serialize(record, webHost, user), success: true })
+      res.json({ challenge: serializeChallenge(record, webHost, user), success: true })
     },
   )
 
@@ -280,7 +254,7 @@ export const createChallengesRouter = (
     const user = req.user!
     const record = await getChallengeById(user, req.params.id)
     if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
-    res.json({ challenge: serialize(record, webHost, user), success: true })
+    res.json({ challenge: serializeChallenge(record, webHost, user), success: true })
   })
 
   router.put<{ id: string }, ChallengeResponse, UpdateChallengeBody>(
@@ -310,7 +284,7 @@ export const createChallengesRouter = (
       if (result.status !== 'updated') {
         return res.status(409).json({ error: LOCKED_MESSAGES[result.status], success: false })
       }
-      res.json({ challenge: serialize(result.record, webHost, user), success: true })
+      res.json({ challenge: serializeChallenge(result.record, webHost, user), success: true })
     },
   )
 
@@ -335,21 +309,13 @@ export const createChallengesRouter = (
           success: false,
         })
       }
-      if (!(await getChallengeById(user, req.params.id))) {
-        return res.status(404).json({ error: 'Challenge not found', success: false })
+      const result = await setChallengeBanner(user, req.params.id, file.buffer)
+      if (!result.ok) {
+        return result.reason === 'not_found'
+          ? res.status(404).json({ error: 'Challenge not found', success: false })
+          : res.status(400).json({ error: 'Could not process image', success: false })
       }
-
-      let processed
-      try {
-        processed = await processBanner(file.buffer)
-      } catch {
-        return res.status(400).json({ error: 'Could not process image', success: false })
-      }
-
-      await upsertChallengeBanner(user, req.params.id, processed.content_type, processed.data)
-      const record = await getChallengeById(user, req.params.id)
-      if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
-      res.json({ challenge: serialize(record, webHost, user), success: true })
+      res.json({ challenge: serializeChallenge(result.record, webHost, user), success: true })
     },
   )
 
@@ -361,7 +327,7 @@ export const createChallengesRouter = (
     await deleteChallengeBanner(user, req.params.id)
     const record = await getChallengeById(user, req.params.id)
     if (!record) return res.status(404).json({ error: 'Challenge not found', success: false })
-    res.json({ challenge: serialize(record, webHost, user), success: true })
+    res.json({ challenge: serializeChallenge(record, webHost, user), success: true })
   })
 
   router.get<{ id: string }, ChallengeStandingsResponse>(

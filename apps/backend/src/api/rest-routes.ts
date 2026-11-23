@@ -127,6 +127,7 @@ import { createStrengthPlansRouter } from '../routes/strength-plans-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
+import { createUploadUrlRouter } from '../routes/uploads-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import {
@@ -162,6 +163,7 @@ import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-ch
 import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
+import { defaultMintUploadUrlDeps } from '../services/upload-urls.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -381,6 +383,7 @@ export const mountRestRouters = ({
   httpd.use('/feed/followed-tags', createFeedFollowedTagsRouter(authMiddleware, followActions))
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
   httpd.use('/feed/images', createFeedImagesRouter(authMiddleware, apiBaseUrl))
+  httpd.use('/uploads', createUploadUrlRouter(authMiddleware, defaultMintUploadUrlDeps(apiBaseUrl)))
   httpd.use(
     '/feed',
     createFeedRouter(
