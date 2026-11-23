@@ -51,7 +51,9 @@ import {
   isEntryEmpty,
   tagChips,
 } from './entry-form'
+import { type EntryMode, initialEntryMode } from './entry-mode'
 import { EntryNeighbors } from './EntryNeighbors'
+import { EntryReadView } from './EntryReadView'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
 import { MentionEditor } from './MentionEditor'
@@ -456,6 +458,29 @@ const EditorTools = ({
   </div>
 )
 
+const EntryText = ({
+  mode,
+  onEdit,
+  onDone,
+  ...editor
+}: Parameters<typeof MentionEditor>[0] & {
+  mode: EntryMode
+  onEdit: () => void
+  onDone: () => void
+}) =>
+  mode === 'read' ? (
+    <EntryReadView content={editor.value} onEdit={onEdit} />
+  ) : (
+    <div class="journal-write">
+      <MentionEditor {...editor} />
+      <div class="journal-write-done">
+        <button type="button" class="btn-secondary" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </div>
+  )
+
 /** Replace the editor's URL without a navigation: the router would remount the editor mid-sentence. */
 const replaceUrl = (path: string) => {
   try {
@@ -504,6 +529,14 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const [removed, setRemoved] = useState<NoteAttachment | undefined>(undefined)
   const [deleted, setDeleted] = useState(false)
   const deletedRef = useRef(false)
+  const [mode, setMode] = useState<EntryMode>(() =>
+    initialEntryMode({ content: '', isNew: initialId === undefined }),
+  )
+  const [focusText, setFocusText] = useState(false)
+  const startEditing = (focus: boolean) => {
+    setFocusText(focus)
+    setMode('edit')
+  }
 
   const setAttachments = (next: NoteAttachment[]) => {
     attachmentsRef.current = next
@@ -622,6 +655,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         })
         if (draft) setOffer(draft)
         else removeDraft(storage, initialId)
+        setMode(initialEntryMode({ content: serverForm.content, isNew: false }))
         setLoaded(true)
       })
       .catch(() => {
@@ -683,12 +717,14 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     setForm(resolved)
     saveDraft(storage, { edited_at: Date.now(), form: resolved, key: draftKey() })
     autosaver.resume(resolved)
+    startEditing(false)
   }
 
   const takeOffer = () => {
     if (!offer) return
     edit(offer.form)
     setOffer(undefined)
+    startEditing(false)
   }
 
   const discardOffer = () => {
@@ -783,6 +819,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const applyTemplate = (content: string) => {
     if (form.content.trim() && !confirm('Replace the text with the template?')) return
     patch({ content })
+    startEditing(false)
   }
 
   const refreshReplies = async () => {
@@ -798,6 +835,10 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   if (deleted) return <DeletedNotice onUndo={() => void undoDelete()} />
 
   const flush = () => void autosaver.flush()
+  const doneEditing = async () => {
+    await autosaver.flush()
+    setMode('read')
+  }
 
   return (
     <div class="page journal-page journal-editor-page">
@@ -832,7 +873,11 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
             onInput={(e) => patch({ title: e.currentTarget.value })}
             onBlur={flush}
           />
-          <MentionEditor
+          <EntryText
+            mode={mode}
+            onEdit={() => startEditing(true)}
+            onDone={() => void doneEditing()}
+            autoFocus={focusText}
             value={form.content}
             onChange={(content) => patch({ content })}
             onMention={(content, person) =>
@@ -887,6 +932,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
               onRestore={(revision) => {
                 patch({ content: revision.content, title: revision.title ?? '' })
                 setShowHistory(false)
+                startEditing(false)
               }}
             />
           )}

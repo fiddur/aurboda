@@ -44,6 +44,11 @@
   box-sizing: border-box;
 }
 
+.md-editor-textarea--grow {
+  overflow-y: hidden;
+  resize: none;
+}
+
 .md-editor-textarea:focus {
   outline: none;
 }
