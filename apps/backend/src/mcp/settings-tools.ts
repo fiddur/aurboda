@@ -22,7 +22,7 @@ export const registerSettingsTools = (
 ) => {
   server.tool(
     'get_user_settings',
-    "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the auto-detected timezone from the user's device — use it as the tz parameter for all other tools that require it.",
+    "Get user settings including birth date, effective HR zones, and timezone (tz). The tz field returns the user's time zone, from the phone while tz_follows_device is true or as chosen by hand otherwise — use it as the tz parameter for all other tools that require it.",
     {},
     async () => {
       const result = await getSettingsResponse(user)
@@ -32,7 +32,7 @@ export const registerSettingsTools = (
 
   server.tool(
     'update_user_settings',
-    'Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds.',
+    "Update user settings. Can set birth date (for age-based HR zones) and/or custom HR zone thresholds. Setting tz alone is a choice by hand: it turns tz_follows_device off, so the Android app's sync stops replacing it with the phone's zone; set tz_follows_device true to follow the phone again.",
     { ...updateSettingsInputSchema.shape },
     async (params) => {
       const result = await validateAndUpdateSettings(user, params, onHrSettingsChanged, onProfileChanged)

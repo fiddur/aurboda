@@ -535,12 +535,55 @@ describe('validateAndUpdateSettings', () => {
     expect(result.tz).toBe('Europe/Stockholm')
     expect(db.upsertUserSettings).toHaveBeenCalledWith(
       'testuser',
-      { device_timezone: 'Europe/Stockholm' },
+      { device_timezone: 'Europe/Stockholm', tz_follows_device: false },
       [],
     )
 
     await validateAndUpdateSettings('testuser', { tz: null })
-    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['device_timezone'])
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, [
+      'device_timezone',
+      'tz_follows_device',
+    ])
+  })
+
+  test('a zone set with tz_follows_device given stores the flag as given', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { tz: 'Europe/Stockholm', tz_follows_device: true })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith(
+      'testuser',
+      { device_timezone: 'Europe/Stockholm', tz_follows_device: true },
+      [],
+    )
+
+    await validateAndUpdateSettings('testuser', { tz: null, tz_follows_device: false })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', { tz_follows_device: false }, [
+      'device_timezone',
+    ])
+  })
+
+  test('tz_follows_device alone is stored, and null clears it', async () => {
+    vi.mocked(db.getUserSettings).mockResolvedValue({})
+    vi.mocked(db.upsertUserSettings).mockResolvedValue({})
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    await validateAndUpdateSettings('testuser', { tz_follows_device: true })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', { tz_follows_device: true }, [])
+
+    await validateAndUpdateSettings('testuser', { tz_follows_device: null })
+    expect(db.upsertUserSettings).toHaveBeenLastCalledWith('testuser', {}, ['tz_follows_device'])
+  })
+
+  test('answers tz_follows_device as stored, true when unset', async () => {
+    vi.mocked(db.getOAuthToken).mockResolvedValue(null)
+
+    vi.mocked(db.getUserSettings).mockResolvedValue(null)
+    expect((await getSettingsResponse('testuser')).tz_follows_device).toBe(true)
+
+    vi.mocked(db.getUserSettings).mockResolvedValue({ tz_follows_device: false })
+    expect((await getSettingsResponse('testuser')).tz_follows_device).toBe(false)
   })
 
   test('refuses an unknown tz and stores nothing', async () => {
