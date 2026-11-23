@@ -23,6 +23,7 @@ const post = (
   in_reply_to_handle: null,
   in_reply_to_uri: null,
   include_chart: false,
+  include_exercise_trends: false,
   include_exercises: false,
   include_map: false,
   included_metrics: [],

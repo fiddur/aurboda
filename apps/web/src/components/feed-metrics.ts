@@ -122,6 +122,8 @@ export interface ShareSelection {
   includeMap: boolean
   /** Share the session's exercises; sent only when `canExercises`. */
   includeExercises: boolean
+  /** Add each exercise's trend; sent only with the exercises. */
+  includeExerciseTrends: boolean
   visibility: FeedVisibility
   /** Personal message (plain text) — see `buildShareBody` for the clear-on-edit semantics. */
   message: string
@@ -140,6 +142,7 @@ export interface ShareSelection {
  */
 export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
   include_chart: sel.canChart && sel.series.has(HEART_RATE),
+  include_exercise_trends: sel.canExercises && sel.includeExercises && sel.includeExerciseTrends,
   include_exercises: sel.canExercises && sel.includeExercises,
   include_map: sel.canMap && sel.includeMap,
   included_metrics: sel.summaryOptions.map((m) => m.key).filter((k) => sel.summary.has(k)),
@@ -152,7 +155,7 @@ export const buildShareBody = (sel: ShareSelection): ShareActivityBody => ({
 
 export type SharePreviewSelection = Pick<
   ShareActivityBody,
-  'include_exercises' | 'included_metrics' | 'mention_people' | 'message' | 'tags'
+  'include_exercise_trends' | 'include_exercises' | 'included_metrics' | 'mention_people' | 'message' | 'tags'
 >
 
 /**
@@ -160,12 +163,14 @@ export type SharePreviewSelection = Pick<
  * message and the exercises only, so series, image and visibility toggles must
  * not refetch it. The exercise toggle goes in as chosen rather than gated: the
  * preview is what says whether there are exercises at all, and it renders none
- * when there are none, so the content still matches what is sent.
+ * when there are none, so the content still matches what is sent. The trend goes with it.
  */
 export const previewSelection = (
   body: ShareActivityBody,
   includeExercises: boolean,
+  includeExerciseTrends: boolean,
 ): SharePreviewSelection => ({
+  include_exercise_trends: includeExercises && includeExerciseTrends,
   include_exercises: includeExercises,
   included_metrics: body.included_metrics,
   ...(body.mention_people?.length ? { mention_people: body.mention_people } : {}),
@@ -186,6 +191,10 @@ export const offersExercises = (
 /** A new share starts with the exercises on (when offered); an edit keeps the post's choice. */
 export const initialIncludeExercises = (post?: Pick<FeedPost, 'include_exercises'>): boolean =>
   post ? post.include_exercises : true
+
+/** A new share starts without the exercise trends; an edit keeps the post's choice. */
+export const initialIncludeExerciseTrends = (post?: Pick<FeedPost, 'include_exercise_trends'>): boolean =>
+  post ? post.include_exercise_trends : false
 
 /**
  * QuantPub `0.2` wire keys are lowerCamelCase (`heartRateAvg`); Aurboda's own

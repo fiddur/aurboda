@@ -82,6 +82,7 @@ describe('ruleSummary', () => {
     enabled_at: null,
     id: 'r1',
     include_chart: false,
+    include_exercise_trends: false,
     include_exercises: false,
     include_map: false,
     included_metrics: [],

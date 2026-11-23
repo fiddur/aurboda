@@ -37,6 +37,8 @@ export interface FeedPostRecord {
   include_map: boolean
   include_chart: boolean
   include_exercises: boolean
+  /** Share each exercise's trend; effective only with `include_exercises`. */
+  include_exercise_trends: boolean
   /** Stored article payload (title + default window + blocks); null for `activity` posts. */
   article: ArticleContent | null
   /** Stored challenge link payload (name + canonical URL); null unless kind = 'challenge'. */
@@ -75,6 +77,8 @@ export interface FeedPostInput {
   include_chart: boolean
   /** Omitted stores false. */
   include_exercises?: boolean
+  /** Omitted stores false. */
+  include_exercise_trends?: boolean
   /** The author's personal message; omitted/undefined stores NULL. */
   message?: string | null
   /** The auto-share rule creating this post (#903); omitted for manual shares. */
@@ -150,6 +154,7 @@ export interface FeedPostPatch {
   include_map?: boolean
   include_chart?: boolean
   include_exercises?: boolean
+  include_exercise_trends?: boolean
   /** Replacement article payload (whole `article` JSONB), for editing an article post. */
   article?: ArticleContent
   /** Replacement personal message; `null` clears it, `undefined` leaves it unchanged. */
@@ -159,7 +164,7 @@ export interface FeedPostPatch {
 }
 
 const FEED_POST_COLUMNS =
-  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, challenge_uri, tags, mentions, image_token, created_at, updated_at'
+  'id, kind, activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, include_exercise_trends, article, challenge, exercise, dashboard, message, in_reply_to_uri, in_reply_to_actor_uri, in_reply_to_handle, autoshare_rule_id, challenge_uri, tags, mentions, image_token, created_at, updated_at'
 
 interface FeedPostRow {
   id: string
@@ -171,6 +176,7 @@ interface FeedPostRow {
   include_map: boolean
   include_chart: boolean
   include_exercises: boolean
+  include_exercise_trends: boolean
   // pg parses a jsonb column to its JS value on read (null for `activity` posts).
   article: ArticleContent | null
   challenge: ChallengeShare | null
@@ -192,7 +198,7 @@ interface FeedPostRow {
 const mapFeedPost = (row: FeedPostRow): FeedPostRecord => ({ ...row })
 
 const ACTIVITY_POST_COLUMNS =
-  'activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, message, autoshare_rule_id, tags'
+  'activity_id, included_metrics, series_metrics, visibility, include_map, include_chart, include_exercises, message, autoshare_rule_id, tags, include_exercise_trends'
 
 const activityPostParams = (input: FeedPostInput): unknown[] => [
   input.activity_id,
@@ -205,13 +211,14 @@ const activityPostParams = (input: FeedPostInput): unknown[] => [
   input.message ?? null,
   input.autoshare_rule_id ?? null,
   input.tags ?? [],
+  input.include_exercise_trends ?? false,
 ]
 
 export const createFeedPost = async (user: string, input: FeedPostInput): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     user,
     `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS}, mentions)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING ${FEED_POST_COLUMNS}`,
     [...activityPostParams(input), JSON.stringify(input.mentions ?? [])],
   )
@@ -232,8 +239,8 @@ export const createFeedPostUnlessSuppressed = async (
     user,
     `INSERT INTO feed_posts (${ACTIVITY_POST_COLUMNS})
      SELECT $1::uuid, $2::text[], $3::text[], $4::varchar, $5::boolean, $6::boolean, $7::boolean, $8::text,
-            $9::uuid, $10::text[]
-     WHERE NOT EXISTS (SELECT 1 FROM autoshare_suppressions WHERE activity_id = ANY($11::uuid[]))
+            $9::uuid, $10::text[], $11::boolean
+     WHERE NOT EXISTS (SELECT 1 FROM autoshare_suppressions WHERE activity_id = ANY($12::uuid[]))
      RETURNING ${FEED_POST_COLUMNS}`,
     [...activityPostParams(input), suppressedIds],
   )
@@ -541,6 +548,9 @@ export const updateFeedPost = async (
   if (patch.include_map !== undefined) set('include_map', patch.include_map)
   if (patch.include_chart !== undefined) set('include_chart', patch.include_chart)
   if (patch.include_exercises !== undefined) set('include_exercises', patch.include_exercises)
+  if (patch.include_exercise_trends !== undefined) {
+    set('include_exercise_trends', patch.include_exercise_trends)
+  }
   if (patch.article !== undefined) set('article', JSON.stringify(patch.article))
   if (patch.message !== undefined) set('message', patch.message)
   if (patch.tags !== undefined) set('tags', patch.tags)

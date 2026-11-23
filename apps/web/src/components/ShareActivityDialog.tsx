@@ -24,6 +24,7 @@ import {
 import {
   buildShareBody,
   defaultsFromChart,
+  initialIncludeExerciseTrends,
   initialIncludeExercises,
   initialSeriesSelection,
   offersExercises,
@@ -159,6 +160,7 @@ export function ShareActivityDialog({
   )
   const [includeMap, setIncludeMap] = useState(post?.include_map ?? false)
   const [includeExercises, setIncludeExercises] = useState(() => initialIncludeExercises(post))
+  const [includeExerciseTrends, setIncludeExerciseTrends] = useState(() => initialIncludeExerciseTrends(post))
   const [message, setMessage] = useState(post ? (post.message ?? '') : (defaultMessage ?? ''))
   // Prefilled with the post's tags (edit) or the automatic ones the preview reports
   // (create); sent only once the user changes them, so untouched they stay automatic.
@@ -212,6 +214,7 @@ export function ShareActivityDialog({
       canChart,
       canExercises,
       canMap,
+      includeExerciseTrends,
       includeExercises,
       includeMap,
       message,
@@ -244,6 +247,7 @@ export function ShareActivityDialog({
         mention_people: mentioned,
       },
       includeExercises,
+      includeExerciseTrends,
     ),
   )
   useEffect(() => {
@@ -367,6 +371,15 @@ export function ShareActivityDialog({
                   onChange={(e) => setIncludeExercises((e.target as HTMLInputElement).checked)}
                 />
                 Exercises (sets, e1RM, volume)
+              </label>
+              <label class="share-dialog-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeExerciseTrends}
+                  disabled={!includeExercises}
+                  onChange={(e) => setIncludeExerciseTrends((e.target as HTMLInputElement).checked)}
+                />
+                Trend per exercise (e1RM, volume)
               </label>
             </div>
           </fieldset>

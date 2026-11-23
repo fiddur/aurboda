@@ -473,6 +473,7 @@ export const createFeedRouter = (
       const record = await createFeedPost(user, {
         activity_id: activity.id ?? req.params.id,
         include_chart: req.body.include_chart,
+        include_exercise_trends: req.body.include_exercise_trends,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,
@@ -514,6 +515,7 @@ export const createFeedRouter = (
         user,
         activity,
         {
+          include_exercise_trends: req.body.include_exercise_trends,
           include_exercises: req.body.include_exercises,
           included_metrics: req.body.included_metrics,
           mentions: mentioned.mentions,
@@ -779,6 +781,7 @@ export const createFeedRouter = (
       if (!retag.found) return res.status(404).json({ error: 'Feed post not found', success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         include_chart: req.body.include_chart,
+        include_exercise_trends: req.body.include_exercise_trends,
         include_exercises: req.body.include_exercises,
         include_map: req.body.include_map,
         included_metrics: req.body.included_metrics,

@@ -42,7 +42,7 @@ import { type HashtagLinks, hashtagLinks, linkifyHashtags } from './activitypub/
 import { feedPostContent, formatActivityWindow } from './activitypub/object.ts'
 import { resolveInChallenge } from './challenge-thread.ts'
 import {
-  formatExerciseLine,
+  formatExerciseLines,
   resolvePostExercises,
   resolveSharedExercises,
   toStructuredExercise,
@@ -184,7 +184,7 @@ const resolveActivityPresentation = async (
   const settings = opts.settings !== undefined ? opts.settings : await getSettings(user).catch(() => null)
   const content = linkifyHashtags(
     feedPostContent(activity.title, activity.activity_type, scalars, {
-      exerciseLines: exercises.map(formatExerciseLine),
+      exerciseLines: formatExerciseLines(exercises, { trend: record.include_exercise_trends }),
       mentions: record.mentions,
       message: record.message ?? undefined,
       windowLabel: formatActivityWindow(activity.start_time, activity.end_time, settings?.device_timezone),
@@ -355,6 +355,7 @@ export const serializeFeedPost = async (
     created_at: record.created_at.toISOString(),
     id: record.id,
     include_chart: record.include_chart,
+    include_exercise_trends: record.include_exercise_trends,
     include_exercises: record.include_exercises,
     include_map: record.include_map,
     included_metrics: record.included_metrics,
@@ -507,6 +508,7 @@ export const previewActivityShare = async (
     included_metrics: string[]
     message?: string
     include_exercises?: boolean
+    include_exercise_trends?: boolean
     tags?: string[]
     mentions?: PostMention[]
   },
@@ -523,7 +525,9 @@ export const previewActivityShare = async (
     texts: [message],
   })
   const content = feedPostContent(window.title, window.activity_type, scalars, {
-    exerciseLines: selection.include_exercises ? exercises.map(formatExerciseLine) : [],
+    exerciseLines: selection.include_exercises
+      ? formatExerciseLines(exercises, { trend: selection.include_exercise_trends ?? false })
+      : [],
     mentions: selection.mentions,
     message,
     windowLabel: formatActivityWindow(window.start_time, window.end_time, settings?.device_timezone),

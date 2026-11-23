@@ -427,6 +427,15 @@ function RuleForm({ rule, onDone }: { rule?: AutoshareRule; onDone: () => void }
             />
             Exercises (sets, e1RM, volume)
           </label>
+          <label class="share-dialog-checkbox">
+            <input
+              type="checkbox"
+              checked={state.includeExerciseTrends}
+              disabled={!state.includeExercises}
+              onChange={(e) => set({ includeExerciseTrends: (e.target as HTMLInputElement).checked })}
+            />
+            Exercise trend (e1RM, volume)
+          </label>
         </div>
       </fieldset>
 
