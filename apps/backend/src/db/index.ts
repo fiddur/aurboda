@@ -328,6 +328,11 @@ export {
   replaceNoteLinks,
 } from './note-links.ts'
 export {
+  getNoteLinkDismissalsForNoteIds,
+  insertNoteLinkDismissal,
+  type NoteLinkDismissal,
+} from './note-link-dismissals.ts'
+export {
   getDeletedNoteAttachments,
   getNoteAttachment,
   getNoteAttachmentBytes,

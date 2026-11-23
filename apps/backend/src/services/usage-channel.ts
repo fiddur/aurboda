@@ -26,6 +26,7 @@ export const MUTATING_MCP_TOOL_PREFIXES = [
   'clear_',
   'create_',
   'delete_',
+  'dismiss_',
   'duplicate_',
   'evaluate_',
   'follow_',

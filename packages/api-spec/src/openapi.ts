@@ -265,7 +265,11 @@ import {
   addNoteBodySchema,
   deleteNoteQuerySchema,
   deleteNoteResponseSchema,
+  dismissNoteLinkSuggestionBodySchema,
   noteConflictResponseSchema,
+  noteLinkSuggestionsPageQuerySchema,
+  noteLinkSuggestionsPageResponseSchema,
+  noteLinkSuggestionsResponseSchema,
   noteNeighborsQuerySchema,
   noteNeighborsResponseSchema,
   noteTagsListQuerySchema,
@@ -4439,6 +4443,26 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
     },
+    '/notes/link-suggestions': {
+      get: {
+        description:
+          "A page of journal entries, newest first, with the links suggested for each: the people named in the text, the night's sleep of an entry written before noon, and the activities of the entry's day. Only entries with a suggestion are listed, so a page may hold fewer than `limit` entries (or none) while `next_cursor` is set. `unlinked_only` (default true) leaves out entries already related to anything. Nothing is linked: save the accepted ones with `PATCH /notes/{id}` and `related`.",
+        requestParams: { query: noteLinkSuggestionsPageQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteLinkSuggestionsPageResponseSchema } },
+            description: 'A page of entries with their suggestions',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List link suggestions over journal entries',
+        tags: ['Notes'],
+      },
+    },
     '/notes/tags': {
       get: {
         description:
@@ -4618,6 +4642,55 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'Get the neighbouring Journal entries',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/link-suggestions': {
+      get: {
+        description:
+          'The links suggested for one journal entry: the people whose name is written in it, the sleep that ended on the morning of an entry written before noon, and the activities of its day. Archived people, what it is already related to and what was dismissed for it are left out. Nothing is linked: save the accepted ones with `PATCH /notes/{id}` and `related`.',
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteLinkSuggestionsResponseSchema } },
+            description: 'The suggestions',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get link suggestions for a journal entry',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/{id}/link-suggestions/dismissals': {
+      post: {
+        description:
+          'Stop suggesting a person or an activity for this journal entry. Dismissing twice is the same as once.',
+        requestBody: { content: { 'application/json': { schema: dismissNoteLinkSuggestionBodySchema } } },
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: baseResponseSchemaMeta } },
+            description: 'Dismissed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Dismiss a link suggestion',
         tags: ['Notes'],
       },
     },

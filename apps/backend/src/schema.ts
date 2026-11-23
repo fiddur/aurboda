@@ -187,6 +187,7 @@ export const tableCreationOrder = [
   'note_links_indexes',
   'note_links_more_targets',
   'note_links_activity_delete_trigger',
+  'note_link_dismissals',
   'note_templates',
   'shared_dashboards',
   'shared_dashboards_indexes',
@@ -301,6 +302,8 @@ export const tableCreationOrder = [
   'person_dates_indexes',
   'activity_people',
   'activity_people_indexes',
+  'rule_activity_people',
+  'rule_activity_people_indexes',
 ]
 
 // Health Connect mappings are in schema-health-connect.ts — re-export for convenience

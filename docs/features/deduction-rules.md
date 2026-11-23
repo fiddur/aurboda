@@ -54,7 +54,8 @@ A matching play covers `started_at`–`ended_at`; a Last.fm play (no end) covers
 With `mode: "enrich"`, a rule creates nothing: it patches data onto existing activities of `output_activity_type`
 that overlap the matched ranges. `output_data` keys are only filled when missing, and `data._enriched_by` records
 the rule id. Data is written in place on the matched rows; [`output_title_field`](#copying-a-data-field-into-the-title-output_title_field)
-can also set their title.
+can also set their title. An activity without an end time counts as one hour long, so one that started long before a
+match is not enriched by it.
 
 ### Copying a play title (`output_media_field`)
 
@@ -249,11 +250,18 @@ rule, and links the person to every matching activity, old and new.
 }
 ```
 
-- People are only ever **added**: a person already on the activity stays, and the rule never removes anyone.
-  Removing a person from the rule (or clearing `output_people`) does not take them off the activities it already
-  enriched or retyped. Activities the rule _created_ are deleted and re-created when the rule is edited, so they
-  carry the rule's people as they are after the edit.
-- A person taken off an enriched activity by hand while still on the rule comes back the next time the rule runs.
+- The rule never removes anyone. Removing a person from the rule (or clearing `output_people`) does not take them
+  off the activities it already enriched or retyped. Activities the rule _created_ are deleted and re-created when the
+  rule is edited, so they carry the rule's people as they are after the edit.
+- A rule adds each of its people to an activity **once**. It records each person it has considered for an activity,
+  whether it added them, found them already there or skipped them, so a person taken off by hand stays off.
+- A rule adds nobody to an activity whose people were **set by hand**: one with a person no rule added. People added
+  by rules do not count, so two rules can each add their own person to the same activity. The first evaluation
+  decides: an activity skipped because its people were set by hand is not filled later when it is emptied.
+- A person added to the rule later is still added to the activities it handled before, under the same two rules.
+- "The activity" is what the activity list shows as one: a synced row and its override, or the rows of a merge. A
+  person set by hand on any of them protects all of them.
+- Deleting the rule drops its record; the people it added stay.
 - Enrich links the people to the rows the data enrichment reads (every row of `output_activity_type` overlapping a
   match, synced or not); a link never creates an override, as with a manual people-only edit. Retype links them to
   the activities it retypes in that run.
