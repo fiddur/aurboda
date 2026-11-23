@@ -11,6 +11,7 @@ import {
   timeWeightedAveragesNote,
 } from './common.ts'
 import { excludeFlaggedSchema, flaggedExclusionSchema } from './flagged-windows.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 const metricValueSchema = z.number().meta({ description: 'Metric value' })
 
@@ -288,13 +289,10 @@ export const queryMetricsBucketedQuerySchema = timeRangeQuerySchema
       description: 'Comma-separated list of metrics (omit to fetch all metrics with data in the range)',
       example: 'heart_rate,hrv_rmssd',
     }),
-    tz: z
-      .string()
-      .optional()
-      .meta({
-        description: `IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ${metricsBucketedTzNote}`,
-        example: 'Europe/Stockholm',
-      }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description: `IANA timezone for bucket alignment (e.g. "Europe/Stockholm"). ${metricsBucketedTzNote}`,
+      example: 'Europe/Stockholm',
+    }),
   })
   .meta({ id: 'QueryMetricsBucketedQuery' })
 

@@ -198,7 +198,6 @@ export interface NoteAttachmentDeps {
   listLive: (user: string, noteIds: string[]) => Promise<Map<string, NoteAttachmentRecord[]>>
   softDelete: (user: string, noteId: string, id: string) => Promise<boolean>
   purge: (user: string, noteId: string, id: string) => Promise<boolean>
-  /** Null when there is no such attachment on a live entry. */
   restore: (
     user: string,
     noteId: string,

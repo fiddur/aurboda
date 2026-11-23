@@ -1,12 +1,5 @@
-.challenges-page {
-  box-sizing: border-box;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-
 .challenges-intro {
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0 0 1.25rem;
 }
 
@@ -19,7 +12,7 @@
 .challenges-join input {
   flex: 1;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.9rem;
 }
@@ -39,8 +32,8 @@
 .challenge-group-count {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #047857;
-  background: #d1fae5;
+  color: var(--emerald-700);
+  background: var(--emerald-100);
   border-radius: 999px;
   padding: 0.1rem 0.55rem;
 }
@@ -49,11 +42,11 @@
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--emerald-500);
 }
 
 .challenge-group-ongoing .challenge-row {
-  border-left: 3px solid #10b981;
+  border-left: 3px solid var(--emerald-500);
 }
 
 .challenge-group-ended summary {
@@ -63,7 +56,7 @@
 .challenge-group-ended summary h2 {
   display: inline-flex;
   margin: 0 0 0.4rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 1.1rem;
 }
 
@@ -74,7 +67,7 @@
 .challenges-empty,
 .challenge-view-meta,
 .public-muted {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .challenge-list {
@@ -93,7 +86,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 8px;
 }
 
@@ -106,13 +99,13 @@
 
 .challenge-row-name {
   font-weight: 600;
-  color: #111827;
+  color: var(--gray-900);
   text-decoration: none;
 }
 
 .challenge-row-meta {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .challenge-row-title {
@@ -136,13 +129,13 @@
 }
 
 .challenge-row-badge-joined {
-  color: #1d4ed8;
-  background: #dbeafe;
+  color: var(--blue-700);
+  background: var(--blue-100);
 }
 
 .challenge-row-dates {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .challenge-row-phrase {
@@ -150,11 +143,11 @@
 }
 
 .challenge-row-phrase-ongoing {
-  color: #047857;
+  color: var(--emerald-700);
 }
 
 .challenge-row-phrase-upcoming {
-  color: #1d4ed8;
+  color: var(--blue-700);
 }
 
 .challenge-row-actions {
@@ -209,13 +202,13 @@
 
 /* Open challenges from people you follow (discovery) */
 .challenge-row-badge-open {
-  color: #92400e;
-  background: #fef3c7;
+  color: var(--amber-800);
+  background: var(--amber-100);
 }
 
 .challenge-discover-note {
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
   margin: 0.25rem 0 0;
 }
 
@@ -245,17 +238,17 @@
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.25;
-  color: #374151;
-  background: #fff;
-  border: 1px solid #d1d5db;
+  color: var(--gray-700);
+  background: var(--white);
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   text-decoration: none;
   cursor: pointer;
 }
 
 .challenge-row-actions .btn-secondary:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-strong);
 }
 
 .challenge-row-actions .btn-secondary:disabled {
@@ -264,9 +257,9 @@
 }
 
 .challenge-row-actions .btn-danger {
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--red-50);
+  color: var(--red-700);
+  border: 1px solid var(--red-200);
   border-radius: 6px;
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
@@ -275,7 +268,7 @@
 .challenge-create {
   margin-top: 2rem;
   padding: 1.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 10px;
   display: flex;
   flex-direction: column;
@@ -288,14 +281,14 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.85rem;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .challenge-create input[type='text'],
 .challenge-create input[type='date'],
 .challenge-create select {
   padding: 0.45rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
   font-size: 0.9rem;
 }
@@ -312,7 +305,7 @@
 
 .challenge-create .challenge-checkbox small {
   display: block;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.75rem;
 }
 
@@ -321,7 +314,7 @@
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #374151;
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -348,7 +341,7 @@
 }
 
 .challenge-joined {
-  color: var(--color-success, #10b981);
+  color: var(--color-success, var(--emerald-500));
   font-weight: 600;
 }
 
@@ -375,13 +368,13 @@
 .challenge-leaderboard td {
   text-align: left;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .challenge-leaderboard th:first-child,
 .challenge-leaderboard td:first-child {
   width: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .challenge-member-color {
@@ -397,7 +390,7 @@
 
 .challenge-member-host,
 .challenge-member-updated {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.8rem;
 }
 
@@ -411,87 +404,70 @@
   /* The note explaining an incomplete discovery list is the one thing that must
      stay readable when peers are missing — #6b7280 on the dark page is ~3.6:1. */
   .challenge-discover-note {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .challenge-group-count {
-    color: #6ee7b7;
-    background: #064e3b;
+    color: var(--emerald-300);
+    background: var(--emerald-900);
   }
 
   .challenge-row-badge-joined {
-    color: #93c5fd;
-    background: #1e3a5f;
+    color: var(--blue-300);
+    background: var(--blue-l24p5-c65);
   }
 
   .challenge-row-badge-open {
-    color: #fcd34d;
-    background: #5a3a0a;
+    color: var(--amber-300);
+    background: var(--orange-l20);
   }
 
   .challenge-row-phrase-ongoing {
-    color: #34d399;
+    color: var(--emerald-400);
   }
 
   .challenge-row-phrase-upcoming {
-    color: #60a5fa;
-  }
-
-  .challenge-group-ended summary h2 {
-    color: #9ca3af;
+    color: var(--blue-400);
   }
 
   .challenge-row-toggle {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .challenge-row-actions .btn-secondary {
-    color: #e5e7eb;
-    background: #1f2937;
-    border-color: #4b5563;
-  }
-
-  .challenge-row-actions .btn-secondary:hover {
-    background: #374151;
-    border-color: #6b7280;
-  }
-
-  .challenge-create .challenge-checkbox small {
-    color: #9ca3af;
+    color: var(--gray-200);
+    background: var(--gray-800);
+    border-color: var(--gray-600);
   }
 
   .challenges-join input,
   .challenge-create input[type='text'],
   .challenge-create input[type='date'],
   .challenge-create select {
-    background: #111827;
-    border-color: #374151;
-    color: #f3f4f6;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-100);
   }
 
   .challenge-row,
   .challenge-create {
-    border-color: #374151;
-    background: #1f2937;
+    border-color: var(--gray-700);
+    background: var(--gray-800);
   }
 
   .challenge-row-name {
-    color: #f3f4f6;
-  }
-
-  .challenge-create label {
-    color: #d1d5db;
+    color: var(--gray-100);
   }
 
   .challenge-leaderboard th,
   .challenge-leaderboard td {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .challenge-row-actions .btn-danger {
-    background: #3f1d1d;
-    border-color: #7f1d1d;
-    color: #fca5a5;
+    background: var(--red-l18);
+    border-color: var(--red-900);
+    color: var(--red-300);
   }
 }
 
@@ -609,6 +585,15 @@
   text-decoration: underline;
 }
 
+.challenge-comment-follow {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.challenge-comment-follow.is-on {
+  color: var(--color-accent);
+}
+
 .challenge-comment-action:disabled {
   opacity: 0.6;
   cursor: default;
@@ -628,7 +613,7 @@
 .challenge-comment-error {
   margin: 0.35rem 0 0;
   font-size: 0.85rem;
-  color: var(--color-error, #b91c1c);
+  color: var(--color-error, var(--red-700));
 }
 
 .challenge-comment-more {

@@ -30,11 +30,13 @@ import { z } from 'zod'
 
 import {
   getActivityById,
+  activityHasTrack,
   getActivityTrack,
   getAllActivityTypeNames,
   getMediaPlayById,
   getMediaPlays,
 } from '../db/index.ts'
+import { isHttpError } from '../http-error.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
 import { activityPeopleOf } from '../services/activity-people.ts'
 import { getActivityRecords } from '../services/activity-records.ts'
@@ -215,7 +217,7 @@ Use cases:
 
   server.tool(
     'query_activities',
-    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, `people` (who it was with, when anyone) and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category).",
+    "Query activities of any type (sleep, exercise and its subtypes such as running, meditation, custom types; list_activity_types lists them) for a time range. Returns activity sessions with duration, HR zones for exercise, `people` (who it was with, when anyone) and other metadata. category filters to runs carrying that run category (low_hr, intervals, long, tempo, hard, or any rule's output_category). person_id keeps the activities with that person (list_people gives the ids).",
     {
       ...timeRangeQuerySchema.shape,
       types: z
@@ -232,29 +234,35 @@ Use cases:
         ),
       route_id: activitiesQuerySchema.shape.route_id,
       category: activitiesQuerySchema.shape.category,
+      person_id: activitiesQuerySchema.shape.person_id,
       tz: tzSchema,
     },
-    async ({ category, data_filter, end, route_id, start, types, tz }) => {
+    async ({ category, data_filter, end, person_id, route_id, start, types, tz }) => {
       const requestedTypes = types ?? (await getAllActivityTypeNames(user))
-      const activities = await queryActivities(
-        user,
-        requestedTypes,
-        new Date(start),
-        new Date(end),
-        sync,
-        parseDataFilter(data_filter),
-        undefined,
-        route_id,
-        category,
-        { people: true },
-      )
-      return tzJsonResponse({ data: activities, success: true }, tz)
+      try {
+        const activities = await queryActivities(
+          user,
+          requestedTypes,
+          new Date(start),
+          new Date(end),
+          sync,
+          parseDataFilter(data_filter),
+          undefined,
+          route_id,
+          category,
+          { people: true, person_id },
+        )
+        return tzJsonResponse({ data: activities, success: true }, tz)
+      } catch (err) {
+        if (isHttpError(err) && err.status === 400) return errorResponse(err.message)
+        throw err
+      }
     },
   )
 
   server.tool(
     'get_recent_activities',
-    "The latest activities, newest first, as short rows: type and display name, title, start and end, duration, and distance, set count, average heart rate and calories where recorded; id is the one get_activity_detail takes. Without types it lists the types a day overview draws as icons (shown on the timeline, in an activity category, not sleep), so sleep, screen time, music, calendar events and other tags are left out; types lists exactly those types and their subtypes, whatever their category. window today lists today's so far in tz, latest the most recent ones over lookback_days (default 30). manual_only keeps only activities logged by hand in Aurboda. The read behind the dashboard's latest activities card.",
+    "The latest activities, newest first, as short rows: type and display name, title, start and end, duration, and distance, set count, average heart rate and calories where recorded, and summary_fields (the type's show_in_summary data fields the activity has); id is the one get_activity_detail takes. Without types it lists the types a day overview draws as icons (shown on the timeline, in an activity category, not sleep), so sleep, screen time, music, calendar events and other tags are left out; types lists exactly those types and their subtypes, whatever their category. window today lists every activity overlapping today in tz (one running across midnight included), latest the most recent ones over lookback_days (default 30). manual_only keeps only activities logged by hand in Aurboda. The read behind the dashboard's latest activities card.",
     { ...recentActivitiesFilterShape, tz: tzSchema },
     async ({ tz, ...filter }) => {
       const data = await getRecentActivities(user, filter, { tz })
@@ -352,7 +360,7 @@ The 'metrics' parameter controls time-series payload size:
 - pass 'all' for every metric with data in the activity range
 - pass a comma-separated list (e.g. 'heart_rate,speed,elevation') for specific metrics
 
-people lists who the activity was with, when anyone; journal_entries lists the journal entries related to it, newest first.
+people lists who the activity was with, when anyone; journal_entries lists the journal entries related to it, newest first. has_track says whether get_activity_track has a stored track for this id.
 
 Source-agnostic: works for any activity that has time-series and/or GPS populated within its time range.`,
     {
@@ -377,21 +385,23 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
 
       const window = await resolveActivityWindow(user, activity, isMerged)
       const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
-      const [summary, fullDetail, features, segmentEfforts, people, journalEntries] = await Promise.all([
-        computeActivityDetailMetrics(user, window),
-        getActivityFullDetail(
-          user,
-          { ...window, id },
-          {
-            includeGps: include_gps,
-            metrics: parseMetricsParam(metrics),
-          },
-        ),
-        firstActivityFeatures(user, trackOwnerIds),
-        activitySegmentEfforts(user, trackOwnerIds),
-        activityPeopleOf(user, trackOwnerIds),
-        listJournalEntryRefs(user, 'activity', trackOwnerIds),
-      ])
+      const [summary, fullDetail, features, segmentEfforts, people, journalEntries, hasTrack] =
+        await Promise.all([
+          computeActivityDetailMetrics(user, window),
+          getActivityFullDetail(
+            user,
+            { ...window, id },
+            {
+              includeGps: include_gps,
+              metrics: parseMetricsParam(metrics),
+            },
+          ),
+          firstActivityFeatures(user, trackOwnerIds),
+          activitySegmentEfforts(user, trackOwnerIds),
+          activityPeopleOf(user, trackOwnerIds),
+          listJournalEntryRefs(user, 'activity', trackOwnerIds),
+          activityHasTrack(user, id),
+        ])
 
       return tzJsonResponse(
         {
@@ -402,6 +412,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
             data: window.data,
             end_time: activity.end_time?.toISOString(),
             features,
+            has_track: hasTrack,
             id: activity.id,
             journal_entries: journalEntries,
             people,

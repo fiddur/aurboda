@@ -8,11 +8,12 @@ import type {
 } from '@aurboda/api-spec'
 
 import { randomUUID } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 
 import type { Activity, MergedActivity } from '../db/types.ts'
 import type { ActivityNotifier } from './deduction-queue.ts'
 
-import { blendGroupData, mergeOverlappingActivities } from '../db/activities/merge.ts'
+import { blendGroupData, dataConflicts, mergeOverlappingActivities } from '../db/activities/merge.ts'
 import {
   activityTypeExists,
   addActivityPeople,
@@ -32,9 +33,13 @@ import {
   replaceUserNotes,
   updateActivity as dbUpdateActivity,
   upsertActivity as dbUpsertActivity,
+  deleteTimeSeriesMetric,
+  deleteTimeSeriesPoint,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   ensureActivityType,
   findHcRecordId,
+  findSameInstantManualActivities,
   getSourceFilter,
   insertTimeSeries,
   type TimeSeriesPoint,
@@ -53,7 +58,12 @@ import {
   loadActivityTypeCatalog,
 } from './activity-type-catalog.ts'
 import { auditError } from './audit-log.ts'
-import { getCustomMetrics, writeWithCatalogAdoption } from './custom-metrics.ts'
+import {
+  type DeleteMetricDataResult,
+  type DeleteMetricResult,
+  getCustomMetrics,
+  writeWithCatalogAdoption,
+} from './custom-metrics.ts'
 import { validateActivityData } from './data-schema-validation.ts'
 import { aliasActivityData } from './item-value-aliases.ts'
 import { applyItemValueKeysForWrite, storeItemValueMappings } from './item-value-identities.ts'
@@ -174,6 +184,8 @@ function validateCustomMetricRange(
   return null
 }
 
+const healthConnectEntityId = (metric: string, time: string): string => `${metric}|${time}`
+
 /** Enqueues the Health Connect insert of a point of a syncable metric; best-effort, it never throws. */
 export const enqueueMetricOutboundSync = async (
   user: string,
@@ -184,7 +196,7 @@ export const enqueueMetricOutboundSync = async (
     const hcRecordType = metricToHealthConnectType[point.metric as keyof typeof metricToHealthConnectType]
     if (!hcRecordType) return
     await enqueueOutboundSync(user, {
-      entity_id: `${point.metric}|${point.time}`,
+      entity_id: healthConnectEntityId(point.metric, point.time),
       entity_type: 'time_series',
       hc_record_type: hcRecordType,
       operation: 'insert',
@@ -192,6 +204,67 @@ export const enqueueMetricOutboundSync = async (
     })
   } catch (err) {
     auditError(user, 'data', 'Failed to enqueue outbound sync for metric', { error: String(err) })
+  }
+}
+
+/**
+ * Takes the points back off Health Connect: a point the phone wrote gets a queued delete, one still
+ * waiting to be written is dropped from the queue. Best-effort, it never throws.
+ */
+export const enqueueMetricOutboundDelete = async (
+  user: string,
+  points: readonly { metric: string; time: string | Date }[],
+): Promise<void> => {
+  try {
+    const items = points.flatMap(({ metric, time }) => {
+      const hcRecordType = metricToHealthConnectType[metric as keyof typeof metricToHealthConnectType]
+      if (!hcRecordType) return []
+      const iso = typeof time === 'string' ? new Date(time).toISOString() : time.toISOString()
+      return [{ entity_id: healthConnectEntityId(metric, iso), hc_record_type: hcRecordType }]
+    })
+    if (items.length === 0) return
+    await enqueueOutboundSyncDeletes(user, 'time_series', items)
+  } catch (err) {
+    auditError(user, 'data', 'Failed to enqueue outbound sync delete for metric', { error: String(err) })
+  }
+}
+
+/**
+ * The sources whose points Aurboda itself queues for Health Connect. The queue's entity id has no
+ * source, so deleting another source's point at the same instant must not take Aurboda's record.
+ */
+const OUTBOUND_SOURCES: ReadonlySet<string> = new Set(['aurboda', 'aurboda_gap_fill', 'check_in'])
+
+/** Soft-deletes one measurement by metric, time and source. */
+export async function deleteMetric(
+  user: string,
+  metric: string,
+  time: Date,
+  source: string,
+): Promise<DeleteMetricResult> {
+  const deleted = await deleteTimeSeriesPoint(user, metric, time, source)
+  if (deleted && OUTBOUND_SOURCES.has(source)) await enqueueMetricOutboundDelete(user, [{ metric, time }])
+
+  return {
+    deleted,
+    metric,
+    success: deleted,
+    time: time.toISOString(),
+  }
+}
+
+/** Soft-deletes all user-created measurements of a metric. */
+export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
+  const deleted = await deleteTimeSeriesMetric(user, metric)
+  await enqueueMetricOutboundDelete(
+    user,
+    deleted.filter(({ source }) => OUTBOUND_SOURCES.has(source)).map(({ time }) => ({ metric, time })),
+  )
+
+  return {
+    deletedCount: deleted.length,
+    metric,
+    success: true,
   }
 }
 
@@ -409,6 +482,37 @@ const resolveItemValues = async <T extends Record<string, unknown> | undefined>(
 export const isInProgress = (data: Record<string, unknown> | null | undefined): boolean =>
   data?.in_progress === true
 
+const withoutMarkers = (data: Record<string, unknown> | undefined): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(data ?? {}).filter(([key]) => !key.startsWith('_')))
+
+type SameInstantWrite = { existing: Activity } | { external_id?: string }
+
+/**
+ * The `(source, activity_type, start_time)` upsert would fold a second, different dose at one
+ * instant into the first; such a point is stored as its own `manual:` row instead, as the read
+ * side (#1898) already shows conflicting same-instant points apart.
+ */
+const sameInstantWrite = async (
+  user: string,
+  input: AddActivityInput,
+  data: Record<string, unknown> | undefined,
+): Promise<SameInstantWrite> => {
+  if (input.external_id) return {}
+  if (input.end_time && input.end_time.getTime() !== input.start_time.getTime()) return {}
+  const rows = await findSameInstantManualActivities(user, {
+    activity_type: input.activity_type,
+    source: input.source ?? 'aurboda',
+    start_time: input.start_time,
+  })
+  const plain = rows.find((r) => !r.external_id)
+  if (!plain || !dataConflicts(plain.data, data)) return {}
+  const twin = rows.find(
+    (r) => r.external_id && isDeepStrictEqual(withoutMarkers(r.data), withoutMarkers(data)),
+  )
+  if (twin) return { existing: twin }
+  return { external_id: `manual:${randomUUID()}` }
+}
+
 // eslint-disable-next-line complexity -- notification callbacks add branches
 export async function addActivity(
   user: string,
@@ -466,11 +570,25 @@ export async function addActivity(
     }
   }
 
+  const sameInstant = await sameInstantWrite(user, input, data)
+  if ('existing' in sameInstant) {
+    const { existing } = sameInstant
+    return {
+      activity_type: existing.activity_type,
+      end_time: existing.end_time?.toISOString(),
+      id: existing.id!,
+      start_time: existing.start_time.toISOString(),
+      success: true,
+      title: existing.title,
+    }
+  }
+  const externalId = input.external_id ?? sameInstant.external_id
+
   const { id } = await dbUpsertActivity(user, {
     activity_type: input.activity_type,
     data,
     end_time: input.end_time,
-    ...(input.external_id ? { external_id: input.external_id } : {}),
+    ...(externalId ? { external_id: externalId } : {}),
     id: randomUUID(),
     source: input.source ?? 'aurboda',
     start_time: input.start_time,
@@ -539,8 +657,6 @@ export async function addActivity(
 export {
   addCustomMetric,
   deleteCustomMetric,
-  deleteMetric,
-  deleteMetricData,
   getCustomMetrics,
   updateCustomMetric,
 } from './custom-metrics.ts'

@@ -336,7 +336,7 @@ describe('strongestAndWeakest', () => {
     const result = strongestAndWeakest(s)
     expect(result?.strongest.group).toBe('triceps')
     expect(result?.weakest.group).toBe('quadriceps')
-    expect(result && strongestAndWeakestLabel(result)).toBe('Triceps 128 · Quadriceps 93')
+    expect(result && strongestAndWeakestLabel(result)).toEqual(['Triceps 128', 'Quadriceps 93'])
   })
 
   test('ties go to the first group in order', () => {

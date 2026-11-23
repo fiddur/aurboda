@@ -41,6 +41,7 @@ import type { RaiseNotificationInput } from './notifications.ts'
 import {
   deleteParticipationThreadCopyEntry,
   deleteThreadCopyEntry,
+  getChallengePostFollows,
   getParticipationByObjectUri,
   getParticipationByUrl,
   getThreadCopyEntryById,
@@ -67,11 +68,16 @@ import {
   type ChallengeThreadView,
   createChallengeThreadDeps,
   failure,
+  type FollowChoices,
+  followsPost,
   MAX_REPLIES_PER_ENTRY,
+  NOT_TOP_LEVEL_MESSAGE,
   type OwnEntry,
   ownPostIdOf,
   readableAudiences,
   type RemoteThreadBranch,
+  replyTitle,
+  type RootOwner,
   THREAD_PAGE_SIZE,
   type ThreadFailure,
   type ThreadPush,
@@ -244,6 +250,8 @@ export interface RemoteThreadDeps {
   getOwnPost: (user: string, postId: string) => Promise<FeedPostRecord | null>
   presentation: ChallengeThreadDeps['presentation']
   resolveTags: (user: string, message: string) => Promise<string[]>
+  followChoices: FollowChoices
+  setFollow: ChallengeThreadDeps['setFollow']
   deliver?: ChallengeThreadDeps['deliver']
   push?: ThreadPush
 }
@@ -548,13 +556,24 @@ export const readRemoteThread = async (
   const rows = await deps.listCopy(user, participation.id)
   const page = pageThreadCopy(rows, participation.challenge_object_uri ?? '', cursor)
   const shown = page.tops.flatMap((top) => [top, ...(page.replies.get(top.id) ?? [])])
-  const own = await ownEntries(deps, user, shown)
-  const entries: ChallengeThreadEntry[] = page.tops.map((top) => ({
-    ...serializeCopyRow(top, null, own.get(top.id) ?? null),
-    replies: (page.replies.get(top.id) ?? []).map((reply) =>
-      serializeCopyRow(reply, page.parentOf.get(reply.id) ?? top.id, own.get(reply.id) ?? null),
+  const [own, choices] = await Promise.all([
+    ownEntries(deps, user, shown),
+    deps.followChoices(
+      user,
+      page.tops.map((top) => top.object_uri),
     ),
-  }))
+  ])
+  const actor = buildActorUrl(deps.webHost, user)
+  const entries: ChallengeThreadEntry[] = page.tops.map((top) => {
+    const replies = page.replies.get(top.id) ?? []
+    return {
+      ...serializeCopyRow(top, null, own.get(top.id) ?? null),
+      following: followsPost(choices.get(top.object_uri), actor, top, replies),
+      replies: replies.map((reply) =>
+        serializeCopyRow(reply, page.parentOf.get(reply.id) ?? top.id, own.get(reply.id) ?? null),
+      ),
+    }
+  })
   const audiences = participation.thread_audiences
   return {
     entries,
@@ -563,6 +582,36 @@ export const readRemoteThread = async (
     total: rows.length,
     viewer: { audiences, can_comment: audiences.length > 0, role: 'member' },
   }
+}
+
+/**
+ * Follow or stop following a top-level post of the thread of a challenge on another server that
+ * `user` joined. A row whose parent is not in the copy shows as top-level, so it may be followed too.
+ */
+export const setRemotePostFollowing = async (
+  deps: Pick<RemoteThreadDeps, 'getCopyById' | 'getCopyByObjectUri' | 'getParticipationByUrl' | 'setFollow'>,
+  user: string,
+  challengeUrl: string,
+  entryId: string,
+  following: boolean,
+): Promise<{ ok: true; following: boolean } | ThreadFailure> => {
+  const participation = await deps.getParticipationByUrl(
+    user,
+    canonicalChallengeUrl(challengeUrl) ?? challengeUrl,
+  )
+  if (participation == null || participation.status !== 'active') return failure(403, NOT_JOINED_MESSAGE)
+  const row = await deps.getCopyById(user, entryId)
+  if (row == null || row.participation_id !== participation.id) return failure(404, 'Thread entry not found')
+  const answersChallenge =
+    row.in_reply_to_uri == null || row.in_reply_to_uri === participation.challenge_object_uri
+  if (
+    !answersChallenge &&
+    (await deps.getCopyByObjectUri(user, participation.id, row.in_reply_to_uri ?? '')) != null
+  ) {
+    return failure(400, NOT_TOP_LEVEL_MESSAGE)
+  }
+  await deps.setFollow(user, row.object_uri, following)
+  return { following, ok: true }
 }
 
 /** Where a member's comment is pushed: the host and the attendees, never the author. */
@@ -778,12 +827,22 @@ export const createRemoteThreadBranch = (deps: RemoteThreadDeps): RemoteThreadBr
   followDelete: (user, post) => followRemoteCommentDelete(deps, user, post),
   followEdit: (user, post) => followRemoteCommentEdit(deps, user, post),
   read: (user, challengeUrl, cursor) => readRemoteThread(deps, user, challengeUrl, cursor),
+  setFollowing: (user, challengeUrl, entryId, following) =>
+    setRemotePostFollowing(deps, user, challengeUrl, entryId, following),
 })
 
 export const createRemoteThreadDeps = (
   base: Pick<
     ChallengeThreadDeps,
-    'createReplyPost' | 'deliver' | 'getOwnPost' | 'presentation' | 'push' | 'resolveTags' | 'webHost'
+    | 'createReplyPost'
+    | 'deliver'
+    | 'followChoices'
+    | 'getOwnPost'
+    | 'presentation'
+    | 'push'
+    | 'resolveTags'
+    | 'setFollow'
+    | 'webHost'
   >,
   fetchThread?: (user: string, url: string) => Promise<unknown>,
 ): RemoteThreadDeps => ({
@@ -792,6 +851,7 @@ export const createRemoteThreadDeps = (
   deliver: base.deliver,
   fetchDocument: fetchHostDocument,
   fetchThread,
+  followChoices: base.followChoices,
   getCopyById: getThreadCopyEntryById,
   getCopyByObjectUri: getThreadCopyEntryByObjectUri,
   getOwnPost: base.getOwnPost,
@@ -803,6 +863,7 @@ export const createRemoteThreadDeps = (
   push: base.push,
   replaceCopy: replaceThreadCopy,
   resolveTags: base.resolveTags,
+  setFollow: base.setFollow,
   updateThreadState: updateParticipationThreadState,
   upsertCopy: upsertThreadCopyEntry,
   webHost: base.webHost,
@@ -861,13 +922,17 @@ export interface PushedThreadDeps {
   deleteCopy: (user: string, objectUri: string, actorUri: string) => Promise<unknown>
   /** One participation's copy of an entry, whoever wrote it. */
   removeCopy: (user: string, participationId: string, objectUri: string) => Promise<unknown>
+  listCopy: RemoteThreadDeps['listCopy']
+  followChoices: FollowChoices
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
 }
 
 export const createPushedThreadDeps = (): PushedThreadDeps => ({
   deleteCopy: deleteThreadCopyEntry,
+  followChoices: getChallengePostFollows,
   getCopyByObjectUri: getThreadCopyEntryByObjectUri,
   getParticipationByObjectUri,
+  listCopy: listThreadCopy,
   notify: notifier.raiseBestEffort,
   now: Date.now,
   removeCopy: deleteParticipationThreadCopyEntry,
@@ -936,29 +1001,132 @@ const pushedCopyRow = async (
   }
 }
 
+const isReplyIn = (
+  participation: Pick<ChallengeParticipationRecord, 'challenge_object_uri'>,
+  entry: Pick<ThreadCopyEntryRecord, 'in_reply_to_uri'>,
+): boolean => entry.in_reply_to_uri != null && entry.in_reply_to_uri !== participation.challenge_object_uri
+
+/**
+ * `challenge_comment` for a pushed top-level post, `challenge_reply` for a pushed reply (`owner`
+ * says whose post it answers, for the title).
+ */
 export const pushedCommentNotification = (
   participation: Pick<ChallengeParticipationRecord, 'challenge_object_uri' | 'challenge_url' | 'id' | 'name'>,
   entry: Pick<
     ThreadCopyEntryRecord,
     'actor_uri' | 'content' | 'display_name' | 'handle' | 'in_reply_to_uri' | 'object_uri'
   >,
+  owner: RootOwner = { label: null, mine: false },
 ): RaiseNotificationInput => {
   const body = htmlSnippet(entry.content)
-  const isReply =
-    entry.in_reply_to_uri != null && entry.in_reply_to_uri !== participation.challenge_object_uri
+  const isReply = isReplyIn(participation, entry)
+  const author = actorLabel(entry)
   return {
     ...(body === '' ? {} : { body }),
     data: { actor_uri: entry.actor_uri, challenge_url: participation.challenge_url },
-    dedupe_key: `challenge_comment:${entry.object_uri}`,
+    dedupe_key: `${isReply ? 'challenge_reply' : 'challenge_comment'}:${entry.object_uri}`,
     link: `/challenges/joined/${participation.id}#comments`,
-    title: `${actorLabel(entry)} ${isReply ? 'replied in' : 'commented in'} ${participation.name}`,
-    type: 'challenge_comment',
+    title: isReply
+      ? replyTitle(author, owner, participation.name)
+      : `${author} posted in ${participation.name}`,
+    type: isReply ? 'challenge_reply' : 'challenge_comment',
   }
+}
+
+type CopyRow = Pick<ThreadCopyEntryRecord, 'actor_uri' | 'in_reply_to_uri' | 'object_uri'>
+
+/** The top-level post a copy row's chain leads to: one answering the challenge (or nothing); null when the chain breaks. */
+const copyRootOf = <T extends CopyRow>(
+  byUri: ReadonlyMap<string, T>,
+  challengeObjectUri: string | null,
+  row: T,
+): T | null => {
+  const seen = new Set<string>()
+  let current = row
+  while (current.in_reply_to_uri != null && current.in_reply_to_uri !== challengeObjectUri) {
+    if (seen.has(current.object_uri)) return null
+    seen.add(current.object_uri)
+    const next = byUri.get(current.in_reply_to_uri)
+    if (next == null) return null
+    current = next
+  }
+  return current
+}
+
+/**
+ * What a pushed reply's recipient follows it by: its root post and the rows under it, or, when the
+ * root is not in the copy, the reply's direct parent (possibly not in the copy either). Pure.
+ */
+export type CopyFollowTarget<T extends CopyRow> =
+  | { kind: 'root'; root: T; under: T[] }
+  | { kind: 'parent'; parent_uri: string; parent: T | null }
+
+export const copyFollowTarget = <T extends CopyRow>(
+  rows: readonly T[],
+  challengeObjectUri: string | null,
+  reply: T,
+): CopyFollowTarget<T> => {
+  const byUri = new Map(rows.map((row) => [row.object_uri, row]))
+  byUri.set(reply.object_uri, reply)
+  const root = copyRootOf(byUri, challengeObjectUri, reply)
+  if (root != null) {
+    return {
+      kind: 'root',
+      root,
+      under: [...byUri.values()].filter(
+        (row) => row !== root && copyRootOf(byUri, challengeObjectUri, row)?.object_uri === root.object_uri,
+      ),
+    }
+  }
+  const parentUri = reply.in_reply_to_uri ?? ''
+  return { kind: 'parent', parent: byUri.get(parentUri) ?? null, parent_uri: parentUri }
+}
+
+/** Whether `me` follows the target, given their explicit choice for it, and whose post it is. Pure. */
+export const followsCopyTarget = (
+  target: CopyFollowTarget<CopyRow & Pick<ThreadCopyEntryRecord, 'display_name' | 'handle'>>,
+  explicit: boolean | undefined,
+  meActor: string,
+  ownPrefix: string,
+): { follows: boolean; owner: RootOwner } => {
+  if (target.kind === 'root') {
+    const mine = target.root.actor_uri === meActor
+    return {
+      follows: followsPost(explicit, meActor, target.root, target.under),
+      owner: mine ? { mine: true } : { label: actorLabel(target.root), mine: false },
+    }
+  }
+  const mine = target.parent?.actor_uri === meActor || target.parent_uri.startsWith(ownPrefix)
+  return {
+    follows: explicit ?? mine,
+    owner: mine
+      ? { mine: true }
+      : { label: target.parent == null ? null : actorLabel(target.parent), mine: false },
+  }
+}
+
+const pushedReplyFollow = async (
+  deps: Pick<PushedThreadDeps, 'followChoices' | 'listCopy'>,
+  input: Pick<InboundThreadNote, 'me' | 'origin'>,
+  participation: ChallengeParticipationRecord,
+  entry: ThreadCopyEntryRecord,
+): Promise<{ follows: boolean; owner: RootOwner }> => {
+  const rows = await deps.listCopy(input.me, participation.id)
+  const target = copyFollowTarget(rows, participation.challenge_object_uri, entry)
+  const uri = target.kind === 'root' ? target.root.object_uri : target.parent_uri
+  const explicit = (await deps.followChoices(input.me, [uri])).get(uri)
+  return followsCopyTarget(
+    target,
+    explicit,
+    buildActorUrl(input.origin, input.me),
+    ownObjectPrefix(input.origin, input.me),
+  )
 }
 
 /**
  * A comment the host or an attendee pushed into the thread of a challenge `me` joined on another
- * server: stored in the copy, `challenge_comment` raised once. An unknown sender is not stored but
+ * server: stored in the copy, and `challenge_comment` raised once for a top-level post, or
+ * `challenge_reply` for a reply under a post `me` follows. An unknown sender is not stored but
  * marks the copy stale, so the next read pulls the host's current attendees. Null when the Note is
  * for no such thread.
  */
@@ -980,7 +1148,17 @@ export const admitPushedThreadNote = async (
   )
   const { entry, inserted } = await deps.upsertCopy(input.me, participation.id, row)
   if (inserted && deps.notify != null) {
-    await deps.notify(input.me, pushedCommentNotification(participation, entry))
+    if (!isReplyIn(participation, entry)) {
+      await deps.notify(input.me, pushedCommentNotification(participation, entry))
+    } else {
+      const follow = await pushedReplyFollow(deps, input, participation, entry).catch((error: unknown) => {
+        console.warn(`⚠️ challenge reply follow check failed for ${entry.object_uri}:`, error)
+        return null
+      })
+      if (follow?.follows === true) {
+        await deps.notify(input.me, pushedCommentNotification(participation, entry, follow.owner))
+      }
+    }
   }
   return { quiet: true }
 }

@@ -1210,7 +1210,7 @@ export function Meals() {
   }
 
   return (
-    <div class="meals-page">
+    <div class="page page--full meals-page">
       <div class="meals-header">
         <h1>Meals</h1>
         <div class="meals-tabs" role="tablist">

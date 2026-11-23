@@ -15,7 +15,11 @@ const db = vi.hoisted(() => ({
   createReplyPost: vi.fn(),
   deleteChallengeThreadEntry: vi.fn(async () => null),
   deleteFeedPostWithQuotes: vi.fn(),
-  getChallengeThreadEntryById: vi.fn(async () => null),
+  getChallengePostFollows: vi.fn(async () => new Map<string, boolean>()),
+  getChallengeThreadEntryById: vi.fn<
+    (user: string, id: string) => Promise<ChallengeThreadEntryRecord | null>
+  >(async () => null),
+  setChallengePostFollow: vi.fn(async () => {}),
   getFeedPostById: vi.fn(async () => null),
   getProfileAvatarVersion: vi.fn(async () => null),
   getUserSettings: vi.fn(async () => null),
@@ -345,6 +349,37 @@ describe('challenge thread tools', () => {
     )
     expect(db.setChallengeThreadEntryHidden).toHaveBeenCalledWith('alice', challenge.id, entryId, false)
     expect(body.hidden).toBe(false)
+  })
+
+  test('set_challenge_post_follow stores the choice for a top-level post, for a participant', async () => {
+    db.getChallengeThreadEntryById.mockResolvedValueOnce(entry)
+    const url = 'https://aurboda.test/u/alice/abc'
+    expect(
+      JSON.parse(
+        await setup().call('set_challenge_post_follow', {
+          challenge_url: url,
+          entry_id: entryId,
+          following: false,
+        }),
+      ),
+    ).toEqual({ following: false })
+    expect(db.setChallengePostFollow).toHaveBeenCalledWith('alice', entry.object_uri, false)
+  })
+
+  test('set_challenge_post_follow refuses a visitor, a reply and an unknown entry', async () => {
+    db.setChallengePostFollow.mockClear()
+    const params = { entry_id: entryId, following: true }
+    expect(
+      await setup().call('set_challenge_post_follow', {
+        ...params,
+        challenge_url: 'https://aurboda.test/u/bob/abc',
+      }),
+    ).toContain('Only the host and members')
+    db.getChallengeThreadEntryById.mockResolvedValueOnce({ ...entry, root_entry_id: entryId })
+    const own = { ...params, challenge_url: 'https://aurboda.test/u/alice/abc' }
+    expect(await setup().call('set_challenge_post_follow', own)).toContain('Only a top-level post')
+    expect(await setup().call('set_challenge_post_follow', own)).toContain('not found')
+    expect(db.setChallengePostFollow).not.toHaveBeenCalled()
   })
 
   test('the thread tools need a configured web host', async () => {

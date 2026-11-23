@@ -20,6 +20,8 @@ const LOCATION_STALE_TIME_MS = 5 * 60_000 // 5 minutes
 
 export interface ActivityPointsWindow {
   activityId?: string
+  /** The detail answer's `has_track`: only then is the stored track asked for, else raw GPS is used. */
+  hasTrack?: boolean
   /** The activity's own start_time: the origin of its stored track's times. */
   activityStart: Date
   start: Date
@@ -32,13 +34,14 @@ export interface ActivityMapPoints {
   track_offsets_s: number[] | null
 }
 
-const loadActivityPoints = async ({
+export const loadActivityPoints = async ({
   activityId,
+  hasTrack,
   activityStart,
   start,
   end,
 }: ActivityPointsWindow): Promise<ActivityMapPoints> => {
-  const track = activityId ? await fetchActivityTrack(activityId, activityStart) : null
+  const track = activityId && hasTrack === true ? await fetchActivityTrack(activityId, activityStart) : null
   const points = await pickActivityPoints(track, () => fetchRawLocations(start, end))
   return { points, track_offsets_s: track && points === track.points ? track.offsets_s : null }
 }
@@ -47,7 +50,13 @@ const loadActivityPoints = async ({
 export const useActivityMapPoints = (span: ActivityPointsWindow) =>
   useQuery({
     queryFn: () => loadActivityPoints(span),
-    queryKey: ['activity-gps', span.activityId, span.start.toISOString(), span.end.toISOString()],
+    queryKey: [
+      'activity-gps',
+      span.activityId,
+      span.hasTrack === true,
+      span.start.toISOString(),
+      span.end.toISOString(),
+    ],
     staleTime: LOCATION_STALE_TIME_MS,
   })
 

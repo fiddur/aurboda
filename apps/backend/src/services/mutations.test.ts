@@ -14,6 +14,7 @@ import {
   deleteCustomMetric,
   deleteMetric,
   deleteMetricData,
+  enqueueMetricOutboundDelete,
   getCustomMetrics,
   isInProgress,
   mergeActivities,
@@ -36,8 +37,10 @@ vi.mock('../db', async () => ({
   deleteTimeSeriesMetric: vi.fn(),
   deleteTimeSeriesPoint: vi.fn(),
   enqueueOutboundSync: vi.fn().mockResolvedValue(undefined),
+  enqueueOutboundSyncDeletes: vi.fn().mockResolvedValue({ cancelled: 0, deleted: 0 }),
   fetchCategoryMap: vi.fn().mockResolvedValue(new Map()),
   findHcRecordId: vi.fn().mockResolvedValue(null),
+  findSameInstantManualActivities: vi.fn().mockResolvedValue([]),
   findMergeableActivity: vi.fn().mockResolvedValue(null),
   getActivityById: vi.fn(),
   getActivitySourcesByIds: vi.fn().mockResolvedValue([]),
@@ -2275,10 +2278,30 @@ describe('deleteMetric', () => {
   test('returns false when measurement not found', async () => {
     vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(false)
 
-    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
+    const result = await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'aurboda')
 
     expect(result.success).toBe(false)
     expect(result.deleted).toBe(false)
+    expect(db.enqueueOutboundSyncDeletes).not.toHaveBeenCalled()
+  })
+
+  test('takes a point Aurboda wrote off Health Connect', async () => {
+    vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(true)
+
+    await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'aurboda')
+
+    expect(db.enqueueOutboundSyncDeletes).toHaveBeenCalledWith('testuser', 'time_series', [
+      { entity_id: 'weight|2024-01-15T08:00:00.000Z', hc_record_type: 'WeightRecord' },
+    ])
+  })
+
+  test("leaves Health Connect alone for another source's point at the same instant", async () => {
+    vi.mocked(db.deleteTimeSeriesPoint).mockResolvedValue(true)
+
+    await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'withings')
+    await deleteMetric('testuser', 'weight', new Date('2024-01-15T08:00:00Z'), 'manual')
+
+    expect(db.enqueueOutboundSyncDeletes).not.toHaveBeenCalled()
   })
 })
 
@@ -2288,23 +2311,73 @@ describe('deleteMetricData', () => {
   })
 
   test('deletes all manual measurements and returns count', async () => {
-    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue(5)
+    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue([
+      { source: 'aurboda', time: new Date('2024-01-15T08:00:00Z') },
+      { source: 'manual', time: new Date('2024-01-16T08:00:00Z') },
+      { source: 'aurboda', time: new Date('2024-01-17T08:00:00Z') },
+    ])
 
     const result = await deleteMetricData('testuser', 'weight')
 
     expect(result.success).toBe(true)
     expect(result.metric).toBe('weight')
-    expect(result.deletedCount).toBe(5)
+    expect(result.deletedCount).toBe(3)
     expect(db.deleteTimeSeriesMetric).toHaveBeenCalledWith('testuser', 'weight')
+    expect(db.enqueueOutboundSyncDeletes).toHaveBeenCalledTimes(1)
+    expect(db.enqueueOutboundSyncDeletes).toHaveBeenCalledWith('testuser', 'time_series', [
+      { entity_id: 'weight|2024-01-15T08:00:00.000Z', hc_record_type: 'WeightRecord' },
+      { entity_id: 'weight|2024-01-17T08:00:00.000Z', hc_record_type: 'WeightRecord' },
+    ])
   })
 
   test('returns zero count when no manual data exists', async () => {
-    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue(0)
+    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue([])
 
     const result = await deleteMetricData('testuser', 'heart_rate')
 
     expect(result.success).toBe(true)
     expect(result.deletedCount).toBe(0)
+    expect(db.enqueueOutboundSyncDeletes).not.toHaveBeenCalled()
+  })
+
+  test('a failing enqueue does not fail the delete', async () => {
+    vi.mocked(db.deleteTimeSeriesMetric).mockResolvedValue([
+      { source: 'aurboda', time: new Date('2024-01-15T08:00:00Z') },
+    ])
+    vi.mocked(db.enqueueOutboundSyncDeletes).mockRejectedValueOnce(new Error('db down'))
+
+    const result = await deleteMetricData('testuser', 'weight')
+
+    expect(result).toMatchObject({ deletedCount: 1, success: true })
+  })
+})
+
+describe('enqueueMetricOutboundDelete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('queues only the points of metrics Health Connect takes', async () => {
+    await enqueueMetricOutboundDelete('testuser', [
+      { metric: 'mood', time: '2026-11-20T07:00:00.000Z' },
+      { metric: 'steps', time: '2026-11-20T07:00:00Z' },
+    ])
+
+    expect(db.enqueueOutboundSyncDeletes).toHaveBeenCalledWith('testuser', 'time_series', [
+      { entity_id: 'steps|2026-11-20T07:00:00.000Z', hc_record_type: 'StepsRecord' },
+    ])
+  })
+
+  test('queues nothing when no metric is syncable', async () => {
+    await enqueueMetricOutboundDelete('testuser', [{ metric: 'mood', time: '2026-11-20T07:00:00.000Z' }])
+    expect(db.enqueueOutboundSyncDeletes).not.toHaveBeenCalled()
+  })
+
+  test('never throws', async () => {
+    vi.mocked(db.enqueueOutboundSyncDeletes).mockRejectedValueOnce(new Error('db down'))
+    await expect(
+      enqueueMetricOutboundDelete('testuser', [{ metric: 'weight', time: '2026-11-20T07:00:00.000Z' }]),
+    ).resolves.toBeUndefined()
   })
 })
 

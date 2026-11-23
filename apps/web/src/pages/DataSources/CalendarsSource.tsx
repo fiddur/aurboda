@@ -72,7 +72,7 @@ export function CalendarsSource() {
   if (!isLoggedIn) return <LoginRequired />
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Calendars (ICS)</h1>
       </div>

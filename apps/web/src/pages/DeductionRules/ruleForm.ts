@@ -21,6 +21,7 @@ export interface RuleFormFields {
   outputData: Record<string, unknown>
   outputTitle: string
   outputType: string
+  people: string[]
   priority: number
   titleField: string
 }
@@ -39,6 +40,7 @@ export const defaultFields: RuleFormFields = {
   outputData: {},
   outputTitle: '',
   outputType: '',
+  people: [],
   priority: 1,
   titleField: '',
 }
@@ -55,6 +57,7 @@ export const ruleToFields = (rule: DeductionRule): RuleFormFields => ({
   outputData: rule.output_data ?? {},
   outputTitle: rule.output_title ?? '',
   outputType: rule.output_activity_type,
+  people: rule.output_people ?? [],
   priority: rule.priority,
   titleField: rule.output_title_field ?? '',
 })
@@ -85,6 +88,7 @@ export const fieldsToBuildBody = (f: RuleFormFields) => ({
   output_category: toOutputCategory(f),
   output_data: Object.keys(f.outputData).length > 0 ? f.outputData : undefined,
   output_media_field: toOutputMediaField(f),
+  output_people: f.people.length > 0 ? f.people : undefined,
   output_title: f.outputTitle || undefined,
   output_title_field: toOutputTitleField(f),
   priority: f.priority,
@@ -97,3 +101,13 @@ export const modeChangeBody = (mode: DeductionRuleMode, rule?: DeductionRule): R
   ...(mode !== 'enrich' && rule?.output_title_field ? { output_title_field: null } : {}),
   ...(mode !== 'enrich' && rule?.output_category ? { output_category: null } : {}),
 })
+
+/** "with Anna, Bo" for the rule list; an id the people list no longer has reads "a removed person". */
+export const rulePeopleSummary = (
+  ids: readonly string[] | undefined,
+  people: readonly { id: string; name: string }[],
+): string | null => {
+  if (!ids || ids.length === 0) return null
+  const names = ids.map((id) => people.find((p) => p.id === id)?.name ?? 'a removed person')
+  return `with ${names.join(', ')}`
+}

@@ -115,6 +115,35 @@ export const stravaClient = (
     return access_token
   }
 
+  /**
+   * Audits a failed connection and, when the exchange already granted a token, revokes it (and
+   * clears it if stored) so no grant is left at Strava; the revoke's outcome is audited too.
+   */
+  const failConnection = async (
+    user: string,
+    failure: unknown,
+    secrets: string[],
+    grant: { token: unknown; stored: boolean },
+  ): Promise<OAuthCompletion> => {
+    const token = typeof grant.token === 'string' ? grant.token : ''
+    const redact = (text: string) =>
+      [...secrets, token].reduce((acc, secret) => redactSecret(acc, secret), text)
+    const messageOf = (error: unknown) => redact(error instanceof Error ? error.message : String(error))
+    await audit(user, 'auth', 'Strava OAuth connection failed', { error: messageOf(failure) })
+    if (token) {
+      try {
+        await axios.post(STRAVA_DEAUTHORIZE_URL, undefined, { params: { access_token: token } })
+        if (grant.stored) await upsertOAuthToken(user, { access_token: '', provider: 'strava' })
+        await audit(user, 'auth', 'Strava grant revoked after the connection failed')
+      } catch (revokeFailure) {
+        await audit(user, 'auth', 'Strava grant could not be revoked after the connection failed', {
+          error: messageOf(revokeFailure),
+        })
+      }
+    }
+    return { ok: false, reason: 'auth_failed' }
+  }
+
   return {
     /**
      * Strava's redirect carries no Aurboda login, so it only hands the code and state to the
@@ -148,6 +177,7 @@ export const stravaClient = (
         await initializeSchema(user)
       }
 
+      const grant: { token: unknown; stored: boolean } = { stored: false, token: null }
       try {
         const response = await axios.post<StravaTokenResponse>(
           STRAVA_TOKEN_URL,
@@ -161,6 +191,7 @@ export const stravaClient = (
         )
 
         const { access_token, refresh_token, expires_at, athlete } = response.data
+        grant.token = access_token
         const onUserAuthenticated = options?.onUserAuthenticated
         // Before the token is stored, so a sign-in that cannot be linked leaves no grant behind.
         if (onUserAuthenticated && !athlete) throw new Error('Strava token response has no athlete')
@@ -173,6 +204,7 @@ export const stravaClient = (
           refresh_token,
           scopes: STRAVA_SCOPES.split(','),
         })
+        grant.stored = true
 
         if (onUserAuthenticated && athleteId !== null) {
           await onUserAuthenticated(athleteId, user)
@@ -180,11 +212,7 @@ export const stravaClient = (
 
         return { ok: true }
       } catch (failure) {
-        const message = failure instanceof Error ? failure.message : String(failure)
-        await audit(user, 'auth', 'Strava OAuth connection failed', {
-          error: [clientSecret, code].reduce((acc, secret) => redactSecret(acc, secret), message),
-        })
-        return { ok: false, reason: 'auth_failed' }
+        return failConnection(user, failure, [clientSecret, code], grant)
       }
     },
 

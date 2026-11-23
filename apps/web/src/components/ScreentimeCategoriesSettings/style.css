@@ -13,7 +13,7 @@
 .sc-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--neutral-l88);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -24,7 +24,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--neutral-l94);
 }
 
 .sc-row:last-child {
@@ -62,8 +62,8 @@
 
 .sc-excluded-badge {
   font-size: 0.7rem;
-  color: #9ca3af;
-  background: #f3f4f6;
+  color: var(--gray-400);
+  background: var(--color-surface-sunken);
   padding: 0.1rem 0.375rem;
   border-radius: 3px;
   font-style: italic;
@@ -71,8 +71,8 @@
 
 .sc-regex {
   font-size: 0.8rem;
-  color: #6b7280;
-  background: #f3f4f6;
+  color: var(--color-text-muted-2);
+  background: var(--color-surface-sunken);
   padding: 0.125rem 0.375rem;
   border-radius: 3px;
   max-width: 200px;
@@ -108,7 +108,7 @@
 }
 
 .sc-actions-section {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
   padding-top: 1rem;
 }
 
@@ -129,7 +129,7 @@
 .sc-input {
   padding: 0.375rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   background: transparent;
   color: inherit;
@@ -140,41 +140,32 @@
 }
 
 .sc-empty {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.9rem;
   font-style: italic;
   padding: 1rem 0;
 }
 
 .sc-error {
-  color: #ef4444;
+  color: var(--red-500);
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   .sc-list {
-    border-color: #333;
+    border-color: var(--neutral-l20);
   }
 
   .sc-row {
-    border-bottom-color: #333;
-  }
-
-  .sc-regex {
-    background: #374151;
-    color: #9ca3af;
-  }
-
-  .sc-excluded-badge {
-    background: #374151;
+    border-bottom-color: var(--neutral-l20);
   }
 
   .sc-input {
-    border-color: #4b5563;
+    border-color: var(--gray-600);
   }
 
   .sc-actions-section {
-    border-top-color: #333;
+    border-top-color: var(--neutral-l20);
   }
 }

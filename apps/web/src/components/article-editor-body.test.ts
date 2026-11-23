@@ -519,6 +519,15 @@ describe('editorBlockWarnings', () => {
     expect(editorBlockWarnings(editor, undefined)).toEqual([
       ['Readers see how much time you spent with a person on each day of the window.'],
     ])
+    expect(
+      editorBlockWarnings(editor, { people: [{ label: 'Time with people', value: '' }] }, [
+        { id: '11111111-1111-4111-8111-111111111111', name: 'Bea (archived)' },
+      ]),
+    ).toEqual([
+      [
+        'Readers see Bea (archived) by name, and how much time you spent with them on each day of the window.',
+      ],
+    ])
   })
 
   it('does not warn about the time with anyone', () => {

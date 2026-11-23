@@ -13,11 +13,31 @@ import type {
 
 import { getEffectiveActivitiesInRange, getProductivity, getTimeSeries } from '../../db/index.ts'
 import { pushAll } from '../../utils.ts'
+import { activityPeopleError } from '../activity-people.ts'
 import { flaggedDays, flaggedExclusion, loadFlaggedWindows, withoutFlagged } from '../flagged-windows.ts'
 import { meanValues } from '../time-weighted-mean.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { getCompoundEventOutcome } from './explore.ts'
 import { chiSquaredTest, mean, stddev } from './utils.ts'
+
+const PEOPLE_TRIGGER_OUTCOME_ERROR = 'People triggers are only supported with an "event" outcome'
+
+/**
+ * Why the triggers cannot be analysed against the outcome, for a 400 before any work: a people
+ * trigger needs an event outcome and a live person.
+ */
+export const genericTriggersError = async (
+  user: string,
+  triggers: TriggerCondition[],
+  outcome: OutcomeConfig,
+  peopleError: typeof activityPeopleError = activityPeopleError,
+): Promise<string | null> => {
+  const people = triggers.filter((t) => t.type === 'people')
+  if (people.length === 0) return null
+  if (outcome.type !== 'event') return PEOPLE_TRIGGER_OUTCOME_ERROR
+  const ids = [...new Set(people.flatMap((t) => (t.person_id ? [t.person_id] : [])))]
+  return peopleError(user, ids)
+}
 
 /** Parse lag window string (e.g., "24h", "7d") to milliseconds */
 const parseLagWindow = (lag: string): number | null => {
@@ -78,6 +98,9 @@ export async function getGenericCorrelation(
   // averaging path below has no nutrition case and would silently match nothing.
   if (triggers.some((t) => t.type === 'nutrition')) {
     throw new Error('Nutrition triggers are only supported with an "event" outcome')
+  }
+  if (triggers.some((t) => t.type === 'people')) {
+    throw new Error(PEOPLE_TRIGGER_OUTCOME_ERROR)
   }
 
   // Window: an explicit regime (UTC) overrides the trailing periodDays window.

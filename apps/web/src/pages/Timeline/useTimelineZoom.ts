@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks'
 
 import type { Orientation } from './types'
 
+import { parkDetachedTargets, recordTouchTargets, releaseParkedTargets } from './touchTargets'
 import { computeHorizontalZoomTransform, computeVerticalZoomTransform } from './zoomTransform'
 
 export const HORIZONTAL_MARGIN = { bottom: 30, left: 60, right: 60, top: 10 }
@@ -34,6 +35,7 @@ export interface UseTimelineZoomResult {
     viewEnd: Date,
     chartDimension: number,
   ) => void
+  parkTouchTargets: () => void
 }
 
 export const useTimelineZoom = ({
@@ -58,11 +60,41 @@ export const useTimelineZoom = ({
   const onResetRef = useRef(onResetToToday)
   onResetRef.current = onResetToToday
 
+  const touchTargetsRef = useRef(new Set<Node>())
+
+  const parkTouchTargets = useCallback(() => {
+    if (svgRef.current && touchTargetsRef.current.size > 0) {
+      parkDetachedTargets(touchTargetsRef.current, svgRef.current)
+    }
+  }, [svgRef])
+
   useEffect(() => {
     return () => {
       cancelAnimationFrame(zoomRafRef.current)
     }
   }, [])
+
+  // Capture phase: d3-zoom stops immediate propagation of the touch events it handles on the svg.
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const targets = touchTargetsRef.current
+    const onTouchStart = (event: TouchEvent) => recordTouchTargets(targets, event)
+    const onTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length > 0 || targets.size === 0) return
+      targets.clear()
+      releaseParkedTargets(svg)
+    }
+    const options = { capture: true, passive: true }
+    svg.addEventListener('touchstart', onTouchStart, options)
+    svg.addEventListener('touchend', onTouchEnd, options)
+    svg.addEventListener('touchcancel', onTouchEnd, options)
+    return () => {
+      svg.removeEventListener('touchstart', onTouchStart, options)
+      svg.removeEventListener('touchend', onTouchEnd, options)
+      svg.removeEventListener('touchcancel', onTouchEnd, options)
+    }
+  }, [svgRef])
 
   // Create the zoom behavior for the current orientation.
   // Called lazily from attachZoom — not in a useEffect — so the SVG and baseScale are guaranteed ready.
@@ -90,6 +122,7 @@ export const useTimelineZoom = ({
           cancelAnimationFrame(zoomRafRef.current)
           zoomRafRef.current = requestAnimationFrame(() => {
             drawRef.current?.(scale)
+            parkTouchTargets()
           })
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
@@ -126,6 +159,7 @@ export const useTimelineZoom = ({
           cancelAnimationFrame(zoomRafRef.current)
           zoomRafRef.current = requestAnimationFrame(() => {
             drawRef.current?.(scale)
+            parkTouchTargets()
           })
         })
         .on('end', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
@@ -142,7 +176,7 @@ export const useTimelineZoom = ({
     }
 
     svg.on('dblclick.zoom', () => onResetRef.current())
-  }, [svgRef, containerRef, drawRef])
+  }, [svgRef, containerRef, drawRef, parkTouchTargets])
 
   const attachZoom = useCallback(
     (baseScale: d3.ScaleTime<number, number>, viewStart: Date, viewEnd: Date, chartDimension: number) => {
@@ -183,5 +217,5 @@ export const useTimelineZoom = ({
     zoomBehaviorRef.current = undefined
   }, [orientation])
 
-  return { baseScaleRef, currentScaleRef, attachZoom }
+  return { attachZoom, baseScaleRef, currentScaleRef, parkTouchTargets }
 }

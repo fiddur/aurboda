@@ -1,23 +1,8 @@
-:root {
-  --color-bg: #ffffff;
-  --color-surface: #ffffff;
-  --color-border: #dde3ea;
-  --color-text: #1b2430;
-  --color-text-muted: #5b6675;
-  --color-chrome: #0f2a4f;
-  --color-chrome-hover: #173a66;
-  --color-chrome-active: #1d4270;
-  --color-chrome-text: #d6e2f0;
-  --color-accent: #17707a;
-  --color-accent-hover: #0f5a62;
-  --color-accent-soft: #e7f4f5;
-  --color-accent-border: #a8d8dc;
-  --color-primary: #17707a;
-  --color-primary-hover: #0f5a62;
-  --color-cta: #f9ab33;
-  --color-cta-text: #1b1406;
-  --color-cta-hover: #e8981c;
+@use 'styles/tokens';
+@use 'styles/layout';
+@use 'styles/mixins';
 
+:root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -51,7 +36,7 @@ body {
   height: 100vh;
 }
 
-@media (max-width: 60em) {
+@include mixins.narrow-shell {
   #app {
     flex-direction: column;
   }
@@ -67,7 +52,7 @@ header.app-header {
   display: none;
 }
 
-@media (max-width: 60em) {
+@include mixins.narrow-shell {
   header.app-header {
     display: block;
   }
@@ -84,7 +69,7 @@ header.app-header {
 }
 
 .nav-mobile-home {
-  color: #fff;
+  color: var(--white);
   padding: 0.75rem;
   text-decoration: none;
 }
@@ -100,7 +85,7 @@ header.app-header {
 }
 
 .nav-mobile-title {
-  color: #fff;
+  color: var(--white);
   font-weight: 600;
   padding: 0.75rem 0.5rem;
   min-width: 0;
@@ -112,7 +97,7 @@ header.app-header {
 .hamburger-btn {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--white);
   font-size: 1.4rem;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
@@ -126,7 +111,7 @@ header.app-header {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--black-a40);
   z-index: 200;
 }
 
@@ -154,11 +139,11 @@ header.app-header {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid var(--white-a20);
 }
 
 .drawer-title {
-  color: #fff;
+  color: var(--white);
   font-weight: 600;
   font-size: 1rem;
 }
@@ -166,7 +151,7 @@ header.app-header {
 .drawer-close-btn {
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--white);
   font-size: 1rem;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
@@ -207,7 +192,7 @@ header.app-header {
 
 .nav-drawer a.active {
   background-color: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .nav-drawer a:hover {
@@ -236,7 +221,7 @@ header.app-header {
 
 .drawer-section-toggle.active {
   background-color: var(--color-chrome-active);
-  color: #fff;
+  color: var(--white);
 }
 
 .dropdown-arrow {
@@ -294,11 +279,11 @@ main > div > * {
   text-align: right;
   font-size: 0.75rem;
   padding: 0.5rem 1rem;
-  color: #888;
+  color: var(--color-text-subtle-2);
 }
 
 .site-footer a {
-  color: #888;
+  color: var(--color-text-subtle-2);
 }
 
 .site-footer-with-tagline {
@@ -316,44 +301,13 @@ main > div > * {
   color: var(--color-accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #12161c;
-    --color-surface: #1b222b;
-    --color-border: #2a333f;
-    --color-text: #e6e9ee;
-    --color-text-muted: #9aa6b4;
-    --color-chrome: #0b1a30;
-    --color-chrome-hover: #14294a;
-    --color-chrome-active: #173357;
-    --color-chrome-text: #c3cfdd;
-    --color-accent: #4cc3cc;
-    --color-accent-hover: #8fe3e9;
-    --color-accent-soft: #11262b;
-    --color-accent-border: #1f5a60;
-    --color-primary: #17707a;
-    --color-primary-hover: #1f8a94;
-    --color-cta: #f9ab33;
-    --color-cta-text: #1b1406;
-    --color-cta-hover: #ffbb55;
-  }
-
-  .site-footer {
-    color: #666;
-  }
-
-  .site-footer a {
-    color: #666;
-  }
-}
-
 /*
  * Shared button classes used across pages and dialogs. Several page stylesheets restyle them, but
  * those load only with their page; this base keeps a button styled on pages that load none of them.
  */
 .btn-primary {
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;
@@ -391,8 +345,8 @@ main > div > * {
 }
 
 .btn-danger {
-  background: #dc2626;
-  color: white;
+  background: var(--red-600);
+  color: var(--white);
   border: none;
   padding: 0.625rem 1.25rem;
   border-radius: 6px;
@@ -403,5 +357,5 @@ main > div > * {
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
+  background: var(--red-700);
 }

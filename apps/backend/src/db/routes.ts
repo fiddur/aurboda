@@ -247,7 +247,10 @@ const DIRECTION_SAMPLES = 24
 
 /**
  * Where each of 24 evenly spaced points along the activity's track falls along
- * `line` (0..1), in track order, for the points inside `area`.
+ * `line` (0..1), in track order, for the points inside `area`. Spacing and projection run in Web
+ * Mercator, locally true to shape, so the nearest point on the line is the nearest in metres: in
+ * lon/lat degrees an east-west offset weighs 1/cos(latitude) times a north-south one, and near a
+ * corner that can put a point on the wrong leg.
  */
 const directionFractions = async (
   user: string,
@@ -258,14 +261,14 @@ const directionFractions = async (
   const result = await query(
     user,
     `WITH t AS (${preferredTrack('$1')}),
-     r AS (${lineAndArea}),
+     r AS (SELECT ST_Transform(line, 3857) AS line, area FROM (${lineAndArea}) l),
      p AS (
-       SELECT k, ST_LineInterpolatePoint(t.simplified, k::float8 / ($2::int - 1)) AS pt
+       SELECT k, ST_LineInterpolatePoint(ST_Transform(t.simplified, 3857), k::float8 / ($2::int - 1)) AS pt
        FROM t, generate_series(0, $2::int - 1) AS k
      )
      SELECT ST_LineLocatePoint(r.line, p.pt) AS f
      FROM p, r
-     WHERE ST_Covers(r.area, p.pt)
+     WHERE ST_Covers(r.area, ST_Transform(p.pt, 4326))
      ORDER BY p.k`,
     [activityId, DIRECTION_SAMPLES, ...params],
   )

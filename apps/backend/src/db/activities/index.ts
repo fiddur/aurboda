@@ -16,6 +16,7 @@ export {
   adoptLegacyActivity,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  findSameInstantManualActivities,
   hardDeleteActivitiesByExternalIdPrefix,
   hardDeleteActivitiesBySource,
   insertActivities,

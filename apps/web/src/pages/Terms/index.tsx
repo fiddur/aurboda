@@ -3,7 +3,7 @@ import '../../components/StaticPage.css'
 
 export function Terms() {
   return (
-    <div class="static-page">
+    <div class="page static-page">
       <h1>Terms of Service</h1>
       <p>
         <em>Last updated: 2026-03-24</em>

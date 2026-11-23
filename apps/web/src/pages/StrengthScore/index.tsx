@@ -68,7 +68,11 @@ const ScoreCards = ({ field, name, score }: { field: string; name: string; score
       {extremes && (
         <div class="activity-type-item-card">
           <div class="activity-type-item-card-label">Strongest and weakest</div>
-          <div class="activity-type-item-card-value">{strongestAndWeakestLabel(extremes)}</div>
+          <div class="activity-type-item-card-value">
+            {strongestAndWeakestLabel(extremes).map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -107,7 +111,17 @@ export function StrengthScoreContent({ field, name }: { field: string; name: str
     <>
       {query.isLoading && <p class="loading">Loading...</p>}
       {(query.isError || (query.isSuccess && !query.data)) && (
-        <p class="error">Failed to load the strength score</p>
+        <p class="strength-score-retry">
+          The strength score could not be loaded just now.{' '}
+          <button
+            type="button"
+            class="btn-secondary"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            {query.isFetching ? 'Trying…' : 'Try again'}
+          </button>
+        </p>
       )}
       {query.data && <Body field={field} name={name} score={query.data} />}
     </>
@@ -128,7 +142,7 @@ export function StrengthScore() {
   const typeName = definitions?.find((d) => d.name === name)?.display_name ?? toDisplayName(name)
 
   return (
-    <div class="activity-type-item-page">
+    <div class="page page--full activity-type-item-page">
       <a href={`/activity-type/${encodeURIComponent(name)}`} class="activity-type-item-back">
         ← {typeName}
       </a>

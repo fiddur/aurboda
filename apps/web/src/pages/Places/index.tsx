@@ -348,7 +348,7 @@ export const Places = () => {
   const isPending = promoteMutation.isPending || addNamedMutation.isPending || updateNamedMutation.isPending
 
   return (
-    <div class="places-page">
+    <div class="page page--full places-page">
       <div class="places-header">
         <h1>Places</h1>
         <div class="date-nav">

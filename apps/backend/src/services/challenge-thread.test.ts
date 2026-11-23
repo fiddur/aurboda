@@ -20,6 +20,7 @@ import {
   decideAdmission,
   followPostDeleteInThread,
   followPostEditInThread,
+  followsPost,
   isThreadParticipant,
   MAX_REPLIES_PER_ENTRY,
   MAX_THREAD_ENTRIES,
@@ -31,12 +32,14 @@ import {
   readChallengeThread,
   type RemoteThreadBranch,
   resolveHostedChallenge,
+  setChallengePostFollowing,
   setChallengeThreadEntryHidden,
   syncThreadEntryForPost,
   type ThreadCandidate,
   type ThreadPushChange,
   threadVisibilityLocked,
   verifiedRemoteActors,
+  withFollowing,
 } from './challenge-thread.ts'
 
 const WEB = 'https://aurboda.test'
@@ -446,9 +449,79 @@ describe('challengeCommentNotifications', () => {
       body: 'hi',
       dedupe_key: `challenge_comment:${entry().object_uri}`,
       link: '/u/alice/abc#comments',
-      title: 'Bob commented in Push-ups',
+      title: 'Bob posted in Push-ups',
       type: 'challenge_comment',
     })
+  })
+})
+
+describe('following a post', () => {
+  const CAROL = `${WEB}/users/carol`
+  const DAN = `${WEB}/users/dan`
+  const root = entry({ actor_uri: CAROL, display_name: 'Carol', id: 't1' })
+  const replyBy = (actor: string, hidden = false) =>
+    entry({ actor_uri: actor, hidden_at: hidden ? new Date() : null, root_entry_id: 't1' })
+
+  test('followsPost: an explicit choice wins, else the root author and those who replied visibly', () => {
+    expect(followsPost(undefined, CAROL, root, [])).toBe(true)
+    expect(followsPost(undefined, DAN, root, [replyBy(DAN)])).toBe(true)
+    expect(followsPost(undefined, DAN, root, [replyBy(DAN, true)])).toBe(false)
+    expect(followsPost(undefined, DAN, root, [])).toBe(false)
+    expect(followsPost(true, DAN, root, [])).toBe(true)
+    expect(followsPost(false, CAROL, root, [replyBy(CAROL)])).toBe(false)
+  })
+
+  const members = [
+    ...MEMBERS,
+    member({ id: 'm3', local_user: 'carol' }),
+    member({ id: 'm4', local_user: 'dan' }),
+  ]
+  const theReply = entry({ id: 'r9', object_uri: `${WEB}/users/bob/feed/r9`, root_entry_id: 't1' })
+
+  test('a reply notifies only the recipients who follow its root, worded for each', () => {
+    const notes = challengeCommentNotifications(WEB, 'alice', challenge(), members, theReply, {
+      followers: new Set(['carol', 'dan', 'bob']),
+      root,
+    })
+    expect(notes.map((n) => [n.user, n.input.type, n.input.title, n.input.dedupe_key])).toEqual([
+      [
+        'carol',
+        'challenge_reply',
+        'Bob replied to your post in Push-ups',
+        `challenge_reply:${theReply.object_uri}`,
+      ],
+      [
+        'dan',
+        'challenge_reply',
+        "Bob replied to Carol's post in Push-ups",
+        `challenge_reply:${theReply.object_uri}`,
+      ],
+    ])
+    expect(notes[0]?.input).toMatchObject({ link: '/u/alice/abc#comments' })
+  })
+
+  test('a reply whose root is unknown notifies nobody', () => {
+    expect(challengeCommentNotifications(WEB, 'alice', challenge(), members, theReply)).toEqual([])
+  })
+
+  test('withFollowing marks each top-level entry from its own replies and the explicit choices', () => {
+    const other = entry({ actor_uri: CAROL, id: 't2', object_uri: `${WEB}/users/carol/feed/t2` })
+    const entries = assembleThread([root, other], [replyBy(DAN)], () => null)
+    const marked = withFollowing(
+      entries,
+      [root, other],
+      [replyBy(DAN)],
+      DAN,
+      new Map([[other.object_uri, true]]),
+    )
+    expect(marked.map((e) => [e.id, e.following])).toEqual([
+      ['t1', true],
+      ['t2', true],
+    ])
+    expect(withFollowing(entries, [root, other], [], DAN, new Map()).map((e) => e.following)).toEqual([
+      false,
+      false,
+    ])
   })
 })
 
@@ -502,8 +575,12 @@ describe('addChallengeComment', () => {
       removed?: ChallengeThreadEntryRecord
       tops?: ChallengeThreadEntryRecord[]
       replies?: ChallengeThreadEntryRecord[]
+      byId?: ChallengeThreadEntryRecord[]
+      follows?: Record<string, Record<string, boolean>>
     } = {},
   ) => {
+    const followSets: { following: boolean; uri: string; user: string }[] = []
+    const notes: { type: string; title: string; user: string }[] = []
     const pushes: { change: ThreadPushChange; recipients: string[]; user: string }[] = []
     const signals: { host: string; kind: string; object: string; target: string; recipients: string[] }[] = []
     const asked: { include_hidden: boolean; perRoot?: number }[] = []
@@ -524,8 +601,16 @@ describe('addChallengeComment', () => {
         deleted.push(id)
       },
       deliver: { createdReply: (_user, record) => delivered.push(record.id) },
-      getEntryById: async () => null,
-      getEntryByObjectUri: async () => over.existing ?? null,
+      followChoices: async (user, uris) =>
+        new Map(
+          uris.flatMap((uri) => {
+            const choice = over.follows?.[user]?.[uri]
+            return choice === undefined ? [] : [[uri, choice] as const]
+          }),
+        ),
+      getEntryById: async (_host, id) => over.byId?.find((e) => e.id === id) ?? null,
+      getEntryByObjectUri: async (_host, uri) =>
+        over.existing ?? over.byId?.find((e) => e.object_uri === uri) ?? null,
       getOwnPost: async () => null,
       listMembers: async () => over.members ?? MEMBERS,
       listReplies: async (_host, _ids, visibility, perRoot) => {
@@ -538,8 +623,9 @@ describe('addChallengeComment', () => {
           .slice(0, limit)
           .map((top) => ({ ...top, cursor_ts: top.published_at.toISOString() })),
       loadChallenge: async () => challenge(),
-      notify: async (user) => {
+      notify: async (user, input) => {
         notified.push(user)
+        notes.push({ title: input.title, type: input.type, user })
       },
       push: (user, _post, change, recipients) => {
         pushes.push({ change, recipients, user })
@@ -551,6 +637,9 @@ describe('addChallengeComment', () => {
         handle: `@${user}@aurboda.test`,
       }),
       resolveTags: async () => [],
+      setFollow: async (user, uri, following) => {
+        followSets.push({ following, uri, user })
+      },
       setHidden: async (_host, _challengeId, _entryId, hidden) =>
         over.hidden == null ? null : { ...over.hidden, hidden_at: hidden ? new Date() : null },
       signal: (host, kind, object, target, recipients) => {
@@ -562,7 +651,19 @@ describe('addChallengeComment', () => {
       },
       webHost: WEB,
     }
-    return { asked, created, deleted, delivered, deps, notified, pushes, signals, upserts }
+    return {
+      asked,
+      created,
+      deleted,
+      delivered,
+      deps,
+      followSets,
+      notes,
+      notified,
+      pushes,
+      signals,
+      upserts,
+    }
   }
 
   const body = { audience: 'participants' as const, challenge_url: `${WEB}/u/alice/abc`, message: ' Go! ' }
@@ -648,6 +749,10 @@ describe('addChallengeComment', () => {
       read: async (user, url) => {
         calls.push(`read ${user} ${url}`)
         return { error: 'remote', ok: false, status: 502 }
+      },
+      setFollowing: async (user, url, id, following) => {
+        calls.push(`follow ${user} ${url} ${id} ${following}`)
+        return { following, ok: true }
       },
     }
     return { branch, calls }
@@ -855,6 +960,108 @@ describe('addChallengeComment', () => {
       { include_hidden: true, perRoot: MAX_REPLIES_PER_ENTRY },
       { include_hidden: true, perRoot: MAX_THREAD_ENTRIES },
     ])
+  })
+  describe('replies notify the followers of their root post', () => {
+    const CAROL = `${WEB}/users/carol`
+    const DAN = `${WEB}/users/dan`
+    const URL = `${WEB}/u/alice/abc`
+    const root = entry({
+      actor_uri: CAROL,
+      display_name: 'Carol',
+      id: '33333333-3333-4333-8333-333333333333',
+      object_uri: `${WEB}/users/carol/feed/t1`,
+    })
+    const earlier = entry({
+      actor_uri: DAN,
+      display_name: 'Dan',
+      id: '44444444-4444-4444-8444-444444444444',
+      in_reply_to_uri: root.object_uri,
+      object_uri: `${WEB}/users/dan/feed/r1`,
+      root_entry_id: root.id,
+    })
+    const members = [
+      ...MEMBERS,
+      member({ id: 'm3', local_user: 'carol' }),
+      member({ id: 'm4', local_user: 'dan' }),
+    ]
+    const replyBody = { ...body, in_reply_to_id: root.id }
+
+    test('the root author and an earlier replier get challenge_reply; the host does not', async () => {
+      const { deps, notes } = fakeDeps({ byId: [root, earlier], members, replies: [earlier] })
+      expect(await addChallengeComment(deps, 'bob', replyBody)).toMatchObject({ ok: true })
+      expect(notes).toEqual([
+        {
+          title: '@bob@aurboda.test replied to your post in Push-ups',
+          type: 'challenge_reply',
+          user: 'carol',
+        },
+        {
+          title: "@bob@aurboda.test replied to Carol's post in Push-ups",
+          type: 'challenge_reply',
+          user: 'dan',
+        },
+      ])
+    })
+
+    test('an explicit follower who never wrote is told; an explicit unfollower is not', async () => {
+      const { deps, notified } = fakeDeps({
+        byId: [root, earlier],
+        follows: { alice: { [root.object_uri]: true }, dan: { [root.object_uri]: false } },
+        members,
+        replies: [earlier],
+      })
+      await addChallengeComment(deps, 'bob', replyBody)
+      expect(notified.sort()).toEqual(['alice', 'carol'])
+    })
+
+    test('a top-level post still tells the host and every member but the author', async () => {
+      const { deps, notes } = fakeDeps({ members })
+      await addChallengeComment(deps, 'bob', body)
+      expect(notes.map((n) => [n.user, n.type])).toEqual([
+        ['alice', 'challenge_comment'],
+        ['carol', 'challenge_comment'],
+        ['dan', 'challenge_comment'],
+      ])
+    })
+
+    test('setChallengePostFollowing: a member follows a top-level post by its Note id', async () => {
+      const { deps, followSets } = fakeDeps({ byId: [root, earlier], members })
+      expect(await setChallengePostFollowing(deps, 'bob', URL, root.id, true)).toEqual({
+        following: true,
+        ok: true,
+      })
+      expect(followSets).toEqual([{ following: true, uri: root.object_uri, user: 'bob' }])
+    })
+
+    test('setChallengePostFollowing refuses a visitor, a reply and an unknown entry', async () => {
+      const { deps, followSets } = fakeDeps({ byId: [root, earlier], members })
+      expect(await setChallengePostFollowing(deps, 'zed', URL, root.id, true)).toMatchObject({ status: 403 })
+      expect(await setChallengePostFollowing(deps, 'bob', URL, earlier.id, true)).toMatchObject({
+        status: 400,
+      })
+      expect(await setChallengePostFollowing(deps, 'bob', URL, POST_ID, true)).toMatchObject({ status: 404 })
+      expect(followSets).toEqual([])
+    })
+
+    test('setChallengePostFollowing for a thread hosted elsewhere goes to the remote branch', async () => {
+      const { branch, calls } = remoteBranch()
+      const { deps } = fakeDeps({ remote: branch })
+      await setChallengePostFollowing(deps, 'bob', OTHER_URL, 'e1', false)
+      expect(calls).toEqual([`follow bob ${OTHER_URL} e1 false`])
+    })
+
+    test('the thread read carries following on top-level entries for participants only', async () => {
+      const { deps } = fakeDeps({ members, replies: [earlier], tops: [root] })
+      const following = async (viewer: string) => {
+        const result = await readChallengeThread(deps, viewer, URL)
+        return result.ok
+          ? result.entries.map((e) => [e.following, e.replies.map((r) => 'following' in r)])
+          : result
+      }
+      expect(await following('dan')).toEqual([[true, [false]]])
+      expect(await following('bob')).toEqual([[false, [false]]])
+      expect(await following('zed')).toEqual([[undefined, [false]]])
+    })
   })
 })
 

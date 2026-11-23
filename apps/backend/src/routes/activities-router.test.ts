@@ -9,6 +9,7 @@ import { createActivitiesRouter } from './activities-router.ts'
 // Mock the DB barrel and the queries barrel the router pulls from. Only the
 // functions the GET /activities/:id plain path calls need real behaviour.
 vi.mock('../db/index.ts', async () => ({
+  activityHasTrack: vi.fn().mockResolvedValue(false),
   getActivityById: vi.fn(),
   getActivityTrack: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
@@ -147,6 +148,13 @@ describe('GET /activities/recent', () => {
     expect(res.status).toBe(400)
     expect(vi.mocked(queries.getRecentActivities)).not.toHaveBeenCalled()
   })
+
+  test('rejects an unknown timezone with 400', async () => {
+    const res = await supertest(buildApp()).get('/activities/recent?tz=Nope/Nowhere')
+
+    expect(res.status).toBe(400)
+    expect(vi.mocked(queries.getRecentActivities)).not.toHaveBeenCalled()
+  })
 })
 
 describe('GET /activities/:id', () => {
@@ -236,6 +244,23 @@ describe('GET /activities/:id', () => {
 
     expect(res.body.data.segment_efforts).toEqual(efforts)
     expect(segments.activitySegmentEfforts).toHaveBeenCalledWith('tester', [ACTIVITY_ID])
+  })
+
+  test.each([
+    [true, ACTIVITY_ID],
+    [false, ACTIVITY_ID],
+    [true, `merged:${ACTIVITY_ID}`],
+  ])('says has_track %s when the track read would answer one, for %s', async (hasTrack, id) => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(db.activityHasTrack).mockResolvedValueOnce(hasTrack)
+
+    const res = await supertest(buildApp()).get(`/activities/${id}`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.has_track).toBe(hasTrack)
+    expect(db.activityHasTrack).toHaveBeenCalledWith('tester', ACTIVITY_ID)
   })
 
   test('returns an empty comments array when the activity has no notes', async () => {

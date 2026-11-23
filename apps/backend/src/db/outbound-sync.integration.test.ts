@@ -5,6 +5,7 @@ import { query } from './connection.ts'
 import {
   ackOutboundSync,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   enqueueOutboundSyncInsertsIfChanged,
   failOutboundSync,
   findHcRecordId,
@@ -215,6 +216,160 @@ describe('Outbound Sync Queue Integration Tests', () => {
 
       expect(await enqueue(user, [minute('2026-10-01T10:00:00.000Z', 1.5)])).toBe(1)
       expect((await getPendingOutboundSync(user)).total_pending).toBe(1)
+    })
+  })
+
+  describe('enqueueOutboundSyncDeletes', () => {
+    const weight = (iso: string) => `weight|${iso}`
+    const insertPoint = (user: string, iso: string, value = 80) =>
+      enqueueOutboundSync(user, {
+        entity_id: weight(iso),
+        entity_type: 'time_series',
+        hc_record_type: 'WeightRecord',
+        operation: 'insert',
+        payload: { metric: 'weight', time: iso, unit: 'kg', value },
+      })
+    const forget = (user: string, isos: string[]) =>
+      enqueueOutboundSyncDeletes(
+        user,
+        'time_series',
+        isos.map((iso) => ({ entity_id: weight(iso), hc_record_type: 'WeightRecord' })),
+      )
+    const rows = async (user: string) =>
+      (
+        await query(
+          user,
+          `SELECT entity_id, operation, status, payload, hc_record_type FROM outbound_sync_queue
+           ORDER BY created_at, operation`,
+          [],
+        )
+      ).rows
+    const T1 = '2026-11-01T08:00:00.000Z'
+    const T2 = '2026-11-02T08:00:00.000Z'
+
+    test('queues a delete carrying the record id of a synced insert', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1), 'hc-1')
+
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 1 })
+
+      const { entries } = await getPendingOutboundSync(user)
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({
+        entity_id: weight(T1),
+        hc_record_type: 'WeightRecord',
+        operation: 'delete',
+        payload: { hc_record_id: 'hc-1' },
+      })
+    })
+
+    test('drops a pending insert and queues no delete', async () => {
+      const user = getTestUser()
+      await insertPoint(user, T1)
+
+      expect(await forget(user, [T1])).toEqual({ cancelled: 1, deleted: 0 })
+      expect(await rows(user)).toHaveLength(0)
+    })
+
+    test('drops a pending re-write and deletes the record already written', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1), 'hc-1')
+      await insertPoint(user, T1, 81)
+
+      expect(await forget(user, [T1])).toEqual({ cancelled: 1, deleted: 1 })
+      const { entries } = await getPendingOutboundSync(user)
+      expect(entries.map((entry) => [entry.operation, entry.payload])).toEqual([
+        ['delete', { hc_record_id: 'hc-1' }],
+      ])
+    })
+
+    test('does nothing for an entity with no queue entry', async () => {
+      const user = getTestUser()
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 0 })
+      expect(await rows(user)).toHaveLength(0)
+    })
+
+    test('does nothing for an insert the phone acked without a record', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1))
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 0 })
+    })
+
+    test('queues no second delete for a record being or already deleted', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1), 'hc-1')
+      await forget(user, [T1])
+
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 0 })
+
+      const { entries } = await getPendingOutboundSync(user)
+      await ackOutboundSync(user, entries[0].id)
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 0 })
+    })
+
+    test('handles many points in one call', async () => {
+      const user = getTestUser()
+      const isos = Array.from({ length: 500 }, (_, i) => new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString())
+      await enqueueOutboundSyncInsertsIfChanged(
+        user,
+        'time_series',
+        'WeightRecord',
+        isos.map((iso) => ({ entity_id: weight(iso), payload: { time: iso, value: 80 } })),
+      )
+      const { entries } = await getPendingOutboundSync(user, 1000)
+      for (const entry of entries.slice(0, 300)) {
+        await ackOutboundSync(user, entry.id, `hc-${entry.entity_id}`)
+      }
+
+      expect(await forget(user, [...isos, T1])).toEqual({ cancelled: 200, deleted: 300 })
+      const pending = await getPendingOutboundSync(user, 1000)
+      expect(pending.total_pending).toBe(300)
+      expect(pending.entries.every((entry) => entry.operation === 'delete')).toBe(true)
+      expect(pending.entries.every((entry) => entry.payload.hc_record_id === `hc-${entry.entity_id}`)).toBe(
+        true,
+      )
+    })
+
+    test('a re-insert after a synced delete is queued again', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1), 'hc-1')
+      await forget(user, [T1])
+      const { entries } = await getPendingOutboundSync(user)
+      await ackOutboundSync(user, entries[0].id)
+
+      await insertPoint(user, T1)
+      const after = await getPendingOutboundSync(user)
+      expect(after.entries.map((entry) => entry.operation)).toEqual(['insert'])
+
+      await ackOutboundSync(user, after.entries[0].id, 'hc-2')
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 1 })
+      expect((await getPendingOutboundSync(user)).entries[0].payload).toEqual({ hc_record_id: 'hc-2' })
+    })
+
+    test('a bulk re-insert after a synced delete is not taken for already synced', async () => {
+      const user = getTestUser()
+      const item = { entity_id: weight(T1), payload: { time: T1, value: 80 } }
+      await enqueueOutboundSyncInsertsIfChanged(user, 'time_series', 'WeightRecord', [item])
+      const first = await getPendingOutboundSync(user)
+      await ackOutboundSync(user, first.entries[0].id, 'hc-1')
+      await forget(user, [T1])
+      const del = await getPendingOutboundSync(user)
+      await ackOutboundSync(user, del.entries[0].id)
+
+      expect(await enqueueOutboundSyncInsertsIfChanged(user, 'time_series', 'WeightRecord', [item])).toBe(1)
+    })
+
+    test('a re-insert drops a pending delete of the same point', async () => {
+      const user = getTestUser()
+      await ackOutboundSync(user, await insertPoint(user, T1), 'hc-1')
+      await forget(user, [T1, T2])
+
+      await insertPoint(user, T1, 82)
+      const { entries } = await getPendingOutboundSync(user)
+      expect(entries.map((entry) => [entry.operation, entry.payload.value])).toEqual([['insert', 82]])
+
+      await ackOutboundSync(user, entries[0].id, 'hc-1')
+      expect(await forget(user, [T1])).toEqual({ cancelled: 0, deleted: 1 })
     })
   })
 

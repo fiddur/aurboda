@@ -2,15 +2,10 @@ import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { chartFilterFieldSchema } from './chart-data.ts'
-import {
-  activityTypeSchema,
-  baseResponseSchema,
-  dataFieldPathSchema,
-  queryBooleanSchema,
-  tzSchema,
-} from './common.ts'
+import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, queryBooleanSchema } from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
 import { mediaPlaySourceSchema } from './media.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
 
 export const builtinDashboardMetrics = [
@@ -484,16 +479,31 @@ export const recentActivitiesWindowSchema = z.enum(recentActivitiesWindows).meta
 
 export type RecentActivitiesWindow = z.infer<typeof recentActivitiesWindowSchema>
 
+export const RECENT_ACTIVITIES_LIMIT_RANGE = [1, 20] as const
+export const RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE = [1, 365] as const
+
 const recentActivitiesTypeListSchema = z.array(activityTypeSchema).max(50).optional()
 
 export const recentActivitiesFilterShape = {
   exclude_types: recentActivitiesTypeListSchema.meta({
     description: 'Activity types left out, with their subtypes',
   }),
-  limit: z.number().int().min(1).max(20).default(5).meta({ description: 'Activities listed (default 5)' }),
-  lookback_days: z.number().int().positive().max(365).optional().meta({
-    description: 'With window latest: days looked back (default 30)',
-  }),
+  limit: z
+    .number()
+    .int()
+    .min(RECENT_ACTIVITIES_LIMIT_RANGE[0])
+    .max(RECENT_ACTIVITIES_LIMIT_RANGE[1])
+    .default(5)
+    .meta({ description: 'Activities listed (default 5)' }),
+  lookback_days: z
+    .number()
+    .int()
+    .min(RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE[0])
+    .max(RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE[1])
+    .optional()
+    .meta({
+      description: 'With window latest: days looked back (default 30)',
+    }),
   manual_only: z.boolean().optional().meta({
     description: 'Only activities logged by hand in Aurboda (an edit of a synced activity does not count)',
   }),
@@ -534,13 +544,19 @@ export const recentActivitiesQuerySchema = z
     limit: z.coerce
       .number()
       .int()
-      .min(1)
-      .max(20)
+      .min(RECENT_ACTIVITIES_LIMIT_RANGE[0])
+      .max(RECENT_ACTIVITIES_LIMIT_RANGE[1])
       .default(5)
       .meta({ description: 'Activities listed (default 5)' }),
-    lookback_days: z.coerce.number().int().positive().max(365).optional().meta({
-      description: 'With window latest: days looked back (default 30)',
-    }),
+    lookback_days: z.coerce
+      .number()
+      .int()
+      .min(RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE[0])
+      .max(RECENT_ACTIVITIES_LOOKBACK_DAYS_RANGE[1])
+      .optional()
+      .meta({
+        description: 'With window latest: days looked back (default 30)',
+      }),
     manual_only: queryBooleanSchema.optional().meta({
       description: 'true lists only activities logged by hand in Aurboda',
     }),
@@ -549,7 +565,7 @@ export const recentActivitiesQuerySchema = z
         'Comma-separated activity types listed, with their subtypes. Default: the types a day overview draws as icons',
       example: 'exercise,meditation',
     }),
-    tz: tzSchema.optional().meta({
+    tz: ianaTimezoneSchema.optional().meta({
       description: 'The timezone "today" is cut in and times are shown in; the user\'s setting when absent',
     }),
     window: recentActivitiesWindowSchema.default('today'),

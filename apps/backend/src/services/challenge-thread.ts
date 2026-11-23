@@ -40,6 +40,7 @@ import {
   deleteChallengeThreadEntry,
   deleteFeedPostWithQuotes,
   getChallengeBySlug,
+  getChallengePostFollows,
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
   getFeedPostById,
@@ -50,6 +51,7 @@ import {
   listChallengeMembers,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
+  setChallengePostFollow,
   setChallengeThreadEntryHidden as setEntryHiddenInDb,
   upsertChallengeThreadEntry,
 } from '../db/index.ts'
@@ -338,7 +340,55 @@ export interface ThreadNotification {
   input: RaiseNotificationInput
 }
 
-/** `challenge_comment` for the host and every local active member but the author. Pure. */
+/** The local users a new entry is news for: the host and every local active member but the author. Pure. */
+export const threadRecipients = (
+  webHost: string,
+  host: string,
+  members: readonly ChallengeMemberRecord[],
+  authorActorUri: string,
+): string[] => {
+  const recipients = new Set([host])
+  for (const member of members) {
+    if (member.kind === 'local' && member.status === 'active' && member.local_user != null) {
+      recipients.add(member.local_user)
+    }
+  }
+  return [...recipients].filter((user) => buildActorUrl(webHost, user) !== authorActorUri)
+}
+
+/**
+ * Whether someone follows a top-level post: their own choice when they made one, else whether they
+ * wrote it or a visible reply under it. Pure.
+ */
+export const followsPost = (
+  explicit: boolean | undefined,
+  actorUri: string,
+  root: { actor_uri: string },
+  replies: readonly { actor_uri: string; hidden_at?: Date | null }[],
+): boolean =>
+  explicit ??
+  (root.actor_uri === actorUri ||
+    replies.some((reply) => reply.hidden_at == null && reply.actor_uri === actorUri))
+
+/** Whose post a reply answers, as its notification's title words it for one recipient. */
+export type RootOwner = { mine: true } | { mine: false; label: string | null }
+
+export const replyTitle = (author: string, owner: RootOwner, challengeName: string): string => {
+  const post = owner.mine ? 'your post' : owner.label == null ? 'a post' : `${owner.label}'s post`
+  return `${author} replied to ${post} in ${challengeName}`
+}
+
+/** The root post of a reply and, among the recipients, those who follow it. */
+export interface ReplyAudience {
+  root: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'display_name' | 'handle'>
+  followers: ReadonlySet<string>
+}
+
+/**
+ * `challenge_comment` for a top-level entry, to the host and every local active member but the
+ * author; `challenge_reply` for a reply, to those of them who follow its root post (`reply`; none
+ * without it). Pure.
+ */
 export const challengeCommentNotifications = (
   webHost: string,
   host: string,
@@ -348,28 +398,73 @@ export const challengeCommentNotifications = (
     ChallengeThreadEntryRecord,
     'actor_uri' | 'content' | 'display_name' | 'handle' | 'object_uri' | 'root_entry_id'
   >,
+  reply: ReplyAudience | null = null,
 ): ThreadNotification[] => {
-  const recipients = new Set([host])
-  for (const member of members) {
-    if (member.kind === 'local' && member.status === 'active' && member.local_user != null) {
-      recipients.add(member.local_user)
-    }
-  }
+  const isReply = entry.root_entry_id != null
+  if (isReply && reply == null) return []
   const author = actorLabel(entry)
   const body = htmlSnippet(entry.content)
-  return [...recipients]
-    .filter((user) => buildActorUrl(webHost, user) !== entry.actor_uri)
+  return threadRecipients(webHost, host, members, entry.actor_uri)
+    .filter((user) => !isReply || reply?.followers.has(user) === true)
     .map((user) => ({
       input: {
         ...(body === '' ? {} : { body }),
         data: { actor_uri: entry.actor_uri, challenge_url: buildShareUrl(webHost, host, challenge.slug) },
-        dedupe_key: `challenge_comment:${entry.object_uri}`,
+        dedupe_key: `${isReply ? 'challenge_reply' : 'challenge_comment'}:${entry.object_uri}`,
         link: `/u/${encodeURIComponent(host)}/${encodeURIComponent(challenge.slug)}#comments`,
-        title: `${author} ${entry.root_entry_id == null ? 'commented in' : 'replied in'} ${challenge.name}`,
-        type: 'challenge_comment',
+        title:
+          isReply && reply != null
+            ? replyTitle(
+                author,
+                reply.root.actor_uri === buildActorUrl(webHost, user)
+                  ? { mine: true }
+                  : { label: actorLabel(reply.root), mine: false },
+                challenge.name,
+              )
+            : `${author} posted in ${challenge.name}`,
+        type: isReply ? 'challenge_reply' : 'challenge_comment',
       },
       user,
     }))
+}
+
+/** A user's explicit follow choices among some root posts, from their own data. */
+export type FollowChoices = (user: string, rootObjectUris: readonly string[]) => Promise<Map<string, boolean>>
+
+const READ_ALL: ThreadVisibility = { audiences: ['public', 'participants'], include_hidden: false }
+
+const followChoiceOf = async (
+  followChoices: FollowChoices,
+  user: string,
+  rootObjectUri: string,
+): Promise<boolean | undefined> => {
+  try {
+    return (await followChoices(user, [rootObjectUri])).get(rootObjectUri)
+  } catch (error) {
+    console.warn(`⚠️ challenge post follow read failed for ${user}:`, error)
+    return undefined
+  }
+}
+
+/** The root of a new reply and which of the recipients follow it; null when the root is gone. */
+const replyAudience = async (
+  deps: Pick<AdmitDeps, 'followChoices' | 'getEntryById' | 'listReplies' | 'webHost'>,
+  host: string,
+  members: readonly ChallengeMemberRecord[],
+  entry: ChallengeThreadEntryRecord,
+): Promise<ReplyAudience | null> => {
+  if (entry.root_entry_id == null) return null
+  const root = await deps.getEntryById(host, entry.root_entry_id)
+  if (root == null) return null
+  const recipients = threadRecipients(deps.webHost, host, members, entry.actor_uri)
+  const [replies, choices] = await Promise.all([
+    deps.listReplies(host, [root.id], READ_ALL, MAX_THREAD_ENTRIES),
+    Promise.all(recipients.map((user) => followChoiceOf(deps.followChoices, user, root.object_uri))),
+  ])
+  const followers = new Set(
+    recipients.filter((user, i) => followsPost(choices[i], buildActorUrl(deps.webHost, user), root, replies)),
+  )
+  return { followers, root }
 }
 
 export interface AdmitDeps {
@@ -381,6 +476,14 @@ export interface AdmitDeps {
     host: string,
     input: ChallengeThreadEntryInput,
   ) => Promise<{ entry: ChallengeThreadEntryRecord; inserted: boolean } | null>
+  getEntryById: (host: string, id: string) => Promise<ChallengeThreadEntryRecord | null>
+  listReplies: (
+    host: string,
+    rootIds: readonly string[],
+    visibility: ThreadVisibility,
+    perRoot: number,
+  ) => Promise<ChallengeThreadEntryRecord[]>
+  followChoices: FollowChoices
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
   signal?: ThreadSignal
 }
@@ -391,7 +494,8 @@ export type AdmitResult =
 
 /**
  * THE way into a thread: applies `decideAdmission`, resolves the root, upserts on `object_uri`,
- * and on a newly created, visible comment raises `challenge_comment` for the other side.
+ * and on a newly created, visible comment raises `challenge_comment` (a post) or `challenge_reply` (a
+ * reply, for those who follow its root post) for the other side.
  */
 export const admitThreadEntry = async (
   deps: AdmitDeps,
@@ -441,8 +545,12 @@ export const admitThreadEntry = async (
   if (stored == null) return { admitted: false, reason: 'not_author' }
   if (stored.inserted && stored.entry.kind === 'comment' && stored.entry.hidden_at == null && deps.notify) {
     const notify = deps.notify
+    const reply = await replyAudience(deps, host, members, stored.entry).catch((error: unknown) => {
+      console.warn(`⚠️ challenge reply followers failed for ${stored.entry.object_uri}:`, error)
+      return null
+    })
     await Promise.all(
-      challengeCommentNotifications(deps.webHost, host, challenge, members, stored.entry).map((n) =>
+      challengeCommentNotifications(deps.webHost, host, challenge, members, stored.entry, reply).map((n) =>
         notify(n.user, n.input),
       ),
     )
@@ -537,6 +645,26 @@ export const assembleThread = (
     }
   })
 
+/**
+ * Each top-level entry with whether the viewer follows it, by `followsPost` over the replies grouped
+ * under it. Pure.
+ */
+export const withFollowing = (
+  entries: readonly ChallengeThreadEntry[],
+  tops: readonly Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'id' | 'object_uri'>[],
+  replies: readonly Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'hidden_at' | 'root_entry_id'>[],
+  viewerActorUri: string,
+  choices: ReadonlyMap<string, boolean>,
+): ChallengeThreadEntry[] => {
+  const topById = new Map(tops.map((top) => [top.id, top]))
+  return entries.map((entry) => {
+    const top = topById.get(entry.id)
+    if (top == null) return entry
+    const group = replies.filter((reply) => reply.root_entry_id === top.id)
+    return { ...entry, following: followsPost(choices.get(top.object_uri), viewerActorUri, top, group) }
+  })
+}
+
 export interface ThreadReadDeps {
   webHost: string
   listMembers: (host: string, challengeId: string) => Promise<ChallengeMemberRecord[]>
@@ -555,6 +683,7 @@ export interface ThreadReadDeps {
   ) => Promise<ChallengeThreadEntryRecord[]>
   countVisible: (host: string, challengeId: string, visibility: ThreadVisibility) => Promise<number>
   getOwnPost: (user: string, postId: string) => Promise<FeedPostRecord | null>
+  followChoices: FollowChoices
 }
 
 export interface ChallengeThreadView {
@@ -628,8 +757,21 @@ export const getChallengeThread = async (
     seesHidden ? MAX_REPLIES_PER_ENTRY : MAX_THREAD_ENTRIES,
   )
   const own = await loadOwn(deps, viewer, [...page, ...replies])
+  const entries = assembleThread(page, replies, (record) => own.get(record.id) ?? null, seesHidden)
   return {
-    entries: assembleThread(page, replies, (record) => own.get(record.id) ?? null, seesHidden),
+    entries:
+      role === 'visitor' || viewer == null
+        ? entries
+        : withFollowing(
+            entries,
+            page,
+            replies,
+            buildActorUrl(deps.webHost, viewer),
+            await deps.followChoices(
+              viewer,
+              page.map((top) => top.object_uri),
+            ),
+          ),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     total,
     viewer: viewerInfo,
@@ -674,6 +816,12 @@ export interface RemoteThreadBranch {
     user: string,
     body: ChallengeCommentBody,
   ) => Promise<{ ok: true; entry: ChallengeThreadEntry } | ThreadFailure>
+  setFollowing: (
+    user: string,
+    challengeUrl: string,
+    entryId: string,
+    following: boolean,
+  ) => Promise<{ ok: true; following: boolean } | ThreadFailure>
   followEdit: (user: string, post: FeedPostRecord) => Promise<unknown>
   followDelete: (user: string, post: FeedPostRecord) => Promise<unknown>
   /** Pull the thread right after a join; never fails. */
@@ -719,6 +867,7 @@ export interface ThreadPostDeps {
     entryId: string,
     hidden: boolean,
   ) => Promise<ChallengeThreadEntryRecord | null>
+  setFollow: (user: string, rootObjectUri: string, following: boolean) => Promise<void>
   deliver?: Pick<FeedDeliver, 'createdReply'>
   push?: ThreadPush
   remote?: RemoteThreadBranch
@@ -759,6 +908,7 @@ export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): Cha
   deleteEntry: deleteChallengeThreadEntry,
   deletePost: deleteFeedPostWithQuotes,
   deliver: opts.deliver,
+  followChoices: getChallengePostFollows,
   getEntryById: getChallengeThreadEntryById,
   getEntryByObjectUri: getChallengeThreadEntryByObjectUri,
   getOwnPost: getFeedPostById,
@@ -770,6 +920,7 @@ export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): Cha
   presentation: (user) => localAuthorPresentation(opts.webHost, user),
   push: opts.push,
   resolveTags: (user, message) => resolvePostTags(user, { reply: true, texts: [message] }),
+  setFollow: setChallengePostFollow,
   setHidden: setEntryHiddenInDb,
   signal: opts.signal,
   upsert: upsertChallengeThreadEntry,
@@ -1019,6 +1170,38 @@ export const setChallengeThreadEntryHidden = async (
     ),
     ok: true,
   }
+}
+
+export const NOT_PARTICIPANT_FOLLOW_MESSAGE = 'Only the host and members can follow posts in this thread'
+export const NOT_TOP_LEVEL_MESSAGE = 'Only a top-level post can be followed'
+
+/**
+ * Follow or stop following the replies under a top-level post, for the host or a member: kept in
+ * the user's own data by the post's Note id. A thread hosted on another server goes to the remote
+ * branch.
+ */
+export const setChallengePostFollowing = async (
+  deps: ChallengeThreadDeps,
+  user: string,
+  challengeUrl: string,
+  entryId: string,
+  following: boolean,
+): Promise<{ ok: true; following: boolean } | ThreadFailure> => {
+  if (deps.remote != null && isOtherServerChallengeUrl(deps.webHost, challengeUrl)) {
+    return deps.remote.setFollowing(user, challengeUrl, entryId, following)
+  }
+  const resolved = await resolveHostedChallenge(deps.webHost, challengeUrl, deps.loadChallenge)
+  if (!resolved.ok) return resolved
+  const { challenge, host } = resolved
+  const role = challengeThreadRole(host, await deps.listMembers(host, challenge.id), user)
+  if (role === 'visitor') return failure(403, NOT_PARTICIPANT_FOLLOW_MESSAGE)
+  const entry = await loadThreadEntry(deps, resolved, entryId)
+  if (entry == null || !(await entryVisibleTo(deps, host, entry, role, readableAudiences(role, challenge)))) {
+    return failure(404, 'Thread entry not found')
+  }
+  if (entry.root_entry_id != null) return failure(400, NOT_TOP_LEVEL_MESSAGE)
+  await deps.setFollow(user, entry.object_uri, following)
+  return { following, ok: true }
 }
 
 const isShareEligible = (post: FeedPostRecord): boolean =>

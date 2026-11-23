@@ -17,6 +17,7 @@ vi.mock('../db/index.ts', () => ({
   getDeductionRules: vi.fn(),
   getEnabledDeductionRules: vi.fn(),
   insertDeductionRule: vi.fn(),
+  listLivePersonIds: vi.fn().mockResolvedValue([]),
   removeRuleCategoryEntries: vi.fn().mockResolvedValue(0),
   updateDeductionRule: vi.fn(),
 }))
@@ -293,5 +294,74 @@ describe("removing a rule's activities marks the training load hours dirty", () 
     const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ enabled: false })
     expect(res.status).toBe(200)
     expect(markWorkoutHoursDirty).toHaveBeenCalledExactlyOnceWith('tester', earliest_by_type)
+  })
+})
+
+describe('output_people', () => {
+  const ANNA = '11111111-1111-4111-8111-111111111111'
+  const GONE = '22222222-2222-4222-8222-222222222222'
+  const peopleBody = (output_people: unknown) => body({ output_people, output_title_field: undefined })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(db.activityTypeExists).mockResolvedValue(true)
+    vi.mocked(db.ensureActivityType).mockResolvedValue(true)
+    vi.mocked(db.insertDeductionRule).mockImplementation(async (_user, input) => rule(input))
+    vi.mocked(db.listLivePersonIds).mockImplementation(async (_user, ids) => ids.filter((id) => id === ANNA))
+  })
+
+  test('stores the people of a rule with nothing else to write', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(peopleBody([ANNA]))
+    expect(res.status).toBe(201)
+    expect(vi.mocked(db.insertDeductionRule).mock.calls[0]?.[1].output_people).toEqual([ANNA])
+  })
+
+  test('an unknown person is a 400 naming the id', async () => {
+    const res = await supertest(buildApp())
+      .post('/')
+      .send(peopleBody([ANNA, GONE]))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe(`Unknown people: ${GONE}`)
+    expect(db.insertDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('an update with an unknown person is a 400 too', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule())
+    const res = await supertest(buildApp())
+      .patch(`/${RULE_ID}`)
+      .send({ output_people: [GONE] })
+    expect(res.status).toBe(400)
+    expect(db.updateDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('null clears them', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule({ output_people: [ANNA] }))
+    vi.mocked(db.updateDeductionRule).mockResolvedValue(rule())
+    const res = await supertest(buildApp()).patch(`/${RULE_ID}`).send({ output_people: null })
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.updateDeductionRule).mock.calls[0]?.[2].output_people).toBeNull()
+  })
+
+  test.each([
+    ['empty', []],
+    ['a repeated person', [ANNA, ANNA]],
+    ['not a uuid', ['anna']],
+    [
+      'more than 20',
+      Array.from({ length: 21 }, (_, i) => `11111111-1111-4111-8111-${String(i).padStart(12, '0')}`),
+    ],
+  ])('the schema rejects %s', async (_label, output_people) => {
+    const res = await supertest(buildApp()).post('/').send(peopleBody(output_people))
+    expect(res.status).toBe(400)
+    expect(db.insertDeductionRule).not.toHaveBeenCalled()
+  })
+
+  test('a preview with an unknown person is a 400', async () => {
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(peopleBody([GONE]))
+    expect(res.status).toBe(400)
   })
 })

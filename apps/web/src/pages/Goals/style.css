@@ -1,19 +1,13 @@
-.goals-page {
-  width: 100%;
-  padding: 1rem;
-  box-sizing: border-box;
-}
-
 .goals-page h1 {
   margin-bottom: 1.5rem;
 }
 
 .goals-page .loading {
-  color: #888;
+  color: var(--neutral-l53);
 }
 
 .goals-page .no-goals {
-  color: #888;
+  color: var(--neutral-l53);
   font-style: italic;
 }
 
@@ -28,7 +22,7 @@
 }
 
 .goal-progress {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--bg-secondary, var(--color-surface-sunken-2));
   border-radius: 8px;
   padding: 1rem;
 }
@@ -53,11 +47,11 @@
 .goal-window {
   font-weight: 400;
   font-size: 0.85rem;
-  color: #888;
+  color: var(--color-text-subtle);
 }
 
 .losing-tomorrow {
-  color: #888;
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
 }
 
@@ -70,7 +64,7 @@
 .progress-container {
   position: relative;
   height: 24px;
-  background: #ddd;
+  background: var(--neutral-l87);
   border-radius: 12px;
   overflow: hidden;
   margin-bottom: 0.25rem;
@@ -89,27 +83,27 @@
 }
 
 .progress-bar.below-min {
-  background: linear-gradient(90deg, #9e9e9e, #757575);
+  background: linear-gradient(90deg, var(--neutral-l62), var(--neutral-l45p9));
 }
 
 .progress-bar.in-range {
-  background: linear-gradient(90deg, #4caf50, #45a045);
+  background: linear-gradient(90deg, var(--green-l49), var(--green-l45));
 }
 
 .progress-bar.met {
-  background: linear-gradient(90deg, #4caf50, #45a045);
+  background: linear-gradient(90deg, var(--green-l49), var(--green-l45));
 }
 
 .progress-bar.over-max {
-  background: linear-gradient(90deg, #f44336, #d32f2f);
+  background: linear-gradient(90deg, var(--red-l58), var(--red-l51));
 }
 
 .progress-bar.neutral {
-  background: linear-gradient(90deg, #2196f3, #1976d2);
+  background: linear-gradient(90deg, var(--blue-l54), var(--blue-l46));
 }
 
 .progress-bar.loading {
-  background: #ccc;
+  background: var(--neutral-l80);
 }
 
 .min-marker {
@@ -117,16 +111,16 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: white;
+  background: var(--white);
   opacity: 0.8;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 4px var(--black-a30);
 }
 
 .goal-targets {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
-  color: #666;
+  color: var(--color-text-muted-3);
 }
 
 .target-label {
@@ -136,7 +130,7 @@
 .goals-footer {
   margin-top: 2rem;
   font-size: 0.9rem;
-  color: #888;
+  color: var(--color-text-subtle);
   text-align: center;
 }
 
@@ -145,28 +139,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .goal-progress {
-    background: var(--bg-secondary, #2a2a2a);
-  }
-
-  .goal-window {
-    color: #aaa;
-  }
-
-  .losing-tomorrow {
-    color: #aaa;
-  }
-
   .progress-container {
-    background: #444;
-  }
-
-  .goal-targets {
-    color: #aaa;
-  }
-
-  .goals-footer {
-    color: #aaa;
+    background: var(--neutral-l27);
   }
 }
 
@@ -202,8 +176,8 @@
 }
 
 .goal-history-panel {
-  background: var(--bg-secondary, #f5f5f5);
-  border-top: 1px solid #ddd;
+  background: var(--bg-secondary, var(--color-surface-sunken-2));
+  border-top: 1px solid var(--neutral-l87);
   border-radius: 0 0 8px 8px;
   padding: 0.75rem 1rem 1rem;
   min-width: 0;
@@ -211,7 +185,7 @@
 
 .range-toggle {
   display: inline-flex;
-  border: 1px solid #ccc;
+  border: 1px solid var(--neutral-l80);
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 0.5rem;
@@ -220,7 +194,7 @@
 .range-toggle button {
   background: transparent;
   border: none;
-  border-left: 1px solid #ccc;
+  border-left: 1px solid var(--neutral-l80);
   padding: 0.3rem 0.75rem;
   font-size: 0.85rem;
   color: inherit;
@@ -233,7 +207,7 @@
 
 .range-toggle button[aria-pressed='true'] {
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
 }
 
 .goal-history-summary {
@@ -243,33 +217,28 @@
 }
 
 .goal-history-status {
-  color: #888;
+  color: var(--neutral-l53);
   font-size: 0.9rem;
 }
 
 .goal-history-status.error {
-  color: #d32f2f;
+  color: var(--red-l51);
 }
 
 .goal-history-footnote {
   margin: 0.5rem 0 0;
   font-size: 0.75rem;
-  color: #888;
+  color: var(--color-text-subtle);
 }
 
 @media (prefers-color-scheme: dark) {
   .goal-history-panel {
-    background: var(--bg-secondary, #2a2a2a);
-    border-top-color: #444;
+    border-top-color: var(--neutral-l27);
   }
 
   .range-toggle,
   .range-toggle button {
-    border-color: #555;
-  }
-
-  .goal-history-footnote {
-    color: #aaa;
+    border-color: var(--neutral-l33);
   }
 }
 

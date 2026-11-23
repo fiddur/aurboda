@@ -87,7 +87,7 @@ const PlanForm = ({ plan }: { plan?: StrengthPlan }) => {
   }
 
   return (
-    <div class="strength-page">
+    <div class="page page--narrow strength-page">
       <header class="strength-sticky-header">
         <h1>{plan ? 'Edit plan' : 'New plan'}</h1>
         <button type="button" class="btn-primary" onClick={() => void save()} disabled={busy}>
@@ -163,7 +163,7 @@ const ExistingPlan = ({ id }: { id: string }) => {
   if (query.isLoading) return <p class="loading">Loading…</p>
   if (!query.data) {
     return (
-      <div class="strength-page">
+      <div class="page page--narrow strength-page">
         <p class={isNotFound(query.error) ? undefined : 'strength-error'}>
           {isNotFound(query.error) ? 'This plan no longer exists.' : 'The plan could not be loaded.'}
         </p>

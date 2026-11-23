@@ -13,8 +13,6 @@ import {
   adoptCatalogMetric,
   type CustomMetricDefinitionUpdates,
   deleteCustomMetricDefinition,
-  deleteTimeSeriesMetric,
-  deleteTimeSeriesPoint,
   getCustomMetricByName,
   getCustomMetricDefinitions,
   insertCustomMetricDefinition,
@@ -190,38 +188,6 @@ export async function updateCustomMetric(
   }
 
   return { data: updated, success: true }
-}
-
-/**
- * Delete a single metric measurement by metric name, time, and source (soft delete).
- */
-export async function deleteMetric(
-  user: string,
-  metric: string,
-  time: Date,
-  source: string,
-): Promise<DeleteMetricResult> {
-  const deleted = await deleteTimeSeriesPoint(user, metric, time, source)
-
-  return {
-    deleted,
-    metric,
-    success: deleted,
-    time: time.toISOString(),
-  }
-}
-
-/**
- * Delete all manual metric measurements for a given metric.
- */
-export async function deleteMetricData(user: string, metric: string): Promise<DeleteMetricDataResult> {
-  const deletedCount = await deleteTimeSeriesMetric(user, metric)
-
-  return {
-    deletedCount,
-    metric,
-    success: true,
-  }
 }
 
 export async function getCustomMetrics(user: string): Promise<CustomMetricDefinition[]> {

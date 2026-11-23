@@ -35,8 +35,9 @@ restores a deleted person within its 30 days.
 A person's page (`/people/<id>`) shows their details with **Edit** (name, relationship with the
 suggestions, birthday as day and month with an optional year and "remind me N days before",
 pronouns, fediverse handle, archived), their **Dates** (add, edit, delete), **Notes** (the
-[comment](comments.md) thread on the person), the **Activities together** with a link to the
-time with them in Analyze, and with a handle the account's name and a **Follow** button when
+[comment](comments.md) thread on the person), the **Activities together** with how many there
+are, type chips to narrow the list when there is more than one type, **Show more** to load the
+next 50, and a link to the time with them in Analyze, and with a handle the account's name and a **Follow** button when
 you do not follow it, and their **Recent posts** from your feed. The handle can be typed (a
 handle that does not resolve shows the server's message) or picked from the accounts you
 follow that no person has yet. **Delete** goes back to the list with "Deleted … Undo" for ten
@@ -61,9 +62,14 @@ an activity's people on the web.
 Time with people is a correlation selector (with anyone, or with one person), and **With** is a
 breakdown and filter of an activity's sessions, both private to you: see
 [Time with people](correlations.md#time-with-people). In Explore it is the **time with
-people** kind (with anyone, or a person by name), offered in Continuous mode. The article editor
+people** kind (with anyone, or a person by name), offered in both modes. The article editor
 offers it too: a block of the time with one person names them to readers, and the editor warns
 so under the block ([Sharing warnings](feed.md#sharing-warnings)).
+
+In Explore's **Event onset** mode, **time with people** is a trigger as well: with anyone or a
+person, and optionally "at least N minutes" that day, so "what happens on days I meet Anna" can be
+asked there. The result reads "Trigger: Time with Anna" (or "Time with anyone"); see
+[People triggers](../correlations.md#people-triggers).
 
 ## A person
 
@@ -144,7 +150,24 @@ Activity reads (`GET /activities`, `GET /activities/{id}`, `GET /activities/{id}
 resolved when read (a renamed person shows their new name), and leave it out when there is none. A
 merged view is with everyone its sources were with. Merging activities gives the merged one the
 union of the links; a soft-deleted activity keeps its links and gets them back when restored.
-`GET /people/{id}` lists the 20 latest live activities the person was with.
+`GET /people/{id}` lists the 20 latest live activities the person was with, with `activity_count`
+and `activity_types` (`{ activity_type, type_name, count }`, most frequent first).
+`GET /people/{id}/activities` (MCP `list_person_activities`) lists all of them, newest first, a page
+at a time: `limit` (default 50, at most 200), `before` (the previous page's `next_cursor`; a
+malformed one is a `400`), `types` (comma separated, with subtypes), `start` and `end`. The answer
+carries `data`, `next_cursor` (absent on the last page) and `total` (what matches the filter over
+all pages). These lists are the merged view: a synced row and its override, or the members of a
+cross-source merge, count once, under the id the activity's page takes, whichever of their rows
+carries the link (they are grouped by the materialised `superseded_by`). `GET /activities` and
+`query_activities` take `person_id` to keep the activities with that person, combinable with the
+period, `types` and `data_filter`; an unknown or deleted person is a `400` naming it.
+
+### Added by a rule
+
+A [deduction rule](deduction-rules.md#adding-people-output_people) can add people too: its
+`output_people` are added to the With field of each activity it creates, enriches or retypes. A rule
+only ever adds people, never removes them, so taking a person off the rule leaves the activities it
+already touched as they are.
 
 ## Journal entries
 
@@ -162,23 +185,27 @@ A comment can be about a person: `entity_type: person` with the person's ID (see
 [Comments](comments.md)). It has no time, so it is not on the Timeline or in search; it is read
 through the person (`GET /notes?entity_type=person&entity_id=…`). A note about an unknown or
 deleted person is refused as not found, and reading the notes of one answers an empty list, as for
-any unknown entity; the notes stay stored, and restoring the person brings them back.
+any unknown entity; the notes stay stored, and restoring the person brings them back. The reads
+that check a comment's parent (the Timeline's range read, journal search, the related-entries lists)
+treat a deleted person as they treat a deleted activity: the notes about them are left out until
+the person is restored.
 
 ## API
 
-| Route                                 | MCP tool               | What it does                                                                        |
-| ------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- |
-| `GET /people`                         | `list_people`          | The people by name; `archived=true` includes archived, `deleted=true` lists deleted |
-| `POST /people`                        | `add_person`           | Add a person                                                                        |
-| `GET /people/{id}`                    | `get_person`           | The person with `dates`, `recent_activities` and `journal_entries`                  |
-| `PATCH /people/{id}`                  | `update_person`        | Change the given fields                                                             |
-| `DELETE /people/{id}`                 | `delete_person`        | Delete, restorable for 30 days; `purge` removes it for good                         |
-| `POST /people/{id}/restore`           | `restore_person`       | Restore a deleted person                                                            |
-| `GET /people/{id}/posts`              | `list_person_posts`    | The person's posts from your timeline                                               |
-| `GET /people/{id}/dates`              | `get_person` (`dates`) | The person's dates                                                                  |
-| `POST /people/{id}/dates`             | `add_person_date`      | Add a date                                                                          |
-| `PATCH /people/{id}/dates/{date_id}`  | `update_person_date`   | Change a date; `year` and `notify_days_before` take null to clear                   |
-| `DELETE /people/{id}/dates/{date_id}` | `delete_person_date`   | Delete a date for good                                                              |
-| `GET /people/dates`                   | `list_important_dates` | Occurrences of every date and birthday in a window                                  |
+| Route                                 | MCP tool                 | What it does                                                                                           |
+| ------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `GET /people`                         | `list_people`            | The people by name; `archived=true` includes archived, `deleted=true` lists deleted                    |
+| `POST /people`                        | `add_person`             | Add a person                                                                                           |
+| `GET /people/{id}`                    | `get_person`             | The person with `dates`, `recent_activities`, `activity_count`, `activity_types` and `journal_entries` |
+| `GET /people/{id}/activities`         | `list_person_activities` | Every activity with the person, paged by cursor, with `total`                                          |
+| `PATCH /people/{id}`                  | `update_person`          | Change the given fields                                                                                |
+| `DELETE /people/{id}`                 | `delete_person`          | Delete, restorable for 30 days; `purge` removes it for good                                            |
+| `POST /people/{id}/restore`           | `restore_person`         | Restore a deleted person                                                                               |
+| `GET /people/{id}/posts`              | `list_person_posts`      | The person's posts from your timeline                                                                  |
+| `GET /people/{id}/dates`              | `get_person` (`dates`)   | The person's dates                                                                                     |
+| `POST /people/{id}/dates`             | `add_person_date`        | Add a date                                                                                             |
+| `PATCH /people/{id}/dates/{date_id}`  | `update_person_date`     | Change a date; `year` and `notify_days_before` take null to clear                                      |
+| `DELETE /people/{id}/dates/{date_id}` | `delete_person_date`     | Delete a date for good                                                                                 |
+| `GET /people/dates`                   | `list_important_dates`   | Occurrences of every date and birthday in a window                                                     |
 
 Unknown or deleted people and dates are `404`s.

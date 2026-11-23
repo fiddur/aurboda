@@ -330,6 +330,17 @@ export const dayOverviewDataSchema = z
   })
   .meta({ description: 'Exactly what a day overview card draws', id: 'DayOverviewData' })
 
+export const recentActivitySummaryFieldSchema = z
+  .object({
+    label: z.string().meta({ description: "The field's label" }),
+    unit: z.string().optional().meta({ description: "The field's unit, when it has one" }),
+    value: z.union([z.string(), z.number()]).meta({ description: 'The recorded value' }),
+  })
+  .meta({
+    description: "One of the activity type's show_in_summary data fields that the activity has a value for",
+    id: 'RecentActivitySummaryField',
+  })
+
 export const recentActivitySchema = z
   .object({
     activity_type: z.string().meta({ description: 'The activity type name' }),
@@ -349,6 +360,10 @@ export const recentActivitySchema = z
     }),
     set_count: z.number().optional().meta({ description: 'Number of sets, when it has any' }),
     start_time: z.string().meta({ description: 'Start time (ISO 8601)' }),
+    summary_fields: z.array(recentActivitySummaryFieldSchema).optional().meta({
+      description:
+        "The type's show_in_summary data fields the activity has a value for, in the type's field order (not distance, calories, average_hr or sets, which are figures above); absent when none",
+    }),
     title: z.string().optional().meta({ description: "The activity's title, when set" }),
     type_name: z.string().meta({ description: "The activity type's display name" }),
   })
@@ -366,6 +381,7 @@ export const recentActivitiesResponseSchema = createDataResponseSchema(recentAct
 })
 
 export type RecentActivity = z.infer<typeof recentActivitySchema>
+export type RecentActivitySummaryField = z.infer<typeof recentActivitySummaryFieldSchema>
 export type RecentActivitiesData = z.infer<typeof recentActivitiesDataSchema>
 export type RecentActivitiesResponse = z.infer<typeof recentActivitiesResponseSchema>
 

@@ -62,7 +62,7 @@
   border: none;
   border-radius: 6px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--white);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -93,7 +93,7 @@
 }
 
 .aw-install-error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .aw-install-manual {

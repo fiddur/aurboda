@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { insertMergedActivity } from './activities/mutations.ts'
+import { hardDeleteActivitiesBySource, insertMergedActivity } from './activities/mutations.ts'
 import { query } from './connection.ts'
 import {
   deleteNoteLinksOfTarget,
@@ -20,17 +20,18 @@ const REVISIONS = { limit: 50, min_interval_minutes: 10 }
 const insertActivity = async (
   user: string,
   start: string,
-  options: { title?: string; deleted?: boolean } = {},
+  options: { title?: string; deleted?: boolean; source?: string } = {},
 ): Promise<string> => {
   const result = await query<{ id: string }>(
     user,
     `INSERT INTO activities (source, activity_type, start_time, end_time, title, deleted_at)
-     VALUES ('aurboda', 'walking', $1, $2, $3, $4) RETURNING id`,
+     VALUES ($5, 'walking', $1, $2, $3, $4) RETURNING id`,
     [
       start,
       new Date(new Date(start).getTime() + 3_600_000),
       options.title ?? null,
       options.deleted ? new Date() : null,
+      options.source ?? 'aurboda',
     ],
   )
   return result.rows[0]!.id
@@ -79,8 +80,17 @@ describe('Note links Integration Tests', () => {
 
     const links = (await getNoteLinksForNoteIds(user, [note.id])).get(note.id)
     expect(links).toEqual([
-      { entity_id: anna.id, entity_type: 'person', name: 'Anna', start_time: null },
       {
+        activity_type: null,
+        end_time: null,
+        entity_id: anna.id,
+        entity_type: 'person',
+        name: 'Anna',
+        start_time: null,
+      },
+      {
+        activity_type: 'walking',
+        end_time: new Date('2026-11-20T18:00:00Z'),
         entity_id: walk,
         entity_type: 'activity',
         name: 'Evening walk',
@@ -91,6 +101,8 @@ describe('Note links Integration Tests', () => {
     await replaceNoteLinks(user, note.id, [{ entity_id: untitled, entity_type: 'activity' }])
     expect((await getNoteLinksForNoteIds(user, [note.id])).get(note.id)).toEqual([
       {
+        activity_type: 'walking',
+        end_time: new Date('2026-11-19T09:00:00Z'),
         entity_id: untitled,
         entity_type: 'activity',
         name: 'Walking',
@@ -293,5 +305,34 @@ describe('Note links Integration Tests', () => {
     expect((await listNotesRelatedTo(user, 'activity', [merged], 50, 'UTC')).map((n) => n.id)).toEqual([
       note.id,
     ])
+  })
+
+  test('an activity removed for good takes its links with it, also an override it orphans', async () => {
+    const user = getTestUser()
+    const synced = await insertActivity(user, '2026-11-20T17:00:00Z', { source: 'garmin' })
+    const override = await insertActivity(user, '2026-11-20T17:00:00Z', { title: 'Walk with Anna' })
+    await query(user, 'INSERT INTO activity_override_targets (override_id, target_id) VALUES ($1, $2)', [
+      override,
+      synced,
+    ])
+    const kept = await insertActivity(user, '2026-11-21T17:00:00Z')
+    const note = await insertNote(user, 'day', null, 'Walked', undefined, undefined, {
+      date: '2026-11-20',
+      related: [
+        { entity_id: synced, entity_type: 'activity' },
+        { entity_id: override, entity_type: 'activity' },
+        { entity_id: kept, entity_type: 'activity' },
+      ],
+    })
+    expect(await linkCount(user)).toBe(3)
+
+    expect(await hardDeleteActivitiesBySource(user, 'garmin')).toBe(1)
+
+    const rows = await query<{ entity_id: string }>(
+      user,
+      'SELECT entity_id::text FROM note_links WHERE note_id = $1',
+      [note.id],
+    )
+    expect(rows.rows.map((r) => r.entity_id)).toEqual([kept])
   })
 })

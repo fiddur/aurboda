@@ -26,6 +26,11 @@ import net.aurboda.appJson
 private const val COLOR_BELOW_MIN = 0xFF757575.toInt()  // Gray
 private const val COLOR_MET = 0xFF4CAF50.toInt()        // Green
 private const val COLOR_OVER_MAX = 0xFFF44336.toInt()   // Red
+private const val COLOR_VALUE = 0xFFFFFFFF.toInt()
+
+/** A max goal (no minimum above 0) whose value is still 0: kept, though its bar is empty. */
+fun isGoalKeptAtZero(min: Double?, max: Double?, current: Double): Boolean =
+    max != null && (min == null || min == 0.0) && current == 0.0
 
 private const val TAG = "GoalsWidgetService"
 
@@ -105,7 +110,13 @@ class GoalsRemoteViewsFactory(private val context: Context) : RemoteViewsService
         views.setTextViewText(R.id.goal_label, label)
 
         val valueText = formatGoalValue(goal.title, goal.current, goal.unit)
-        views.setTextViewText(R.id.goal_value, valueText)
+        if (isGoalKeptAtZero(goal.min, goal.max, goal.current)) {
+            views.setTextViewText(R.id.goal_value, "★ $valueText")
+            views.setTextColor(R.id.goal_value, COLOR_MET)
+        } else {
+            views.setTextViewText(R.id.goal_value, valueText)
+            views.setTextColor(R.id.goal_value, COLOR_VALUE)
+        }
 
         if (goal.losingTomorrow > 0) {
             val losingText = "(-${formatGoalValue(goal.title, goal.losingTomorrow, goal.unit)} tomorrow)"

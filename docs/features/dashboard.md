@@ -258,12 +258,14 @@ newest first, with a round icon in the type's colour (its emoji or image, else t
 the activity's title (else the type's name), a line of figures under it and the start time at the
 right. The figures line starts with the type's name when the row shows a title, then up to three of
 duration, distance, pace (running, walking and hiking types) or speed, the number of sets, average
-heart rate and calories, whichever the activity has. The time is just the clock time for today,
+heart rate and calories, whichever the activity has, followed by the values of the type's
+**Show in summary** data fields the activity has (a supplement's `Zinc · mg`), with their units. The time is just the clock time for today,
 "Yesterday 18:30" for yesterday and "16 Nov 18:30" before that. Each row links to the activity's
 detail page. With nothing to list it says so ("Nothing logged today", "No activities in the last
 30 days"), and the home card's empty "today" state links to **Add** ("Log an activity").
 
-**Configuration:** `window`, `today` (today so far in your timezone, default) or `latest` (the most
+**Configuration:** `window`, `today` (every activity that overlaps today in your timezone, default:
+one that started before midnight and ended after it, or is still running, is listed too) or `latest` (the most
 recent ones looking back `lookback_days`, default 30, at most 365); `limit`, 1 to 20 (default 5);
 optional `types` and `exclude_types` (activity type names, each with its subtypes); optional
 `manual_only`; optional `title` (default "Today" with `window: today`, else "Latest activities");
@@ -282,12 +284,12 @@ optional `visible_to_visitors` (default false).
 - **Manual only.** `manual_only: true` (the editor's **Only activities logged by hand**) keeps only
   activities logged in Aurboda itself, an uploaded FIT file included; an edit of a synced activity
   (an override) and a merge that includes a synced activity do not count.
-- **Period dashboards.** The card applies to a period: it lists the latest `limit` activities inside
-  the shown period and ignores `window` and `lookback_days` (the editor hides both there).
+- **Period dashboards.** The card applies to a period: it lists the latest `limit` activities that
+  overlap the shown period and ignores `window` and `lookback_days` (the editor hides both there).
 - **Visitors.** Like the day overview, visitors of a shared dashboard see the card only when you turn
   on **Show to visitors**, with the warning that they then see each listed activity's name, start
-  time and duration, and its distance, sets, average heart rate and calories where it has them. A
-  visitor's rows carry no activity id and do not link. With the switch on, sharing a period of the
+  time and duration, and its distance, sets, average heart rate and calories where it has them, and
+  its type's summary fields. A visitor's rows carry no activity id and do not link. With the switch on, sharing a period of the
   dashboard to your feed carries the same rows in the post. Your own reads of a dashboard's data
   always answer the card, with the ids.
 - **API.** The card reads `GET /activities/recent` (query `limit`, `window`, `lookback_days`,
@@ -386,7 +388,7 @@ widget renders against that one window, ignoring the lookbacks in its configurat
   `hrv_rmssd` and `resting_heart_rate`.
 - **Widgets that do not apply.** **Last night**, **Sleep debt** and **Goal progress** have no meaning for a past
   period: the widget palette hides them, and existing ones show "Not available for a period".
-  **Latest activities** does apply: it lists the latest activities inside the period.
+  **Latest activities** does apply: it lists the latest activities that overlap the period.
 - **API.** `GET /dashboard/data?period=2026-10` (the home dashboard) and
   `GET /shared-dashboards/:id/data?period=2026-10` (a shared one) return `period`, `window`
   (`start`/`end`, ISO) and `widget_data`; without `period` they answer the latest finished one, and
@@ -412,6 +414,9 @@ Click the pencil icon next to the "Dashboard" title to enter edit mode.
 ### In edit mode, you can:
 
 - **Add a widget**: Click the "+ Add Widget" placeholder in any section. A dialog opens showing the widget types compatible with that section. Select a type, configure it (e.g., pick a metric, set a lookback period), and confirm.
+- **Change a widget's settings**: Click the pencil on the widget. The same settings form it was added
+  with opens, filled with its current settings; **Save** keeps the widget in its place and section.
+  Widgets without settings (the bar and combined charts, which the Chart page edits) have no pencil.
 - **Remove a widget**: Click the X button on any widget.
 - **Move widgets**: On a desktop (a mouse or trackpad), grab a widget by its grip handle and drop it
   where it should go: an accent bar shows whether it lands before or after the card under the pointer

@@ -1,9 +1,3 @@
-.correlations-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .correlations-page .correlations-header {
   display: flex;
   justify-content: space-between;
@@ -14,13 +8,13 @@
 .correlations-page h1 {
   font-size: 2rem;
   margin: 0;
-  color: #1f2937;
+  color: var(--color-text-strong-3);
 }
 
 .correlations-page h2 {
   font-size: 1.25rem;
   margin: 0 0 1rem 0;
-  color: #374151;
+  color: var(--color-text-default);
   border-bottom: 2px solid var(--color-accent);
   padding-bottom: 0.5rem;
 }
@@ -28,11 +22,11 @@
 .correlations-page h3 {
   font-size: 1rem;
   margin: 0 0 0.75rem 0;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .correlations-page .intro-text {
-  color: #6b7280;
+  color: var(--gray-500);
   margin-bottom: 1.5rem;
   font-size: 0.95rem;
 }
@@ -40,19 +34,19 @@
 .correlations-page .window-note {
   margin: -0.75rem 0 1.5rem 0;
   padding: 0.5rem 0.75rem;
-  border-left: 3px solid #f59e0b;
-  background: #fffbeb;
-  color: #92400e;
+  border-left: 3px solid var(--amber-500);
+  background: var(--amber-50);
+  color: var(--amber-800);
   font-size: 0.9rem;
 }
 
 .correlations-page .period-select {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 8px;
-  background: white;
-  color: #374151;
+  background: var(--white);
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -79,10 +73,10 @@
   gap: 6px;
   padding: 0.45rem 0.75rem;
   font-size: 0.9rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 8px;
-  background: white;
-  color: #374151;
+  background: var(--white);
+  color: var(--gray-700);
   cursor: pointer;
   user-select: none;
 }
@@ -103,7 +97,7 @@
 .correlations-page .loading {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .correlations-page .baseline-section {
@@ -117,10 +111,10 @@
 }
 
 .correlations-page .baseline-card {
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 12px;
   padding: 1rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -128,7 +122,7 @@
 
 .correlations-page .baseline-label {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
 }
 
 .correlations-page .baseline-value {
@@ -137,23 +131,23 @@
 }
 
 .correlations-page .baseline-value.hrv {
-  color: #10b981;
+  color: var(--emerald-500);
 }
 
 .correlations-page .baseline-value.hr {
-  color: #ef4444;
+  color: var(--red-500);
 }
 
 .correlations-page .baseline-value.stress {
-  color: #f59e0b;
+  color: var(--amber-500);
 }
 
 .correlations-page .impact-section {
   margin-bottom: 2rem;
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 12px;
   padding: 1.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
 }
 
 .correlations-page .impact-section h2 {
@@ -171,7 +165,7 @@
   margin-top: 0.25rem;
   font-size: 0.85rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .correlations-page .table-section {
@@ -189,17 +183,17 @@
 }
 
 .correlations-page .correlations-table th {
-  background: #f3f4f6;
+  background: var(--gray-100);
   padding: 0.75rem 0.5rem;
   text-align: left;
   font-weight: 500;
-  color: #374151;
-  border-bottom: 2px solid #e5e7eb;
+  color: var(--color-text-default);
+  border-bottom: 2px solid var(--gray-200);
 }
 
 .correlations-page .correlations-table td {
   padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .correlations-page .correlations-table tbody tr {
@@ -208,7 +202,7 @@
 }
 
 .correlations-page .correlations-table tbody tr:hover {
-  background: #f9fafb;
+  background: var(--gray-50);
 }
 
 .correlations-page .correlations-table tbody tr.selected {
@@ -226,7 +220,7 @@
 .correlations-page .name-cell .extra {
   display: block;
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   font-weight: 400;
 }
 
@@ -240,34 +234,34 @@
 }
 
 .correlations-page .delta-cell.positive {
-  color: #059669;
+  color: var(--emerald-600);
 }
 
 .correlations-page .delta-cell.negative {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 .correlations-page .samples-cell {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.8rem;
 }
 
 .correlations-page .context-table th.group-header {
   text-align: center;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .correlations-page .context-table th.sub-header {
   font-size: 0.75rem;
   font-weight: 400;
-  color: #6b7280;
+  color: var(--gray-500);
   cursor: help;
   white-space: nowrap;
 }
 
 .correlations-page .context-table .group-start {
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid var(--gray-200);
 }
 
 .correlations-page .delta-cell.change-cell {
@@ -275,21 +269,21 @@
 }
 
 .correlations-page .delta-cell.muted {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-weight: 400;
 }
 
 .correlations-page .info-section {
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 12px;
   padding: 1.25rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
 }
 
 .correlations-page .info-section ul {
   margin: 0;
   padding-left: 1.25rem;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   font-size: 0.9rem;
 }
 
@@ -298,91 +292,66 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .correlations-page h1 {
-    color: #f3f4f6;
-  }
-
-  .correlations-page h2 {
-    color: #d1d5db;
-  }
-
   .correlations-page .intro-text {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .correlations-page .window-note {
-    background: #292524;
-    color: #fcd34d;
+    background: var(--stone-800);
+    color: var(--amber-300);
   }
 
   .correlations-page .period-select,
   .correlations-page .metric-toggle {
-    background: #1f2937;
-    border-color: #374151;
-    color: #d1d5db;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
+    color: var(--gray-300);
   }
 
   .correlations-page .baseline-card,
   .correlations-page .impact-section,
   .correlations-page .info-section {
-    background: #1f2937;
-    border-color: #374151;
-  }
-
-  .correlations-page .baseline-label {
-    color: #9ca3af;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .correlations-page .correlations-table th {
-    background: #111827;
-    color: #d1d5db;
-    border-color: #374151;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
   }
 
   .correlations-page .correlations-table td {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .correlations-page .correlations-table tbody tr:hover {
-    background: #1f2937;
-  }
-
-  .correlations-page .samples-cell {
-    color: #9ca3af;
+    background: var(--gray-800);
   }
 
   .correlations-page .name-cell .extra {
-    color: #6b7280;
+    color: var(--gray-500);
   }
 
   .correlations-page .delta-cell.positive {
-    color: #34d399;
+    color: var(--emerald-400);
   }
 
   .correlations-page .delta-cell.negative {
-    color: #f87171;
+    color: var(--red-400);
   }
 
   .correlations-page .delta-cell.muted,
   .correlations-page .context-table th.sub-header {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .correlations-page .context-table .group-start,
   .correlations-page .context-table th.group-header {
-    border-color: #374151;
-  }
-
-  .correlations-page .info-section ul {
-    color: #9ca3af;
+    border-color: var(--gray-700);
   }
 }
 
 @media (max-width: 768px) {
-  .correlations-page {
-    padding: 1rem;
-  }
-
   .correlations-page .correlations-header {
     flex-direction: column;
     align-items: flex-start;
@@ -407,7 +376,7 @@
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
 }
 .analyze-tabs button {
   background: none;
@@ -415,7 +384,7 @@
   padding: 8px 16px;
   font-size: 0.95rem;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--gray-500);
   border-bottom: 2px solid transparent;
 }
 .analyze-tabs button.active {
@@ -468,7 +437,7 @@
 }
 .explore-toggle button.active {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--white);
 }
 .explore-regime {
   display: flex;
@@ -509,9 +478,9 @@
   margin: -4px 0 4px;
 }
 .explore-warning {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  color: #9a3412;
+  background: var(--orange-50);
+  border: 1px solid var(--orange-200);
+  color: var(--orange-800);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 0.88rem;
@@ -535,19 +504,19 @@
   margin: 4px 0 0;
 }
 .explore-caution {
-  color: #9a3412;
+  color: var(--orange-800);
 }
 @media (prefers-color-scheme: dark) {
   .explore-caution {
-    color: #fdba74;
+    color: var(--orange-300);
   }
 }
 .axis-label {
-  fill: #6b7280;
+  fill: var(--gray-500);
   font-size: 0.72rem;
 }
 .plot-annot {
-  fill: #374151;
+  fill: var(--gray-700);
   font-size: 0.72rem;
 }
 .boxplot,
@@ -557,7 +526,7 @@
 }
 .explore-run {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--white);
   border: none;
   padding: 10px 20px;
   border-radius: 6px;
@@ -567,30 +536,33 @@
 .explore-run:hover {
   background: var(--color-primary-hover);
 }
+.explore-trigger-label {
+  margin: 8px 0 0;
+}
 .explore-summary {
   color: var(--color-text-muted);
   font-size: 0.9rem;
   margin: 8px 0;
 }
 .explore-error {
-  color: #ef4444;
+  color: var(--red-500);
   padding: 8px 0;
 }
 .explore-results .ci {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85em;
 }
 .explore-results .test-tag {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.8em;
 }
 .correlations-table tr.sig-row {
-  background: rgba(16, 185, 129, 0.08);
+  background: var(--emerald-500-a8);
 }
 .scatter {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   border-radius: 6px;
-  background: #fff;
+  background: var(--white);
 }
 
 .correlations-page .impact-section.loading {
@@ -606,7 +578,7 @@
 .correlations-page .impact-slicer {
   margin-bottom: 1rem;
   font-size: 0.9rem;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .correlations-page .slicer-row {
@@ -633,7 +605,7 @@
 }
 
 .correlations-page .limits-input .limits-label {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.85rem;
 }
 
@@ -642,18 +614,18 @@
   max-width: 100%;
   padding: 0.3rem 0.5rem;
   font-size: 0.85rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
-  background: white;
-  color: #374151;
+  background: var(--white);
+  color: var(--gray-700);
 }
 
 .correlations-page .limits-input input[aria-invalid='true'] {
-  border-color: #dc2626;
+  border-color: var(--red-600);
 }
 
 .correlations-page .limits-error {
-  color: #dc2626;
+  color: var(--red-600);
   font-size: 0.8rem;
 }
 
@@ -665,7 +637,7 @@
 
 .correlations-page .slicer-count {
   font-weight: 400;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .correlations-page .slicer-clear,
@@ -673,10 +645,10 @@
   margin-left: 0.75rem;
   padding: 0.2rem 0.6rem;
   font-size: 0.8rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 999px;
-  background: white;
-  color: #374151;
+  background: var(--white);
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -691,7 +663,7 @@
   align-items: flex-start;
   gap: 0.4rem 1rem;
   padding: 0.5rem 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--gray-200);
 }
 
 .correlations-page .slicer-dimension:first-of-type {
@@ -719,10 +691,10 @@
 .correlations-page .slicer-chip {
   padding: 0.25rem 0.65rem;
   font-size: 0.82rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 999px;
-  background: white;
-  color: #374151;
+  background: var(--white);
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -733,7 +705,7 @@
 .correlations-page .slicer-chip[aria-pressed='true'] {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: #fff;
+  color: var(--white);
 }
 
 .correlations-page .slicer-chip:disabled {
@@ -749,13 +721,13 @@
 .correlations-page .slicer-omitted,
 .correlations-page .breakdown-note,
 .correlations-page .comparisons-note {
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.8rem;
 }
 
 .correlations-page .slicer-empty {
   margin: 0.5rem 0 0;
-  color: #92400e;
+  color: var(--amber-800);
 }
 
 .correlations-page .impact-breakdown {
@@ -788,7 +760,7 @@
 }
 
 .correlations-page .breakdown-table tr.sparse td {
-  color: #9ca3af;
+  color: var(--color-text-faint);
 }
 
 .correlations-page .breakdown-note {
@@ -796,27 +768,22 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .correlations-page .impact-slicer {
-    color: #d1d5db;
-  }
-
   .correlations-page .limits-input input,
   .correlations-page .slicer-chip,
   .correlations-page .slicer-clear,
   .correlations-page .slicer-more {
-    background: #111827;
-    border-color: #374151;
-    color: #d1d5db;
+    background: var(--gray-900);
+    border-color: var(--gray-700);
+    color: var(--gray-300);
   }
 
   .correlations-page .slicer-chip[aria-pressed='true'] {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: #fff;
   }
 
   .correlations-page .slicer-dimension {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .correlations-page .limits-input .limits-label,
@@ -824,19 +791,15 @@
   .correlations-page .slicer-omitted,
   .correlations-page .breakdown-note,
   .correlations-page .comparisons-note {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 
   .correlations-page .limits-error {
-    color: #f87171;
+    color: var(--red-400);
   }
 
   .correlations-page .slicer-empty {
-    color: #fcd34d;
-  }
-
-  .correlations-page .breakdown-table tr.sparse td {
-    color: #6b7280;
+    color: var(--amber-300);
   }
 }
 

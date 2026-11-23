@@ -103,3 +103,11 @@ export const goalValueFormat = (goal: Goal, unit?: string): ((value: number) => 
       return (v) => formatMeasure(goal.measure, v)
   }
 }
+
+/** A max goal (no minimum above 0) whose value is still 0: kept, though its bar is empty. */
+export const isGoalKeptAtZero = ({
+  min,
+  max,
+  current,
+}: Pick<GoalProgress, 'min' | 'max' | 'current'>): boolean =>
+  max != null && (min == null || min === 0) && current === 0

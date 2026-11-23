@@ -7,6 +7,7 @@ import { insertActivity } from './activities/index.ts'
 import { query } from './connection.ts'
 import { insertRawRecord } from './raw-records.ts'
 import {
+  activityHasTrack,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
@@ -168,6 +169,31 @@ describe('Activity tracks integration', () => {
     test('returns null when there is no track', async () => {
       const id = await addActivity('garmin', 'garmin-1', {})
       expect(await getActivityTrack(getTestUser(), id)).toBeNull()
+    })
+  })
+
+  describe('activityHasTrack', () => {
+    test('agrees with getActivityTrack', async () => {
+      const user = getTestUser()
+      const tracked = await addActivity('garmin', 'garmin-1', {})
+      const bare = await addActivity('garmin', 'garmin-2', {})
+      const deleted = await addActivity('strava', 'strava-1', {})
+      for (const id of [tracked, deleted]) {
+        await upsertActivityTrack(user, {
+          activity_id: id,
+          ewkt: twoPoint,
+          full_resolution: true,
+          source: 'garmin',
+        })
+      }
+      await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [deleted])
+
+      for (const id of [tracked, bare, deleted, 'merged:x', 'null']) {
+        expect(await activityHasTrack(user, id)).toBe((await getActivityTrack(user, id)) !== null)
+      }
+      expect(await activityHasTrack(user, tracked)).toBe(true)
+      expect(await activityHasTrack(user, bare)).toBe(false)
+      expect(await activityHasTrack(user, deleted)).toBe(false)
     })
   })
 

@@ -3,7 +3,7 @@ import '../../components/StaticPage.css'
 
 export function Privacy() {
   return (
-    <div class="static-page">
+    <div class="page static-page">
       <h1>Privacy Policy</h1>
       <p>
         <em>Last updated: 2026-11-13</em>

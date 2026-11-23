@@ -24,14 +24,14 @@ export function OwnTracksSource() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to view data source settings.</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>OwnTracks</h1>
       </div>

@@ -14,6 +14,7 @@ import { ActivityTypePicker } from '../../components/ActivityTypePicker'
 import { ConditionBuilder } from '../../components/ConditionBuilder'
 import { ConfirmButton } from '../../components/ConfirmButton'
 import { SaveStatusIndicator, useSaveStatus } from '../../components/SaveStatusIndicator'
+import { WithPicker } from '../../components/WithPicker'
 import {
   createDeductionRule,
   deleteDeductionRule,
@@ -147,6 +148,12 @@ function OutputDataEditor({
   )
 }
 
+const modeVerb: Record<DeductionRuleMode, string> = {
+  create: 'creates',
+  enrich: 'enriches',
+  retype: 'retypes',
+}
+
 // eslint-disable-next-line complexity -- unified form handling create + edit modes
 function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   const isNew = !rule
@@ -250,7 +257,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   const canSubmit = Boolean(fields.name && fields.outputType) && !isOutputCategoryInvalid(fields)
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <div class="rule-header-row">
           <h1>{isNew ? 'New Deduction Rule' : fields.name}</h1>
@@ -314,6 +321,24 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
               autoSave({ output_data: Object.keys(data).length > 0 ? data : null })
             }}
           />
+
+          <div class="rule-field">
+            <label class="rule-field-label" for="rule-with-picker">
+              With
+            </label>
+            <WithPicker
+              id="rule-with-picker"
+              value={fields.people}
+              onChange={(ids) => {
+                updateField('people', ids)
+                autoSave({ output_people: ids.length > 0 ? ids : null })
+              }}
+            />
+          </div>
+          <p class="rule-field-hint">
+            Adds these people to each activity the rule {modeVerb[fields.mode]}. People are only ever added:
+            removing one here does not take them off activities the rule already touched.
+          </p>
 
           {fields.mode === 'enrich' && (
             <>
@@ -496,7 +521,7 @@ function EditRuleLoader({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p class="loading">Loading rule...</p>
       </div>
     )
@@ -504,7 +529,7 @@ function EditRuleLoader({ id }: { id: string }) {
 
   if (!rule) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Rule not found.</p>
         <a href="/deduction-rules">Back to rules</a>
       </div>
@@ -520,7 +545,7 @@ export function DeductionRuleDetail() {
 
   if (!auth.value.token) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage deduction rules.</p>
       </div>
     )

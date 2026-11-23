@@ -574,7 +574,7 @@ export const AddData = () => {
   )
 
   return (
-    <div class="add-data-page">
+    <div class="page page--full add-data-page">
       <div class="add-data-header">
         <h1>Add Data</h1>
         <label class="add-more-toggle" title="Keep form open to add more data">

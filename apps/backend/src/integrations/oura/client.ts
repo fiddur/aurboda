@@ -64,6 +64,8 @@ export type OuraSleepPeriodRaw = {
   day: string
 }
 
+const OURA_REVOKE_URL = 'https://api.ouraring.com/oauth/revoke'
+
 export interface OuraClientOptions {
   onUserAuthenticated?: (ouraUserId: string, username: string) => Promise<void>
   now?: () => Date
@@ -109,6 +111,35 @@ export const ouraClient = (
     }
   }
 
+  /**
+   * Audits a failed connection and, when the exchange already granted a token, revokes it (and
+   * clears it if stored) so no grant is left at Oura; the revoke's outcome is audited too.
+   */
+  const failConnection = async (
+    user: string,
+    failure: unknown,
+    secrets: string[],
+    grant: { token: unknown; stored: boolean },
+  ): Promise<OAuthCompletion> => {
+    const token = typeof grant.token === 'string' ? grant.token : ''
+    const redact = (text: string) =>
+      [...secrets, token].reduce((acc, secret) => redactSecret(acc, secret), text)
+    const messageOf = (error: unknown) => redact(error instanceof Error ? error.message : String(error))
+    await audit(user, 'auth', 'Oura OAuth connection failed', { error: messageOf(failure) })
+    if (token) {
+      try {
+        await axios.post(OURA_REVOKE_URL, undefined, { params: { access_token: token } })
+        if (grant.stored) await deleteOAuthToken(user, 'oura')
+        await audit(user, 'auth', 'Oura grant revoked after the connection failed')
+      } catch (revokeFailure) {
+        await audit(user, 'auth', 'Oura grant could not be revoked after the connection failed', {
+          error: messageOf(revokeFailure),
+        })
+      }
+    }
+    return { ok: false, reason: 'auth_failed' }
+  }
+
   return {
     /**
      * Oura's redirect carries no Aurboda login, so it only hands the code and state to the
@@ -142,6 +173,7 @@ export const ouraClient = (
         await initializeSchema(user)
       }
 
+      const grant: { token: unknown; stored: boolean } = { stored: false, token: null }
       try {
         const tokenUrl = new URL('https://cloud.ouraring.com/oauth/token')
         tokenUrl.searchParams.append('grant_type', 'authorization_code')
@@ -152,6 +184,7 @@ export const ouraClient = (
 
         const response = await axios.post(tokenUrl.toString())
         const { access_token, refresh_token, expires_in, scope } = response.data
+        grant.token = access_token
 
         await upsertOAuthToken(user, {
           access_token,
@@ -160,6 +193,7 @@ export const ouraClient = (
           refresh_token,
           scopes: typeof scope === 'string' && scope !== '' ? scope.split(' ') : undefined,
         })
+        grant.stored = true
 
         // The Oura user id mapping routes webhook notifications to this user.
         if (options?.onUserAuthenticated) {
@@ -170,11 +204,7 @@ export const ouraClient = (
         }
         return { ok: true }
       } catch (failure) {
-        const message = failure instanceof Error ? failure.message : String(failure)
-        await audit(user, 'auth', 'Oura OAuth connection failed', {
-          error: [clientSecret, code].reduce((acc, secret) => redactSecret(acc, secret), message),
-        })
-        return { ok: false, reason: 'auth_failed' }
+        return failConnection(user, failure, [clientSecret, code], grant)
       }
     },
 
@@ -185,7 +215,7 @@ export const ouraClient = (
       if (token.access_token) {
         // A lapsed subscription answers 403 here; the local grant must go regardless.
         try {
-          await axios.post('https://api.ouraring.com/oauth/revoke', undefined, {
+          await axios.post(OURA_REVOKE_URL, undefined, {
             params: { access_token: token.access_token },
           })
         } catch (error) {

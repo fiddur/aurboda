@@ -18,13 +18,16 @@ const mapRow = (row: Record<string, unknown>): DeductionRule => ({
   ...(row.output_media_field != null
     ? { output_media_field: row.output_media_field as OutputMediaField }
     : {}),
+  ...(Array.isArray(row.output_people) && row.output_people.length > 0
+    ? { output_people: row.output_people as string[] }
+    : {}),
   ...(row.output_title != null ? { output_title: row.output_title as string } : {}),
   ...(row.output_title_field != null ? { output_title_field: row.output_title_field as string } : {}),
   priority: row.priority as number,
 })
 
 const SELECT_COLS =
-  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category, created_at'
+  'id, name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category, output_people, created_at'
 
 export const getDeductionRules = async (user: string): Promise<DeductionRule[]> => {
   const result = await query(user, `SELECT ${SELECT_COLS} FROM deduction_rules ORDER BY priority, name`)
@@ -71,12 +74,13 @@ export const insertDeductionRule = async (
     output_media_field?: OutputMediaField
     output_title_field?: string
     output_category?: string
+    output_people?: string[]
   },
 ): Promise<DeductionRule> => {
   const result = await query(
     db,
-    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category)
-     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11, $12)
+    `INSERT INTO deduction_rules (name, enabled, priority, conditions, output_activity_type, output_title, merge_gap_seconds, mode, output_data, output_media_field, output_title_field, output_category, output_people)
+     VALUES ($1, COALESCE($2, true), COALESCE($3, 0), $4, $5, $6, $7, COALESCE($8, 'create'), $9, $10, $11, $12, $13::uuid[])
      RETURNING ${SELECT_COLS}`,
     [
       rule.name,
@@ -91,6 +95,7 @@ export const insertDeductionRule = async (
       rule.output_media_field ? JSON.stringify(rule.output_media_field) : null,
       rule.output_title_field ?? null,
       rule.output_category ?? null,
+      rule.output_people ?? null,
     ],
   )
   return mapRow(result.rows[0])
@@ -109,6 +114,7 @@ interface DeductionRuleUpdates {
   output_media_field?: OutputMediaField | null
   output_title_field?: string | null
   output_category?: string | null
+  output_people?: string[] | null
 }
 
 const UPDATABLE_COLUMNS: { column: keyof DeductionRuleUpdates; json?: true }[] = [
@@ -124,6 +130,7 @@ const UPDATABLE_COLUMNS: { column: keyof DeductionRuleUpdates; json?: true }[] =
   { column: 'output_media_field', json: true },
   { column: 'output_title_field' },
   { column: 'output_category' },
+  { column: 'output_people' },
 ]
 
 export const updateDeductionRule = async (

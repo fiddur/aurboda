@@ -152,7 +152,9 @@ reach it over ActivityPub:
   `Delete` from anyone else changes nothing.
 
 A Note admitted to a thread still becomes a timeline card where it would have before, but
-the recipient who already gets `challenge_comment` for it gets no second notification.
+the recipient, a participant whom the thread notifies (`challenge_comment`, or `challenge_reply`
+when they follow the post), gets no second notification; nor does a participant who does not
+follow the post a reply is under.
 
 ## Challenges (HTTP, outside ActivityPub)
 

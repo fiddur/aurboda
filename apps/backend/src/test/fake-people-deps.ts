@@ -4,6 +4,12 @@ import type { PersonDateRecord, PersonRecord } from '../db/index.ts'
 import type { Activity } from '../db/types.ts'
 import type { PeopleDeps, ResolvedActor } from '../services/people.ts'
 
+import {
+  listPersonActivityPage,
+  type PersonActivitiesDeps,
+  personActivitySummary,
+} from '../services/person-activities.ts'
+
 export const NOW = new Date('2026-11-20T10:00:00Z')
 
 let counter = 0
@@ -46,6 +52,54 @@ export interface FakePeople {
   journalEntries: Map<string, JournalEntryRef[]>
 }
 
+const startUs = (a: Activity): bigint => BigInt(a.start_time.getTime()) * 1000n
+
+/** Every activity is its own group: merging is the database's and the merge's business, not this fake's. */
+const fakeActivityDeps = (activities: Map<string, Activity[]>): PersonActivitiesDeps => {
+  const matching = (personId: string, filter: Parameters<PersonActivitiesDeps['countGroups']>[2]) =>
+    (activities.get(personId) ?? [])
+      .filter(
+        (a) =>
+          (!filter.types || filter.types.includes(a.activity_type)) &&
+          (!filter.start || a.start_time >= filter.start) &&
+          (!filter.end || a.start_time <= filter.end),
+      )
+      .toSorted((a, b) => Number(startUs(b) - startUs(a)) || b.id!.localeCompare(a.id!))
+  return {
+    categoryMap: async () => new Map(),
+    countByType: async (_user, personId) => {
+      const counts = new Map<string, number>()
+      for (const a of matching(personId, {})) {
+        counts.set(a.activity_type, (counts.get(a.activity_type) ?? 0) + 1)
+      }
+      return [...counts]
+        .map(([activity_type, count]) => ({ activity_type, count }))
+        .toSorted((a, b) => b.count - a.count || a.activity_type.localeCompare(b.activity_type))
+    },
+    countGroups: async (_user, personId, filter) => matching(personId, filter).length,
+    expandTypes: async (_user, types) => types,
+    listGroups: async (_user, personId, filter, { before, limit }) =>
+      matching(personId, filter)
+        .filter(
+          (a) =>
+            !before ||
+            startUs(a) < BigInt(before.start_us) ||
+            (startUs(a) === BigInt(before.start_us) && a.id! < before.id),
+        )
+        .slice(0, limit)
+        .map((a) => ({ activity_type: a.activity_type, id: a.id!, start_us: String(startUs(a)) })),
+    members: async (_user, ids) => [
+      ...new Map(
+        [...activities.values()]
+          .flat()
+          .filter((a) => ids.includes(a.id!))
+          .map((a) => [a.id, a]),
+      ).values(),
+    ],
+    typeNames: async () => new Map(),
+  }
+}
+
 /** An in-memory PeopleDeps; `actors` maps a handle to what it resolves to. */
 export const fakePeopleDeps = (
   options: { resolve?: boolean; now?: Date; timezone?: string } = {},
@@ -77,7 +131,10 @@ export const fakePeopleDeps = (
   }
   const defined = <T extends object>(fields: T): Partial<T> =>
     Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)) as Partial<T>
+  const activityDeps = fakeActivityDeps(fake.activities)
   const deps: PeopleDeps = {
+    activityPage: (user, personId, query) => listPersonActivityPage(user, personId, query, activityDeps),
+    activitySummary: (user, personId) => personActivitySummary(user, personId, activityDeps),
     actorPresentations: async (_user, uris) => ({
       following: fake.following.filter((row) => uris.includes(row.actor_uri)),
       timeline: fake.timeline.filter((row) => uris.includes(row.actor_uri)),
@@ -153,8 +210,6 @@ export const fakePeopleDeps = (
     listDeleted: async () => [...fake.people.values()].filter((p) => p.deleted_at),
     listJournalEntries: async (_user, personId) => fake.journalEntries.get(personId) ?? [],
     listPosts: async (_user, uri, limit) => (fake.posts.get(uri) ?? []).slice(0, limit),
-    listRecentActivities: async (_user, personId, limit) =>
-      (fake.activities.get(personId) ?? []).slice(0, limit),
     now: () => options.now ?? NOW,
     purge: async (_user, id) => {
       for (const [dateId, date] of fake.dates) if (date.person_id === id) fake.dates.delete(dateId)

@@ -158,6 +158,20 @@ describe('rowFigures', () => {
     expect(rowFigures(row({ avg_hr: 62, calories: 177, set_count: 1 }))).toBe('1 set · 62 bpm · 177 kcal')
   })
 
+  it("appends the type's summary fields after the figures, with their units", () => {
+    expect(
+      rowFigures(
+        row({
+          duration_minutes: 5,
+          summary_fields: [
+            { label: 'Substance', value: 'Zinc' },
+            { label: 'Dose', unit: 'mg', value: 10 },
+          ],
+        }),
+      ),
+    ).toBe('5m · Zinc · 10 mg')
+  })
+
   it('is empty without figures or a title', () => {
     expect(rowFigures(row())).toBe('')
   })

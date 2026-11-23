@@ -304,6 +304,9 @@ export const activitiesTables: Record<string, string> = {
   deduction_rules_output_category: `
     ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_category VARCHAR(64)
   `,
+  deduction_rules_output_people: `
+    ALTER TABLE deduction_rules ADD COLUMN IF NOT EXISTS output_people UUID[]
+  `,
   deduction_rules_indexes: `
     CREATE INDEX IF NOT EXISTS idx_deduction_rules_enabled ON deduction_rules (enabled, priority) WHERE enabled = true
   `,

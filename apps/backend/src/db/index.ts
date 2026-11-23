@@ -163,6 +163,7 @@ export {
   checkActivityConflict,
   deleteActivity,
   deleteGarminActivityWithWrongType,
+  findSameInstantManualActivities,
   softDeleteActivityByExternalId,
   findActivityByExternalId,
   findAdjacentActivity,
@@ -444,6 +445,8 @@ export {
   updateParticipationThreadState,
   upsertThreadCopyEntry,
 } from './challenge-thread-copy.ts'
+
+export { getChallengePostFollows, setChallengePostFollow } from './challenge-post-follows.ts'
 
 export {
   type ChallengeBanner,
@@ -762,6 +765,7 @@ export {
 export {
   ackOutboundSync,
   enqueueOutboundSync,
+  enqueueOutboundSyncDeletes,
   enqueueOutboundSyncInsertsIfChanged,
   failOutboundSync,
   findHcRecordId,
@@ -771,6 +775,7 @@ export {
   reportSyncFailure,
   requeueOutboundSync,
   type EnqueueOutboundSyncInput,
+  type OutboundSyncDeleteItem,
   type OutboundSyncEntry,
   type OutboundSyncInsertItem,
   type OutboundSyncOperation,
@@ -929,6 +934,7 @@ export {
 } from './segments.ts'
 
 export {
+  activityHasTrack,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
@@ -1033,6 +1039,8 @@ export {
   type ActorPresentationRow,
   addActivityPeople,
   copyActivityPeopleIn,
+  countPersonActivityGroups,
+  countPersonActivityGroupsByType,
   deletePersonDate,
   type FollowPresentationRow,
   getLivePersonByActor,
@@ -1043,15 +1051,20 @@ export {
   type ImportantDateSource,
   insertPerson,
   insertPersonDate,
+  listActivityGroupMembers,
   listActivityIntervalsWithPeople,
   listActorPresentations,
   listDeletedPeople,
   listImportantDateSources,
+  listLinkedActivityIds,
   listLivePersonIds,
   listPeople,
   listPeopleWithActivities,
+  listPersonActivityGroups,
   listPersonDates,
-  listRecentActivitiesForPerson,
+  type PersonActivityCursor,
+  type PersonActivityFilter,
+  type PersonActivityGroup,
   type PersonActorCache,
   type PersonDateFields,
   type PersonDateInsert,

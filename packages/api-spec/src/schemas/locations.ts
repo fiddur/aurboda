@@ -17,8 +17,8 @@ import {
   placeSourceSchema,
   radiusSchema,
   timeRangeQuerySchema,
-  tzSchema,
 } from './common.ts'
+import { ianaTimezoneSchema } from './timezone.ts'
 
 const locationNameSchema = z.string().meta({ description: 'Location name', example: 'Home' })
 
@@ -229,7 +229,7 @@ export const overnightStaysQuerySchema = timeRangeQuerySchema
       description: 'Name of a named location to detect overnight stays at',
       example: 'Home',
     }),
-    tz: tzSchema,
+    tz: ianaTimezoneSchema,
   })
   .meta({ id: 'OvernightStaysQuery' })
 
@@ -286,7 +286,7 @@ export const locationSummaryQuerySchema = timeRangeQuerySchema
       description: 'Name of a named location to summarize',
       example: 'Home',
     }),
-    tz: tzSchema,
+    tz: ianaTimezoneSchema,
   })
   .meta({ id: 'LocationSummaryQuery' })
 
@@ -317,7 +317,7 @@ export const placesSummaryQuerySchema = timeRangeQuerySchema
       description: 'Name of the place that counts as home, matched case-insensitively (default "Home")',
       example: 'Home',
     }),
-    tz: tzSchema,
+    tz: ianaTimezoneSchema,
   })
   .meta({ id: 'PlacesSummaryQuery' })
 

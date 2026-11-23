@@ -16,10 +16,10 @@
   margin: 0;
   padding: 0.25rem 0;
   list-style: none;
-  background: #fff;
-  border: 1px solid #d1d5db;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--gray-300);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px var(--black-a10);
 }
 
 .known-values-option {
@@ -35,14 +35,14 @@
 
 .known-values-option:hover,
 .known-values-option.active {
-  background: #f3f4f6;
+  background: var(--color-surface-sunken);
 }
 
 .known-values-value {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #374151;
+  color: var(--color-text-default);
 }
 
 .known-values-list-floating {
@@ -57,13 +57,13 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.8rem;
 }
 
 .known-values-count {
   flex-shrink: 0;
-  color: #6b7280;
+  color: var(--gray-500);
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
@@ -81,21 +81,11 @@
 
 @media (prefers-color-scheme: dark) {
   .known-values-list {
-    background: #1f2937;
-    border-color: #4b5563;
-  }
-
-  .known-values-option:hover,
-  .known-values-option.active {
-    background: #374151;
-  }
-
-  .known-values-value {
-    color: #d1d5db;
+    border-color: var(--gray-600);
   }
 
   .known-values-count,
   .known-values-hint {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 }

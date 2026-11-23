@@ -304,4 +304,62 @@ describe('ouraClient OAuth state', () => {
     expect(audited).not.toContain('the-code')
     expect(audited).not.toContain('client-secret')
   })
+
+  const revokeCall = [
+    'https://api.ouraring.com/oauth/revoke',
+    undefined,
+    { params: { access_token: 'access' } },
+  ]
+
+  test('complete revokes the grant at Oura when the token write fails', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    vi.mocked(upsertOAuthToken).mockRejectedValueOnce(new Error('connection reset'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...revokeCall)
+    expect(deleteOAuthToken).not.toHaveBeenCalled()
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+    expect(auditWarn.mock.calls.map((call) => call[2])).toEqual([
+      'Oura OAuth connection failed',
+      'Oura grant revoked after the connection failed',
+    ])
+  })
+
+  test('complete revokes the grant and clears the stored token when the user mapping fails', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    onUserAuthenticated.mockRejectedValueOnce(new Error('mapping write failed'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...revokeCall)
+    expect(deleteOAuthToken).toHaveBeenCalledWith('alice', 'oura')
+  })
+
+  test('complete still answers auth_failed and audits when the revoke fails too', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    vi.mocked(upsertOAuthToken).mockRejectedValueOnce(new Error('connection reset'))
+    mockedAxios.post = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { access_token: 'access', expires_in: 3600, refresh_token: 'refresh' } })
+      .mockRejectedValueOnce(new Error('503 from revoke?access_token=access'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...revokeCall)
+    expect(auditWarn.mock.calls.map((call) => call[2])).toEqual([
+      'Oura OAuth connection failed',
+      'Oura grant could not be revoked after the connection failed',
+    ])
+    expect(JSON.stringify(auditWarn.mock.calls)).not.toContain('access_token=access')
+  })
 })

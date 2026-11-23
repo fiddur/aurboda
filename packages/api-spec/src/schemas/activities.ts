@@ -255,6 +255,10 @@ export const activityDetailSchema = activitySchema
     features: activityFeaturesSchema.optional().meta({
       description: 'Computed run features, when the activity has been analysed',
     }),
+    has_track: z.boolean().optional().meta({
+      description:
+        'Whether GET /activities/{id}/track answers a stored GPS track for this activity; when false the track request would answer 404',
+    }),
     journal_entries: journalEntryRefsSchema.optional(),
     merged_end_time: iso8601DateTimeSchema
       .optional()
@@ -301,6 +305,10 @@ export const activitiesQuerySchema = timeRangeQuerySchema
     }),
     category: runCategoryFilterSchema.optional().meta({
       description: 'Filter to activities carrying this run category (data.run_categories)',
+    }),
+    person_id: z.string().optional().meta({
+      description:
+        'Filter to the activities the person was with (any row of a merged activity linked counts). An unknown or deleted person is a 400.',
     }),
   })
   .meta({ id: 'ActivitiesQuery' })

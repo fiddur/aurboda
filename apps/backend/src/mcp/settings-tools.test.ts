@@ -51,14 +51,13 @@ describe('hidden_pages through the settings MCP tools', () => {
     expect((await call('get_user_settings')).hidden_pages).toEqual([])
   })
 
-  test('update_user_settings stores the list, an unknown path included, and get reads it back', async () => {
+  test('update_user_settings stores the menu paths, drops an unknown one, and get reads them back', async () => {
     const call = setup()
-    const hidden = ['/strength', '/no-such-page']
 
-    const updated = await call('update_user_settings', { hidden_pages: hidden })
+    const updated = await call('update_user_settings', { hidden_pages: ['/strength', '/no-such-page'] })
     expect(updated.success).toBe(true)
-    expect(updated.hidden_pages).toEqual(hidden)
-    expect((await call('get_user_settings')).hidden_pages).toEqual(hidden)
+    expect(updated.hidden_pages).toEqual(['/strength'])
+    expect((await call('get_user_settings')).hidden_pages).toEqual(['/strength'])
 
     await call('update_user_settings', { hidden_pages: [] })
     expect((await call('get_user_settings')).hidden_pages).toEqual([])

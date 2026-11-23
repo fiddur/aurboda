@@ -1,5 +1,4 @@
 import {
-  type Activity,
   type AddPersonBody,
   type AddPersonDateBody,
   DELETED_PERSON_RETENTION_DAYS,
@@ -12,6 +11,7 @@ import {
   normalizeFediverseHandle,
   parseBirthDate,
   type Person,
+  type PersonActivitiesQuery,
   type PersonActor,
   type PersonDate,
   type PersonDateKind,
@@ -25,8 +25,6 @@ import {
   type UpdatePersonDateBody,
   UUID_RE,
 } from '@aurboda/api-spec'
-
-import type { Activity as DbActivity } from '../db/types.ts'
 
 import {
   type ActorPresentationRow,
@@ -43,7 +41,6 @@ import {
   listImportantDateSources,
   listPeople,
   listPersonDates,
-  listRecentActivitiesForPerson,
   listTimelineEntriesByActor,
   type PersonActorCache,
   type PersonDateFields,
@@ -71,6 +68,12 @@ import {
 } from './important-dates.ts'
 import { listJournalEntryRefs } from './notes.ts'
 import { type Notifier, notifier } from './notifications.ts'
+import {
+  listPersonActivityPage,
+  type PersonActivitiesPage,
+  personActivitySummary,
+  type PersonActivitySummary,
+} from './person-activities.ts'
 import { getUserTimezone } from './settings.ts'
 import { loadReactionsForRows, serializeTimelineEntry } from './timeline.ts'
 
@@ -109,7 +112,13 @@ export interface PeopleDeps {
   ) => Promise<PersonDateRecord | null>
   deleteDate: (user: string, personId: string, dateId: string) => Promise<boolean>
   listDateSources: (user: string) => Promise<ImportantDateSource[]>
-  listRecentActivities: (user: string, personId: string, limit: number) => Promise<DbActivity[]>
+  /** A page of the person's activities; the person is already known to be live. */
+  activityPage: (
+    user: string,
+    personId: string,
+    query: PersonActivitiesQuery,
+  ) => Promise<{ ok: true; value: PersonActivitiesPage } | { ok: false; error: string }>
+  activitySummary: (user: string, personId: string) => Promise<PersonActivitySummary>
   listJournalEntries: (user: string, personId: string) => Promise<JournalEntryRef[]>
   actorPresentations: (
     user: string,
@@ -135,6 +144,8 @@ const listPostsFromTimeline = async (
 
 /** Resolved at call time, so importing this module never touches the db module's bindings. */
 export const defaultPeopleDeps = (resolveHandle?: ResolveActorHandle): PeopleDeps => ({
+  activityPage: (user, personId, query) => listPersonActivityPage(user, personId, query),
+  activitySummary: (user, personId) => personActivitySummary(user, personId),
   actorPresentations: (user, uris) => listActorPresentations(user, uris),
   deleteDate: (user, personId, dateId) => deletePersonDate(user, personId, dateId),
   get: (user, id) => getPerson(user, id),
@@ -149,7 +160,6 @@ export const defaultPeopleDeps = (resolveHandle?: ResolveActorHandle): PeopleDep
   listDeleted: (user) => listDeletedPeople(user),
   listJournalEntries: (user, personId) => listJournalEntryRefs(user, 'person', [personId]),
   listPosts: listPostsFromTimeline,
-  listRecentActivities: (user, personId, limit) => listRecentActivitiesForPerson(user, personId, limit),
   now: () => new Date(),
   purge: (user, id) => purgePerson(user, id),
   raise: (user, input) => notifier.raiseBestEffort(user, input),
@@ -282,19 +292,6 @@ export const listPeopleView = async (
 const isStale = (record: PersonRecord, actor: PersonActor): boolean =>
   actor.handle !== record.actor_handle || actor.name !== record.actor_name || actor.icon !== record.actor_icon
 
-const serializeActivityItem = (activity: DbActivity): Activity => ({
-  activity_type: activity.activity_type,
-  data: activity.data,
-  duration: activity.end_time
-    ? Math.round((activity.end_time.getTime() - activity.start_time.getTime()) / 60_000)
-    : undefined,
-  end_time: activity.end_time?.toISOString(),
-  id: activity.id,
-  source: activity.source,
-  start_time: activity.start_time.toISOString(),
-  title: activity.title,
-})
-
 /** The person with their dates, latest activities and related journal entries; refreshes the account cache when it went stale. */
 export const getPersonDetail = async (
   deps: PeopleDeps,
@@ -304,10 +301,11 @@ export const getPersonDetail = async (
   if (!UUID_RE.test(id)) return null
   const record = await deps.get(user, id)
   if (!record) return null
-  const [actors, dates, activities, journalEntries] = await Promise.all([
+  const [actors, dates, recent, summary, journalEntries] = await Promise.all([
     resolveActors(deps, user, [record]),
     deps.listDates(user, id),
-    deps.listRecentActivities(user, id, PERSON_RECENT_ACTIVITIES_LIMIT),
+    deps.activityPage(user, id, { limit: PERSON_RECENT_ACTIVITIES_LIMIT }),
+    deps.activitySummary(user, id),
     deps.listJournalEntries(user, id),
   ])
   const actor = actorOf(record, actors)
@@ -322,10 +320,23 @@ export const getPersonDetail = async (
   }
   return {
     ...serializePerson(record, actor),
+    ...summary,
     dates: dates.map(serializePersonDate),
     journal_entries: journalEntries,
-    recent_activities: activities.map(serializeActivityItem),
+    recent_activities: recent.ok ? recent.value.data : [],
   }
+}
+
+/** A page of the activities the person was with; 404 for an unknown or deleted person, 400 for a bad cursor. */
+export const listPersonActivities = async (
+  deps: PeopleDeps,
+  user: string,
+  id: string,
+  query: PersonActivitiesQuery,
+): Promise<PeopleResult<PersonActivitiesPage>> => {
+  if (!UUID_RE.test(id) || !(await deps.get(user, id))) return fail(404, PERSON_NOT_FOUND)
+  const page = await deps.activityPage(user, id, query)
+  return page.ok ? ok(page.value) : fail(400, page.error)
 }
 
 const blankToNull = (text: string | null | undefined): string | null | undefined =>

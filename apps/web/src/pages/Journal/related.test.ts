@@ -15,6 +15,8 @@ import {
   mentionAt,
   mentionOptions,
   moveChoice,
+  offeredPeople,
+  refusedLinkKeys,
   relatedFilterFromQuery,
   relatedFilterHref,
   relatedHref,
@@ -54,6 +56,26 @@ describe('the link list', () => {
   })
 })
 
+describe('links a save refused', () => {
+  test('marks the links an Unknown answer names, whatever the case of the id', () => {
+    expect([
+      ...refusedLinkKeys(`Unknown person: ${ANNA.entity_id.toUpperCase()}, ${BO.entity_id}`, [
+        ANNA,
+        BO,
+        WALK,
+      ]),
+    ]).toEqual([`person:${ANNA.entity_id}`, `person:${BO.entity_id}`])
+    expect([...refusedLinkKeys(`Unknown activity: ${WALK.entity_id}`, [ANNA, WALK])]).toEqual([
+      `activity:${WALK.entity_id}`,
+    ])
+  })
+
+  test('an id of the other kind or another answer marks nothing', () => {
+    expect(refusedLinkKeys(`Unknown activity: ${ANNA.entity_id}`, [ANNA]).size).toBe(0)
+    expect(refusedLinkKeys('Request failed with status code 500', [ANNA]).size).toBe(0)
+  })
+})
+
 describe('typing @', () => {
   test('finds the @ being typed at the cursor, at the start of a word only', () => {
     expect(mentionAt('Dinner with @An', 15)).toEqual({ query: 'An', start: 12 })
@@ -85,6 +107,14 @@ describe('typing @', () => {
         'p',
       ),
     ).toHaveLength(8)
+  })
+
+  test('an archived person is not offered for a new link', () => {
+    const people = [
+      { archived: false, name: 'Anna' },
+      { archived: true, name: 'Bo' },
+    ]
+    expect(offeredPeople(people).map((p) => p.name)).toEqual(['Anna'])
   })
 
   test('arrow keys wrap around the options', () => {
@@ -126,10 +156,12 @@ describe("the day's activities", () => {
   test('a link uses the row id and labels it as the server does', () => {
     expect(activityLabel(walk)).toBe('Walking, 2026-11-20')
     expect(activityLink(sleep, () => 'Sleep')).toEqual({
+      activity_type: 'sleep',
       entity_id: 's1',
       entity_type: 'activity',
-      label: 'Sleep, 2026-11-19',
+      label: 'Sleep, 2026-11-20',
     })
+    expect(activityLabel({ ...sleep, end_time: undefined }, () => 'Sleep')).toBe('Sleep, 2026-11-19')
     expect(activityLink(run).label).toBe('Tempo, 2026-11-20')
   })
 })

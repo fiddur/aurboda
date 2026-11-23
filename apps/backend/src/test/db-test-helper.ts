@@ -136,6 +136,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'feed_image',
     'challenge_members',
     'challenge_thread_copies',
+    'challenge_post_follows',
     'challenge_participations',
     'challenge_left',
     'challenge_thread_entries',

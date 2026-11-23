@@ -1,9 +1,3 @@
-.admin-settings-page {
-  width: 100%;
-  padding: 2rem;
-  box-sizing: border-box;
-}
-
 .admin-settings-page h1 {
   font-size: 1.75rem;
   margin-bottom: 1.5rem;
@@ -17,7 +11,7 @@
 .settings-section {
   margin-bottom: 2rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid var(--neutral-l88);
 }
 
 .settings-section h2 {
@@ -37,7 +31,7 @@
 }
 
 .section-description {
-  color: #666;
+  color: var(--neutral-l40);
   margin-bottom: 1rem;
   line-height: 1.5;
 }
@@ -47,15 +41,15 @@
 }
 
 .save-indicator.saving {
-  color: #888;
+  color: var(--neutral-l53);
 }
 
 .save-indicator.saved {
-  color: #4caf50;
+  color: var(--green-l49);
 }
 
 .save-indicator.error {
-  color: #f44336;
+  color: var(--red-l58);
 }
 
 .form-field {
@@ -72,15 +66,15 @@
 .form-field select {
   padding: 0.5rem;
   font-size: 1rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--neutral-l80);
   border-radius: 4px;
   width: 100%;
   max-width: 400px;
-  background: white;
+  background: var(--white);
 }
 
 .field-description {
-  color: #666;
+  color: var(--neutral-l40);
   font-size: 0.875rem;
   margin-top: 0.5rem;
   line-height: 1.4;
@@ -89,12 +83,12 @@
 .stat-value {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #333;
+  color: var(--neutral-l20);
   margin: 0;
 }
 
 .connected-status {
-  color: #4caf50;
+  color: var(--green-l49);
   font-weight: 500;
   margin: 0 0 0.5rem;
 }
@@ -109,15 +103,15 @@
   flex: 1;
   padding: 0.5rem;
   font-size: 1rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--neutral-l80);
   border-radius: 4px;
 }
 
 .clear-button {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  background: #f44336;
-  color: white;
+  background: var(--red-l58);
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -125,7 +119,7 @@
 }
 
 .clear-button:hover {
-  background: #d32f2f;
+  background: var(--red-l51);
 }
 
 .toggle-row {
@@ -146,7 +140,7 @@
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
   background: var(--color-primary);
-  color: white;
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -165,7 +159,7 @@
 .invitation-result {
   margin-top: 1rem;
   padding: 1rem;
-  background: #f5f5f5;
+  background: var(--color-surface-sunken-4);
   border-radius: 8px;
 }
 
@@ -178,17 +172,17 @@
   flex: 1;
   padding: 0.5rem;
   font-size: 0.875rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--neutral-l80);
   border-radius: 4px;
   font-family: monospace;
-  background: white;
+  background: var(--white);
 }
 
 .copy-button {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  background: #2196f3;
-  color: white;
+  background: var(--blue-l54);
+  color: var(--white);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -196,11 +190,11 @@
 }
 
 .copy-button:hover {
-  background: #1976d2;
+  background: var(--blue-l46);
 }
 
 .invitation-expiry {
-  color: #666;
+  color: var(--neutral-l40);
   font-size: 0.875rem;
   margin-top: 0.5rem;
   margin-bottom: 0;
@@ -208,41 +202,33 @@
 
 @media (prefers-color-scheme: dark) {
   .settings-section {
-    border-bottom-color: #444;
+    border-bottom-color: var(--neutral-l27);
   }
 
   .section-description,
   .field-description {
-    color: #aaa;
+    color: var(--neutral-l67);
   }
 
   .form-field select,
   .api-key-input-row input {
-    background: #333;
-    border-color: #555;
-    color: #fff;
+    background: var(--neutral-l20);
+    border-color: var(--neutral-l33);
+    color: var(--white);
   }
 
   .stat-value {
-    color: #fff;
-  }
-
-  .invitation-result {
-    background: #333;
+    color: var(--white);
   }
 
   .invitation-url input {
-    background: #222;
-    border-color: #555;
-    color: #fff;
+    background: var(--neutral-l13);
+    border-color: var(--neutral-l33);
+    color: var(--white);
   }
 }
 
 @media (max-width: 639px) {
-  .admin-settings-page {
-    padding: 1rem;
-  }
-
   .admin-settings-page h1 {
     font-size: 1.5rem;
   }
@@ -264,7 +250,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--neutral-l93);
 }
 
 .relay-url {
@@ -276,7 +262,7 @@
 }
 
 .relay-style {
-  color: #666;
+  color: var(--neutral-l40);
   font-size: 0.85rem;
 }
 
@@ -284,24 +270,24 @@
   padding: 0.1rem 0.5rem;
   border-radius: 999px;
   font-size: 0.8rem;
-  background: #eee;
-  color: #555;
+  background: var(--neutral-l93);
+  color: var(--neutral-l33);
 }
 
 .relay-state-accepted {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--green-l94);
+  color: var(--green-l34);
 }
 
 .relay-state-rejected {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--red-l96);
+  color: var(--red-l47);
 }
 
 .api-key-input-row select {
   padding: 0.5rem;
   font-size: 1rem;
-  border: 1px solid #ccc;
+  border: 1px solid var(--neutral-l80);
   border-radius: 4px;
 }
 
@@ -313,32 +299,32 @@
 
 @media (prefers-color-scheme: dark) {
   .relay-row {
-    border-bottom-color: #444;
+    border-bottom-color: var(--neutral-l27);
   }
 
   .relay-style {
-    color: #aaa;
+    color: var(--neutral-l67);
   }
 
   .relay-state {
-    background: #444;
-    color: #ddd;
+    background: var(--neutral-l27);
+    color: var(--neutral-l87);
   }
 
   .relay-state-accepted {
-    background: #1b3a1e;
-    color: #a5d6a7;
+    background: var(--green-l17);
+    color: var(--green-l74);
   }
 
   .relay-state-rejected {
-    background: #4a1c1c;
-    color: #ef9a9a;
+    background: var(--red-l20);
+    color: var(--red-l77);
   }
 
   .api-key-input-row select {
-    background: #333;
-    border-color: #555;
-    color: #fff;
+    background: var(--neutral-l20);
+    border-color: var(--neutral-l33);
+    color: var(--white);
   }
 }
 
@@ -353,33 +339,33 @@
 }
 
 .tag-follow-accepted {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--emerald-100);
+  color: var(--emerald-800);
 }
 
 .tag-follow-pending {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--amber-100);
+  color: var(--amber-800);
 }
 
 .tag-follow-unresolved {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--red-100);
+  color: var(--red-800);
 }
 
 @media (prefers-color-scheme: dark) {
   .tag-follow-accepted {
-    background: #064e3b;
-    color: #a7f3d0;
+    background: var(--emerald-900);
+    color: var(--emerald-200);
   }
 
   .tag-follow-pending {
-    background: #78350f;
-    color: #fde68a;
+    background: var(--amber-900);
+    color: var(--amber-200);
   }
 
   .tag-follow-unresolved {
-    background: #7f1d1d;
-    color: #fecaca;
+    background: var(--red-900);
+    color: var(--red-200);
   }
 }

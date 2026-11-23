@@ -265,22 +265,24 @@ Check-in forms whose answers are logged as metrics or activities, with schedules
 Private profiles of the people in your life, their dates and the activities you did with them.
 See [People](features/people.md). Each tool has a REST twin under `/people`.
 
-| Tool                   | What it does                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `list_people`          | The people by name; `archived` includes archived ones, `deleted` lists deleted ones       |
-| `get_person`           | One person with their dates, the 20 latest activities with them and their journal entries |
-| `add_person`           | Add a person: `name`, `relationship`, `birth_date`, `pronouns`, `handle`, …               |
-| `update_person`        | Change the given fields; null clears an optional one                                      |
-| `delete_person`        | Delete, restorable for 30 days; `purge` removes it for good                               |
-| `restore_person`       | Restore a deleted person                                                                  |
-| `add_person_date`      | Add a date (`label`, `kind`, `month`, `day`, optional `year` and `notify_days_before`)    |
-| `update_person_date`   | Change a date                                                                             |
-| `delete_person_date`   | Delete a date for good                                                                    |
-| `list_important_dates` | Every date and birthday occurring between `from` and `to`                                 |
-| `list_person_posts`    | The person's recent posts from your timeline, when they have a fediverse handle           |
+| Tool                     | What it does                                                                              |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| `list_people`            | The people by name; `archived` includes archived ones, `deleted` lists deleted ones       |
+| `get_person`             | One person with their dates, the 20 latest activities with them and their journal entries |
+| `add_person`             | Add a person: `name`, `relationship`, `birth_date`, `pronouns`, `handle`, …               |
+| `update_person`          | Change the given fields; null clears an optional one                                      |
+| `delete_person`          | Delete, restorable for 30 days; `purge` removes it for good                               |
+| `restore_person`         | Restore a deleted person                                                                  |
+| `add_person_date`        | Add a date (`label`, `kind`, `month`, `day`, optional `year` and `notify_days_before`)    |
+| `update_person_date`     | Change a date                                                                             |
+| `delete_person_date`     | Delete a date for good                                                                    |
+| `list_important_dates`   | Every date and birthday occurring between `from` and `to`                                 |
+| `list_person_posts`      | The person's recent posts from your timeline, when they have a fediverse handle           |
+| `list_person_activities` | Every activity with the person, newest first, paged by `before` cursor, with `total`      |
 
 `add_activity` and `update_activity` take `people` (person IDs), and `query_activities` and
-`get_activity_detail` carry `people: [{ id, name }]`.
+`get_activity_detail` carry `people: [{ id, name }]`. `query_activities` takes `person_id` to keep
+the activities with that person; `get_person` carries `activity_count` and `activity_types`.
 
 ### Auto-share tools
 

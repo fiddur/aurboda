@@ -371,14 +371,14 @@ export function FoodItemDetail() {
 
   if (isLoading) {
     return (
-      <div class="food-item-detail-page">
+      <div class="page page--full food-item-detail-page">
         <p class="loading">Loading...</p>
       </div>
     )
   }
   if (!item) {
     return (
-      <div class="food-item-detail-page">
+      <div class="page page--full food-item-detail-page">
         <p>Food item not found.</p>
       </div>
     )
@@ -432,7 +432,7 @@ export function FoodItemDetail() {
   const savePending = updateMutation.isPending || sharedIconMutation.isPending
 
   return (
-    <div class="food-item-detail-page">
+    <div class="page page--full food-item-detail-page">
       <div class="fi-detail-header">
         <a href="/food-items" class="back-link">
           &larr; Food Items

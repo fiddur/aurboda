@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 
-import type { AccountEmailTokenPurpose } from './central-account-email-tokens.ts'
+import type { AccountEmailTokenPurpose, AccountsInTokenTransaction } from './central-account-email-tokens.ts'
 import type { CentralDb } from './central-db.ts'
 import type { UserAccount } from './central-user-accounts.ts'
 import type { Mailer } from './email.ts'
@@ -59,8 +59,11 @@ export interface AccountRecoveryDeps {
   mailer: Pick<Mailer, 'isConfigured' | 'send'>
   webHost: string
   isValidUsername: (username: string) => boolean
-  /** Sets the account's (Postgres role's) password. */
-  setPassword: (username: string, password: string) => Promise<void>
+  /**
+   * Sets the account's (Postgres role's) password. Its central writes go through `accounts`, the
+   * transaction holding the recovery token.
+   */
+  setPassword: (username: string, password: string, accounts: AccountsInTokenTransaction) => Promise<void>
   createSessionToken: (username: string) => string
   clearFailedLogins: (username: string) => void
   verificationLimiter: TokenBucketLimiter
@@ -140,13 +143,17 @@ export const createAccountRecovery = ({
   return {
     completeRecovery: async (token, newPassword) => {
       const recovered: { account?: UserAccount & { email: string } } = {}
-      await centralDb.consumeAccountEmailToken(hashEmailLinkToken(token), 'reset', async (consumed) => {
-        if (!isValidUsername(consumed.username)) return
-        const found = await centralDb.getUserAccount(consumed.username)
-        if (!isVerified(found) || found.email !== consumed.email) return
-        if (newPassword !== undefined) await setPassword(found.username, newPassword)
-        recovered.account = found
-      })
+      await centralDb.consumeAccountEmailToken(
+        hashEmailLinkToken(token),
+        'reset',
+        async (consumed, accounts) => {
+          if (!isValidUsername(consumed.username)) return
+          const found = await accounts.getUserAccount(consumed.username)
+          if (!isVerified(found) || found.email !== consumed.email) return
+          if (newPassword !== undefined) await setPassword(found.username, newPassword, accounts)
+          recovered.account = found
+        },
+      )
       const { account } = recovered
       if (!account) return { ok: false }
       const { username } = account

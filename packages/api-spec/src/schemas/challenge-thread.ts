@@ -69,6 +69,10 @@ export type ChallengeThreadReply = z.infer<typeof challengeThreadReplySchema>
 
 export const challengeThreadEntrySchema = challengeThreadReplySchema
   .extend({
+    following: z.boolean().optional().meta({
+      description:
+        'Whether the viewer follows this post, so a reply under it raises `challenge_reply` for them: their own choice, else whether they wrote the post or a reply under it. Present only for the host and members.',
+    }),
     replies: z
       .array(challengeThreadReplySchema)
       .meta({ description: 'Replies to this entry, oldest first; empty on a reply' }),
@@ -173,3 +177,24 @@ export const challengeThreadHideQuerySchema = z
   .meta({ description: 'The challenge whose thread entry is shown again', id: 'ChallengeThreadHideQuery' })
 
 export type ChallengeThreadHideQuery = z.infer<typeof challengeThreadHideQuerySchema>
+
+export const challengePostFollowBodySchema = z
+  .object({
+    challenge_url: challengeUrlSchema,
+    following: z
+      .boolean()
+      .meta({ description: 'Follow the replies under this top-level post (true) or stop following them' }),
+  })
+  .meta({
+    description:
+      'Follow or stop following the replies under a top-level post of a challenge thread. The choice is kept on your own server and overrides the default (following a post you wrote or replied under).',
+    id: 'ChallengePostFollowBody',
+  })
+
+export type ChallengePostFollowBody = z.infer<typeof challengePostFollowBodySchema>
+
+export const challengePostFollowResponseSchema = baseResponseSchema
+  .extend({ following: z.boolean().optional().meta({ description: 'Whether you now follow the post' }) })
+  .meta({ id: 'ChallengePostFollowResponse' })
+
+export type ChallengePostFollowResponse = z.infer<typeof challengePostFollowResponseSchema>

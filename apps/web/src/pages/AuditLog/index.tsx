@@ -55,7 +55,7 @@ export function AuditLog() {
   }
 
   return (
-    <div class="audit-log-page">
+    <div class="page page--full audit-log-page">
       <h1>Audit Log</h1>
 
       <div class="audit-log-filters">

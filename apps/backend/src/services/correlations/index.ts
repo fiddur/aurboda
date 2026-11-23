@@ -6,7 +6,7 @@ export { getActivityImpact } from './activity-impact.ts'
 export { parseImpactPeriod } from './impact-period.ts'
 export { getBaseline } from './baseline.ts'
 export { getEventProbability } from './event-probability.ts'
-export { getGenericCorrelation } from './generic.ts'
+export { genericTriggersError, getGenericCorrelation } from './generic.ts'
 export { getHrvActivitiesCorrelation } from './hrv-activities.ts'
 export { getImpactMetrics } from './impact-metrics.ts'
 export {

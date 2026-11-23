@@ -9,10 +9,13 @@ import {
   deleteDeductionRule,
   evaluateDeductionRules,
   fetchDeductionRules,
+  fetchPeople,
+  PEOPLE_KEY,
   updateDeductionRule,
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { formatConditions } from './formatCondition'
+import { rulePeopleSummary } from './ruleForm'
 import '../../components/page-layout.css'
 import './style.css'
 
@@ -22,8 +25,9 @@ const PRIORITY_LABELS: Record<number, string> = {
   2: 'High',
 }
 
-function RuleRow({ rule }: { rule: DeductionRule }) {
+function RuleRow({ rule, people }: { rule: DeductionRule; people: readonly { id: string; name: string }[] }) {
   const queryClient = useQueryClient()
+  const withPeople = rulePeopleSummary(rule.output_people, people)
 
   const toggleMutation = useMutation({
     mutationFn: () => updateDeductionRule(rule.id, { enabled: !rule.enabled }),
@@ -57,7 +61,10 @@ function RuleRow({ rule }: { rule: DeductionRule }) {
       <a href={`/deduction-rules/${rule.id}`} class="rule-info">
         <span class="rule-name">{rule.name}</span>
         <span class="rule-conditions">{formatConditions(rule.conditions)}</span>
-        <span class="rule-output">{rule.output_activity_type}</span>
+        <span class="rule-output">
+          {rule.output_activity_type}
+          {withPeople && <span class="rule-output-people"> {withPeople}</span>}
+        </span>
         <span class={`rule-priority priority-${rule.priority}`}>
           {PRIORITY_LABELS[rule.priority] ?? rule.priority}
         </span>
@@ -98,6 +105,13 @@ export function DeductionRules() {
     queryKey: ['deductionRules'],
   })
 
+  const { data: people = [] } = useQuery({
+    queryFn: () => fetchPeople({ archived: true }),
+    queryKey: [...PEOPLE_KEY, { archived: true }],
+    select: (data) => data.people ?? [],
+    staleTime: 60_000,
+  })
+
   const evalMutation = useMutation({
     mutationFn: evaluateDeductionRules,
     onSuccess: (result) => {
@@ -108,14 +122,14 @@ export function DeductionRules() {
 
   if (!isLoggedIn) {
     return (
-      <div class="data-sources-page">
+      <div class="page page--full data-sources-page">
         <p>Please log in to manage deduction rules.</p>
       </div>
     )
   }
 
   return (
-    <div class="data-sources-page">
+    <div class="page page--full data-sources-page">
       <div class="page-header">
         <h1>Deduction Rules</h1>
         <p class="page-subtitle">
@@ -152,7 +166,7 @@ export function DeductionRules() {
       ) : (
         <div class="rules-list">
           {rules.map((rule) => (
-            <RuleRow key={rule.id} rule={rule} />
+            <RuleRow key={rule.id} rule={rule} people={people} />
           ))}
         </div>
       )}

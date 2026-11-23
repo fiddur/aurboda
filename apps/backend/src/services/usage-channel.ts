@@ -49,6 +49,7 @@ export const MUTATING_MCP_TOOL_PREFIXES = [
   'reset_',
   'resnapshot_',
   'restore_',
+  'resync_',
   'run_',
   'send_',
   'set_',

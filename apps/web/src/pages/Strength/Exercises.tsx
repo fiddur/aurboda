@@ -24,7 +24,7 @@ export function StrengthExercises() {
   )
 
   return (
-    <div class="strength-page strength-page-wide">
+    <div class="page page--wide strength-page strength-page-wide">
       <h1>Strength</h1>
       <StrengthTabs />
       {isLoading && <p class="loading">Loading...</p>}

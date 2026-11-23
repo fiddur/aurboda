@@ -361,7 +361,7 @@ export function CheckIns() {
 
   if (!isLoggedIn) {
     return (
-      <div class="checkins-page">
+      <div class="page checkins-page">
         <h1>Check-ins</h1>
         <p>Please log in to see your check-ins.</p>
       </div>
@@ -376,7 +376,7 @@ export function CheckIns() {
   const closeUndo = () => route('/check-ins', true)
 
   return (
-    <div class="checkins-page">
+    <div class="page checkins-page">
       <div class="checkins-header">
         <h1>Check-ins</h1>
         <a class="btn-primary" href="/check-ins/new">

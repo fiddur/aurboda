@@ -12,22 +12,25 @@ import { fetchCorrelationSelectors } from '../../state/api'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { ActivityTypePicker } from '../ActivityTypePicker'
 import { MetricPicker } from '../MetricPicker'
+import { editConfigValues } from './configValues'
 import { offeredWidgetTypes } from './periodWidgets'
 import { RecentActivitiesConfigForm } from './RecentActivitiesConfigForm'
 import { blankRequiredFields } from './requiredConfig'
 import { DAY_OVERVIEW_VISITOR_WARNING, VisibleToVisitorsField } from './VisibleToVisitorsField'
 import './style.css'
 
-interface DashboardEditorProps {
+type DashboardEditorProps = {
   sectionId: string
   sectionType: SectionType
-  onAddWidget: (widget: DashboardWidget) => void
   onClose: () => void
   /** A period dashboard: hide the widgets that have no meaning for a past period. */
   periodMode?: boolean
   /** A dashboard other than the home one, which visitors may see once it is published. */
   sharedBoard?: boolean
-}
+} & (
+  | { onAddWidget: (widget: DashboardWidget) => void; onSaveWidget?: never; widget?: never }
+  | { onAddWidget?: never; onSaveWidget: (widget: DashboardWidget) => void; widget: DashboardWidget }
+)
 
 const metricCardUnits: Record<string, string> = {
   body_fat: '%',
@@ -47,6 +50,8 @@ interface WidgetTemplate {
   description: string
   defaultConfig: () => DashboardWidget['config']
   allowedSections: SectionType[]
+  /** Charts are edited on the Chart page. */
+  hasSettings?: false
 }
 
 const widgetTemplates: WidgetTemplate[] = [
@@ -152,6 +157,7 @@ const widgetTemplates: WidgetTemplate[] = [
       source_type: 'activity_type',
     }),
     description: 'Bucketed bar chart for activity types, metrics, or categories',
+    hasSettings: false,
     label: 'Bar Chart',
     type: 'bar_chart',
   },
@@ -179,6 +185,7 @@ const widgetTemplates: WidgetTemplate[] = [
       lookback_days: 90,
     }),
     description: 'Bars and trend lines over one time axis',
+    hasSettings: false,
     label: 'Combined Chart',
     type: 'combined_chart',
   },
@@ -224,6 +231,17 @@ const widgetTemplates: WidgetTemplate[] = [
     type: 'quick_link',
   },
 ]
+
+const templateOf = (type: DashboardWidget['type']) => widgetTemplates.find((t) => t.type === type)
+
+export const widgetHasSettings = (type: DashboardWidget['type'], periodMode: boolean): boolean => {
+  const template = templateOf(type)
+  return (
+    template !== undefined &&
+    template.hasSettings !== false &&
+    offeredWidgetTypes([template], periodMode).length > 0
+  )
+}
 
 const linkOptions = [
   { icon: 'timeline', label: 'Timeline', value: '/timeline' },
@@ -299,12 +317,21 @@ const OptionalTextField = ({
 export function DashboardEditor({
   sectionType,
   onAddWidget,
+  onSaveWidget,
   onClose,
   periodMode = false,
   sharedBoard = false,
+  widget: existingWidget,
 }: DashboardEditorProps) {
-  const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(null)
-  const [configValues, setConfigValues] = useState<Record<string, unknown>>({})
+  const [selectedTemplate, setSelectedTemplate] = useState<WidgetTemplate | null>(
+    () => (existingWidget && templateOf(existingWidget.type)) ?? null,
+  )
+  const [configValues, setConfigValues] = useState<Record<string, unknown>>(() => {
+    const template = existingWidget && templateOf(existingWidget.type)
+    return template
+      ? editConfigValues(template.defaultConfig() as Record<string, unknown>, existingWidget.config)
+      : {}
+  })
 
   const availableTemplates = offeredWidgetTypes(
     widgetTemplates.filter((t) => t.allowedSections.includes(sectionType)),
@@ -318,16 +345,17 @@ export function DashboardEditor({
 
   const blankFields = selectedTemplate ? blankRequiredFields(selectedTemplate.type, configValues) : []
 
-  const handleAddWidget = () => {
+  const handleSubmit = () => {
     if (!selectedTemplate || blankFields.length > 0) return
 
-    const widget: DashboardWidget = {
+    const widget = {
       config: configValues,
-      id: generateWidgetId(),
+      id: existingWidget?.id ?? generateWidgetId(),
       type: selectedTemplate.type,
     } as DashboardWidget
 
-    onAddWidget(widget)
+    if (existingWidget) onSaveWidget(widget)
+    else onAddWidget(widget)
   }
 
   const updateConfig = (key: string, value: unknown) => {
@@ -858,7 +886,13 @@ export function DashboardEditor({
     <div class="dashboard-editor-overlay" onClick={onClose}>
       <div class="dashboard-editor-modal" onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
-          <h3>{selectedTemplate ? `Configure ${selectedTemplate.label}` : 'Add Widget'}</h3>
+          <h3>
+            {existingWidget && selectedTemplate
+              ? `Edit ${selectedTemplate.label}`
+              : selectedTemplate
+                ? `Configure ${selectedTemplate.label}`
+                : 'Add Widget'}
+          </h3>
           <button class="close-btn" onClick={onClose}>
             <svg
               width="20"
@@ -889,19 +923,21 @@ export function DashboardEditor({
             </div>
           ) : (
             <div class="widget-config">
-              <button class="back-btn" onClick={() => setSelectedTemplate(null)}>
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M19 12H5M12 19l-7-7 7-7" />
-                </svg>
-                Back to widgets
-              </button>
+              {!existingWidget && (
+                <button class="back-btn" onClick={() => setSelectedTemplate(null)}>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  </svg>
+                  Back to widgets
+                </button>
+              )}
               {renderConfigForm()}
             </div>
           )}
@@ -914,11 +950,11 @@ export function DashboardEditor({
             </button>
             <button
               class="btn-primary"
-              onClick={handleAddWidget}
+              onClick={handleSubmit}
               disabled={blankFields.length > 0}
               title={blankFields.length > 0 ? `Fill in: ${blankFields.join(', ')}` : undefined}
             >
-              Add Widget
+              {existingWidget ? 'Save' : 'Add Widget'}
             </button>
           </div>
         )}

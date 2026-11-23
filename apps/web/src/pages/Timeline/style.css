@@ -13,13 +13,13 @@
   position: fixed;
   inset: 0;
   z-index: 400;
-  background: var(--bg, #fff);
+  background: var(--bg, var(--white));
   padding: 0.5rem 0.75rem 0;
 }
 
 @media (prefers-color-scheme: dark) {
   .timeline-fullscreen {
-    background: #1a1a1a;
+    background: var(--neutral-l10);
   }
 }
 
@@ -30,9 +30,9 @@
   gap: 0.5rem;
   margin-bottom: 0.375rem;
   padding: 0.375rem 0.5rem;
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   flex-shrink: 0;
 }
 
@@ -46,13 +46,13 @@
 .timeline-orientation-toggle .nav-btn,
 .timeline-controls .timeline-refresh-btn {
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  color: #374151;
+  color: var(--gray-700);
   transition:
     background 0.15s,
     border-color 0.15s;
@@ -64,14 +64,14 @@
 .timeline-nav .nav-btn:hover,
 .timeline-orientation-toggle .nav-btn:hover,
 .timeline-controls .timeline-refresh-btn:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
+  background: var(--gray-200);
+  border-color: var(--gray-400);
 }
 
 .timeline-nav .nav-btn:active,
 .timeline-orientation-toggle .nav-btn:active,
 .timeline-controls .timeline-refresh-btn:active {
-  background: #d1d5db;
+  background: var(--gray-300);
 }
 
 .timeline-nav .nav-today {
@@ -114,7 +114,7 @@
 
 .timeline-range-presets {
   display: inline-flex;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -122,13 +122,13 @@
 .timeline-range-presets .timeline-range-preset {
   background: transparent;
   border: none;
-  border-left: 1px solid #d1d5db;
+  border-left: 1px solid var(--gray-300);
   padding: 0.25rem 0.625rem;
   font: inherit;
   font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.4;
-  color: #374151;
+  color: var(--gray-700);
   cursor: pointer;
 }
 
@@ -137,12 +137,12 @@
 }
 
 .timeline-range-presets .timeline-range-preset:hover {
-  background: #e5e7eb;
+  background: var(--gray-200);
 }
 
 .timeline-range-presets .timeline-range-preset.active {
-  background: #374151;
-  color: #fff;
+  background: var(--gray-700);
+  color: var(--white);
 }
 
 .timeline-legend .legend-daily-item {
@@ -158,7 +158,7 @@
 
 .timeline-date-label {
   font-size: 0.875rem;
-  color: #374151;
+  color: var(--gray-700);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -197,19 +197,19 @@
 
 .timeline-legend-toggle {
   background: none;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--gray-300);
   border-radius: 4px;
   padding: 0.2rem 0.5rem;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--gray-500);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .timeline-legend-toggle:hover {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--color-surface-sunken);
+  color: var(--gray-700);
 }
 
 .timeline-legend {
@@ -217,9 +217,9 @@
   flex-wrap: wrap;
   gap: 0.375rem;
   padding: 0.375rem 0.5rem;
-  background: #f9fafb;
+  background: var(--gray-50);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--gray-200);
   font-size: 0.8rem;
   flex: 1;
 }
@@ -242,7 +242,7 @@
 }
 
 .timeline-legend .legend-item:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--black-a5);
 }
 
 .timeline-legend .legend-item-hidden {
@@ -260,7 +260,7 @@
 .timeline-legend .legend-separator {
   width: 1px;
   height: 18px;
-  background: #d1d5db;
+  background: var(--color-surface-strong-2);
   margin: 0 0.125rem;
   flex-shrink: 0;
   align-self: center;
@@ -294,18 +294,18 @@
 .timeline-overlap-warnings {
   margin-bottom: 0.375rem;
   padding: 0.375rem 0.75rem;
-  background: #fefce8;
-  border: 1px solid #fbbf24;
+  background: var(--yellow-50);
+  border: 1px solid var(--amber-400);
   border-radius: 8px;
   font-size: 0.8rem;
-  color: #92400e;
+  color: var(--amber-800);
   flex-shrink: 0;
 }
 
 .timeline-overlap-warnings summary {
   cursor: pointer;
   font-weight: 600;
-  color: #b45309;
+  color: var(--color-warning-text-2);
 }
 
 .timeline-overlap-warnings summary::before {
@@ -341,7 +341,7 @@
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary, var(--neutral-l53));
   pointer-events: none;
 }
 
@@ -357,12 +357,12 @@
   display: flex;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.125rem;
   padding: 0 0 0.25rem 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--gray-200);
   flex-shrink: 0;
 }
 
@@ -378,8 +378,8 @@
 .timeline-tooltip {
   position: absolute;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
+  background: var(--black-a90);
+  color: var(--white);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   font-size: 0.78rem;
@@ -387,7 +387,7 @@
   max-width: 300px;
   z-index: 1000;
   white-space: pre-line;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px var(--black-a20);
 }
 
 .timeline-tooltip .tooltip-title {
@@ -396,17 +396,17 @@
 }
 
 .timeline-tooltip .tooltip-time {
-  color: #9ca3af;
+  color: var(--gray-400);
   font-size: 0.72rem;
 }
 
 .timeline-tooltip .tooltip-detail {
-  color: #d1d5db;
+  color: var(--gray-300);
   margin-top: 0.2rem;
 }
 
 .timeline-tooltip .tooltip-music {
-  color: #ec4899;
+  color: var(--pink-500);
   margin-top: 0.3rem;
   font-style: italic;
 }
@@ -414,7 +414,7 @@
 .timeline-tooltip .tooltip-tracks {
   max-height: 200px;
   overflow-y: auto;
-  color: #ec4899;
+  color: var(--pink-500);
   font-style: italic;
   margin-top: 0.3rem;
   font-size: 0.72rem;
@@ -436,7 +436,7 @@
 
 .timeline-help {
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--gray-400);
   margin: 0.25rem 0 0;
   text-align: center;
   flex-shrink: 0;
@@ -446,98 +446,88 @@
 .timeline-view .error {
   text-align: center;
   padding: 2rem;
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .timeline-view .error {
-  color: #dc2626;
+  color: var(--red-600);
 }
 
 @media (prefers-color-scheme: dark) {
   .timeline-controls {
-    background: #1f2937;
-    border-color: #374151;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .timeline-nav .nav-btn,
   .timeline-orientation-toggle .nav-btn,
   .timeline-controls .timeline-refresh-btn {
-    color: #d1d5db;
-    border-color: #4b5563;
+    color: var(--gray-300);
+    border-color: var(--gray-600);
   }
 
   .timeline-nav .nav-btn:hover,
   .timeline-orientation-toggle .nav-btn:hover,
   .timeline-controls .timeline-refresh-btn:hover {
-    background: #374151;
-    border-color: #6b7280;
+    background: var(--gray-700);
+    border-color: var(--gray-500);
   }
 
   .timeline-nav .nav-btn:active,
   .timeline-orientation-toggle .nav-btn:active,
   .timeline-controls .timeline-refresh-btn:active {
-    background: #4b5563;
+    background: var(--gray-600);
   }
 
   .timeline-date-label {
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .timeline-range-presets,
   .timeline-range-presets .timeline-range-preset {
-    border-color: #4b5563;
-    color: #d1d5db;
+    border-color: var(--gray-600);
+    color: var(--gray-300);
   }
 
   .timeline-range-presets .timeline-range-preset:hover {
-    background: #374151;
+    background: var(--gray-700);
   }
 
   .timeline-range-presets .timeline-range-preset.active {
-    background: #d1d5db;
-    color: #111827;
+    background: var(--gray-300);
+    color: var(--gray-900);
   }
 
   .timeline-legend-toggle {
-    border-color: #4b5563;
-    color: #9ca3af;
+    border-color: var(--gray-600);
+    color: var(--gray-400);
   }
 
   .timeline-legend-toggle:hover {
-    background: #374151;
-    color: #d1d5db;
+    color: var(--gray-300);
   }
 
   .timeline-legend {
-    background: #1f2937;
-    border-color: #374151;
+    background: var(--gray-800);
+    border-color: var(--gray-700);
   }
 
   .timeline-legend .legend-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .timeline-legend .legend-separator {
-    background: #4b5563;
+    background: var(--white-a8);
   }
 
   .timeline-column-headers {
-    color: #9ca3af;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .timeline-tooltip {
-    background: rgba(17, 24, 39, 0.95);
+    background: var(--gray-900-a95);
   }
 
   .timeline-overlap-warnings {
-    background: #422006;
-    border-color: #b45309;
-    color: #fde68a;
-  }
-
-  .timeline-overlap-warnings summary {
-    color: #fbbf24;
+    background: var(--yellow-950);
+    border-color: var(--amber-700);
+    color: var(--amber-200);
   }
 
   /* Music staff: boost visibility of all elements on dark backgrounds */

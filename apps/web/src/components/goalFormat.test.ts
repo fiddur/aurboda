@@ -2,7 +2,7 @@ import type { GoalProgress } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
-import { goalFormat, goalLabel, goalValueFormat } from './goalFormat'
+import { goalFormat, goalLabel, goalValueFormat, isGoalKeptAtZero } from './goalFormat'
 
 const THIN = '\u2009'
 const ID = 'a0000001-0000-4000-8000-000000000001'
@@ -184,5 +184,18 @@ describe('goalValueFormat', () => {
         window: '30d',
       })(90),
     ).toBe('1:30')
+  })
+})
+
+describe('isGoalKeptAtZero', () => {
+  test('a max goal at 0 is kept, with no minimum or a minimum of 0', () => {
+    expect(isGoalKeptAtZero({ current: 0, max: 2 })).toBe(true)
+    expect(isGoalKeptAtZero({ current: 0, max: 2, min: 0 })).toBe(true)
+  })
+
+  test('a value above 0, a minimum above 0 or no maximum is not', () => {
+    expect(isGoalKeptAtZero({ current: 1, max: 2 })).toBe(false)
+    expect(isGoalKeptAtZero({ current: 0, max: 2, min: 1 })).toBe(false)
+    expect(isGoalKeptAtZero({ current: 0, min: 1 })).toBe(false)
   })
 })

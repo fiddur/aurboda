@@ -903,9 +903,14 @@ describe('Time Series Integration Tests', () => {
         { metric: 'weight', source: 'aurboda', time: new Date('2024-01-17T08:00:00Z'), value: 75.1 },
       ])
 
-      const count = await deleteTimeSeriesMetric(user, 'weight')
+      const deleted = await deleteTimeSeriesMetric(user, 'weight')
 
-      expect(count).toBe(3)
+      expect(deleted).toHaveLength(3)
+      expect(deleted.map(({ time }) => time.toISOString()).sort()).toEqual([
+        '2024-01-15T08:00:00.000Z',
+        '2024-01-16T08:00:00.000Z',
+        '2024-01-17T08:00:00.000Z',
+      ])
 
       const data = await getTimeSeries(
         user,
@@ -925,9 +930,9 @@ describe('Time Series Integration Tests', () => {
         { metric: 'weight', source: 'aurboda', time: new Date('2024-01-16T08:00:00Z'), value: 75.3 },
       ])
 
-      const count = await deleteTimeSeriesMetric(user, 'weight')
+      const deleted = await deleteTimeSeriesMetric(user, 'weight')
 
-      expect(count).toBe(2)
+      expect(deleted.map(({ source }) => source).sort()).toEqual(['aurboda', 'manual'])
 
       const data = await getTimeSeries(
         user,
@@ -942,9 +947,7 @@ describe('Time Series Integration Tests', () => {
     test('returns 0 when no user-created data exists', async () => {
       const user = getTestUser()
 
-      const count = await deleteTimeSeriesMetric(user, 'weight')
-
-      expect(count).toBe(0)
+      expect(await deleteTimeSeriesMetric(user, 'weight')).toEqual([])
     })
   })
 

@@ -1,6 +1,7 @@
 import type { GoalProgress } from '../state/api'
 
-import { goalFormat } from './goalFormat'
+import { goalFormat, isGoalKeptAtZero } from './goalFormat'
+import './GoalProgressBar.css'
 
 interface GoalProgressBarProps {
   goal: GoalProgress
@@ -8,11 +9,19 @@ interface GoalProgressBarProps {
   compact?: boolean
 }
 
+const GoalValue = ({ kept, text }: { kept: boolean; text: string }) =>
+  kept ? (
+    <span class="goal-value kept" title="Goal kept" aria-label={`Goal kept: ${text}`}>
+      ★ {text}
+    </span>
+  ) : (
+    <span class="goal-value">{text}</span>
+  )
+
 export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarProps) {
   const { current, max, min } = goal
 
   const { format, label, losingTomorrow, windowLabel } = goalFormat(goal)
-  const valueText = format(current)
   const losingText = compact ? '' : losingTomorrow
 
   const target = max ?? min ?? 1
@@ -42,7 +51,7 @@ export function GoalProgressBar({ goal, showWindow, compact }: GoalProgressBarPr
           {showWindow && <span class="goal-window"> ({windowLabel})</span>}
         </span>
         {losingText && <span class="losing-tomorrow">({losingText} tomorrow)</span>}
-        <span class="goal-value">{valueText}</span>
+        <GoalValue kept={isGoalKeptAtZero(goal)} text={format(current)} />
       </div>
 
       <div class="progress-container">

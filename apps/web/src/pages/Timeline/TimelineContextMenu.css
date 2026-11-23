@@ -6,9 +6,9 @@
   min-width: 11rem;
   padding: 0.25rem;
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--gray-200);
+  background: var(--color-surface-raised);
+  box-shadow: 0 6px 18px var(--black-a22);
   display: flex;
   flex-direction: column;
 }
@@ -16,8 +16,8 @@
 .timeline-context-menu-time {
   padding: 0.25rem 0.5rem 0.35rem;
   font-size: 0.7rem;
-  color: #9ca3af;
-  border-bottom: 1px solid #f3f4f6;
+  color: var(--gray-400);
+  border-bottom: 1px solid var(--gray-100);
   margin-bottom: 0.25rem;
 }
 
@@ -38,11 +38,10 @@
 
 @media (prefers-color-scheme: dark) {
   .timeline-context-menu {
-    background: #1f2937;
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 
   .timeline-context-menu-time {
-    border-color: #374151;
+    border-color: var(--gray-700);
   }
 }

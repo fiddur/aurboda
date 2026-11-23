@@ -6,7 +6,7 @@
 }
 
 .public-dashboard .public-attribution {
-  color: #6b7280;
+  color: var(--color-text-muted-2);
   text-decoration: none;
   font-size: 0.95rem;
   display: inline-flex;
@@ -19,7 +19,7 @@
   height: 28px;
   border-radius: 50%;
   object-fit: cover;
-  background: #0001;
+  background: var(--black-a6p7);
 }
 
 .public-dashboard .public-attribution:hover {
@@ -27,11 +27,11 @@
 }
 
 .public-dashboard .public-muted {
-  color: #6b7280;
+  color: var(--gray-500);
 }
 
 .public-dashboard .public-loading {
-  color: #6b7280;
+  color: var(--gray-500);
   padding: 2rem 0;
 }
 
@@ -43,11 +43,7 @@
 @media (prefers-color-scheme: dark) {
   .public-dashboard .public-muted,
   .public-dashboard .public-loading {
-    color: #9ca3af;
-  }
-
-  .public-dashboard .public-attribution {
-    color: #9ca3af;
+    color: var(--gray-400);
   }
 }
 

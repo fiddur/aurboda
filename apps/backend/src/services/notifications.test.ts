@@ -145,6 +145,32 @@ describe('createNotifier().raise', () => {
   })
 })
 
+describe('createNotifier().raise with a type split off from another', () => {
+  const reply = { title: 'A reply', type: 'challenge_reply' } as const
+
+  test("follows the older type's switches while the new type has none of its own", async () => {
+    const asked: string[] = []
+    const { deps, inserts } = fakeDeps({
+      getPreference: async (_user, type) => {
+        asked.push(type)
+        return type === 'challenge_comment' ? { in_app: false, push: false } : null
+      },
+    })
+    expect(await createNotifier(deps).raise('alice', reply)).toBeNull()
+    expect(asked).toEqual(['challenge_reply', 'challenge_comment'])
+    expect(inserts).toEqual([])
+  })
+
+  test("uses the new type's own switches once set, whatever the older type says", async () => {
+    const { deps, inserts } = fakeDeps({
+      getPreference: async (_user, type) =>
+        type === 'challenge_reply' ? { in_app: true, push: false } : { in_app: false, push: false },
+    })
+    await createNotifier(deps).raise('alice', reply)
+    expect(inserts).toMatchObject([{ in_app: true, push: false }])
+  })
+})
+
 describe('createNotifier().raiseBestEffort', () => {
   test('logs and swallows every error', async () => {
     const { deps, errors } = fakeDeps({
@@ -522,6 +548,7 @@ describe('listNotificationTypeSettings', () => {
       'feed_boost',
       'feed_post',
       'challenge_comment',
+      'challenge_reply',
       'autoshare_pending',
       'garmin_key_expiring',
       'reminder',
@@ -556,6 +583,24 @@ describe('listNotificationTypeSettings', () => {
       group: 'reminders',
       label: 'Important dates',
     })
+  })
+})
+
+describe('listNotificationTypeSettings for a type split off from another', () => {
+  const replyOf = (preferences: Parameters<typeof listNotificationTypeSettings>[1]) =>
+    listNotificationTypeSettings(false, preferences).find((setting) => setting.type === 'challenge_reply')
+
+  test("shows the older type's switches until the new type has its own", () => {
+    expect(replyOf([{ in_app: false, push: true, type: 'challenge_comment' }])).toMatchObject({
+      in_app: false,
+      push: true,
+    })
+    expect(
+      replyOf([
+        { in_app: false, push: false, type: 'challenge_comment' },
+        { in_app: true, push: true, type: 'challenge_reply' },
+      ]),
+    ).toMatchObject({ in_app: true, push: true })
   })
 })
 

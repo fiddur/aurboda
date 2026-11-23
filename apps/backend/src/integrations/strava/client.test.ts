@@ -277,6 +277,71 @@ describe('stravaClient OAuth state', () => {
     expect(audited).not.toContain('the-code')
     expect(audited).not.toContain('client-secret')
   })
+
+  const deauthorizeCall = [
+    'https://www.strava.com/oauth/deauthorize',
+    undefined,
+    { params: { access_token: 'access' } },
+  ]
+
+  test('complete deauthorizes the grant at Strava when the token write fails', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    vi.mocked(upsertOAuthToken).mockRejectedValueOnce(new Error('connection reset'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...deauthorizeCall)
+    expect(upsertOAuthToken).toHaveBeenCalledTimes(1)
+    expect(onUserAuthenticated).not.toHaveBeenCalled()
+    expect(auditWarn.mock.calls.map((call) => call[2])).toEqual([
+      'Strava OAuth connection failed',
+      'Strava grant revoked after the connection failed',
+    ])
+  })
+
+  test('complete deauthorizes the grant and clears the stored token when the athlete mapping fails', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    onUserAuthenticated.mockRejectedValueOnce(new Error('mapping write failed'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...deauthorizeCall)
+    expect(upsertOAuthToken).toHaveBeenLastCalledWith('alice', { access_token: '', provider: 'strava' })
+  })
+
+  test('complete still answers auth_failed and audits when the deauthorize fails too', async () => {
+    vi.mocked(schemaInitialized).mockResolvedValue(true)
+    vi.mocked(upsertOAuthToken).mockRejectedValueOnce(new Error('connection reset'))
+    mockedAxios.post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          access_token: 'access',
+          athlete: { id: 4242 },
+          expires_at: 1_795_000_000,
+          refresh_token: 'r',
+        },
+      })
+      .mockRejectedValueOnce(new Error('503 from deauthorize?access_token=access'))
+
+    expect(await authClient.complete('alice', 'the-code', stateFor('alice'))).toEqual({
+      ok: false,
+      reason: 'auth_failed',
+    })
+
+    expect(mockedAxios.post).toHaveBeenLastCalledWith(...deauthorizeCall)
+    expect(auditWarn.mock.calls.map((call) => call[2])).toEqual([
+      'Strava OAuth connection failed',
+      'Strava grant could not be revoked after the connection failed',
+    ])
+    expect(JSON.stringify(auditWarn.mock.calls)).not.toContain('access_token=access')
+  })
 })
 
 describe('stravaResponseTransform', () => {
