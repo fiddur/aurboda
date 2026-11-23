@@ -92,6 +92,10 @@ const menuStyle = (placement: MentionPlacement | null): JSX.CSSProperties =>
       }
     : { visibility: 'hidden' }
 
+/** While a new person is being saved after the `@query` has gone, only that item stays: no one else can be picked then. */
+const menuItems = (items: MentionItem<Person>[], typing: boolean): MentionItem<Person>[] =>
+  typing ? items : items.filter((item) => item.kind === 'new')
+
 /**
  * The entry's text, where typing `@` offers the user's people, and adding the typed name as a new
  * one: arrow keys and Enter (or a tap) pick, Esc closes. Picking writes the name in place of the
@@ -131,7 +135,10 @@ export const MentionEditor = ({
   const typed = caret === undefined ? null : mentionAt(value, caret)
   const mention = typed && typed.start !== dismissed ? typed : null
   const shownMention = mention ?? (addNew.isPending ? creating : null)
-  const items = shownMention && peopleQuery.data ? mentionItems(people, allPeople, shownMention.query) : []
+  const items = menuItems(
+    shownMention && peopleQuery.data ? mentionItems(people, allPeople, shownMention.query) : [],
+    mention !== null,
+  )
   const open = shownMention !== null && items.length > 0
 
   const readCaret = () => setCaret(textareaRef.current?.selectionStart ?? undefined)
