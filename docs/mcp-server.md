@@ -348,9 +348,15 @@ The MCP server supports two authentication methods:
 
 ### OAuth 2.1 (for Claude.ai Custom Connectors)
 
-The server implements OAuth 2.1 with PKCE (S256) for clients that support it, such as Claude.ai custom connectors.
+The server implements OAuth 2.1 with PKCE (S256) for clients that support it, such as Claude.ai custom connectors and Gemini.
 
-**Discovery:** `GET /.well-known/oauth-authorization-server` returns the authorization server metadata.
+**Discovery** follows the MCP authorization spec:
+
+1. An unauthenticated `POST /mcp` answers `401` with `WWW-Authenticate: Bearer resource_metadata="<host>/.well-known/oauth-protected-resource/mcp"`.
+2. `GET /.well-known/oauth-protected-resource` (and `/mcp` under it) returns the protected resource metadata (RFC 9728), naming the host as the authorization server.
+3. `GET /.well-known/oauth-authorization-server` returns the authorization server metadata (RFC 8414). Clients that predate step 2 go straight here.
+
+Clients register dynamically as public clients: `/register` always answers `token_endpoint_auth_method: none` and issues no client secret, whatever method the client asks for.
 
 **OAuth endpoints:**
 
@@ -368,7 +374,7 @@ The server implements OAuth 2.1 with PKCE (S256) for clients that support it, su
 **Connecting Claude.ai:**
 
 1. In Claude.ai, add a custom connector with the MCP URL: `https://aurboda.net/mcp`
-2. Claude.ai will auto-discover the OAuth endpoints via `/.well-known/oauth-authorization-server`
+2. Claude.ai will auto-discover the OAuth endpoints (see Discovery above)
 3. On first use, you will be redirected to sign in with your Aurboda credentials
 4. Claude.ai handles token refresh automatically
 

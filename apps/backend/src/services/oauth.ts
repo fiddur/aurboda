@@ -13,7 +13,6 @@ export interface OAuthDeps {
 export interface RegisterClientInput {
   client_name: string
   redirect_uris: string[]
-  token_endpoint_auth_method?: string
 }
 
 export interface RegisterClientResult {
@@ -73,7 +72,9 @@ export const registerClient = async (
   input: RegisterClientInput,
 ): Promise<RegisterClientResult> => {
   const clientId = generateClientId()
-  const authMethod = input.token_endpoint_auth_method ?? 'none'
+  // Public clients only: no client secret is ever issued, so echoing a
+  // requested secret-based method would leave the client unable to use /token.
+  const authMethod = 'none'
 
   await deps.centralDb.createOAuthClient({
     client_id: clientId,

@@ -79,3 +79,32 @@ test('guesses sent together past the free failures do not all reach the password
   expect((await first).text).toContain('Invalid username or password')
   expect(calls).toBe(RATE_LIMITS.failed_logins_by_username.free_failures + 1)
 })
+
+const discoveryApp = () =>
+  express().use(
+    createOAuthRouter({
+      centralDb: {} as never,
+      failedLogins: {} as never,
+      loginToUserDb: async () => undefined,
+      webHost: 'https://aurboda.test',
+    }),
+  )
+
+test.each(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'])(
+  '%s points MCP clients at the authorization server',
+  async (path) => {
+    const res = await supertest(discoveryApp()).get(path)
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({
+      resource: 'https://aurboda.test/mcp',
+      authorization_servers: ['https://aurboda.test'],
+      bearer_methods_supported: ['header'],
+    })
+  },
+)
+
+test('the authorization server metadata names the issuer the protected resource points at', async () => {
+  const res = await supertest(discoveryApp()).get('/.well-known/oauth-authorization-server')
+  expect(res.body.issuer).toBe('https://aurboda.test')
+  expect(res.body.registration_endpoint).toBe('https://aurboda.test/register')
+})

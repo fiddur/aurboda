@@ -66,6 +66,17 @@ describe('oauth service', () => {
     })
   })
 
+  test('registers a public client even when a secret-based auth method is requested', async () => {
+    const result = await registerClient(deps, {
+      client_name: 'Test Client',
+      redirect_uris: ['https://example.com/callback'],
+      token_endpoint_auth_method: 'client_secret_post',
+    } as Parameters<typeof registerClient>[1])
+
+    expect(result.token_endpoint_auth_method).toBe('none')
+    expect(result).not.toHaveProperty('client_secret')
+  })
+
   describe('createAuthorizationCode', () => {
     test('generates code for valid client and redirect_uri', async () => {
       const client: OAuthClient = {
