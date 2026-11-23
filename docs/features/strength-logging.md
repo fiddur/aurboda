@@ -12,7 +12,7 @@ The Strength page has four tabs, each at its own address, under the heading **St
 | Tab       | Address               | What it shows                                                                                          |
 | --------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
 | Muscles   | `/strength`           | The score card, a status line and one list of every muscle group: recovery, sets and score (see below) |
-| Workouts  | `/strength/workouts`  | Start: an unfinished session, start now, log a past session, planned workouts, repeat a session        |
+| Workouts  | `/strength/workouts`  | Start: an unfinished session, planned and saved workouts, a session without a plan, recent sessions    |
 | Progress  | `/strength/progress`  | The [strength score](strength-score.md) of `sets.exercise`: cards and the score over time              |
 | Exercises | `/strength/exercises` | "Your exercises": every exercise done, with a search field, sortable, over 90 days to all time         |
 
@@ -24,6 +24,9 @@ and plan pages below have no tab bar.
 
 ### The Muscles tab
 
+- **Planned today**: above the score card, one card per open plan for today (local day) with its
+  name, one line "{summary}. {readiness line}." (see [the Workouts tab](#the-workouts-tab)) and a
+  **Start** button to the live session. Not shown while a session is unfinished.
 - **Score card**, a link to Progress: the [strength score](strength-score.md), its change over 30
   days, a sparkline of the year and the strongest and weakest group. Without sex or a bodyweight it
   is the notice saying what to add; with no score at all it says "No strength score yet".
@@ -45,6 +48,29 @@ and plan pages below have no tab bar.
 - A line under the list counts the sets of exercises not matched to the catalogue, with a link to
   match them.
 
+### The Workouts tab
+
+Top to bottom: the unfinished session card, if any, then the [planned and saved
+workouts](strength-plans.md#in-the-web-app), then the sessions without a plan, then **Recent
+sessions** and a link to all strength sessions. Every Start and Repeat asks to finish an unfinished
+session first.
+
+- **With an open plan**: "Planned" lists the plans with a day, "Saved workouts" the plans without
+  one (each with "Last done …" or "Not done yet"), and "Without a plan" offers **Start an empty
+  session** and **Log a past session**. A plan card shows its name and day, the summary ("5
+  exercises · 15 sets"), the exercise names, the readiness line, the note, and **Start** and
+  **Edit**; Start is the primary button only for a plan whose day is today or has passed.
+- **Without one**: **Start an empty session** (primary) and **Log a past session** come first,
+  then "Planned and saved workouts" says nothing is planned or saved yet, with a "Plan a workout"
+  link.
+- **The readiness line** says whether the muscle groups the plan mainly works (its
+  `muscle_groups`) are ready, from [muscle recovery](muscle-recovery.md): "Chest, shoulders and
+  triceps are ready", or "Still recovering: triceps (20 h), chest (5 h)" with only the groups below
+  the ready percent, most hours first. No line when the plan's exercises match no catalogue entry.
+- **Recent sessions**: the latest five finished sessions with sets of the last 90 days, each with
+  **Save as a workout** (to `/strength/plan/new?from=<id>`) and **Repeat**. A session started from
+  a saved workout that is still open shows "Saved as {name}" instead of Save as a workout.
+
 | Page                   | What it is                                                                        |
 | ---------------------- | --------------------------------------------------------------------------------- |
 | `/strength/live`       | A live session that has no logged set yet (nothing is saved)                      |
@@ -63,7 +89,8 @@ They also feed [muscle recovery](muscle-recovery.md): per muscle group how far t
 the working sets of the last days has worn off.
 
 A workout can also be planned ahead: [strength plans](strength-plans.md) are named lists of
-planned sets, for a day or as a routine, which the user or an assistant over MCP writes.
+planned sets, for a day or as a saved workout without one, which the user or an assistant over MCP
+writes.
 
 ## Exercise blocks
 
@@ -146,5 +173,5 @@ a synced session's sets are changed with the generic edit form.
 
 - One live draft per device; two devices editing one live session at once is last write wins.
 - Weights are in kg.
-- Supersets are shown, not created; there are no saved routines or programmes, and the rest default
+- Supersets are shown, not created; there are no programmes, and the rest default
   is per device, not a user setting.

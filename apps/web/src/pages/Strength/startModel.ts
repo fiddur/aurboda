@@ -22,6 +22,7 @@ export interface RepeatCandidate {
   start_time: Date
   minutes?: number
   names: string[]
+  plan_id?: string
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -57,7 +58,16 @@ export const repeatCandidates = (activities: StrengthActivity[], excludeId?: str
       const sets = setsOfData(a.data)
       if (!a.id || a.id === excludeId || !a.end_time || isInProgress(a.data) || sets.length === 0) return []
       const minutes = differenceInMinutes(a.end_time, a.start_time)
-      return [{ id: a.id, minutes, names: exerciseNames(sets), start_time: a.start_time }]
+      const planId = a.data?.plan_id
+      return [
+        {
+          id: a.id,
+          minutes,
+          names: exerciseNames(sets),
+          start_time: a.start_time,
+          ...(typeof planId === 'string' && planId !== '' ? { plan_id: planId } : {}),
+        },
+      ]
     })
     .slice(0, REPEAT_COUNT)
 

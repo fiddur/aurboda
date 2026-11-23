@@ -2,19 +2,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
-import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
+import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
+import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
 import { clearLiveDraft } from './draftStorage'
-import { PlannedWorkouts } from './PlannedWorkouts'
-import { invalidateStrengthQueries, liveApi, useUnfinishedSession } from './queries'
+import { NoPlans, PlannedWorkouts } from './PlannedWorkouts'
+import { invalidateStrengthQueries, liveApi, useOpenStrengthPlans, useUnfinishedSession } from './queries'
+import { RecentSessions } from './RecentSessions'
 import { finishLiveSession } from './saveQueue'
 import { type SessionDraft, sessionSummary } from './sessionModel'
-import {
-  exerciseListLabel,
-  lastSetLabel,
-  repeatCandidates,
-  sessionDateLabel,
-  startedLabel,
-} from './startModel'
+import { lastSetLabel, repeatCandidates, startedLabel } from './startModel'
 import { StrengthHeader } from './StrengthHeader'
 import './style.css'
 
@@ -58,6 +54,9 @@ export function StrengthWorkouts() {
   const [finishError, setFinishError] = useState<string | undefined>()
   const [confirmTarget, setConfirmTarget] = useState<string | undefined>()
 
+  const plans = useOpenStrengthPlans()
+  const recovery = useMuscleRecovery(STRENGTH_TYPE, SETS_PATH)
+  const openPlans = plans.data ?? []
   const candidates = repeatCandidates(sessions.data ?? [], unfinished?.id)
 
   const finish = async (): Promise<boolean> => {
@@ -114,41 +113,33 @@ export function StrengthWorkouts() {
           </div>
         </div>
       ) : (
-        <div class="strength-start-actions">
-          <button type="button" class="btn-primary strength-wide-btn" onClick={() => start('/strength/live')}>
-            Start a session now
-          </button>
-          <a class="btn-secondary strength-wide-btn" href="/strength/log">
-            Log a past session
-          </a>
-        </div>
+        openPlans.length === 0 && (
+          <div class="strength-start-actions">
+            <button
+              type="button"
+              class="btn-primary strength-wide-btn"
+              onClick={() => start('/strength/live')}
+            >
+              Start an empty session
+            </button>
+            <a class="btn-secondary strength-wide-btn" href="/strength/log">
+              Log a past session
+            </a>
+          </div>
+        )
       )}
-      <PlannedWorkouts onStart={start} />
-      <section class="strength-section">
-        <h2>Repeat a session</h2>
-        {sessions.isLoading && <p class="loading">Loading…</p>}
-        {sessions.isError && <p class="strength-error">Your recent sessions could not be loaded.</p>}
-        {!sessions.isLoading && !sessions.isError && candidates.length === 0 && (
-          <p class="strength-muted">No sessions with sets in the last 90 days.</p>
-        )}
-        <ul class="strength-repeat-list">
-          {candidates.map((c) => (
-            <li key={c.id} class="strength-card strength-repeat">
-              <div class="strength-repeat-text">
-                <a href={detailUrl(c.id)}>{sessionDateLabel(c.start_time, c.minutes)}</a>
-                <span class="strength-muted">{exerciseListLabel(c.names)}</span>
-              </div>
-              <button
-                type="button"
-                class="btn-secondary"
-                onClick={() => start(`/strength/live?repeat=${encodeURIComponent(c.id)}`)}
-              >
-                Repeat
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {openPlans.length > 0 ? (
+        <PlannedWorkouts plans={openPlans} recovery={recovery.data} onStart={start} />
+      ) : (
+        <NoPlans state={plans.isError ? 'error' : plans.data ? 'empty' : 'loading'} />
+      )}
+      <RecentSessions
+        candidates={candidates}
+        isError={sessions.isError}
+        isLoading={sessions.isLoading}
+        plans={openPlans}
+        onStart={start}
+      />
       <p>
         <a href={`/activity-type/${STRENGTH_TYPE}`}>All strength sessions</a>
       </p>

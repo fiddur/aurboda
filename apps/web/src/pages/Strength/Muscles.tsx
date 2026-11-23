@@ -1,4 +1,4 @@
-import type { StrengthScore } from '@aurboda/api-spec'
+import type { StrengthScore, StrengthScoreHistory } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
@@ -30,6 +30,8 @@ import {
   statusLine,
   unmatchedSets,
 } from './musclesModel'
+import { PlannedToday } from './PlannedWorkouts'
+import { useOpenStrengthPlans, useUnfinishedSession } from './queries'
 import { StrengthHeader } from './StrengthHeader'
 import '../../components/muscleRecovery/muscleRecovery.css'
 import '../ActivityTypeItem/style.css'
@@ -42,8 +44,7 @@ const HISTORY_DAYS = 365
 const CAPTION =
   'Recovery comes from the sets of the last 10 days. Sets count each exercise by how much it works the muscle. The score compares your best lifts of the last 90 days with a reference for your bodyweight; 100 is a solid recreational lifter.'
 
-const ScoreCard = ({ score }: { score: StrengthScore }) => {
-  const history = useStrengthScoreHistory(STRENGTH_TYPE, SETS_PATH, HISTORY_DAYS)
+const ScoreCard = ({ history, score }: { history?: StrengthScoreHistory | null; score: StrengthScore }) => {
   if (score.missing.length > 0) return <MissingNotice missing={score.missing} />
   if (score.score === null) {
     return (
@@ -53,8 +54,8 @@ const ScoreCard = ({ score }: { score: StrengthScore }) => {
       </a>
     )
   }
-  const change = scoreChange(history.data, SCORE_CHANGE_DAYS)
-  const series = scoreSeries(history.data, 'overall').map((p): [Date, number] => [new Date(p.date), p.value])
+  const change = scoreChange(history, SCORE_CHANGE_DAYS)
+  const series = scoreSeries(history, 'overall').map((p): [Date, number] => [new Date(p.date), p.value])
   const extremes = extremesLine(score)
   return (
     <a class="strength-card strength-muscles-score" href="/strength/progress">
@@ -176,6 +177,8 @@ export function StrengthMuscles() {
   const recovery = useMuscleRecovery(STRENGTH_TYPE, SETS_PATH)
   const score = useStrengthScore(STRENGTH_TYPE, SETS_PATH)
   const history = useStrengthScoreHistory(STRENGTH_TYPE, SETS_PATH, HISTORY_DAYS)
+  const plans = useOpenStrengthPlans()
+  const { unfinished } = useUnfinishedSession()
 
   const rows = useMemo(
     () =>
@@ -196,7 +199,8 @@ export function StrengthMuscles() {
   return (
     <div class="page page--wide strength-page strength-page-wide strength-page-muscles">
       <StrengthHeader />
-      {score.data && <ScoreCard score={score.data} />}
+      {!unfinished && <PlannedToday plans={plans.data} recovery={recovery.data} />}
+      {score.data && <ScoreCard history={history.data} score={score.data} />}
       {status && <p class="strength-muted">{status}</p>}
       {(groups.isLoading || chart.isLoading) && <p class="loading">Loading...</p>}
       {(groups.isError || chart.isError) && (

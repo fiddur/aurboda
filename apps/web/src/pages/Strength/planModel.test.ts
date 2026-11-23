@@ -1,4 +1,4 @@
-import type { StrengthPlan } from '@aurboda/api-spec'
+import type { MuscleRecovery, MuscleRecoveryGroup, StrengthPlan } from '@aurboda/api-spec'
 
 import { describe, expect, it } from 'vitest'
 
@@ -13,6 +13,11 @@ import {
   planFormError,
   planSetsFromBlocks,
   planSummary,
+  isPrimaryStart,
+  lastDoneLabel,
+  plansForToday,
+  readinessLine,
+  savedAsPlan,
   splitPlans,
 } from './planModel'
 
@@ -24,6 +29,7 @@ const ids = () => {
 const plan = (extra: Partial<StrengthPlan> = {}): StrengthPlan => ({
   created_at: '2026-11-10T10:00:00.000Z',
   id: 'p1',
+  muscle_groups: [],
   name: 'Push day',
   note: null,
   planned_for: null,
@@ -208,7 +214,7 @@ describe('splitPlans', () => {
     const b = plan({ id: 'b' })
     const c = plan({ id: 'c', planned_for: '2026-11-20' })
     const d = plan({ id: 'd' })
-    expect(splitPlans([a, b, c, d])).toEqual({ dated: [a, c], routines: [b, d] })
+    expect(splitPlans([a, b, c, d])).toEqual({ dated: [a, c], saved: [b, d] })
   })
 })
 
@@ -248,5 +254,114 @@ describe('planBody', () => {
       note: 'Go heavy',
       planned_for: '2026-11-19',
     })
+  })
+})
+
+describe('plansForToday and isPrimaryStart', () => {
+  const now = new Date(2026, 10, 19, 15, 0)
+
+  it('picks the plans planned for the local day', () => {
+    const today = plan({ id: 'a', planned_for: '2026-11-19' })
+    const tomorrow = plan({ id: 'b', planned_for: '2026-11-20' })
+    const saved = plan({ id: 'c' })
+    expect(plansForToday([today, tomorrow, saved], now)).toEqual([today])
+  })
+
+  it('makes the Start of a plan for today or an overdue one primary', () => {
+    expect(isPrimaryStart('2026-11-19', now)).toBe(true)
+    expect(isPrimaryStart('2026-11-12', now)).toBe(true)
+    expect(isPrimaryStart('2026-11-20', now)).toBe(false)
+    expect(isPrimaryStart(null, now)).toBe(false)
+  })
+})
+
+describe('lastDoneLabel', () => {
+  const now = new Date(2026, 10, 19, 15, 0)
+
+  it('names the newest session', () => {
+    expect(
+      lastDoneLabel(
+        [
+          { activity_id: 'x', start_time: new Date(2026, 10, 10, 8).toISOString() },
+          { activity_id: 'y', start_time: new Date(2026, 10, 17, 8).toISOString() },
+        ],
+        now,
+      ),
+    ).toBe('Last done Tue 17 Nov')
+  })
+
+  it('adds the year for another year', () => {
+    expect(
+      lastDoneLabel([{ activity_id: 'x', start_time: new Date(2025, 11, 30, 8).toISOString() }], now),
+    ).toBe('Last done Tue 30 Dec 2025')
+  })
+
+  it('says when it has not been done', () => {
+    expect(lastDoneLabel([], now)).toBe('Not done yet')
+  })
+})
+
+describe('savedAsPlan', () => {
+  const saved = plan({ id: 's', name: 'Full body' })
+  const dated = plan({ id: 'd', planned_for: '2026-11-19' })
+
+  it('finds the open saved workout a session was started from', () => {
+    expect(savedAsPlan('s', [dated, saved])).toBe(saved)
+  })
+
+  it('ignores plans with a day, unknown ids and sessions without a plan', () => {
+    expect(savedAsPlan('d', [dated, saved])).toBeUndefined()
+    expect(savedAsPlan('x', [dated, saved])).toBeUndefined()
+    expect(savedAsPlan(undefined, [dated, saved])).toBeUndefined()
+  })
+})
+
+describe('readinessLine', () => {
+  const now = new Date('2026-11-19T12:00:00Z')
+  const group = (
+    muscle_group: MuscleRecoveryGroup['muscle_group'],
+    recovery: number,
+    hoursToReady?: number,
+  ): MuscleRecoveryGroup => ({
+    fatigue: 0,
+    half_life_hours: 24,
+    muscle_group,
+    name: muscle_group,
+    ready_at:
+      hoursToReady === undefined ? null : new Date(now.getTime() + hoursToReady * 3_600_000).toISOString(),
+    recovery,
+    sources: [],
+  })
+  const recovery = (groups: MuscleRecoveryGroup[]): MuscleRecovery => ({
+    at: now.toISOString(),
+    field: 'sets.exercise',
+    groups,
+    ready_percent: 80,
+    window_days: 10,
+  })
+
+  it('gives no line without muscle groups or recovery', () => {
+    expect(readinessLine([], recovery([group('chest', 100)]), now)).toBeUndefined()
+    expect(readinessLine(['chest'], undefined, now)).toBeUndefined()
+  })
+
+  it('says every group is ready', () => {
+    const r = recovery([
+      group('chest', 100),
+      group('shoulders', 90),
+      group('triceps', 80),
+      group('lower_back', 95),
+    ])
+    expect(readinessLine(['chest', 'shoulders', 'triceps'], r, now)).toBe(
+      'Chest, shoulders and triceps are ready',
+    )
+    expect(readinessLine(['lower_back'], r, now)).toBe('Lower back is ready')
+  })
+
+  it('lists the groups still recovering, most hours first', () => {
+    const r = recovery([group('chest', 60, 5), group('shoulders', 100), group('triceps', 40, 20)])
+    expect(readinessLine(['chest', 'shoulders', 'triceps'], r, now)).toBe(
+      'Still recovering: triceps (20 h), chest (5 h)',
+    )
   })
 })

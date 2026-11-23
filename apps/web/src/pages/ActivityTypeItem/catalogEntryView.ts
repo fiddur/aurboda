@@ -1,8 +1,11 @@
-import type { DataFieldCatalog, DataSchemaDefinition, ExerciseCatalogEntry } from '@aurboda/api-spec'
+import {
+  type DataFieldCatalog,
+  type DataSchemaDefinition,
+  EXERCISE_PRIMARY_MUSCLE_WEIGHT,
+  type ExerciseCatalogEntry,
+} from '@aurboda/api-spec'
 
 import { listFields } from '../../components/sessions/sessionView'
-
-const PRIMARY_WEIGHT = 0.75
 
 export type TierMuscle = Pick<ExerciseCatalogEntry['muscles'][number], 'group' | 'name'>
 
@@ -11,8 +14,8 @@ const tierMuscle = ({ group, name }: TierMuscle): TierMuscle => ({ group, name }
 export const muscleTiers = (
   entry: ExerciseCatalogEntry,
 ): { primary: TierMuscle[]; secondary: TierMuscle[] } => ({
-  primary: entry.muscles.filter((m) => m.weight >= PRIMARY_WEIGHT).map(tierMuscle),
-  secondary: entry.muscles.filter((m) => m.weight < PRIMARY_WEIGHT).map(tierMuscle),
+  primary: entry.muscles.filter((m) => m.weight >= EXERCISE_PRIMARY_MUSCLE_WEIGHT).map(tierMuscle),
+  secondary: entry.muscles.filter((m) => m.weight < EXERCISE_PRIMARY_MUSCLE_WEIGHT).map(tierMuscle),
 })
 
 export const itemFieldCatalog = (

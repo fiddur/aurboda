@@ -15,6 +15,7 @@ import {
   fetchActivitySessions,
   fetchItemValueIdentity,
   fetchStrengthPlan,
+  fetchStrengthPlans,
   updateActivity,
 } from '../../state/api'
 import { muscleTiers } from '../ActivityTypeItem/catalogEntryView'
@@ -60,6 +61,13 @@ export const useRecentStrengthSessions = () =>
   useQuery({
     queryFn: () => fetchActivities(subDays(new Date(), REPEAT_DAYS), new Date(), [STRENGTH_TYPE]),
     queryKey: ['activities', STRENGTH_TYPE, 'strength-recent'],
+    staleTime: 60 * 1000,
+  })
+
+export const useOpenStrengthPlans = () =>
+  useQuery({
+    queryFn: () => fetchStrengthPlans(),
+    queryKey: ['strength-plans', 'open'],
     staleTime: 60 * 1000,
   })
 

@@ -475,13 +475,31 @@ button.strength-set-row:hover {
 
 .strength-repeat {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+}
+
+.strength-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.strength-section-heading h2 {
+  margin: 0;
+}
+
+.strength-plan-readiness {
+  font-size: 0.9rem;
 }
 
 .strength-repeat-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .strength-repeat-text a {
@@ -502,11 +520,6 @@ button.strength-set-row:hover {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-}
-
-.strength-plan-subheading {
-  margin: 0.5rem 0 0;
-  font-size: 1rem;
 }
 
 .strength-plan-fields label {
