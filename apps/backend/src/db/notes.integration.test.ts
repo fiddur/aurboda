@@ -17,9 +17,11 @@ import {
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getNotesWithAnyTag,
   getRepliesForRootIds,
   getUserNotesJoined,
   insertNote,
+  listNoteTags,
   type NoteFieldUpdates,
   type NotesSearchParams,
   pruneDeletedNotes,
@@ -1537,6 +1539,93 @@ describe('Notes Integration Tests', () => {
       expect(await neighbors(user, randomUUID())).toBeNull()
       expect(await neighbors(user, 'not-a-uuid')).toBeNull()
       expect(await neighbors(user, root.id)).toEqual({ next: null, previous: null })
+    })
+  })
+
+  describe('listNoteTags', () => {
+    const tagsOf = (
+      user: string,
+      entityTypes: ('time' | 'day' | 'activity')[] = ['time', 'day'],
+      tz = 'UTC',
+    ) => listNoteTags(user, { entity_types: entityTypes, tz })
+
+    test('counts each note once, explicit tag or hashtag, most used first, then by name', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'time', null, 'A #run', new Date('2024-01-15T08:00:00Z'), undefined, {
+        hashtags: ['run'],
+        tags: ['run', 'travel'],
+      })
+      await insertNote(user, 'time', null, 'B', new Date('2024-01-16T08:00:00Z'), undefined, {
+        tags: ['run'],
+      })
+      await insertNote(user, 'time', null, 'C #family', new Date('2024-01-10T08:00:00Z'), undefined, {
+        hashtags: ['family'],
+      })
+
+      expect(await tagsOf(user)).toEqual([
+        { count: 2, last_used: new Date('2024-01-16T08:00:00Z'), tag: 'run' },
+        { count: 1, last_used: new Date('2024-01-10T08:00:00Z'), tag: 'family' },
+        { count: 1, last_used: new Date('2024-01-15T08:00:00Z'), tag: 'travel' },
+      ])
+    })
+
+    test("a day entry's last use is the start of its date in tz", async () => {
+      const user = getTestUser()
+      await insertNote(user, 'day', null, 'Day', undefined, undefined, { date: '2024-01-15', tags: ['trip'] })
+
+      expect(await tagsOf(user)).toEqual([
+        { count: 1, last_used: new Date('2024-01-15T00:00:00Z'), tag: 'trip' },
+      ])
+      expect(await tagsOf(user, ['time', 'day'], 'Europe/Stockholm')).toEqual([
+        { count: 1, last_used: new Date('2024-01-14T23:00:00Z'), tag: 'trip' },
+      ])
+    })
+
+    test('leaves out deleted notes, replies and root types not asked for', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T09:30:00Z'),
+        source: 'manual',
+        start_time: start,
+      })
+      const root = await insertNote(user, 'time', null, 'Root', start, undefined, { tags: ['kept'] })
+      await insertNote(user, 'note', root.id, 'Reply #reply', start, undefined, { hashtags: ['reply'] })
+      const gone = await insertNote(user, 'time', null, 'Gone', start, undefined, { tags: ['gone'] })
+      await softDeleteNote(user, gone.id)
+      await insertNote(user, 'activity', activityId, 'On it', start, undefined, { tags: ['workout'] })
+
+      expect((await tagsOf(user)).map((t) => t.tag)).toEqual(['kept'])
+      expect((await tagsOf(user, ['time', 'activity'])).map((t) => t.tag)).toEqual(['kept', 'workout'])
+    })
+  })
+
+  describe('getNotesWithAnyTag', () => {
+    test('every live note carrying one of the tags, replies and comments included', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-01-15T09:30:00Z'),
+        source: 'manual',
+        start_time: start,
+      })
+      const root = await insertNote(user, 'time', null, 'Root', start, undefined, { tags: ['run'] })
+      const reply = await insertNote(user, 'note', root.id, 'Reply #jog', start, undefined, {
+        hashtags: ['jog'],
+      })
+      const comment = await insertNote(user, 'activity', activityId, 'On it', start, undefined, {
+        tags: ['run'],
+      })
+      await insertNote(user, 'time', null, 'Other', start, undefined, { tags: ['walk'] })
+      const gone = await insertNote(user, 'time', null, 'Gone', start, undefined, { tags: ['run'] })
+      await softDeleteNote(user, gone.id)
+
+      expect((await getNotesWithAnyTag(user, ['run', 'jog'])).map((n) => n.id).sort()).toEqual(
+        [root.id, reply.id, comment.id].sort(),
+      )
+      expect(await getNotesWithAnyTag(user, ['nothing'])).toEqual([])
     })
   })
 })

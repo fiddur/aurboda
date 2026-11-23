@@ -118,12 +118,20 @@ export const RelatedChips = ({
   )
 }
 
-const PeopleOptions = ({
+const noPeopleMessage = (anyone: boolean, query: string, allowNew: boolean): string => {
+  if (anyone || query.trim()) return 'Nobody matches.'
+  return allowNew ? 'No people yet. Type a name to add someone.' : 'No people yet.'
+}
+
+/** The people to pick from; with `allowNew` (the default) a typed name not on the list can be added as a person. */
+export const PeopleOptions = ({
   links,
   onAdd,
+  allowNew = true,
 }: {
   links: readonly RelatedLink[]
   onAdd: (link: RelatedLink) => void
+  allowNew?: boolean
 }) => {
   const people = usePeople()
   const addNew = useAddPerson()
@@ -131,7 +139,7 @@ const PeopleOptions = ({
   const everyone = people.data?.people ?? []
   const list = offeredPeople(everyone).filter((p) => !hasLink(links, personLink(p)))
   const shown = query.trim() ? mentionOptions(list, query) : list
-  const newName = people.data ? newPersonName(everyone, query) : null
+  const newName = allowNew && people.data ? newPersonName(everyone, query) : null
   const take = (person: Person) => {
     onAdd(personLink(person))
     setQuery('')
@@ -166,11 +174,7 @@ const PeopleOptions = ({
       />
       {people.isLoading && <p class="journal-muted">Loading…</p>}
       {!people.isLoading && shown.length === 0 && newName === null && (
-        <p class="journal-muted">
-          {offeredPeople(everyone).length === 0 && !query.trim()
-            ? 'No people yet. Type a name to add someone.'
-            : 'Nobody matches.'}
-        </p>
+        <p class="journal-muted">{noPeopleMessage(offeredPeople(everyone).length > 0, query, allowNew)}</p>
       )}
       <ul>
         {shown.map((person: Person) => (
@@ -203,7 +207,8 @@ const PeopleOptions = ({
   )
 }
 
-const ActivityOptions = ({
+/** The activities of a day (`entryDate` to start with), by type. */
+export const ActivityOptions = ({
   entryDate,
   links,
   onAdd,

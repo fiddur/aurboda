@@ -137,3 +137,60 @@ describe('notes related to people and activities', () => {
     expect(reply.status).toBe(400)
   })
 })
+
+describe('journal tags', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('are listed, and merging rewrites hashtags and explicit tags, keeping a revision', async () => {
+    const user = getTestUser()
+    const request = supertest(buildApp(user))
+    const byHashtag = await request.post('/notes').send({
+      content: 'Went #Running by the river',
+      entity_type: 'time',
+      start_time: '2024-01-15T08:00:00Z',
+    })
+    const byTag = await request.post('/notes').send({
+      content: 'Long day',
+      entity_type: 'time',
+      start_time: '2024-01-16T08:00:00Z',
+      tags: ['running', 'travel'],
+    })
+    expect(byHashtag.status).toBe(200)
+    expect(byTag.status).toBe(200)
+
+    const listed = await request.get('/notes/tags').query({ tz: 'UTC' })
+    expect(listed.status).toBe(200)
+    expect(listed.body.data).toEqual([
+      { count: 2, last_used: '2024-01-16T08:00:00.000Z', tag: 'running' },
+      { count: 1, last_used: '2024-01-16T08:00:00.000Z', tag: 'travel' },
+    ])
+
+    const merged = await request.post('/notes/tags/merge').send({ from: ['running'], into: 'run' })
+    expect(merged.status).toBe(200)
+    expect(merged.body.data).toEqual({ changed: 2 })
+
+    const first = await request.get(`/notes/${byHashtag.body.data.id}`)
+    expect(first.body.data.content).toBe('Went #run by the river')
+    expect(first.body.data.tags).toEqual(['run'])
+    const second = await request.get(`/notes/${byTag.body.data.id}`)
+    expect(second.body.data.tags).toEqual(['run', 'travel'])
+
+    const revisions = await request.get(`/notes/${byHashtag.body.data.id}/revisions`)
+    expect(revisions.body.data.map((r: { content: string }) => r.content)).toEqual([
+      'Went #Running by the river',
+    ])
+    expect(
+      (await request.get('/notes/tags').query({ tz: 'UTC' })).body.data.map((t: { tag: string }) => t.tag),
+    ).toEqual(['run', 'travel'])
+  })
+})
