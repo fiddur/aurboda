@@ -4,7 +4,7 @@ import { categoricalItemFields, itemPath } from '../../components/sessions/sessi
 import { fetchActivityTypeDefinitions } from '../../state/api'
 import { ItemGroupsSection } from '../ActivityTypeMeta/ItemGroupsSection'
 import { SETS_PATH, STRENGTH_TYPE } from './constants'
-import { StrengthTabs } from './StrengthTabs'
+import { StrengthHeader } from './StrengthHeader'
 import '../ActivityTypeMeta/style.css'
 import './style.css'
 
@@ -25,13 +25,12 @@ export function StrengthExercises() {
 
   return (
     <div class="page page--wide strength-page strength-page-wide">
-      <h1>Strength</h1>
-      <StrengthTabs />
+      <StrengthHeader />
       {isLoading && <p class="loading">Loading...</p>}
       {isError && <p class="strength-error">Your activity types could not be loaded.</p>}
       {!isLoading && !isError && !field && (
         <p>
-          No strength sessions yet. <a href="/strength">Start or log one</a>
+          No strength sessions yet. <a href="/strength/workouts">Start or log one</a>
         </p>
       )}
       {field && (

@@ -1018,7 +1018,7 @@ private fun AddActivityTab(
     ) {
         Text("Add Activity", style = MaterialTheme.typography.titleLarge)
 
-        TextButton(onClick = { onOpenWebPage("/strength") }) {
+        TextButton(onClick = { onOpenWebPage("/strength/workouts") }) {
             Text("Log a strength session")
         }
 

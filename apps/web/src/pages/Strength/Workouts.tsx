@@ -3,36 +3,20 @@ import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { detailUrl, sessionUrl, STRENGTH_TYPE } from './constants'
-import { clearLiveDraft, readLiveDraft } from './draftStorage'
+import { clearLiveDraft } from './draftStorage'
 import { PlannedWorkouts } from './PlannedWorkouts'
-import { invalidateStrengthQueries, liveApi, useRecentStrengthSessions } from './queries'
+import { invalidateStrengthQueries, liveApi, useUnfinishedSession } from './queries'
 import { finishLiveSession } from './saveQueue'
-import { liveDraftFromServer, loggedSetCount, type SessionDraft, sessionSummary } from './sessionModel'
+import { type SessionDraft, sessionSummary } from './sessionModel'
 import {
   exerciseListLabel,
   lastSetLabel,
   repeatCandidates,
   sessionDateLabel,
   startedLabel,
-  type StrengthActivity,
-  unfinishedOnServer,
 } from './startModel'
-import { StrengthTabs } from './StrengthTabs'
+import { StrengthHeader } from './StrengthHeader'
 import './style.css'
-
-const unfinishedDraft = (
-  local: SessionDraft | undefined,
-  server: StrengthActivity | undefined,
-): SessionDraft | undefined => {
-  if (local && !local.id && loggedSetCount(local.blocks) > 0) return local
-  if (!server?.id) return undefined
-  if (local?.id === server.id) return local
-  return liveDraftFromServer({
-    data: server.data,
-    id: server.id,
-    start_time: server.start_time.toISOString(),
-  })
-}
 
 const UnfinishedCard = ({
   draft,
@@ -66,18 +50,15 @@ const UnfinishedCard = ({
   )
 }
 
-export function Strength() {
+export function StrengthWorkouts() {
   const queryClient = useQueryClient()
   const { route } = useLocation()
-  const [local, setLocal] = useState(() => readLiveDraft())
-  const sessions = useRecentStrengthSessions()
+  const { local, sessions, setLocal, unfinished } = useUnfinishedSession()
   const [finishing, setFinishing] = useState(false)
   const [finishError, setFinishError] = useState<string | undefined>()
   const [confirmTarget, setConfirmTarget] = useState<string | undefined>()
 
-  const rows = sessions.data ?? []
-  const unfinished = unfinishedDraft(local, unfinishedOnServer(rows, new Date()))
-  const candidates = repeatCandidates(rows, unfinished?.id)
+  const candidates = repeatCandidates(sessions.data ?? [], unfinished?.id)
 
   const finish = async (): Promise<boolean> => {
     if (!unfinished) return true
@@ -104,8 +85,7 @@ export function Strength() {
 
   return (
     <div class="page page--wide strength-page strength-page-train">
-      <h1>Strength</h1>
-      <StrengthTabs />
+      <StrengthHeader />
       {unfinished && (
         <UnfinishedCard
           draft={unfinished}

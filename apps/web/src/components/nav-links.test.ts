@@ -220,6 +220,7 @@ describe('pageTitleForPath', () => {
     expect(pageTitleForPath('/strength/session/abc')).toBe('Strength session')
     expect(pageTitleForPath('/strength/plan/new')).toBe('Strength plan')
     expect(pageTitleForPath('/strength/plan/abc')).toBe('Strength plan')
+    expect(pageTitleForPath('/strength/workouts')).toBe('Strength')
     expect(pageTitleForPath('/strength/progress')).toBe('Strength')
     expect(pageTitleForPath('/strength/exercises')).toBe('Strength')
     expect(pageTitleForPath('/strength/muscles')).toBe('Strength')

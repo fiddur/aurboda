@@ -1,6 +1,14 @@
 import { differenceInMinutes, format, formatDistanceStrict, isSameDay, subDays } from 'date-fns'
 
-import { exerciseNames, isInProgress, setsOfData, type SetRow } from './sessionModel'
+import {
+  exerciseNames,
+  isInProgress,
+  liveDraftFromServer,
+  loggedSetCount,
+  type SessionDraft,
+  setsOfData,
+  type SetRow,
+} from './sessionModel'
 
 export interface StrengthActivity {
   id?: string
@@ -28,6 +36,20 @@ export const unfinishedOnServer = <T extends StrengthActivity>(activities: T[], 
   newestFirst(activities).find(
     (a) => a.id && isInProgress(a.data) && now.getTime() - a.start_time.getTime() <= UNFINISHED_DAYS * DAY_MS,
   )
+
+export const unfinishedDraft = (
+  local: SessionDraft | undefined,
+  server: StrengthActivity | undefined,
+): SessionDraft | undefined => {
+  if (local && !local.id && loggedSetCount(local.blocks) > 0) return local
+  if (!server?.id) return undefined
+  if (local?.id === server.id) return local
+  return liveDraftFromServer({
+    data: server.data,
+    id: server.id,
+    start_time: server.start_time.toISOString(),
+  })
+}
 
 export const repeatCandidates = (activities: StrengthActivity[], excludeId?: string): RepeatCandidate[] =>
   newestFirst(activities)
