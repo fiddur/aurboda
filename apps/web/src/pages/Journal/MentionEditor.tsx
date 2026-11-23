@@ -8,7 +8,9 @@ import { caretLineRect } from './caret-position'
 import { type MentionPlacement, mentionMenuPlacement } from './mention-placement'
 import { MentionMenu, useAddPerson, usePeople } from './Related'
 import {
+  highlighted,
   insertMention,
+  keyPicks,
   type MentionItem,
   mentionAt,
   mentionItems,
@@ -122,6 +124,7 @@ export const MentionEditor = ({
   valueRef.current = value
   const [caret, setCaret] = useState<number | undefined>(undefined)
   const [choice, setChoice] = useState(0)
+  const [navigated, setNavigated] = useState(false)
   const [dismissed, setDismissed] = useState<number | undefined>(undefined)
   const [creating, setCreating] = useState<Typed | null>(null)
 
@@ -138,6 +141,7 @@ export const MentionEditor = ({
     onMention(next.text, person)
     setCaret(undefined)
     setChoice(0)
+    setNavigated(false)
     requestAnimationFrame(() => {
       const textarea = textareaRef.current
       if (!textarea) return
@@ -172,9 +176,12 @@ export const MentionEditor = ({
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       setChoice(moveChoice(choice, e.key === 'ArrowDown' ? 1 : -1, items.length))
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      setNavigated(true)
+    } else if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) {
+      const item = items[Math.min(choice, items.length - 1)]!
+      if (!keyPicks(item, navigated)) return
       e.preventDefault()
-      pick(items[Math.min(choice, items.length - 1)]!)
+      pick(item)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       setDismissed(mention.start)
@@ -212,6 +219,7 @@ export const MentionEditor = ({
           onChange(content)
           readCaret()
           setChoice(0)
+          setNavigated(false)
         }}
         placeholder="Write what happened, what you thought, how it felt…"
         rows={10}
@@ -230,7 +238,7 @@ export const MentionEditor = ({
       {open && (
         <MentionMenu
           items={items}
-          active={choice}
+          active={highlighted(items, choice, navigated)}
           onPick={pick}
           pending={addNew.isPending}
           menuRef={menuRef}

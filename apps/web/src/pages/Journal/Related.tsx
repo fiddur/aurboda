@@ -151,10 +151,14 @@ const PeopleOptions = ({
         placeholder="Search people"
         aria-label="Search people"
         value={query}
-        onInput={(e) => setQuery(e.currentTarget.value)}
+        onInput={(e) => {
+          setQuery(e.currentTarget.value)
+          addNew.reset()
+        }}
         onKeyDown={(e) => {
-          if (e.key !== 'Enter') return
+          if (e.key !== 'Enter' || e.isComposing) return
           e.preventDefault()
+          if (!query.trim()) return
           const first = shown[0]
           if (first) take(first)
           else if (newName !== null) create(newName)

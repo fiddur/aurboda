@@ -14,6 +14,8 @@ import {
   journalRefWhen,
   MENTION_MAX_OPTIONS,
   mentionAt,
+  highlighted,
+  keyPicks,
   mentionItems,
   mentionOptions,
   moveChoice,
@@ -216,5 +218,22 @@ describe('journal entry rows', () => {
   test('an entry opens in the editor; a comment on something else has no link', () => {
     expect(journalRefHref({ entity_type: 'day', id: 'n1' })).toBe('/journal/n1')
     expect(journalRefHref({ entity_type: 'activity', id: 'n2' })).toBeUndefined()
+  })
+})
+
+describe('Enter and Tab in the @ menu', () => {
+  const person = { kind: 'person' as const, person: { id: 'a', name: 'Anna' } }
+  const fresh = { kind: 'new' as const, name: 'Anna today' }
+
+  test('take a person, but "add as a person" only once arrowed to', () => {
+    expect(keyPicks(person, false)).toBe(true)
+    expect(keyPicks(fresh, false)).toBe(false)
+    expect(keyPicks(fresh, true)).toBe(true)
+  })
+
+  test('the default highlight is never "add as a person"', () => {
+    expect(highlighted([fresh], 0, false)).toBe(-1)
+    expect(highlighted([fresh], 0, true)).toBe(0)
+    expect(highlighted([person, fresh], 0, false)).toBe(0)
   })
 })
