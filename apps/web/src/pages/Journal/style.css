@@ -984,6 +984,12 @@
   font-size: 1.7rem;
 }
 
+.journal-tags-page .journal-search {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .journal-tag-list {
   list-style: none;
   margin: 1rem 0 0;
