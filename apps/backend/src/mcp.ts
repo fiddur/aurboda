@@ -65,6 +65,7 @@ import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCheckInTools } from './mcp/check-in-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerDataSourceTools } from './mcp/data-source-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerExerciseCatalogTools } from './mcp/exercise-catalog-tools.ts'
@@ -283,6 +284,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerRouteTools(server, user)
   registerSegmentTools(server, user)
   registerSharedDashboardTools(server, user)
+  registerDataSourceTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
   registerExerciseCatalogTools(server)
   registerStrengthPlanTools(server, user)

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { connectableSources } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -233,8 +233,7 @@ describe('pageTitleForPath', () => {
 
 describe('DATA_SOURCE_LINKS', () => {
   test('lists every card on the Data Sources overview, in the same order', () => {
-    const overview = readFileSync(new URL('../pages/DataSources/index.tsx', import.meta.url), 'utf8')
-    const cardPaths = [...overview.matchAll(/path: '(\/data-sources\/[^']+)'/g)].map((m) => m[1])
+    const cardPaths = connectableSources.map((source) => source.path)
     const linkPaths = DATA_SOURCE_LINKS.map((l) => l.path).filter((p) => p !== '/data-sources')
 
     expect(cardPaths.length).toBeGreaterThan(0)

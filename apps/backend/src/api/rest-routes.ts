@@ -77,6 +77,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCheckInsRouter } from '../routes/check-ins-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
+import { createDataSourcesRouter } from '../routes/data-sources-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
 import { createEventsRouter } from '../routes/events-router.ts'
 import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
@@ -369,6 +370,7 @@ export const mountRestRouters = ({
   httpd.use('/account', createAccountRecoveryRouter(accountRecovery))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
+  httpd.use('/data-sources', createDataSourcesRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))

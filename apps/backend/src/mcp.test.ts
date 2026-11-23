@@ -14,6 +14,7 @@ import * as db from './db/index.ts'
 import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
 import * as dataPresence from './services/data-presence.ts'
+import * as dataSourcesOverview from './services/data-sources-overview.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import { PeriodError } from './services/periods.ts'
@@ -156,6 +157,10 @@ vi.mock('./services/shared-dashboard-data', () => ({
 
 vi.mock('./services/data-presence', () => ({
   queryDataPresence: vi.fn(),
+}))
+
+vi.mock('./services/data-sources-overview', () => ({
+  getDataSourcesOverview: vi.fn(),
 }))
 
 vi.mock('./oura-sync', () => ({
@@ -1203,6 +1208,35 @@ describe('MCP Server', () => {
         activity_types: 'sleep',
         metrics: 'hrv_rmssd',
       })
+    })
+
+    test('get_data_sources_overview answers the sources, their kinds and any overlap', async () => {
+      const overview = {
+        groups: [{ id: 'location' as const, label: 'Location' }],
+        kinds: [
+          {
+            active_sources: ['owntracks' as const, 'home_assistant' as const],
+            available_sources: ['owntracks' as const, 'home_assistant' as const],
+            id: 'location' as const,
+            label: 'Location',
+            one_source_enough: true,
+            overlap: true,
+            overlap_hint: "your phone's position",
+          },
+        ],
+        sources: [],
+      }
+      vi.mocked(dataSourcesOverview.getDataSourcesOverview).mockResolvedValueOnce(overview)
+
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_data_sources_overview',
+        {},
+      )
+
+      expect(JSON.parse(response.text)).toEqual(overview)
+      expect(dataSourcesOverview.getDataSourcesOverview).toHaveBeenCalledWith('testuser')
     })
 
     test('get_activity_records rejects a filter field without a value', async () => {

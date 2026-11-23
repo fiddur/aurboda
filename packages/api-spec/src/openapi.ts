@@ -98,6 +98,7 @@ import {
 } from './schemas/correlations.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { recentActivitiesQuerySchema } from './schemas/dashboard.ts'
+import { dataSourcesOverviewResponseSchema } from './schemas/data-sources-overview.ts'
 import {
   exerciseCatalogEntryResponseSchema,
   exerciseCatalogQuerySchema,
@@ -4789,6 +4790,21 @@ const openApiDocument = createDocument({
         },
         security: [{ bearerAuth: [] }],
         summary: 'List Home Assistant tracker entities',
+        tags: ['Sync'],
+      },
+    },
+    '/data-sources/overview': {
+      get: {
+        description:
+          'Which data sources the user has connected, the kinds of data each brings, which sources feed each kind, and where two sources send the same thing (overlap). The read behind the Data sources page; MCP has the same as get_data_sources_overview.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: dataSourcesOverviewResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the data sources overview',
         tags: ['Sync'],
       },
     },

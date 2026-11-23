@@ -18,6 +18,7 @@ import {
   type DataTypeItem,
   DataTypesList,
   LoginRequired,
+  OverlapNote,
   type SaveStatus,
   SaveStatusIndicator,
   StatusBanner,
@@ -379,6 +380,8 @@ export function HomeAssistantSource() {
           Home Assistant server with a long-lived access token and stores each fix as a GPS location, with the
           Home Assistant zone it was in, so visits show up on the Places page just like with OwnTracks.
         </p>
+
+        <OverlapNote sourceId="home_assistant" />
 
         <DataTypesList types={DATA_TYPES} />
         <StatusBanner connected={isConnected} label={statusLabel(hasConnection, isConnected)} />
