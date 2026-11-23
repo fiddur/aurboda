@@ -1,5 +1,6 @@
 import type { Note } from '@aurboda/api-spec'
 
+import { normalizeTag } from '@aurboda/api-spec'
 import { addDays, format, parseISO } from 'date-fns'
 
 import type { JournalQuery } from '../../state/api'
@@ -124,3 +125,9 @@ export const isUnfiltered = (filters: JournalFilters, q: string): boolean =>
   !filters.withComments &&
   !filters.needsText &&
   filters.related === undefined
+
+/** The tag filter `/journal?tag=<tag>` opens with: that tag as stored, or none when it is not a tag. */
+export const tagsFromQuery = (query: Record<string, string | undefined>): string[] => {
+  const tag = query.tag ? normalizeTag(query.tag) : null
+  return tag ? [tag] : []
+}

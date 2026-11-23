@@ -1,7 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { query } from '../db/connection.ts'
-import { insertActivity, insertActivityTypeDefinition, insertTimeSeries } from '../db/index.ts'
+import {
+  addActivityPeople,
+  insertActivity,
+  insertActivityTypeDefinition,
+  insertPerson,
+  insertTimeSeries,
+  softDeletePerson,
+  updatePerson,
+} from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { getChartData } from './chart-data.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
@@ -345,6 +353,240 @@ describe('chart data over list-item measures', () => {
     expect(perExercise.buckets).toEqual([
       { bucket_start: '2026-07-27T00:00:00.000Z', series: { Squat: 116.7, 'bench press': 93.3 } },
       { bucket_start: '2026-08-03T00:00:00.000Z', series: { Squat: 121, 'bench press': 93.5 } },
+    ])
+  })
+})
+
+describe('breaking a chart down by who the activity was with (@people)', () => {
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const walk = async (user: string, startIso: string, minutes: number, data: Record<string, unknown> = {}) =>
+    insertActivity(user, {
+      activity_type: 'walking',
+      data,
+      end_time: new Date(new Date(startIso).getTime() + minutes * 60_000),
+      source: 'manual',
+      start_time: new Date(startIso),
+    })
+
+  const juneInput = {
+    bucket_size: '1M' as const,
+    end: '2026-07-01T00:00:00Z',
+    pattern: 'walking',
+    source_type: 'activity_type' as const,
+    start: '2026-06-01T00:00:00Z',
+    tz: 'UTC',
+  }
+
+  /**
+   * a1 Anna (happy, 1h); a2 Anna + Bo (sad, 1h); a3 nobody (happy, 30m); a4 Bo, superseding a row
+   * linked to Bo and the second Anna (1h); a5 only a deleted person (1h); a6 an archived person (1h).
+   */
+  const seedJune = async (user: string) => {
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const anna2 = await insertPerson(user, { name: 'Anna' })
+    const gone = await insertPerson(user, { name: 'Cy' })
+    const archived = await insertPerson(user, { name: 'Di' })
+    await softDeletePerson(user, gone.id)
+    await updatePerson(user, archived.id, { archived: true })
+
+    await addActivityPeople(user, await walk(user, '2026-06-02T10:00:00Z', 60, { mood: 'happy' }), [anna.id])
+    await addActivityPeople(user, await walk(user, '2026-06-03T10:00:00Z', 60, { mood: 'sad' }), [
+      anna.id,
+      bo.id,
+    ])
+    await walk(user, '2026-06-04T10:00:00Z', 30, { mood: 'happy' })
+    const winner = await walk(user, '2026-06-05T10:00:00Z', 60)
+    const superseded = await insertActivity(user, {
+      activity_type: 'walking',
+      data: {},
+      end_time: new Date('2026-06-05T11:00:00Z'),
+      source: 'garmin',
+      start_time: new Date('2026-06-05T10:00:00Z'),
+    })
+    await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = $2', [winner, superseded])
+    await addActivityPeople(user, winner, [bo.id])
+    await addActivityPeople(user, superseded, [bo.id, anna2.id])
+    await addActivityPeople(user, await walk(user, '2026-06-06T10:00:00Z', 60), [gone.id])
+    await addActivityPeople(user, await walk(user, '2026-06-07T10:00:00Z', 60), [archived.id])
+  }
+
+  test('count: one series per person, an activity in each of its people, merge groups once', async () => {
+    const user = getTestUser()
+    await seedJune(user)
+
+    const result = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'count',
+      breakdown_fields: ['@people'],
+    })
+
+    expect(result.breakdown_series).toEqual(['(none)', 'Anna', 'Anna (2)', 'Bo', 'Di'])
+    expect(result.buckets).toEqual([
+      {
+        bucket_start: '2026-06-01T00:00:00.000Z',
+        series: { '(none)': 2, Anna: 2, 'Anna (2)': 1, Bo: 2, Di: 1 },
+      },
+    ])
+  })
+
+  test('sum: the hours of each person', async () => {
+    const user = getTestUser()
+    await seedJune(user)
+
+    const result = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'sum',
+      breakdown_fields: ['@people'],
+    })
+
+    expect(result.buckets).toEqual([
+      {
+        bucket_start: '2026-06-01T00:00:00.000Z',
+        series: { '(none)': 1.5, Anna: 2, 'Anna (2)': 1, Bo: 2, Di: 1 },
+      },
+    ])
+  })
+
+  test('compound with a data field, in the order of breakdown_fields', async () => {
+    const user = getTestUser()
+    await seedJune(user)
+
+    const peopleFirst = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'count',
+      breakdown_fields: ['@people', 'mood'],
+    })
+    const moodFirst = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'count',
+      breakdown_fields: ['mood', '@people'],
+    })
+
+    expect(peopleFirst.breakdown_series).toEqual([
+      '(none) / (none)',
+      '(none) / happy',
+      'Anna (2) / (none)',
+      'Anna / happy',
+      'Anna / sad',
+      'Bo / (none)',
+      'Bo / sad',
+      'Di / (none)',
+    ])
+    expect(moodFirst.breakdown_series).toEqual([
+      '(none) / (none)',
+      '(none) / Anna (2)',
+      '(none) / Bo',
+      '(none) / Di',
+      'happy / (none)',
+      'happy / Anna',
+      'sad / Anna',
+      'sad / Bo',
+    ])
+  })
+
+  test('a data field named people is still a data field', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    await addActivityPeople(user, await walk(user, '2026-06-02T10:00:00Z', 60, { people: 'crowd' }), [
+      anna.id,
+    ])
+
+    const result = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'count',
+      breakdown_fields: ['people'],
+    })
+
+    expect(result.breakdown_series).toEqual(['crowd'])
+  })
+
+  test('a trend has one EMA per person', async () => {
+    const user = getTestUser()
+    const daysAgo = (days: number) => {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - days)
+      d.setUTCHours(12, 0, 0, 0)
+      return d.toISOString()
+    }
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await addActivityPeople(user, await walk(user, daysAgo(3), 60), [anna.id])
+    await addActivityPeople(user, await walk(user, daysAgo(2), 60), [anna.id, bo.id])
+    await walk(user, daysAgo(1), 60)
+
+    const result = await getTrend(user, {
+      aggregation: 'count',
+      breakdown_fields: ['@people'],
+      display_period: 'daily',
+      lookback_days: 10,
+      pattern: 'walking',
+      source_type: 'activity_type',
+      tz: 'UTC',
+    })
+
+    expect(result.breakdown_series).toEqual(['(none)', 'Anna', 'Bo'])
+    expect(Object.keys(result.breakdown_histories ?? {}).sort()).toEqual(['(none)', 'Anna', 'Bo'])
+    const bo3 = result.breakdown_histories!['Bo']
+    const anna3 = result.breakdown_histories!['Anna']
+    expect(bo3.map((p) => p.date)).toEqual(anna3.map((p) => p.date))
+    expect(anna3.at(-1)!.value).toBeGreaterThan(bo3.at(-1)!.value)
+  })
+
+  test('with a measure, alone and beside an item path', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const set = (exercise: string) => ({ exercise, reps: 5, set_type: 'normal', weight: 50 })
+    const lift = (startIso: string, sets: Record<string, unknown>[]) =>
+      insertActivity(user, {
+        activity_type: 'strength_training',
+        data: { sets },
+        end_time: new Date(new Date(startIso).getTime() + 3_600_000),
+        source: 'gravl',
+        start_time: new Date(startIso),
+      })
+    await addActivityPeople(
+      user,
+      await lift('2026-06-02T17:00:00Z', [set('Bench Press'), set('Bench Press'), set('Squat')]),
+      [anna.id],
+    )
+    await addActivityPeople(
+      user,
+      await lift('2026-06-09T17:00:00Z', [set('Bench Press'), set('Bench Press')]),
+      [anna.id, bo.id],
+    )
+    await lift('2026-06-16T17:00:00Z', [set('Squat')])
+    const input = {
+      ...juneInput,
+      aggregation: 'sum' as const,
+      measure: 'set_count' as const,
+      pattern: 'strength_training',
+    }
+
+    const perPerson = await getChartData(user, { ...input, breakdown_fields: ['@people'] })
+    const perPersonAndExercise = await getChartData(user, {
+      ...input,
+      breakdown_fields: ['@people', 'sets.exercise'],
+    })
+
+    expect(perPerson.breakdown_series).toEqual(['(none)', 'Anna', 'Bo'])
+    expect(perPerson.buckets).toEqual([
+      { bucket_start: '2026-06-01T00:00:00.000Z', series: { '(none)': 1, Anna: 5, Bo: 2 } },
+    ])
+    expect(perPersonAndExercise.buckets).toEqual([
+      {
+        bucket_start: '2026-06-01T00:00:00.000Z',
+        series: {
+          '(none) / Squat': 1,
+          'Anna / Bench Press': 4,
+          'Anna / Squat': 1,
+          'Bo / Bench Press': 2,
+        },
+      },
     ])
   })
 })

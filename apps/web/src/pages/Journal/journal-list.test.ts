@@ -14,6 +14,7 @@ import {
   isUnfiltered,
   type JournalFilters,
   journalQueryFor,
+  tagsFromQuery,
 } from './journal-list'
 
 const local = (y: number, m: number, d: number, h = 12, min = 0) =>
@@ -100,6 +101,9 @@ describe('entryGlimpse', () => {
       'Walked to the lake winter',
     )
     expect(entryGlimpse({ content: 'a'.repeat(200) }, 10)).toBe(`${'a'.repeat(9)}…`)
+    expect(
+      entryGlimpse({ content: '![](attachment:3f0c2b1a-9d8e-4f7a-8b6c-5d4e3f2a1b0c)\nAt the lake' }),
+    ).toBe('At the lake')
   })
 })
 
@@ -134,5 +138,19 @@ describe('journalQueryFor', () => {
       related,
     })
     expect(isUnfiltered({ ...filters, related }, '')).toBe(false)
+  })
+})
+
+describe('tagsFromQuery', () => {
+  test('the ?tag= the list opens with, as stored', () => {
+    expect(tagsFromQuery({ tag: '#Running' })).toEqual(['running'])
+    expect(tagsFromQuery({ tag: 'löpning' })).toEqual(['löpning'])
+  })
+
+  test('none without one, or for one that is not a tag', () => {
+    expect(tagsFromQuery({})).toEqual([])
+    expect(tagsFromQuery({ tag: '' })).toEqual([])
+    expect(tagsFromQuery({ tag: '123' })).toEqual([])
+    expect(tagsFromQuery({ person: 'x' })).toEqual([])
   })
 })

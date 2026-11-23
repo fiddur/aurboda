@@ -2,6 +2,9 @@ import {
   addNoteBodySchema,
   DELETED_NOTE_RETENTION_DAYS,
   isKnownTimezone,
+  mergeNoteTagsBodySchema,
+  noteNeighborsQuerySchema,
+  noteTagsListQuerySchema,
   notesQueryRangeSchema,
   notesQuerySchema,
   notesSearchQuerySchema,
@@ -13,11 +16,14 @@ import { z } from 'zod'
 import {
   addNote,
   deleteNoteById,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
   listDeletedNotes,
+  listNoteTagsForUser,
+  mergeNoteTags,
   restoreNoteById,
   searchNotesForUser,
   updateNote,
@@ -91,6 +97,40 @@ export const registerNoteTools = (server: McpServer, user: string) => {
       const result = await searchNotesForUser(user, params)
       if (!result.success) return errorResponse(result.error)
       return params.tz ? tzJsonResponse(result, params.tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'get_note_neighbors',
+    "The Journal entries just before (older, previous) and after (newer, next) one entry, in the Journal list's order: the free-standing timed and day entries, newest first by their time or day.",
+    { id: z.string().uuid().describe('Journal entry (note) id'), ...noteNeighborsQuerySchema.shape },
+    async ({ id, tz }) => {
+      const neighbors = await getJournalNeighbors(user, id, tz)
+      if (!neighbors) return errorResponse('Journal entry not found')
+      const result = { data: neighbors, success: true }
+      return tz ? tzJsonResponse(result, tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'list_note_tags',
+    'List the tags used on journal entries and comments (explicit tags and #hashtags in the text), with how many notes carry each and when it was last used, most used first. entity_types narrows like search_notes (default: the free-standing journal entries).',
+    { ...noteTagsListQuerySchema.shape },
+    async (params) => {
+      const result = await listNoteTagsForUser(user, params)
+      if (!result.success) return errorResponse(result.error)
+      return params.tz ? tzJsonResponse(result, params.tz) : jsonResponse(result)
+    },
+  )
+
+  server.tool(
+    'merge_note_tags',
+    'Merge journal tags: every live note carrying a tag in from gets into instead — explicit tags are replaced and #from hashtags in the text are rewritten to #into (each rewritten text keeps a revision, see list_note_revisions). Renaming is a merge with one from. Answers how many notes changed.',
+    { ...mergeNoteTagsBodySchema.shape },
+    async (params) => {
+      const result = await mergeNoteTags(user, params)
+      if (!result.success) return errorResponse(result.error)
+      return jsonResponse(result)
     },
   )
 

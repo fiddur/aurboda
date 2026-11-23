@@ -64,6 +64,10 @@ const autoshareRuleFields = {
   include_exercises: z.boolean().default(false).meta({
     description: "Share the session's exercises (sets, e1RM, volume, records) in auto-created posts",
   }),
+  include_exercise_trends: z.boolean().default(false).meta({
+    description:
+      "Also share each exercise's trend (the decaying best of e1RM and volume before and after this session) in auto-created posts; only with `include_exercises`",
+  }),
   include_map: z
     .boolean()
     .default(false)
@@ -154,6 +158,7 @@ export const updateAutoshareRuleBodySchema = z
     enabled: z.boolean().optional().meta({ description: 'Enable/disable the rule' }),
     include_chart: z.boolean().optional(),
     include_exercises: z.boolean().optional(),
+    include_exercise_trends: z.boolean().optional(),
     include_map: z.boolean().optional(),
     included_metrics: z.array(scalarMetricKeySchema).max(64).optional(),
     max_age_hours: autoshareRuleFields.max_age_hours.removeDefault().optional(),

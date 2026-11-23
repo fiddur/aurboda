@@ -400,27 +400,55 @@ export interface NotesSearchPage {
   next_cursor: NotesSearchCursor | null
 }
 
+type Param = (value: unknown) => string
+
+const paramList = (): { values: unknown[]; param: Param } => {
+  const values: unknown[] = []
+  return {
+    param: (value) => {
+      values.push(value)
+      return `$${values.length}`
+    },
+    values,
+  }
+}
+
+/**
+ * The live thread roots of `entityTypes` that have an anchor, as the alias `n` with an `anchor`
+ * column: a `day` note's is the start of its date in the zone `tz` names, any other's its
+ * start_time. Roots with no anchor at all (metric comments) are left out. This is the set and the
+ * anchor the Journal list orders by, so its neighbours step through the same entries.
+ */
+const anchoredRootsSql = (
+  param: Param,
+  tz: string,
+  entityTypes: EntityType[],
+  conditions: string[] = [],
+): string => `
+       SELECT n.*, CASE WHEN n.entity_type = 'day' THEN (n."date"::timestamp AT TIME ZONE ${tz}) ELSE n.start_time END AS anchor FROM (
+         SELECT n.*, ${parentIdColumn(param(UUID_RE.source))}
+           FROM notes n
+          WHERE ${[
+            `n.entity_type = ANY(${param(entityTypes)}::text[])`,
+            `n.entity_type <> 'note'`,
+            `n.deleted_at IS NULL`,
+            `(n.start_time IS NOT NULL OR n.entity_type = 'day')`,
+            ...conditions,
+          ].join(' AND ')}
+       ) n
+       WHERE ${PARENT_IS_LIVE}`
+
 /**
  * Thread roots, newest first by anchor (a `day` note's anchor is the start of its date in `tz`),
  * then created_at and id, with keyset pagination on that order. A text match in a live reply
  * returns its root. Roots with no anchor at all (metric comments) are left out.
  */
 export const searchNotes = async (user: string, params: NotesSearchParams): Promise<NotesSearchPage> => {
-  const values: unknown[] = []
-  const param = (value: unknown): string => {
-    values.push(value)
-    return `$${values.length}`
-  }
+  const { param, values } = paramList()
   const tz = param(params.tz)
-  const anchor = `CASE WHEN n.entity_type = 'day' THEN (n."date"::timestamp AT TIME ZONE ${tz}) ELSE n.start_time END`
   const localDay = `CASE WHEN n.entity_type = 'day' THEN n."date" ELSE (n.start_time AT TIME ZONE ${tz})::date END`
 
-  const conditions = [
-    `n.entity_type = ANY(${param(params.entity_types)}::text[])`,
-    `n.entity_type <> 'note'`,
-    `n.deleted_at IS NULL`,
-    `(n.start_time IS NOT NULL OR n.entity_type = 'day')`,
-  ]
+  const conditions: string[] = []
   if (params.text) {
     const websearch = `websearch_to_tsquery('simple', ${param(params.text.websearch)})`
     const tsquery = params.text.prefix
@@ -444,7 +472,7 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
     conditions.push(`EXTRACT(YEAR FROM ${localDay}) < ${param(params.on_this_day.before_year)}`)
     conditions.push(`to_char(${localDay}, 'MM-DD') = ANY(${param(params.on_this_day.month_days)}::text[])`)
   }
-  const uuidParam = param(UUID_RE.source)
+  const roots = anchoredRootsSql(param, tz, params.entity_types, conditions)
   const cursorCondition = params.cursor
     ? `WHERE (n.anchor, n.created_at, n.id) < (${param(params.cursor.anchor)}::timestamptz, ${param(
         params.cursor.created_at,
@@ -457,13 +485,7 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
     `SELECT ${NOTE_COLUMNS},
             to_char(anchor AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_anchor,
             to_char(created_at AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_created_at
-       FROM (
-       SELECT n.*, ${anchor} AS anchor FROM (
-         SELECT n.*, ${parentIdColumn(uuidParam)}
-           FROM notes n
-          WHERE ${conditions.join(' AND ')}
-       ) n
-       WHERE ${PARENT_IS_LIVE}
+       FROM (${roots}
      ) n
      ${cursorCondition}
      ORDER BY n.anchor DESC, n.created_at DESC, n.id DESC
@@ -480,6 +502,95 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
         : null,
     notes: rows.map(mapNoteRow),
   }
+}
+
+/**
+ * The roots just before (older) and after (newer) `id` in {@link searchNotes}' order without
+ * filters, or null when `id` is not one of those roots (missing, deleted, a reply, a comment
+ * outside `entity_types`).
+ */
+export const getNoteNeighbors = async (
+  user: string,
+  id: string,
+  params: { tz: string; entity_types: EntityType[] },
+): Promise<{ previous: Note | null; next: Note | null } | null> => {
+  if (!UUID_RE.test(id)) return null
+  const { param, values } = paramList()
+  const roots = anchoredRootsSql(param, param(params.tz), params.entity_types)
+  const target = param(id)
+  const result = await query(
+    user,
+    `WITH roots AS (${roots}
+     ),
+     target AS (SELECT * FROM roots WHERE id = ${target}::uuid),
+     previous AS (
+       SELECT r.* FROM roots r, target t
+        WHERE (r.anchor, r.created_at, r.id) < (t.anchor, t.created_at, t.id)
+        ORDER BY r.anchor DESC, r.created_at DESC, r.id DESC
+        LIMIT 1
+     ),
+     next AS (
+       SELECT r.* FROM roots r, target t
+        WHERE (r.anchor, r.created_at, r.id) > (t.anchor, t.created_at, t.id)
+        ORDER BY r.anchor, r.created_at, r.id
+        LIMIT 1
+     )
+     SELECT 'target' AS position, ${NOTE_COLUMNS} FROM target
+     UNION ALL SELECT 'previous', ${NOTE_COLUMNS} FROM previous
+     UNION ALL SELECT 'next', ${NOTE_COLUMNS} FROM next`,
+    values,
+  )
+  const at = (position: string): Note | null => {
+    const row = result.rows.find((r) => r.position === position)
+    return row ? mapNoteRow(row) : null
+  }
+  if (!result.rows.some((r) => r.position === 'target')) return null
+  return { next: at('next'), previous: at('previous') }
+}
+
+export interface NoteTagCount {
+  tag: string
+  count: number
+  last_used: Date
+}
+
+/**
+ * The tags (explicit and #hashtags) on the roots {@link searchNotes} lists, each counted once per
+ * note, most used first, with the newest carrying root's anchor.
+ */
+export const listNoteTags = async (
+  user: string,
+  params: { tz: string; entity_types: EntityType[] },
+): Promise<NoteTagCount[]> => {
+  const { param, values } = paramList()
+  const roots = anchoredRootsSql(param, param(params.tz), params.entity_types)
+  const result = await query(
+    user,
+    `SELECT t.tag, count(*)::int AS count, max(n.anchor) AS last_used
+       FROM (${roots}
+     ) n
+     CROSS JOIN LATERAL (SELECT DISTINCT unnest(n.tags || n.hashtags) AS tag) t
+     GROUP BY t.tag
+     ORDER BY count DESC, t.tag`,
+    values,
+  )
+  return result.rows.map((row) => ({
+    count: row.count,
+    last_used: new Date(row.last_used),
+    tag: row.tag,
+  }))
+}
+
+/** Every live note, of any kind (replies included), carrying one of `tags` explicitly or as a #hashtag. */
+export const getNotesWithAnyTag = async (user: string, tags: string[]): Promise<Note[]> => {
+  const result = await query(
+    user,
+    `SELECT ${NOTE_COLUMNS} FROM notes
+      WHERE deleted_at IS NULL AND (tags || hashtags) && $1::text[]
+      ORDER BY created_at, id`,
+    [tags],
+  )
+  return result.rows.map(mapNoteRow)
 }
 
 /**

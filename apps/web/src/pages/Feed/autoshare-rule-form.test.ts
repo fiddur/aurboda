@@ -21,6 +21,7 @@ const rule = (over: Partial<AutoshareRule> = {}): AutoshareRule => ({
   enabled_at: '2026-08-01T00:00:00Z',
   id: 'r1',
   include_chart: false,
+  include_exercise_trends: false,
   include_exercises: false,
   include_map: true,
   included_metrics: ['duration', 'distance'],
@@ -63,6 +64,7 @@ describe('ruleToFormState', () => {
     const state = ruleToFormState(
       rule({
         data_filters: [{ field: 'style', operator: 'eq', value: 'yin' }],
+        include_exercise_trends: true,
         include_exercises: true,
         message: 'Out for a run',
         min_distance_meters: 5500,
@@ -75,6 +77,7 @@ describe('ruleToFormState', () => {
       activityType: 'running',
       conditions: [{ field: 'style', operator: 'eq', value: 'yin' }],
       delayMinutes: '30',
+      includeExerciseTrends: true,
       includeExercises: true,
       includeMap: true,
       maxAgeHours: '48',
@@ -110,6 +113,11 @@ describe('ruleToFormState', () => {
     expect(ruleToFormState(rule({ series_metrics: ['heart_rate'] })).series).toEqual(new Set(['heart_rate']))
   })
 
+  it('keeps the exercise trend choice as stored, also while exercises are off', () => {
+    expect(ruleToFormState(rule({ include_exercise_trends: true })).includeExerciseTrends).toBe(true)
+    expect(emptyRuleFormState().includeExerciseTrends).toBe(false)
+  })
+
   it('leaves the picker empty for a rule with several or no types', () => {
     expect(ruleToFormState(rule({ activity_types: ['running', 'cycling'] })).activityType).toBe('')
     expect(ruleToFormState(rule({ activity_types: [] })).activityType).toBe('')
@@ -132,6 +140,7 @@ describe('formStateToUpdateBody', () => {
       data_filters: [{ field: 'style', operator: 'exists' }],
       delay_minutes: 30,
       include_chart: true,
+      include_exercise_trends: false,
       include_exercises: false,
       include_map: true,
       included_metrics: ['duration', 'distance'],
@@ -241,6 +250,7 @@ describe('formStateToAddBody', () => {
       data_filters: [],
       delay_minutes: 10,
       include_chart: false,
+      include_exercise_trends: false,
       include_exercises: false,
       include_map: false,
       included_metrics: ['duration', 'distance', 'heart_rate_avg', 'heart_rate_max', 'calories'],
@@ -264,6 +274,25 @@ describe('formStateToAddBody', () => {
       max_duration_seconds: 7200,
       source: 'garmin',
     })
+  })
+})
+
+describe('exercise trend in the bodies', () => {
+  it('sends the trend choice with the add and update bodies', () => {
+    const state = {
+      ...emptyRuleFormState(),
+      includeExerciseTrends: true,
+      includeExercises: true,
+      name: 'Lifts',
+    }
+    expect(formStateToAddBody(state)).toMatchObject({
+      include_exercise_trends: true,
+      include_exercises: true,
+    })
+    const original = rule()
+    expect(
+      formStateToUpdateBody({ ...ruleToFormState(original), includeExerciseTrends: true }, original),
+    ).toMatchObject({ include_exercise_trends: true })
   })
 })
 

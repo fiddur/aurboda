@@ -41,18 +41,19 @@ The `tools/list` answer is abbreviated to keep it small: each tool shows the fir
 
 ### Chart data tools
 
-| Tool               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `query_chart_data` | Bucketed counts, sums, means or maxima of an activity type, metric (including computed `hr_zone_<n>_sec`) or screentime category, the same as `GET /chart-data`. For an activity type with list items, `measure` (`e1rm`, `volume`, …) charts that measure per session, `filter_field`/`filter_value` (`sets.exercise` = `Bench Press`) narrows it to one exercise, a `sets.exercise` breakdown gives a series per exercise, and with `set_count`, `volume` or `total_reps` a `sets.exercise.muscle_group` breakdown gives a series per muscle group, while `filter_field=sets.exercise.muscle_group` with a group key (`chest`) as `filter_value` charts that one group, optionally per exercise (see [Muscle groups](features/activity-types.md#muscle-groups)). `tz` (IANA, e.g. `Europe/Stockholm`) makes daily, weekly and monthly buckets start at local midnight, local Monday and the local 1st, and hourly ones at the local hour; omitted, buckets are UTC. The web app sends the browser's zone |
+| Tool               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_chart_data` | Bucketed counts, sums, means or maxima of an activity type, metric (including computed `hr_zone_<n>_sec`) or screentime category, the same as `GET /chart-data`. For an activity type with list items, `measure` (`e1rm`, `volume`, …) charts that measure per session, `filter_field`/`filter_value` (`sets.exercise` = `Bench Press`) narrows it to one exercise, a `sets.exercise` breakdown gives a series per exercise, `@people` in `breakdown_fields` gives a series per person the activity was with ([People: In charts](features/people.md#in-charts)), and with `set_count`, `volume` or `total_reps` a `sets.exercise.muscle_group` breakdown gives a series per muscle group, while `filter_field=sets.exercise.muscle_group` with a group key (`chest`) as `filter_value` charts that one group, optionally per exercise (see [Muscle groups](features/activity-types.md#muscle-groups)). `tz` (IANA, e.g. `Europe/Stockholm`) makes daily, weekly and monthly buckets start at local midnight, local Monday and the local 1st, and hourly ones at the local hour; omitted, buckets are UTC. The web app sends the browser's zone |
 
 ### Dashboard tools
 
 See [Dashboard](features/dashboard.md#period-dashboards).
 
-| Tool                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_dashboard_data` | The data each widget renders, keyed by widget id, for the home dashboard or a shared one (`dashboard_id`), the same as `GET /dashboard/data` and `GET /shared-dashboards/:id/data`. A period dashboard answers its latest finished period unless `period` (`2026-10`, `2026-W44`, `2026`) is given, with each figure compared against the previous period. A day overview is answered only with `visible_to_visitors`; a latest activities card always, with each activity's id (visitors get it only with `visible_to_visitors`, without ids) |
-| `get_data_presence`  | Whether each named metric and activity type (subtypes included) has ever recorded anything, the same as `GET /dashboard/data-presence`; the dashboard leaves out the cards whose sources never have                                                                                                                                                                                                                                                                                                                                            |
+| Tool                        | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_dashboard_data`        | The data each widget renders, keyed by widget id, for the home dashboard or a shared one (`dashboard_id`), the same as `GET /dashboard/data` and `GET /shared-dashboards/:id/data`. A period dashboard answers its latest finished period unless `period` (`2026-10`, `2026-W44`, `2026`) is given, with each figure compared against the previous period. A day overview is answered only with `visible_to_visitors`; a latest activities card always, with each activity's id (visitors get it only with `visible_to_visitors`, without ids) |
+| `get_data_presence`         | Whether each named metric and activity type (subtypes included) has ever recorded anything, the same as `GET /dashboard/data-presence`; the dashboard leaves out the cards whose sources never have                                                                                                                                                                                                                                                                                                                                            |
+| `get_data_sources_overview` | Which data sources are connected (active, configured or not set up), the kinds of data each brings, which sources feed each kind, and `overlap` where one source is enough (location, computer screen time) and two are active, the same as `GET /data-sources/overview`; the Data sources page shows the same                                                                                                                                                                                                                                 |
 
 ### Top list and places tools
 
@@ -201,21 +202,24 @@ comments. See [Comments](features/comments.md) for the data model and
 | `restore_note`        | Restore a deleted comment with the replies deleted with it                                                                                                                                                                                                                                                                                                           |
 | `list_deleted_notes`  | The deleted comments that can still be restored, with `deleted_at` and `purge_at`                                                                                                                                                                                                                                                                                    |
 | `list_note_revisions` | A comment's earlier texts, newest first                                                                                                                                                                                                                                                                                                                              |
+| `get_note_neighbors`  | The Journal entries just before (older, `previous`) and after (newer, `next`) one entry, in the Journal's order                                                                                                                                                                                                                                                      |
+| `list_note_tags`      | The tags on journal entries (explicit and `#hashtags`), most used first, with `count` and `last_used`; `entity_types` narrows like `search_notes`                                                                                                                                                                                                                    |
+| `merge_note_tags`     | Merge tags: every note carrying a tag in `from` gets `into` (explicit tags replaced, `#hashtags` in the text rewritten, keeping a revision); answers `changed`                                                                                                                                                                                                       |
 
 Pictures and recordings on journal entries, and entry templates:
 
-| Tool                            | What it does                                                                                                                                        |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit |
-| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                          |
-| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                     |
-| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                     |
-| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                    |
-| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                 |
-| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                       |
-| `update_note_template`          | Change a template's name or text                                                                                                                    |
-| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                        |
-| `restore_note_template`         | Restore a deleted template                                                                                                                          |
+| Tool                            | What it does                                                                                                                                                                                                         |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_note_attachment`           | Attach a picture or recording (base64 `data`) to a `time` or `day` entry; at most 5 MB decoded, about 3 MB in practice under the 4 MB request limit; larger files go through [`create_upload_url`](#uploading-files) |
+| `get_note_attachment`           | A picture as MCP image content (JPEG, at most 2000 px) with its metadata; a recording as its metadata only                                                                                                           |
+| `delete_note_attachment`        | Delete an attachment, restorable for 30 days; `purge: true` removes it for good                                                                                                                                      |
+| `restore_note_attachment`       | Restore a deleted attachment, unless the entry already holds 30                                                                                                                                                      |
+| `list_deleted_note_attachments` | An entry's deleted attachments, with `deleted_at` and `purge_at`                                                                                                                                                     |
+| `list_note_templates`           | The entry templates by name; `deleted: true` lists the deleted ones                                                                                                                                                  |
+| `add_note_template`             | Add a template: `name` and markdown `content`                                                                                                                                                                        |
+| `update_note_template`          | Change a template's name or text                                                                                                                                                                                     |
+| `delete_note_template`          | Delete a template, restorable for 30 days; `purge: true` removes it for good                                                                                                                                         |
+| `restore_note_template`         | Restore a deleted template                                                                                                                                                                                           |
 
 To transcribe photographed diary pages: `search_notes` with `needs_text: true`, then
 `get_note_attachment` for each page in `position` order, then `update_note` with the
@@ -293,6 +297,36 @@ The rules that publish new activities to the feed. See [Auto-share rules](featur
 | `list_autoshare_rules`, `add_autoshare_rule`, `update_autoshare_rule`, `delete_autoshare_rule`, `preview_autoshare_rule` | Manage the rules, like `/autoshare-rules`                                                               |
 | `skip_autoshare`                                                                                                         | Keep one activity (`activity_id`) and its merge group from being auto-shared; fails when already shared |
 
+### Uploading files
+
+MCP carries a file base64-encoded inside a JSON request of at most 4 MB, so `add_note_attachment`
+and `add_feed_image` suit small files only. For anything larger than a few hundred kB, or a file
+on disk, `create_upload_url` (REST: `POST /uploads`) mints a short-lived, single-use URL for one
+target, and the client sends the raw bytes there with any HTTP client:
+
+| `target`           | Needs          | Stores                                    | Answers like                  |
+| ------------------ | -------------- | ----------------------------------------- | ----------------------------- |
+| `note_attachment`  | `note_id`      | A picture or recording on a journal entry | `add_note_attachment` (20 MB) |
+| `feed_image`       |                | A picture to embed in markdown            | `add_feed_image` (10 MB)      |
+| `challenge_banner` | `challenge_id` | The banner of a hosted challenge          | `POST /challenges/:id/banner` |
+| `profile_avatar`   |                | The profile picture                       | `POST /profile/avatar`        |
+
+The tool answers `{ success, data: { upload_url, expires_at, max_bytes, target, method } }`.
+The URL works once, within 15 minutes, and needs no `Authorization` header: the token in it is
+the credential (only its SHA-256 is stored). Send the file with `curl -T photo.jpg '<upload_url>'`
+(`PUT`, raw bytes, any content type) or `curl -F file=@photo.jpg '<upload_url>'` (`POST`
+multipart, field `file`). The upload answers `201` with `{ success, data: { target, ... } }`
+holding what the target's own upload would (`attachment`, `image`, `challenge` or `url`), or
+that upload's error. A body over `max_bytes` (`413`) or an empty one (`400`) leaves the URL
+usable; any other answer uses it up. An unknown, expired or used URL answers `404`. Minting draws
+on the account's upload budget; the uploads themselves are limited per client IP.
+
+The upload itself is not checked against the account's plan: a URL minted just before an account
+becomes read-only can still take its one upload within its 15 minutes. A reverse proxy in front of
+the API must accept bodies of up to 20 MB on `/api/uploads/<user>/<token>`; the bundled
+`nginx.conf` allows 25 MB there and keeps those paths out of its access log, since they carry the
+URL's credential.
+
 ## Endpoint
 
 The MCP server is available at `/mcp` and uses the Streamable HTTP transport:
@@ -314,9 +348,15 @@ The MCP server supports two authentication methods:
 
 ### OAuth 2.1 (for Claude.ai Custom Connectors)
 
-The server implements OAuth 2.1 with PKCE (S256) for clients that support it, such as Claude.ai custom connectors.
+The server implements OAuth 2.1 with PKCE (S256) for clients that support it, such as Claude.ai custom connectors and Gemini.
 
-**Discovery:** `GET /.well-known/oauth-authorization-server` returns the authorization server metadata.
+**Discovery** follows the MCP authorization spec:
+
+1. An unauthenticated `POST /mcp` answers `401` with `WWW-Authenticate: Bearer resource_metadata="<host>/.well-known/oauth-protected-resource/mcp"`.
+2. `GET /.well-known/oauth-protected-resource` (and `/mcp` under it) returns the protected resource metadata (RFC 9728), naming the host as the authorization server.
+3. `GET /.well-known/oauth-authorization-server` returns the authorization server metadata (RFC 8414). Clients that predate step 2 go straight here.
+
+Clients register dynamically as public clients: `/register` always answers `token_endpoint_auth_method: none` and issues no client secret, whatever method the client asks for.
 
 **OAuth endpoints:**
 
@@ -334,7 +374,7 @@ The server implements OAuth 2.1 with PKCE (S256) for clients that support it, su
 **Connecting Claude.ai:**
 
 1. In Claude.ai, add a custom connector with the MCP URL: `https://aurboda.net/mcp`
-2. Claude.ai will auto-discover the OAuth endpoints via `/.well-known/oauth-authorization-server`
+2. Claude.ai will auto-discover the OAuth endpoints (see Discovery above)
 3. On first use, you will be redirected to sign in with your Aurboda credentials
 4. Claude.ai handles token refresh automatically
 

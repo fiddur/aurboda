@@ -45,6 +45,7 @@ const previewPost = (state: ArticleEditorState, tags: string[]): FeedPost => {
     created_at: now,
     id: 'preview',
     include_chart: false,
+    include_exercise_trends: false,
     include_exercises: false,
     include_map: false,
     included_metrics: [],

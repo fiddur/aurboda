@@ -7,11 +7,14 @@ import { createNotesRouter } from './notes-router.ts'
 vi.mock('../services/mutations.ts', () => ({
   addNote: vi.fn(),
   deleteNoteById: vi.fn(),
+  getJournalNeighbors: vi.fn(),
   getNoteForUser: vi.fn(),
   getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn(),
   getNotesInRange: vi.fn(),
   listDeletedNotes: vi.fn(),
+  listNoteTagsForUser: vi.fn(),
+  mergeNoteTags: vi.fn(),
   restoreNoteById: vi.fn(),
   searchNotesForUser: vi.fn(),
   updateNote: vi.fn(),
@@ -256,6 +259,102 @@ describe('GET /notes/:id/revisions', () => {
     vi.mocked(mutations.getNoteRevisionsById).mockResolvedValue({ error: 'Note not found', success: false })
 
     expect((await supertest(buildApp()).get(`/${NOTE_ID}/revisions`)).status).toBe(404)
+  })
+})
+
+describe('GET /notes/:id/neighbors', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers the older and newer entries, reading tz', async () => {
+    const neighbors = {
+      next: { date: '2024-01-16', entity_type: 'day' as const, excerpt: 'Newer', id: ENTITY_ID },
+      previous: undefined,
+    }
+    vi.mocked(mutations.getJournalNeighbors).mockResolvedValue(neighbors)
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`).query({ tz: 'Europe/Stockholm' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { next: neighbors.next }, success: true })
+    expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('tester', NOTE_ID, 'Europe/Stockholm')
+  })
+
+  test('404 when it is not a Journal entry', async () => {
+    vi.mocked(mutations.getJournalNeighbors).mockResolvedValue(null)
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`)
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Journal entry not found', success: false })
+    expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('tester', NOTE_ID, undefined)
+  })
+
+  test('400 for an unknown zone', async () => {
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}/neighbors`).query({ tz: 'Mars/Olympus' })
+
+    expect(res.status).toBe(400)
+    expect(mutations.getJournalNeighbors).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /notes/tags', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers the tags, passing entity_types and tz on', async () => {
+    const tags = [{ count: 2, last_used: '2024-01-15T08:00:00.000Z', tag: 'run' }]
+    vi.mocked(mutations.listNoteTagsForUser).mockResolvedValue({ data: tags, success: true })
+
+    const res = await supertest(buildApp()).get('/tags').query({ entity_types: 'time,activity', tz: 'UTC' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: tags, success: true })
+    expect(mutations.listNoteTagsForUser).toHaveBeenCalledWith('tester', {
+      entity_types: 'time,activity',
+      tz: 'UTC',
+    })
+    expect(mutations.getNoteForUser).not.toHaveBeenCalled()
+  })
+
+  test('400 for an entity type that is not a root type', async () => {
+    const res = await supertest(buildApp()).get('/tags').query({ entity_types: 'note' })
+
+    expect(res.status).toBe(400)
+    expect(mutations.listNoteTagsForUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /notes/tags/merge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test('answers how many notes changed', async () => {
+    vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 3 }, success: true })
+
+    const res = await supertest(buildApp())
+      .post('/tags/merge')
+      .send({ from: ['running', 'jog'], into: 'run' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { changed: 3 }, success: true })
+    expect(mutations.mergeNoteTags).toHaveBeenCalledWith('tester', { from: ['running', 'jog'], into: 'run' })
+  })
+
+  test('400 when into is one of from, a tag is invalid or from is empty', async () => {
+    for (const body of [
+      { from: ['run', 'jog'], into: '#Run' },
+      { from: ['run'], into: '123' },
+      { from: [], into: 'run' },
+      { into: 'run' },
+    ]) {
+      const res = await supertest(buildApp()).post('/tags/merge').send(body)
+      expect(res.status).toBe(400)
+    }
+    expect(mutations.mergeNoteTags).not.toHaveBeenCalled()
   })
 })
 

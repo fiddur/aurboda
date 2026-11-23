@@ -276,20 +276,24 @@ export {
   type DeletedNote,
   getDeletedNotes,
   getNoteById,
+  getNoteNeighbors,
   getNoteRevisions,
   getNoteRoot,
   getNotesByEntityIds,
   getNotesForEntity,
   getNotesForTimeRange,
+  getNotesWithAnyTag,
   getRepliesForRootIds,
   getUserNotesJoined,
   type GuardedNoteUpdate,
   insertNote,
+  listNoteTags,
   type LocalDateRange,
   type NoteExtras,
   type NoteFieldUpdates,
   type NoteRestoreResult,
   type NoteRevisionPolicy,
+  type NoteTagCount,
   type NotesSearchCursor,
   type NotesSearchPage,
   type NotesSearchParams,
@@ -835,6 +839,8 @@ export {
 
 export { getDataPresence } from './data-presence.ts'
 
+export { getRecentSourceActivity, type RecentSourceActivity } from './data-source-activity.ts'
+
 export {
   deleteExpiredMcpSessions,
   deleteMcpSession,
@@ -843,6 +849,14 @@ export {
   saveMcpSession,
   touchMcpSession,
 } from './mcp-sessions.ts'
+
+export {
+  findLiveUploadUrl,
+  insertUploadUrl,
+  spendUploadUrl,
+  type NewUploadUrl,
+  type UploadUrlRecord,
+} from './upload-urls.ts'
 
 export {
   cleanupAuditLog,
@@ -1045,6 +1059,9 @@ export {
   type FollowPresentationRow,
   getLivePersonByActor,
   getPeopleForActivities,
+  activityPeopleLateralSql,
+  type BreakdownPerson,
+  getPeopleForActivityGroups,
   getPeopleNamesVersion,
   getPerson,
   getPersonDate,

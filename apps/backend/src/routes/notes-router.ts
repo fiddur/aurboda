@@ -4,9 +4,18 @@ import {
   type DeleteNoteQuery,
   deleteNoteQuerySchema,
   type DeleteNoteResponse,
+  type MergeNoteTagsBody,
+  mergeNoteTagsBodySchema,
+  type MergeNoteTagsResponse,
   type NoteConflictResponse,
+  type NoteNeighborsQuery,
+  noteNeighborsQuerySchema,
+  type NoteNeighborsResponse,
   type NoteResponse,
   type NoteRevisionsResponse,
+  type NoteTagsListQuery,
+  noteTagsListQuerySchema,
+  type NoteTagsListResponse,
   type NotesQuery,
   notesQueryRangeSchema,
   notesQuerySchema,
@@ -22,11 +31,14 @@ import {
 import {
   addNote,
   deleteNoteById,
+  getJournalNeighbors,
   getNoteForUser,
   getNoteRevisionsById,
   getNotesForEntity,
   getNotesInRange,
   listDeletedNotes,
+  listNoteTagsForUser,
+  mergeNoteTags,
   restoreNoteById,
   searchNotesForUser,
   updateNote,
@@ -70,6 +82,28 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
         return res.status(400).json({ error: result.error, success: false })
       }
       res.json({ data: result.data, next_cursor: result.next_cursor, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, NoteTagsListResponse, unknown, NoteTagsListQuery>(
+    '/tags',
+    authMiddleware,
+    validateQuery(noteTagsListQuerySchema),
+    async (req, res) => {
+      const result = await listNoteTagsForUser(req.user!, req.query)
+      if (!result.success) return res.status(400).json({ error: result.error, success: false })
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.post<Record<string, never>, MergeNoteTagsResponse, MergeNoteTagsBody>(
+    '/tags/merge',
+    authMiddleware,
+    validateBody(mergeNoteTagsBodySchema),
+    async (req, res) => {
+      const result = await mergeNoteTags(req.user!, req.body)
+      if (!result.success) return res.status(400).json({ error: result.error, success: false })
+      res.json({ data: result.data, success: true })
     },
   )
 
@@ -165,6 +199,17 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     }
     res.json({ data: result.data, success: true })
   })
+
+  router.get<{ id: string }, NoteNeighborsResponse, unknown, NoteNeighborsQuery>(
+    '/:id/neighbors',
+    authMiddleware,
+    validateQuery(noteNeighborsQuerySchema),
+    async (req, res) => {
+      const neighbors = await getJournalNeighbors(req.user!, req.params.id, req.query.tz)
+      if (!neighbors) return res.status(404).json({ error: 'Journal entry not found', success: false })
+      res.json({ data: neighbors, success: true })
+    },
+  )
 
   return router
 }

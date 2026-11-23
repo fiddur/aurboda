@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks'
 
 import type { ImageUpload, UploadImage } from './image-upload'
 
 import { renderMarkdown } from '../../utils/markdown'
-import { pictureDropHandlers, useImageUpload } from './image-upload'
+import { useImageUpload } from './image-upload'
 import './style.css'
 
 interface MarkdownEditorProps {
@@ -12,13 +12,15 @@ interface MarkdownEditorProps {
   placeholder?: string
   rows?: number
   upload?: UploadImage
+  /** What to say when `upload` fails, in place of the feed-picture wording. */
+  uploadFailureMessage?: (failure: unknown) => string
+  /** Shown under the editor in place of the usual hint on adding pictures. */
+  pictureHint?: string
   /**
-   * Pictures picked, pasted or dropped go here instead of into the text (the journal keeps them
-   * as attachments of the entry). Takes precedence over `upload`.
+   * Runs on the shown preview after each render of it (to fill in what the markdown cannot carry);
+   * answers its cleanup.
    */
-  attachPictures?: (files: File[]) => void
-  /** Shown under the editor in `attachPictures` mode. */
-  attachHint?: string
+  decoratePreview?: (container: HTMLElement) => (() => void) | void
   /** Called when the text area loses focus. */
   onBlur?: () => void
   ariaLabel?: string
@@ -28,6 +30,42 @@ interface MarkdownEditorProps {
   onKeyDown?: (e: KeyboardEvent) => void
   /** The cursor may have moved without the text changing (a click, an arrow key). */
   onCaret?: () => void
+  /** The text area grows with its text instead of scrolling inside; `rows` is then its least height. */
+  autoGrow?: boolean
+}
+
+const fitHeight = (textarea: HTMLTextAreaElement) => {
+  const borders = textarea.offsetHeight - textarea.clientHeight
+  const scrollY = window.scrollY
+  textarea.style.height = 'auto'
+  textarea.style.height = `${textarea.scrollHeight + borders}px`
+  // Collapsing to `auto` for the measurement can shorten the page and clamp its scroll.
+  if (window.scrollY !== scrollY) window.scrollTo(window.scrollX, scrollY)
+}
+
+const useAutoGrow = (
+  textarea: { current: HTMLTextAreaElement | null },
+  enabled: boolean | undefined,
+  value: string,
+  tab: string,
+): string => {
+  useLayoutEffect(() => {
+    if (enabled && textarea.current) fitHeight(textarea.current)
+  }, [enabled, textarea, value, tab])
+
+  useLayoutEffect(() => {
+    if (!enabled) return
+    let width = window.innerWidth
+    const refit = () => {
+      if (window.innerWidth === width) return
+      width = window.innerWidth
+      if (textarea.current) fitHeight(textarea.current)
+    }
+    window.addEventListener('resize', refit)
+    return () => window.removeEventListener('resize', refit)
+  }, [enabled, textarea])
+
+  return enabled ? 'md-editor-textarea md-editor-textarea--grow' : 'md-editor-textarea'
 }
 
 const PictureIcon = () => (
@@ -57,7 +95,7 @@ const PictureButton = ({ take }: { take: (files: File[]) => void }) => (
   </label>
 )
 
-const PictureStatus = ({ pictures }: { pictures: ImageUpload }) => (
+const PictureStatus = ({ pictures, hint }: { pictures: ImageUpload; hint: string | undefined }) => (
   <div class="md-editor-pictures">
     {pictures.sending > 0 && (
       <p class="md-editor-sending">{pictures.sending === 1 ? 'Sending a picture…' : 'Sending pictures…'}</p>
@@ -68,16 +106,24 @@ const PictureStatus = ({ pictures }: { pictures: ImageUpload }) => (
       </p>
     )}
     <p class="md-editor-hint">
-      Paste, drop or pick a picture to add it. Describe it between the square brackets.
+      {hint ?? 'Paste, drop or pick a picture to add it. Describe it between the square brackets.'}
     </p>
   </div>
 )
 
-/** Where picked, pasted and dropped pictures go: into the text (`upload`), or to `attachPictures`. */
-const pictureInput = (pictures: ImageUpload, attachPictures: ((files: File[]) => void) | undefined) =>
-  attachPictures
-    ? { enabled: true, handlers: pictureDropHandlers(attachPictures), take: attachPictures }
-    : { enabled: pictures.enabled, handlers: pictures.enabled ? pictures.handlers : {}, take: pictures.take }
+const useDecoratedPreview = (
+  preview: { current: HTMLDivElement | null },
+  rendered: string,
+  decorate: MarkdownEditorProps['decoratePreview'],
+) => {
+  const decorateRef = useRef(decorate)
+  decorateRef.current = decorate
+  useEffect(() => {
+    const node = preview.current
+    if (!node || !rendered) return
+    return decorateRef.current?.(node) ?? undefined
+  }, [preview, rendered])
+}
 
 export const MarkdownEditor = ({
   value,
@@ -85,24 +131,28 @@ export const MarkdownEditor = ({
   placeholder,
   rows = 4,
   upload,
-  attachPictures,
-  attachHint,
+  uploadFailureMessage,
+  pictureHint,
+  decoratePreview,
   onBlur,
   ariaLabel,
   textareaRef,
   onKeyDown,
   onCaret,
+  autoGrow,
 }: MarkdownEditorProps) => {
   const [tab, setTab] = useState<'write' | 'preview'>('write')
   const ownTextarea = useRef<HTMLTextAreaElement>(null)
   const textarea = textareaRef ?? ownTextarea
+  const preview = useRef<HTMLDivElement>(null)
   const pictures = useImageUpload({
     cursor: () => textarea.current?.selectionStart,
+    failureMessage: uploadFailureMessage,
     onChange,
-    upload: attachPictures ? undefined : upload,
+    upload,
     value,
   })
-  const picking = pictureInput(pictures, attachPictures)
+  const textareaClass = useAutoGrow(textarea, autoGrow, value, tab)
 
   const handleInput = useCallback(
     (e: Event) => {
@@ -112,6 +162,7 @@ export const MarkdownEditor = ({
   )
 
   const rendered = tab === 'preview' ? renderMarkdown(value || '*Nothing to preview*') : ''
+  useDecoratedPreview(preview, rendered, decoratePreview)
 
   return (
     <>
@@ -131,13 +182,13 @@ export const MarkdownEditor = ({
           >
             Preview
           </button>
-          {picking.enabled && tab === 'write' && <PictureButton take={picking.take} />}
+          {pictures.enabled && tab === 'write' && <PictureButton take={pictures.take} />}
         </div>
 
         {tab === 'write' ? (
           <textarea
             ref={textarea}
-            class="md-editor-textarea"
+            class={textareaClass}
             value={value}
             onInput={handleInput}
             placeholder={placeholder ?? 'Write a note (markdown supported)…'}
@@ -147,14 +198,17 @@ export const MarkdownEditor = ({
             onKeyUp={onCaret}
             onClick={onCaret}
             aria-label={ariaLabel}
-            {...picking.handlers}
+            {...(pictures.enabled ? pictures.handlers : {})}
           />
         ) : (
-          <div class="md-editor-preview" dangerouslySetInnerHTML={{ __html: rendered as string }} />
+          <div
+            ref={preview}
+            class="md-editor-preview"
+            dangerouslySetInnerHTML={{ __html: rendered as string }}
+          />
         )}
       </div>
-      {pictures.enabled && <PictureStatus pictures={pictures} />}
-      {attachPictures && attachHint && <p class="md-editor-hint">{attachHint}</p>}
+      {pictures.enabled && <PictureStatus pictures={pictures} hint={pictureHint} />}
     </>
   )
 }

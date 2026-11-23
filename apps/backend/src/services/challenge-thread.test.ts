@@ -553,6 +553,7 @@ describe('addChallengeComment', () => {
     in_reply_to_handle: input.in_reply_to_handle ?? null,
     in_reply_to_uri: input.in_reply_to_uri,
     include_chart: false,
+    include_exercise_trends: false,
     include_exercises: false,
     include_map: false,
     included_metrics: [],

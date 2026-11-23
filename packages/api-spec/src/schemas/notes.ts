@@ -10,7 +10,7 @@ import {
   queryBooleanSchema,
   UUID_RE,
 } from './common.ts'
-import { noteAttachmentSchema } from './note-attachments.ts'
+import { INLINE_PICTURE_HINT, noteAttachmentSchema } from './note-attachments.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 /**
@@ -313,8 +313,10 @@ const noteTitleInputSchema = z
     description: `Title (at most ${NOTE_TITLE_MAX_LENGTH} characters; trimmed, empty means none). Only on a thread root, never on a reply.`,
   })
 
+const noteTagInputSchema = z.string()
+
 const noteTagsInputSchema = z
-  .array(z.string())
+  .array(noteTagInputSchema)
   .max(NOTE_TAGS_MAX)
   .meta({
     description: `Tags set explicitly (at most ${NOTE_TAGS_MAX}), e.g. ["travel", "family"]: stored lowercase without "#". #hashtags written in the content are tags too, without being listed here.`,
@@ -393,8 +395,7 @@ const checkAnchoredShape = (ctx: CheckContext, body: NoteShapeInput): void => {
 export const addNoteBodySchema = z
   .object({
     content: z.string().meta({
-      description:
-        'Note content (markdown). May be empty only for `entity_type` "time" or "day"; #hashtags in it become tags.',
+      description: `Note content (markdown). May be empty only for \`entity_type\` "time" or "day"; #hashtags in it become tags. ${INLINE_PICTURE_HINT}`,
     }),
     date: dateOnlySchema.optional().meta({
       description: "Only for `entity_type: 'day'` (required there) — the calendar date, YYYY-MM-DD",
@@ -444,10 +445,12 @@ export type AddNoteBody = z.infer<typeof addNoteBodySchema>
  */
 export const updateNoteBodySchema = z
   .object({
-    content: z.string().optional().meta({
-      description:
-        'Updated note content (markdown). May be empty only on a comment with `entity_type` "time" or "day".',
-    }),
+    content: z
+      .string()
+      .optional()
+      .meta({
+        description: `Updated note content (markdown). May be empty only on a comment with \`entity_type\` "time" or "day". ${INLINE_PICTURE_HINT}`,
+      }),
     date: dateOnlySchema.optional().meta({
       description:
         "New calendar date (YYYY-MM-DD). Only for a comment with `entity_type` 'time' or 'day': on a 'time' comment it makes it a 'day' entry and drops its times. Not together with start_time/end_time.",
@@ -590,6 +593,25 @@ export const parseNotesSearchEntityTypes = (raw: string | undefined): EntityType
   return types.length > 0 ? [...new Set(types)] : [...NOTES_SEARCH_DEFAULT_ENTITY_TYPES]
 }
 
+const notesEntityTypesQuerySchema = z.string().optional().meta({
+  description:
+    'Comma-separated root types to include (default "time,day", the free-standing entries). Add "activity", "meal", "report", "productivity" or "metric" to include comments on those; comments with no time (metric comments) are never listed. "note" (replies) is refused: a reply is found through its root.',
+  example: 'time,day,activity',
+})
+
+const checkEntityTypes = (ctx: CheckContext, raw: string | undefined): void => {
+  for (const type of splitList(raw)) {
+    if (!(notesSearchRootTypes as readonly string[]).includes(type)) {
+      pushIssue(
+        ctx,
+        'entity_types',
+        type,
+        `Not a comment root type: ${type} (one of ${notesSearchRootTypes.join(', ')})`,
+      )
+    }
+  }
+}
+
 /**
  * Search and list comments, newest first. With no filter it lists the free-standing entries
  * (`time` and `day` notes), which is what the journal reads.
@@ -597,11 +619,7 @@ export const parseNotesSearchEntityTypes = (raw: string | undefined): EntityType
 export const notesSearchQuerySchema = z
   .object({
     cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
-    entity_types: z.string().optional().meta({
-      description:
-        'Comma-separated root types to include (default "time,day", the free-standing entries). Add "activity", "meal", "report", "productivity" or "metric" to include comments on those; comments with no time (metric comments) are never listed. "note" (replies) is refused: a reply is found through its root.',
-      example: 'time,day,activity',
-    }),
+    entity_types: notesEntityTypesQuerySchema,
     from: dateOnlySchema.optional().meta({
       description:
         "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
@@ -644,16 +662,7 @@ export const notesSearchQuerySchema = z
     if (parseNotesSearchTags(query.tags) === null) {
       pushIssue(ctx, 'tags', query.tags, 'Not a valid tag list (letters, digits and _, comma-separated)')
     }
-    for (const type of splitList(query.entity_types)) {
-      if (!(notesSearchRootTypes as readonly string[]).includes(type)) {
-        pushIssue(
-          ctx,
-          'entity_types',
-          type,
-          `Not a comment root type: ${type} (one of ${notesSearchRootTypes.join(', ')})`,
-        )
-      }
-    }
+    checkEntityTypes(ctx, query.entity_types)
     if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
       pushIssue(ctx, 'to', query.to, 'to must not precede from')
     }
@@ -718,3 +727,122 @@ export const noteRevisionsResponseSchema = createDataArrayResponseSchema(noteRev
 })
 
 export type NoteRevisionsResponse = z.infer<typeof noteRevisionsResponseSchema>
+
+export const noteNeighborSchema = z
+  .object({
+    date: noteDateSchema.optional(),
+    entity_type: entityTypeSchema,
+    excerpt: z.string().meta({
+      description: `The first non-empty line of the text, at most ${JOURNAL_ENTRY_EXCERPT_MAX} characters (may be empty)`,
+    }),
+    id: z.string().uuid().meta({ description: 'Note ID' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'When a `time` entry is anchored' }),
+    title: noteTitleResponseSchema.optional(),
+  })
+  .meta({ description: 'A Journal entry next to another one', id: 'NoteNeighbor' })
+
+export type NoteNeighbor = z.infer<typeof noteNeighborSchema>
+
+export const noteNeighborsQuerySchema = z
+  .object({
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone a `day` entry's date is read in (default: the user's timezone)",
+    }),
+  })
+  .meta({ id: 'NoteNeighborsQuery' })
+
+export type NoteNeighborsQuery = z.infer<typeof noteNeighborsQuerySchema>
+
+export const noteNeighborsSchema = z
+  .object({
+    next: noteNeighborSchema.optional().meta({ description: 'The newer entry, if any' }),
+    previous: noteNeighborSchema.optional().meta({ description: 'The older entry, if any' }),
+  })
+  .meta({
+    description: "The Journal entries just before and after one entry, in the Journal's order",
+    id: 'NoteNeighbors',
+  })
+
+export type NoteNeighbors = z.infer<typeof noteNeighborsSchema>
+
+export const noteNeighborsResponseSchema = createDataResponseSchema(noteNeighborsSchema).meta({
+  id: 'NoteNeighborsResponse',
+})
+
+export type NoteNeighborsResponse = z.infer<typeof noteNeighborsResponseSchema>
+
+export const noteTagSummarySchema = z
+  .object({
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .meta({ description: 'How many live notes carry the tag (each note once)' }),
+    last_used: iso8601DateTimeSchema.meta({
+      description:
+        "The newest carrying note's anchor: its start time, or a `day` entry's date at its start in tz",
+    }),
+    tag: z.string().meta({ description: 'The tag, lowercase without `#`' }),
+  })
+  .meta({ description: 'A tag used on journal entries or comments', id: 'NoteTagSummary' })
+
+export type NoteTagSummary = z.infer<typeof noteTagSummarySchema>
+
+export const noteTagsListQuerySchema = z
+  .object({
+    entity_types: notesEntityTypesQuerySchema,
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone a `day` entry's date is read in (default: the user's timezone)",
+    }),
+  })
+  .check((ctx) => {
+    checkEntityTypes(ctx, ctx.value.entity_types)
+  })
+  .meta({ id: 'NoteTagsListQuery' })
+
+export type NoteTagsListQuery = z.infer<typeof noteTagsListQuerySchema>
+
+export const noteTagsListResponseSchema = createDataResponseSchema(z.array(noteTagSummarySchema)).meta({
+  id: 'NoteTagsListResponse',
+})
+
+export type NoteTagsListResponse = z.infer<typeof noteTagsListResponseSchema>
+
+export const NOTE_TAGS_MERGE_INTO_ERROR = 'into must not be one of from'
+
+export const mergeNoteTagsBodySchema = z
+  .object({
+    from: z
+      .array(noteTagInputSchema)
+      .min(1)
+      .max(NOTE_TAGS_MAX)
+      .meta({ description: `The tags to merge away (1–${NOTE_TAGS_MAX}), with or without "#"` }),
+    into: noteTagInputSchema.meta({ description: 'The tag they become, with or without "#"' }),
+  })
+  .check((ctx) => {
+    const body = ctx.value
+    const invalid = [...body.from, body.into].find((tag) => normalizeTag(tag) === null)
+    if (invalid !== undefined) {
+      pushIssue(ctx, 'from', invalid, `Not a valid tag: ${invalid} (letters, digits and _, not only digits)`)
+      return
+    }
+    const into = normalizeTag(body.into)
+    if (body.from.some((tag) => normalizeTag(tag) === into)) {
+      pushIssue(ctx, 'into', body.into, NOTE_TAGS_MERGE_INTO_ERROR)
+    }
+  })
+  .meta({ id: 'MergeNoteTagsBody' })
+
+export type MergeNoteTagsBody = z.infer<typeof mergeNoteTagsBodySchema>
+
+export const mergeNoteTagsResultSchema = z
+  .object({
+    changed: z.number().int().min(0).meta({ description: 'How many notes were changed' }),
+  })
+  .meta({ id: 'MergeNoteTagsResult' })
+
+export const mergeNoteTagsResponseSchema = createDataResponseSchema(mergeNoteTagsResultSchema).meta({
+  id: 'MergeNoteTagsResponse',
+})
+
+export type MergeNoteTagsResponse = z.infer<typeof mergeNoteTagsResponseSchema>

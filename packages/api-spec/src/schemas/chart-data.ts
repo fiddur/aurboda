@@ -48,6 +48,16 @@ const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
   example: 'Europe/Stockholm',
 })
 
+/** The reserved breakdown field for the people an activity was with; the `@` keeps a data field named `people` a field. */
+export const PEOPLE_BREAKDOWN_FIELD = '@people'
+
+export const isPeopleBreakdownField = (field: string): boolean => field === PEOPLE_BREAKDOWN_FIELD
+
+export const breakdownFieldLabel = (field: string): string => (isPeopleBreakdownField(field) ? 'With' : field)
+
+export const PEOPLE_BREAKDOWN_NOTE =
+  '@people breaks down by who the activity was with: one series per person by name, an activity with several people counted in each, (none) for no one.'
+
 export const ITEM_BREAKDOWN_NEEDS_MEASURE = 'breaking down by an item path needs a measure'
 
 export const itemBreakdownWithoutMeasure = (
@@ -225,10 +235,12 @@ export const chartDataQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
-    breakdown_fields: z.array(z.string()).optional().meta({
-      description:
-        'Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path.',
-    }),
+    breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: `Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path. ${PEOPLE_BREAKDOWN_NOTE}`,
+      }),
     ...chartMeasureShape,
     tz: chartDataTzSchema,
   })
@@ -270,10 +282,12 @@ export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
 export const chartDataHttpQuerySchema = z
   .object({
     aggregation: chartDataAggregationSchema.optional(),
-    breakdown_fields: z.string().optional().meta({
-      description:
-        'Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise\'s recruitment weight; exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group".',
-    }),
+    breakdown_fields: z
+      .string()
+      .optional()
+      .meta({
+        description: `Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight; exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". ${PEOPLE_BREAKDOWN_NOTE}`,
+      }),
     ...chartMeasureShape,
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),

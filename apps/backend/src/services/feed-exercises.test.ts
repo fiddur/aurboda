@@ -5,9 +5,11 @@ import { describe, expect, it } from 'vitest'
 import {
   exerciseItemPath,
   formatExerciseLine,
+  formatExerciseLines,
   formatExerciseSet,
   resolvePostExercises,
   resolveSharedExercises,
+  type SharedExercise,
   type SharedExercisesDeps,
   toStructuredExercise,
 } from './feed-exercises.ts'
@@ -38,7 +40,10 @@ const history: ActivityItemHistory = {
       ],
       measures: { e1rm: 101.3, max_weight: 80, set_count: 1, volume: 640 },
       records: ['e1rm'],
-      trend: [],
+      trend: [
+        { after: 101.3, before: 98, measure: 'e1rm' },
+        { after: 640, before: 700, measure: 'volume' },
+      ],
       value: 'Bench Press',
     },
   ],
@@ -137,6 +142,76 @@ describe('formatExerciseLine', () => {
   })
 })
 
+describe('formatExerciseLine with the trend', () => {
+  const bench: SharedExercise = {
+    measures: { e1rm: 101.3, volume: 640 },
+    name: 'Bench Press',
+    records: ['e1rm'],
+    sets: [
+      { reps: 8, set_type: 'warmup', weight: 60 },
+      { reps: 8, weight: 80 },
+    ],
+    trend: [
+      { after: 101.3, before: 98, measure: 'e1rm' },
+      { after: 640, before: 700, measure: 'volume' },
+      { after: 80, before: 75, measure: 'max_weight' },
+    ],
+  }
+
+  it('adds the e1RM and volume trends, the rise with its arrow', () => {
+    expect(formatExerciseLine(bench, { trend: true })).toBe(
+      'Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM · trend e1RM 98 kg ↗ 101.3 kg, volume 640 kg',
+    )
+  })
+
+  it('leaves the trend out unless asked', () => {
+    expect(formatExerciseLine(bench)).toBe(
+      'Bench Press: 8×60 kg (w), 8×80 kg · e1RM 101.3 kg · volume 640 kg · PR e1RM',
+    )
+    expect(formatExerciseLine(bench, { trend: false })).toBe(formatExerciseLine(bench))
+  })
+
+  it('shows no trend the first time', () => {
+    const first = {
+      ...bench,
+      trend: [
+        { after: 101.3, measure: 'e1rm' as const },
+        { after: 640, measure: 'volume' as const },
+      ],
+    }
+    expect(formatExerciseLine(first, { trend: true })).toBe(formatExerciseLine(first))
+  })
+
+  it('falls back to the hold, then the best set', () => {
+    const plank: SharedExercise = {
+      measures: { max_time: 60 },
+      name: 'Plank',
+      records: [],
+      sets: [{ time: 60 }],
+      trend: [
+        { after: 60, before: 45, measure: 'max_time' },
+        { after: 1, before: 1, measure: 'set_count' },
+      ],
+    }
+    expect(formatExerciseLine(plank, { trend: true })).toBe('Plank: 1:00 · trend hold 0:45 ↗ 1:00')
+    const pushUps: SharedExercise = {
+      measures: { max_reps: 20 },
+      name: 'Push-ups',
+      records: [],
+      sets: [{ reps: 20 }],
+      trend: [{ after: 20, before: 20, measure: 'max_reps' }],
+    }
+    expect(formatExerciseLine(pushUps, { trend: true })).toBe('Push-ups: 20 reps · trend best set 20 reps')
+  })
+
+  it('formats every exercise of a post the same way', () => {
+    expect(formatExerciseLines([bench, bench], { trend: true })).toEqual([
+      formatExerciseLine(bench, { trend: true }),
+      formatExerciseLine(bench, { trend: true }),
+    ])
+  })
+})
+
 describe('resolveSharedExercises', () => {
   it('reads the item history over the merged view of the activity', async () => {
     const { calls, deps: d } = deps()
@@ -150,6 +225,10 @@ describe('resolveSharedExercises', () => {
         sets: [
           { reps: 8, set_type: 'warmup', weight: 60 },
           { reps: 8, weight: 80 },
+        ],
+        trend: [
+          { after: 101.3, before: 98, measure: 'e1rm' },
+          { after: 640, before: 700, measure: 'volume' },
         ],
       },
     ])
@@ -191,6 +270,7 @@ describe('toStructuredExercise', () => {
         name: 'Bench Press',
         records: ['e1rm', 'max_weight'],
         sets: [{ reps: 8, set_type: 'warmup', weight: 60 }, { time: 30 }],
+        trend: [{ after: 101.3, before: 98, measure: 'e1rm' }],
       }),
     ).toEqual({
       metrics: [
@@ -207,7 +287,7 @@ describe('toStructuredExercise', () => {
   })
 
   it('leaves records out when the session set none', () => {
-    expect(toStructuredExercise({ measures: {}, name: 'Row', records: [], sets: [] })).toEqual({
+    expect(toStructuredExercise({ measures: {}, name: 'Row', records: [], sets: [], trend: [] })).toEqual({
       metrics: [],
       name: 'Row',
       sets: [],

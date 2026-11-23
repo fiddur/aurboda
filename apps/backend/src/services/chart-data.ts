@@ -6,13 +6,22 @@ import {
   type ChartDataBucket,
   type ChartDataSourceType,
   type ExerciseMuscleGroup,
+  isPeopleBreakdownField,
   isTimeWeightedMetric,
   muscleGroupBreakdownPath,
   muscleGroupFilter,
 } from '@aurboda/api-spec'
 
 import { buildBucketExpr } from '../db/bucket-expr.ts'
-import { expandActivityTypes, getBucketStarts, getHrZoneSecs, getSourceFilter, query } from '../db/index.ts'
+import {
+  type BreakdownPerson,
+  expandActivityTypes,
+  getBucketStarts,
+  getHrZoneSecs,
+  getPeopleForActivityGroups,
+  getSourceFilter,
+  query,
+} from '../db/index.ts'
 import { sampleRowsSql } from '../db/time-weighted.ts'
 import { combineMeasures, listItems, parseFieldPath } from './activity-measures.ts'
 import {
@@ -22,6 +31,12 @@ import {
   round2,
 } from './muscle-group-measures.ts'
 import { loadMuscleGroupResolvers } from './muscle-group-resolvers.ts'
+import {
+  activityBreakdownSql,
+  breakdownSeriesKeys,
+  NONE_LABEL,
+  personSeriesLabels,
+} from './people-breakdown.ts'
 import {
   type MeasuredActivity,
   type MeasureFilter,
@@ -288,43 +303,36 @@ const queryActivityTypeBreakdown = async (
   tz: string,
   aggregation: ChartDataAggregation = 'sum',
 ): Promise<{ buckets: ChartDataBreakdownBucket[]; series: string[] }> => {
-  // Sanitize all field names
-  for (const field of fields) {
-    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { buckets: [], series: [] }
-  }
+  const breakdown = activityBreakdownSql(fields, 'a')
+  if (!breakdown) return { buckets: [], series: [] }
 
   const types = await expandActivityTypes(user, [activityType])
-  const bucket = buildBucketExpr(bucketSize, 'start_time', 1, tz)
+  const bucket = buildBucketExpr(bucketSize, 'a.start_time', 1, tz)
   const valueExpr = activityValueExprs[aggregation]
-
-  const fieldSelects = fields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
-  const fieldGroupBys = fields.map((_, i) => `field_${i}`)
 
   const result = await query(
     user,
     `SELECT ${bucket.expr} AS bucket_start,
-            ${fieldSelects.join(', ')},
+            ${breakdown.columns.join(', ')},
             ${valueExpr} AS value
-       FROM activities
-      WHERE activity_type = ANY($${bucket.params.length + 1})
-        AND deleted_at IS NULL
-        AND superseded_by IS NULL
-        AND start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
-      GROUP BY 1, ${fieldGroupBys.join(', ')}
+       FROM activities a ${breakdown.join}
+      WHERE a.activity_type = ANY($${bucket.params.length + 1})
+        AND a.deleted_at IS NULL
+        AND a.superseded_by IS NULL
+        AND a.start_time BETWEEN $${bucket.params.length + 2} AND $${bucket.params.length + 3}
+      GROUP BY 1, ${breakdown.groupBy.join(', ')}
       ORDER BY 1`,
     [...bucket.params, types, start, end],
   )
 
+  const seriesKeys = breakdownSeriesKeys(result.rows, fields)
   const seriesSet = new Set<string>()
   const bucketMap = new Map<string, Record<string, number>>()
-  for (const row of result.rows) {
+  result.rows.forEach((row, i) => {
     const bucketStart = (row.bucket_start as Date).toISOString()
-    const keyParts = fields.map((_, i) => row[`field_${i}`] as string)
-    const seriesKey = keyParts.join(' / ')
-    const value = Number(row.value)
-    seriesSet.add(seriesKey)
-    bucketMap.getOrInsert(bucketStart, {})[seriesKey] = value
-  }
+    seriesSet.add(seriesKeys[i])
+    bucketMap.getOrInsert(bucketStart, {})[seriesKeys[i]] = Number(row.value)
+  })
 
   const series = [...seriesSet].sort()
   const buckets: ChartDataBreakdownBucket[] = [...bucketMap.entries()].map(([bucketStart, seriesData]) => ({
@@ -356,8 +364,29 @@ interface SeriesPart {
 }
 
 const scalarPart = (m: MeasuredActivity, field: string): SeriesPart => {
-  const name = String(m.activity.data?.[field] ?? '(none)')
+  const name = String(m.activity.data?.[field] ?? NONE_LABEL)
   return { key: `field:${name}`, name }
+}
+
+/** A session's parts for a field without measures of its own: a scalar data field, or `@people`. */
+type ScalarParts = (m: MeasuredActivity, field: string) => SeriesPart[]
+
+const NO_PEOPLE: SeriesPart[] = [{ key: 'person:', name: NONE_LABEL }]
+
+/** One part per person the session was with, labelled as in `personSeriesLabels` over all of `people`. */
+const scalarPartsWithPeople = (people: Map<string, BreakdownPerson[]> | undefined): ScalarParts => {
+  if (!people) return (m, field) => [scalarPart(m, field)]
+  const labels = personSeriesLabels([...people.values()].flat())
+  return (m, field) => {
+    if (!isPeopleBreakdownField(field)) return [scalarPart(m, field)]
+    const ids = new Set(
+      [m.activity.id, ...(m.activity.source_ids ?? [])].flatMap((id) =>
+        id === undefined ? [] : (people.get(id) ?? []).map((p) => p.id),
+      ),
+    )
+    if (ids.size === 0) return NO_PEOPLE
+    return [...ids].map((id) => ({ key: `person:${id}`, name: labels.get(id) ?? NONE_LABEL }))
+  }
 }
 
 /** The cross product of the fields' parts, each valued by its last part with measures, else `fallback`. */
@@ -386,6 +415,7 @@ const seriesValues = (
   measure: ActivityMeasure,
   filter: MeasureFilter | undefined,
   resolverFor: (path: string) => ExerciseEntryResolver,
+  scalarParts: ScalarParts,
 ): SeriesValue[] => {
   const partsPerField = fields.map((field): SeriesPart[] => {
     const musclePath = muscleGroupBreakdownPath(field)
@@ -396,7 +426,7 @@ const seriesValues = (
         name: muscleGroupName(g),
       }))
     }
-    if (parseFieldPath(field).key === undefined) return [scalarPart(m, field)]
+    if (parseFieldPath(field).key === undefined) return scalarParts(m, field)
     return measuresByItemValue(m.activity, field, filter).map((g) => ({
       key: `item:${g.normalized}`,
       measures: g.measures,
@@ -422,6 +452,7 @@ const muscleFilterValues = (
   fields: string[] | undefined,
   measure: ActivityMeasure,
   resolveEntry: ExerciseEntryResolver,
+  scalarParts: ScalarParts,
 ): SeriesValue[] => {
   const { field, key } = parseFieldPath(muscle.path)
   if (key === undefined) return []
@@ -440,7 +471,7 @@ const muscleFilterValues = (
   const partsPerField = fields.map((f): SeriesPart[] =>
     f === muscle.path
       ? contributions.map((c) => ({ key: `item:${c.normalized}`, measures: c.measures, name: c.value }))
-      : [scalarPart(m, f)],
+      : scalarParts(m, f),
   )
   return comboValues(partsPerField, total, measure)
 }
@@ -451,14 +482,22 @@ interface MeasureChartContext {
   measure: ActivityMeasure
   muscle: MuscleFilter | undefined
   resolverOf: (activityType: string, path: string) => ExerciseEntryResolver
+  scalarParts: ScalarParts
 }
 
 const sessionValues = (m: MeasuredActivity, ctx: MeasureChartContext): SeriesValue[] => {
   const resolverFor = (path: string) => ctx.resolverOf(m.activity.activity_type, path)
   if (ctx.muscle) {
-    return muscleFilterValues(m, ctx.muscle, ctx.fields, ctx.measure, resolverFor(ctx.muscle.path))
+    return muscleFilterValues(
+      m,
+      ctx.muscle,
+      ctx.fields,
+      ctx.measure,
+      resolverFor(ctx.muscle.path),
+      ctx.scalarParts,
+    )
   }
-  if (ctx.fields) return seriesValues(m, ctx.fields, ctx.measure, ctx.filter, resolverFor)
+  if (ctx.fields) return seriesValues(m, ctx.fields, ctx.measure, ctx.filter, resolverFor, ctx.scalarParts)
   const value = m.measures[ctx.measure]
   return value === undefined ? [] : [{ key: '', name: '', value }]
 }
@@ -505,8 +544,24 @@ const queryMeasureChart = async (
     input.bucket_size,
     tz,
   )
+  const people = fields?.some(isPeopleBreakdownField)
+    ? await getPeopleForActivityGroups(
+        user,
+        measured.flatMap((m) => [
+          ...(m.activity.id === undefined ? [] : [m.activity.id]),
+          ...(m.activity.source_ids ?? []),
+        ]),
+      )
+    : undefined
 
-  const ctx: MeasureChartContext = { fields, filter, measure, muscle, resolverOf }
+  const ctx: MeasureChartContext = {
+    fields,
+    filter,
+    measure,
+    muscle,
+    resolverOf,
+    scalarParts: scalarPartsWithPeople(people),
+  }
   const names = new Map<string, string>()
   const byBucket = new Map<number, Map<string, number[]>>()
   for (const m of measured) {

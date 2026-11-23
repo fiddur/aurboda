@@ -8,16 +8,16 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   fetchActivityById,
   fetchDeletedEntries,
+  fetchNoteTags,
   fetchNoteTemplates,
   type JournalQuery,
   restoreJournalEntry,
   restoreNoteTemplate,
   searchJournal,
 } from '../../state/api'
-import { toDisplayName } from '../../utils/displayName'
 import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
-import { AttachmentStrip } from './Attachments'
+import { AttachmentStrip, PictureViewer, useInlinePictures } from './Attachments'
 import {
   dayHeading,
   daysLeft,
@@ -30,12 +30,24 @@ import {
   type JournalFilters as Filters,
   journalQueryFor,
   localToday,
+  tagsFromQuery,
 } from './journal-list'
-import { RelatedChips, usePeople } from './Related'
-import { type RelatedFilter, relatedFilterFromQuery, relatedFilterHref } from './related'
+import { tagOptions } from './journal-tags'
+import { ActivityOptions, PeopleOptions, RelatedChips, usePeople } from './Related'
+import {
+  activityLabel,
+  type RelatedFilter,
+  relatedFilterFromQuery,
+  relatedFilterHref,
+  relatedFilterLabel,
+  relatedFilterLinks,
+  type RelatedLink,
+} from './related'
 import { DELETED_TEMPLATES_KEY, TEMPLATES_KEY, TemplateManager, useTemplates } from './Templates'
 
 export const JOURNAL_KEY = ['journal'] as const
+
+export const JOURNAL_TAGS_KEY = [...JOURNAL_KEY, 'tags'] as const
 
 const browserTimezone = (): string | undefined => {
   try {
@@ -86,15 +98,27 @@ const EntryHead = ({ note }: { note: Note }) => {
   )
 }
 
-const EntryText = ({ content }: { content: string }) => {
+const EntryText = ({
+  content,
+  noteId,
+  onOpenPicture,
+}: {
+  content: string
+  noteId: string | undefined
+  onOpenPicture: (attachmentId: string) => void
+}) => {
   const [expanded, setExpanded] = useState(false)
+  const text = useRef<HTMLDivElement>(null)
+  const html = content.trim() ? renderMarkdown(content) : ''
+  useInlinePictures(text, noteId, html, '400', onOpenPicture)
   const long = isLongText(content)
-  if (!content.trim()) return null
+  if (!html) return null
   return (
     <>
       <div
+        ref={text}
         class={`journal-entry-text${long && !expanded ? ' clamped' : ''}`}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
       {long && (
         <button type="button" class="journal-link-btn" onClick={() => setExpanded(!expanded)}>
@@ -133,22 +157,28 @@ const EntryFoot = ({
     </footer>
   ) : null
 
-const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => (
-  <article class="journal-entry">
-    <EntryHead note={note} />
-    {note.title && (
-      <h3 class="journal-entry-title">
-        {isJournalEntry(note) ? <a href={editorHref(note)}>{note.title}</a> : note.title}
-      </h3>
-    )}
-    <EntryText content={note.content} />
-    {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
-    {note.id && (note.attachments ?? []).length > 0 && (
-      <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} />
-    )}
-    <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
-  </article>
-)
+const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => {
+  const [viewing, setViewing] = useState<string | undefined>(undefined)
+  return (
+    <article class="journal-entry">
+      <EntryHead note={note} />
+      {note.title && (
+        <h3 class="journal-entry-title">
+          {isJournalEntry(note) ? <a href={editorHref(note)}>{note.title}</a> : note.title}
+        </h3>
+      )}
+      <EntryText content={note.content} noteId={note.id} onOpenPicture={setViewing} />
+      {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
+      {note.id && (note.attachments ?? []).length > 0 && (
+        <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} content={note.content} />
+      )}
+      <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
+      {viewing && note.id && (
+        <PictureViewer noteId={note.id} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+      )}
+    </article>
+  )
+}
 
 const OnThisDay = ({ today }: { today: string }) => {
   const query = useQuery({
@@ -304,13 +334,18 @@ const replaceQuery = (filter: RelatedFilter | undefined) => {
   }
 }
 
-/** "Related to": a person from the list, or the activity the page was opened with. */
-const RelatedToFilter = ({
+type FilterPicker = 'related' | 'tags' | undefined
+
+const RelatedToButton = ({
   related,
-  onChange,
+  open,
+  onToggle,
+  onClear,
 }: {
   related: RelatedFilter | undefined
-  onChange: (related: RelatedFilter | undefined) => void
+  open: boolean
+  onToggle: () => void
+  onClear: () => void
 }) => {
   const people = usePeople()
   const activity = useQuery({
@@ -318,40 +353,144 @@ const RelatedToFilter = ({
     queryFn: () => fetchActivityById(related!.id),
     queryKey: ['journal-related-activity', related?.id],
   })
-  const choose = (next: RelatedFilter | undefined) => {
-    replaceQuery(next)
-    onChange(next)
-  }
-  const list = people.data?.people ?? []
+  const label = relatedFilterLabel(
+    related,
+    people.data?.people ?? [],
+    activity.data ? activityLabel(activity.data.activity) : undefined,
+  )
   return (
-    <label class="journal-related-filter">
+    <span class="journal-related-filter">
       <span>Related to</span>
-      <select
-        value={related ? `${related.type}:${related.id}` : ''}
-        onChange={(e) => {
-          const [type, id] = e.currentTarget.value.split(':')
-          choose(type && id ? { id, type: type as RelatedFilter['type'] } : undefined)
-        }}
-      >
-        <option value="">Anyone or anything</option>
-        {related?.type === 'activity' && (
-          <option value={`activity:${related.id}`}>
-            {activity.data
-              ? activity.data.activity.title || toDisplayName(activity.data.activity.activity_type)
-              : 'This activity'}
-          </option>
-        )}
-        {list.map((person) => (
-          <option key={person.id} value={`person:${person.id}`}>
-            {person.name}
-          </option>
-        ))}
-      </select>
-    </label>
+      <button type="button" class="btn-secondary journal-related-add" aria-expanded={open} onClick={onToggle}>
+        {label}
+      </button>
+      {related && (
+        <button type="button" class="journal-link-btn" onClick={onClear}>
+          Clear
+        </button>
+      )}
+    </span>
   )
 }
 
-const JournalFilters = ({
+/** "Related to": a person, or an activity of any day, picked from People and Activities tabs. */
+const RelatedToPicker = ({
+  related,
+  today,
+  onPick,
+}: {
+  related: RelatedFilter | undefined
+  today: string
+  onPick: (related: RelatedFilter) => void
+}) => {
+  const [tab, setTab] = useState<'person' | 'activity'>(related?.type ?? 'person')
+  const links = relatedFilterLinks(related, '')
+  const take = (link: RelatedLink) => onPick({ id: link.entity_id, type: link.entity_type })
+  return (
+    <div class="journal-card journal-related-picker" aria-label="Related to">
+      <div class="journal-related-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'person'} onClick={() => setTab('person')}>
+          People
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'activity'}
+          onClick={() => setTab('activity')}
+        >
+          Activities
+        </button>
+      </div>
+      {tab === 'person' ? (
+        <PeopleOptions links={links} onAdd={take} allowNew={false} />
+      ) : (
+        <ActivityOptions entryDate={today} links={links} onAdd={take} />
+      )}
+    </div>
+  )
+}
+
+/** The tags to filter on, most used first, leaving out those already in the filter. */
+const TagsPicker = ({ active, onPick }: { active: readonly string[]; onPick: (tag: string) => void }) => {
+  const [search, setSearch] = useState('')
+  const tags = useQuery({ queryFn: () => fetchNoteTags(), queryKey: JOURNAL_TAGS_KEY })
+  const shown = tagOptions(tags.data ?? [], search, active)
+  return (
+    <div class="journal-card journal-related-picker journal-related-options" aria-label="Tags">
+      <input
+        type="search"
+        placeholder="Search tags"
+        aria-label="Search tags"
+        value={search}
+        onInput={(e) => setSearch(e.currentTarget.value)}
+      />
+      {tags.isLoading && <p class="journal-muted">Loading…</p>}
+      {tags.isError && <p class="journal-error">The tags could not be loaded.</p>}
+      {tags.isSuccess && shown.length === 0 && (
+        <p class="journal-muted">{(tags.data ?? []).length === 0 ? 'No tags yet.' : 'No tag matches.'}</p>
+      )}
+      <ul>
+        {shown.map((tag) => (
+          <li key={tag.tag}>
+            <button type="button" class="journal-related-option" onClick={() => onPick(tag.tag)}>
+              <strong>#{tag.tag}</strong>
+              <span class="journal-muted"> · {tag.count}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <a class="journal-link-btn" href="/journal/tags">
+        Manage tags
+      </a>
+    </div>
+  )
+}
+
+const FilterSwitches = ({
+  filters,
+  onChange,
+}: {
+  filters: Filters
+  onChange: (patch: Partial<Filters>) => void
+}) => (
+  <>
+    <label class="journal-switch">
+      <input
+        type="checkbox"
+        checked={filters.withComments}
+        onChange={(e) => onChange({ withComments: e.currentTarget.checked })}
+      />
+      <span>Also show comments on activities, meals and reports</span>
+    </label>
+    <label class="journal-switch">
+      <input
+        type="checkbox"
+        checked={filters.needsText}
+        onChange={(e) => onChange({ needsText: e.currentTarget.checked })}
+      />
+      <span>Photos without text</span>
+    </label>
+  </>
+)
+
+const ActiveTags = ({ tags, onChange }: { tags: string[]; onChange: (patch: Partial<Filters>) => void }) =>
+  tags.length > 0 ? (
+    <div class="journal-active-tags" aria-label="Showing entries tagged">
+      {tags.map((tag) => (
+        <button
+          key={tag}
+          type="button"
+          class="journal-chip active"
+          onClick={() => onChange({ tags: tags.filter((t) => t !== tag) })}
+          aria-label={`Stop filtering by #${tag}`}
+        >
+          #{tag} ✕
+        </button>
+      ))}
+    </div>
+  ) : null
+
+const SearchControls = ({
   filters,
   today,
   onChange,
@@ -360,67 +499,86 @@ const JournalFilters = ({
   today: string
   onChange: (patch: Partial<Filters>) => void
 }) => (
-  <>
-    <div class="journal-controls">
+  <div class="journal-controls">
+    <input
+      type="search"
+      class="journal-search"
+      placeholder="Search your journal"
+      aria-label="Search your journal"
+      value={filters.search}
+      onInput={(e) => onChange({ search: e.currentTarget.value })}
+    />
+    <label class="journal-date-jump">
+      <span>Go to date</span>
       <input
-        type="search"
-        class="journal-search"
-        placeholder="Search your journal"
-        aria-label="Search your journal"
-        value={filters.search}
-        onInput={(e) => onChange({ search: e.currentTarget.value })}
+        type="date"
+        value={filters.jumpTo}
+        max={today}
+        onInput={(e) => onChange({ jumpTo: e.currentTarget.value })}
       />
-      <label class="journal-date-jump">
-        <span>Go to date</span>
-        <input
-          type="date"
-          value={filters.jumpTo}
-          max={today}
-          onInput={(e) => onChange({ jumpTo: e.currentTarget.value })}
-        />
-      </label>
-      {filters.jumpTo && (
-        <button type="button" class="journal-link-btn" onClick={() => onChange({ jumpTo: '' })}>
-          Back to today
-        </button>
-      )}
-    </div>
-    <div class="journal-filters">
-      <label class="journal-switch">
-        <input
-          type="checkbox"
-          checked={filters.withComments}
-          onChange={(e) => onChange({ withComments: e.currentTarget.checked })}
-        />
-        <span>Also show comments on activities, meals and reports</span>
-      </label>
-      <label class="journal-switch">
-        <input
-          type="checkbox"
-          checked={filters.needsText}
-          onChange={(e) => onChange({ needsText: e.currentTarget.checked })}
-        />
-        <span>Photos without text</span>
-      </label>
-      <RelatedToFilter related={filters.related} onChange={(related) => onChange({ related })} />
-    </div>
-    {filters.tags.length > 0 && (
-      <div class="journal-active-tags" aria-label="Showing entries tagged">
-        {filters.tags.map((tag) => (
-          <button
-            key={tag}
-            type="button"
-            class="journal-chip active"
-            onClick={() => onChange({ tags: filters.tags.filter((t) => t !== tag) })}
-            aria-label={`Stop filtering by #${tag}`}
-          >
-            #{tag} ✕
-          </button>
-        ))}
-      </div>
+    </label>
+    {filters.jumpTo && (
+      <button type="button" class="journal-link-btn" onClick={() => onChange({ jumpTo: '' })}>
+        Back to today
+      </button>
     )}
-  </>
+  </div>
 )
+
+const JournalFilters = ({
+  filters,
+  today,
+  onChange,
+  onTag,
+}: {
+  filters: Filters
+  today: string
+  onChange: (patch: Partial<Filters>) => void
+  onTag: (tag: string) => void
+}) => {
+  const [picker, setPicker] = useState<FilterPicker>(undefined)
+  const toggle = (which: Exclude<FilterPicker, undefined>) => setPicker(picker === which ? undefined : which)
+  const chooseRelated = (related: RelatedFilter | undefined) => {
+    replaceQuery(related)
+    onChange({ related })
+    setPicker(undefined)
+  }
+  return (
+    <>
+      <SearchControls filters={filters} today={today} onChange={onChange} />
+      <div class="journal-filters">
+        <FilterSwitches filters={filters} onChange={onChange} />
+        <RelatedToButton
+          related={filters.related}
+          open={picker === 'related'}
+          onToggle={() => toggle('related')}
+          onClear={() => chooseRelated(undefined)}
+        />
+        <button
+          type="button"
+          class="btn-secondary journal-related-add"
+          aria-expanded={picker === 'tags'}
+          onClick={() => toggle('tags')}
+        >
+          Tags
+        </button>
+      </div>
+      {picker === 'related' && (
+        <RelatedToPicker related={filters.related} today={today} onPick={chooseRelated} />
+      )}
+      {picker === 'tags' && (
+        <TagsPicker
+          active={filters.tags}
+          onPick={(tag) => {
+            onTag(tag)
+            setPicker(undefined)
+          }}
+        />
+      )}
+      <ActiveTags tags={filters.tags} onChange={onChange} />
+    </>
+  )
+}
 
 const EmptyJournal = ({ unfiltered }: { unfiltered: boolean }) => (
   <div class="journal-empty">
@@ -509,13 +667,17 @@ export const JournalList = () => {
     needsText: false,
     related: relatedFilterFromQuery(urlQuery),
     search: '',
-    tags: [],
+    tags: tagsFromQuery(urlQuery),
     withComments: false,
   })
   const [showTemplates, setShowTemplates] = useState(false)
   const q = useDebounced(filters.search, 350)
   const today = localToday()
   const change = (patch: Partial<Filters>) => setFilters((current) => ({ ...current, ...patch }))
+  const addTag = (tag: string) =>
+    setFilters((current) =>
+      current.tags.includes(tag) ? current : { ...current, tags: [...current.tags, tag] },
+    )
 
   const query: JournalQuery = journalQueryFor(filters, q, browserTimezone())
   const unfiltered = isUnfiltered(filters, q)
@@ -523,14 +685,9 @@ export const JournalList = () => {
   return (
     <div class="page journal-page">
       <JournalHeader />
-      <JournalFilters filters={filters} today={today} onChange={change} />
+      <JournalFilters filters={filters} today={today} onChange={change} onTag={addTag} />
       {unfiltered && <OnThisDay today={today} />}
-      <JournalEntries
-        query={query}
-        today={today}
-        unfiltered={unfiltered}
-        onTag={(tag) => change({ tags: filters.tags.includes(tag) ? filters.tags : [...filters.tags, tag] })}
-      />
+      <JournalEntries query={query} today={today} unfiltered={unfiltered} onTag={addTag} />
       <RecentlyDeleted />
       <details
         class="journal-card journal-templates-section"

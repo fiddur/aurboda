@@ -1,8 +1,14 @@
-import type { DashboardConfig, DashboardSection, DashboardWidget, SectionType } from '@aurboda/api-spec'
-
+import {
+  breakdownFieldLabel,
+  type DashboardConfig,
+  type DashboardSection,
+  type DashboardWidget,
+  type SectionType,
+} from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { initialMaskedFields, showsPeopleNames } from '../pages/Chart/updateWidget'
 import { fetchDashboard, listSharedDashboards, saveDashboard, updateSharedDashboard } from '../state/api'
 import { newSectionId } from '../utils/widget-id'
 import './AddToDashboardModal.css'
@@ -26,11 +32,16 @@ export function BreakdownMaskPicker({
         {fields.map((field) => (
           <label key={field} class="mask-field-checkbox">
             <input type="checkbox" checked={masked.includes(field)} onChange={() => onToggle(field)} />
-            {field}
+            {breakdownFieldLabel(field)}
           </label>
         ))}
       </div>
       <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
+      {showsPeopleNames(fields, masked) && (
+        <p class="mask-warning">
+          Names of the people will be visible to anyone who can open a shared board with this chart.
+        </p>
+      )}
     </div>
   )
 }
@@ -57,7 +68,7 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
   const [targetId, setTargetId] = useState('home')
   const [selectedSectionId, setSelectedSectionId] = useState('')
   const [newSectionTitle, setNewSectionTitle] = useState('')
-  const [masked, setMasked] = useState<string[]>([])
+  const [masked, setMasked] = useState<string[]>(() => initialMaskedFields(breakdownFields))
   const [saved, setSaved] = useState(false)
 
   const toggleMasked = (field: string) =>

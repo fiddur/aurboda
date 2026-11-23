@@ -12,6 +12,7 @@ import { auth } from '../../state/auth'
 import {
   DataTypesList,
   LoginRequired,
+  OverlapNote,
   type SaveStatus,
   SaveStatusIndicator,
   StatusBanner,
@@ -92,6 +93,8 @@ export function RescueTimeSource() {
           tracks which apps and websites you use across your devices and provides productivity scores. Aurboda
           pulls your data periodically via the RescueTime API.
         </p>
+
+        <OverlapNote sourceId="rescuetime" />
 
         <DataTypesList types={DATA_TYPES} />
         <StatusBanner

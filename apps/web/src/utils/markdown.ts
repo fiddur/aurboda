@@ -13,9 +13,27 @@
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import { marked } from 'marked'
 
+import { attachmentIdOf } from './attachment-ref'
+
 // GFM + hard line breaks, shared by every sink. `async: false` keeps `parse`
 // returning a string, not a Promise.
 marked.setOptions({ breaks: true, gfm: true })
+
+const escapeAttribute = (value: string): string =>
+  value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
+// A private attachment cannot be an `<img src>` (the bytes need the token, and the sanitisers below drop
+// non-http sources), so `attachment:<uuid>` becomes a source-less `<img>` carrying the id for the page
+// to fill in.
+marked.use({
+  renderer: {
+    image({ href, text }) {
+      const id = attachmentIdOf(href)
+      if (id === undefined) return false
+      return `<img data-attachment-id="${id}" alt="${escapeAttribute(text)}">`
+    },
+  },
+})
 
 // Brought in line with the outbound article sanitiser (backend
 // `services/activitypub/article-object.ts`), so what the web shows is what

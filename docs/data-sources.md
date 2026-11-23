@@ -31,6 +31,17 @@ You connect sources from **Setup → Data sources** in the web app's menu, one p
 
 <!-- END:data-sources -->
 
+## Data sources page
+
+The web page `/data-sources` (embedded in the Android app's More tab) lists what you collect before where it comes from:
+
+- **What you collect**: one row per kind of data (location, sleep, heart rate and HRV, steps, workouts, strength sets, readiness and stress, body measurements, screen time on a computer and on a phone, music, calendar, your own logging), with the active sources that bring it, or the sources that could when none does.
+- **Sources by group**: a card per source under its heading (health and sleep, workouts, location, screen time, music, calendar, your own logging), with a chip for each kind it brings and its status.
+
+For two kinds one source is enough, since a second sends the same data again: **location** (Home Assistant and OwnTracks both send your phone's position) and **screen time on a computer** (ActivityWatch on the desktop and RescueTime). When two such sources are active, the page warns under that kind, and the setup pages of OwnTracks, Home Assistant, ActivityWatch (Desktop) and RescueTime say so before you set up a second one. Other kinds, such as sleep from both Oura and Garmin, are listed without a warning.
+
+A source counts as active as follows: Oura, Garmin, Strava, Gravl and Last.fm when connected; Home Assistant when its URL, token and entity are set; OwnTracks and ActivityWatch when they delivered data in the last 7 days; RescueTime when it has a key and delivered data in the last 7 days (a key alone is _configured_); the Android app when Health Connect records arrived in the last 30 days; Calendars when one is added. The server works this out, so the REST API (`GET /data-sources/overview`) and MCP (`get_data_sources_overview`) answer the same as the page.
+
 ## Sync Behavior
 
 **Pull-based sources** (Oura, Garmin, Strava, RescueTime, Last.fm, Calendars, Gravl, Home Assistant) support:

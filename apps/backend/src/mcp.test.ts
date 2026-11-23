@@ -14,6 +14,7 @@ import * as db from './db/index.ts'
 import { createMcpRouter, trimToolCallArguments } from './mcp.ts'
 import * as activityRecords from './services/activity-records.ts'
 import * as dataPresence from './services/data-presence.ts'
+import * as dataSourcesOverview from './services/data-sources-overview.ts'
 import * as latestSleep from './services/latest-sleep.ts'
 import * as mutations from './services/mutations.ts'
 import { PeriodError } from './services/periods.ts'
@@ -58,12 +59,15 @@ vi.mock('./services/mutations', () => ({
   deleteActivity: vi.fn(),
   deleteCustomMetric: vi.fn(),
   deleteNoteById: vi.fn(),
+  getJournalNeighbors: vi.fn(),
   getNoteForUser: vi.fn(),
   getCustomMetrics: vi.fn().mockResolvedValue([]),
   getNoteRevisionsById: vi.fn(),
   getNotesForEntity: vi.fn().mockResolvedValue([]),
   getNotesInRange: vi.fn().mockResolvedValue([]),
   listDeletedNotes: vi.fn().mockResolvedValue([]),
+  listNoteTagsForUser: vi.fn(),
+  mergeNoteTags: vi.fn(),
   restoreActivity: vi.fn(),
   restoreNoteById: vi.fn(),
   searchNotesForUser: vi.fn(),
@@ -155,6 +159,10 @@ vi.mock('./services/data-presence', () => ({
   queryDataPresence: vi.fn(),
 }))
 
+vi.mock('./services/data-sources-overview', () => ({
+  getDataSourcesOverview: vi.fn(),
+}))
+
 vi.mock('./oura-sync', () => ({
   syncAllOuraData: vi.fn(),
 }))
@@ -208,6 +216,18 @@ describe('MCP Server', () => {
 
       expect(response.status).toBe(401)
       expect(response.body.error).toBe('Unauthorized')
+      expect(response.headers['www-authenticate']).toBeUndefined()
+    })
+
+    test('401 points to the protected resource metadata when the host is known', async () => {
+      const app = express()
+      app.use('/mcp', createMcpRouter(auth, { webHost: 'https://aurboda.test' }))
+      const response = await mcpPost(app).send({ id: 1, jsonrpc: '2.0', method: 'initialize' })
+
+      expect(response.status).toBe(401)
+      expect(response.headers['www-authenticate']).toBe(
+        'Bearer resource_metadata="https://aurboda.test/.well-known/oauth-protected-resource/mcp"',
+      )
     })
 
     test('returns 401 with invalid token', async () => {
@@ -1200,6 +1220,35 @@ describe('MCP Server', () => {
         activity_types: 'sleep',
         metrics: 'hrv_rmssd',
       })
+    })
+
+    test('get_data_sources_overview answers the sources, their kinds and any overlap', async () => {
+      const overview = {
+        groups: [{ id: 'location' as const, label: 'Location' }],
+        kinds: [
+          {
+            active_sources: ['owntracks' as const, 'home_assistant' as const],
+            available_sources: ['owntracks' as const, 'home_assistant' as const],
+            id: 'location' as const,
+            label: 'Location',
+            one_source_enough: true,
+            overlap: true,
+            overlap_hint: "your phone's position",
+          },
+        ],
+        sources: [],
+      }
+      vi.mocked(dataSourcesOverview.getDataSourcesOverview).mockResolvedValueOnce(overview)
+
+      const response = await callTool(
+        createTestApp(),
+        auth.createToken('testuser'),
+        'get_data_sources_overview',
+        {},
+      )
+
+      expect(JSON.parse(response.text)).toEqual(overview)
+      expect(dataSourcesOverview.getDataSourcesOverview).toHaveBeenCalledWith('testuser')
     })
 
     test('get_activity_records rejects a filter field without a value', async () => {
@@ -2373,8 +2422,11 @@ describe('MCP Server', () => {
 
       for (const name of [
         'get_note',
+        'get_note_neighbors',
         'search_notes',
         'list_note_revisions',
+        'list_note_tags',
+        'merge_note_tags',
         'restore_note',
         'list_deleted_notes',
         'add_note_attachment',
@@ -2459,6 +2511,50 @@ describe('MCP Server', () => {
         q: 'walk',
         tags: 'travel',
       })
+    })
+
+    test('get_note_neighbors answers the older and newer entries, or an error for a non-entry', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const id = '00000000-0000-4000-8000-000000000000'
+      vi.mocked(mutations.getJournalNeighbors).mockResolvedValueOnce({
+        previous: { entity_type: 'time', excerpt: 'Older', id, start_time: '2024-01-14T07:00:00.000Z' },
+      })
+
+      const { toolResult } = await callNoteTool(app, token, 'get_note_neighbors', { id, tz: 'UTC' })
+      expect(toolResult.data.previous.excerpt).toBe('Older')
+      expect(mutations.getJournalNeighbors).toHaveBeenCalledWith('testuser', id, 'UTC')
+
+      vi.mocked(mutations.getJournalNeighbors).mockResolvedValueOnce(null)
+      const missing = await mcpPost(app)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          id: 1,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: { arguments: { id }, name: 'get_note_neighbors' },
+        })
+      const parsed = parseSSEResponse(missing.text) as { result: { content: { text: string }[] } }
+      expect(parsed.result.content[0].text).toBe('Journal entry not found')
+      expect(mutations.getJournalNeighbors).toHaveBeenLastCalledWith('testuser', id, undefined)
+    })
+
+    test('list_note_tags and merge_note_tags pass their parameters on', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const tags = [{ count: 2, last_used: '2024-01-15T08:00:00.000Z', tag: 'run' }]
+      vi.mocked(mutations.listNoteTagsForUser).mockResolvedValue({ data: tags, success: true })
+      vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 2 }, success: true })
+
+      const listed = await callNoteTool(app, token, 'list_note_tags', { entity_types: 'time,activity' })
+      expect(listed.toolResult).toEqual({ data: tags, success: true })
+      expect(mutations.listNoteTagsForUser).toHaveBeenCalledWith('testuser', {
+        entity_types: 'time,activity',
+      })
+
+      const merged = await callNoteTool(app, token, 'merge_note_tags', { from: ['running'], into: 'run' })
+      expect(merged.toolResult).toEqual({ data: { changed: 2 }, success: true })
+      expect(mutations.mergeNoteTags).toHaveBeenCalledWith('testuser', { from: ['running'], into: 'run' })
     })
 
     test('add_note, update_note and search_notes take related and its filter', async () => {

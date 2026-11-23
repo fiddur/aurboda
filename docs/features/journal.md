@@ -17,12 +17,17 @@ pictures and recordings. At the top:
 
 - **New entry**, and **New entry from template** when you have templates;
 - **search** (title and text), a **tag** filter (clicking a `#tag` on an entry adds
-  it), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
+  it, as does picking one under **Tags**, which lists them most used first;
+  `/journal?tag=<tag>` opens with it), a **Related to** filter (a person or an
+  activity, picked from People and Activities tabs), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
   comments on activities, meals and reports**, and **Photos without text**;
 - **On this day**: entries from the same date in earlier years, when there are any;
 - **Recently deleted**: deleted entries and templates with the days left before they
   go for good, each with **Restore**;
-- **Manage templates**: add, rename, edit and delete them.
+- **Manage templates**: add, rename, edit and delete them;
+- **Manage tags** (at the foot of **Tags**, `/journal/tags`): every tag with how many
+  entries carry it and when it was last used, each opening the journal filtered on
+  it, and **Merge into…** another tag (see [Tags](#tags)).
 
 ## Writing an entry
 
@@ -48,8 +53,11 @@ optional end time, or **No time of day** with a date. It opens on "now".
 - **History** lists the earlier versions of the text (see revisions below), each
   with **Restore this version**, which makes it the current text through an
   ordinary save.
-- **Pictures**: **Add pictures** (several at once, or the camera on a phone), or
-  drop or paste them in; they are attached in the order chosen. **Record** captures
+- **Pictures**: a picture pasted or dropped into the text (or picked with the
+  picture button above it) goes into the text where the cursor is; **Add pictures**
+  (several at once, or the camera on a phone) adds them below the text instead, in
+  the order chosen, and **Put in text** moves one of those to the end of the text.
+  See [Pictures in the text](#pictures-in-the-text). **Record** captures
   a voice note with the microphone, which the browser asks for the first time.
   Pictures open full size; recordings play inline. Removing one shows **Undo** for
   a few seconds, and it can be restored for 30 days.
@@ -172,6 +180,28 @@ February. A `day` entry sorts at the start of its date in your timezone. The
 full-text index covers the first 100 000 characters of an entry. See
 [Comments → Finding comments](./comments.md#finding-comments).
 
+An open entry links to the one before and after it in that same order, unfiltered:
+`←` the older, `→` the newer, and the arrow keys step through them when no text field
+has focus. `GET /notes/:id/neighbors` (MCP `get_note_neighbors`) answers them as
+`previous` (older) and `next` (newer), each with its `date` or `start_time`, `title`
+and `excerpt`; an id that is not a live entry is a `404`.
+
+## Tags
+
+A tag is either set explicitly or written as a `#hashtag` in the text; both count
+the same. `GET /notes/tags` (MCP `list_note_tags`) lists them most used first, each
+with `count` (the live notes carrying it, each note once) and `last_used` (the
+newest carrying note's time, a `day` entry at the start of its date in `tz`). Like
+search it reads the free-standing entries unless `entity_types` names more.
+
+`POST /notes/tags/merge` (MCP `merge_note_tags`) with `{ "from": ["running", "jog"],
+"into": "run" }` gives every live note carrying a `from` tag -- entries, comments
+and replies alike -- `into` instead: explicit tags are replaced, and each `#running`
+or `#jog` in the text is rewritten to `#run` (not inside code or a URL). A rewritten
+text keeps its previous version as a revision. Renaming is a merge with one `from`.
+It answers how many notes `changed`; `into` among `from` is a `400`. A synced
+comment (from Oura and the like) is left alone.
+
 The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns the
 `day` entries of the window's dates alongside the timed ones; the daily summary
 lists the day's `day` entries under `notes`, each with its `attachments` like any
@@ -228,6 +258,20 @@ page order, each with `id`, `kind` (`image` or `audio`), `mime`, `size`,
   entry needs nothing more: its attachments come back when it is restored, and go
   when it is purged.
 
+### Pictures in the text
+
+Every picture is an attachment of its entry; the text shows one in place with a
+markdown image whose URL names it: `![caption](attachment:<attachment id>)`. It
+only ever refers to an attachment of the same entry. The web draws it from the
+attachment's bytes (fetched with the token, like the thumbnails), in the list at
+400 px and in the entry at 2000 px, and a tap opens it full size; an attachment
+that is gone shows "Picture missing". Pictures the text shows this way are left
+out of the thumbnails below it, and the entry's excerpt (on a person's or an
+activity's page, and the previous/next links) skips lines that are only pictures.
+Over REST and MCP it is the same: upload with `POST /notes/:id/attachments` or
+`add_note_attachment`, then put the line in `content` with `update_note`. Deleting
+the line leaves the attachment, back among the thumbnails.
+
 ### Transcribing a photographed page
 
 The server does not read pictures. An assistant does it over MCP:
@@ -239,6 +283,11 @@ recording is listed over MCP by its metadata only: it is played in the app.
 
 `add_note_attachment` takes a file base64-encoded, at most 5 MB decoded -- in
 practice about 3 MB, since an MCP request is limited to 4 MB of JSON.
+For anything larger than a few hundred kB, or a file on disk, `create_upload_url`
+(`POST /uploads`) with `target: "note_attachment"` and the entry's `note_id` mints a
+single-use URL good for 15 minutes; the client sends the raw bytes there
+(`curl -T page.jpg '<upload_url>'`) and gets back the attachment, up to 20 MB. See
+[Uploading files](../mcp-server.md#uploading-files).
 
 ## Templates
 
@@ -260,9 +309,13 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/:id`                                    | `get_note`                      |
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
+| `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
+| `GET`    | `/notes/tags`                                   | `list_note_tags`                |
+| `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
+| `POST`   | `/uploads` (`target: note_attachment`)          | `create_upload_url`             |
 | `GET`    | `/notes/:id/attachments/:attachment_id`         | `get_note_attachment`           |
 | `DELETE` | `/notes/:id/attachments/:attachment_id`         | `delete_note_attachment`        |
 | `POST`   | `/notes/:id/attachments/:attachment_id/restore` | `restore_note_attachment`       |

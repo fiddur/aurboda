@@ -32,6 +32,7 @@ const post = (id: string, over: Partial<FeedPostRecord> = {}): FeedPostRecord =>
   in_reply_to_uri: null,
   include_chart: true,
   include_map: true,
+  include_exercise_trends: false,
   include_exercises: false,
   included_metrics: [],
   kind: 'activity',

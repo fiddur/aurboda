@@ -77,6 +77,7 @@ import { createChartDataRouter } from '../routes/chart-data-router.ts'
 import { createCheckInsRouter } from '../routes/check-ins-router.ts'
 import { createCorrelationsRouter } from '../routes/correlations-router.ts'
 import { createDashboardRouter } from '../routes/dashboard-router.ts'
+import { createDataSourcesRouter } from '../routes/data-sources-router.ts'
 import { createDeductionRulesRouter } from '../routes/deduction-rules-router.ts'
 import { createEventsRouter } from '../routes/events-router.ts'
 import { createExerciseCatalogRouter } from '../routes/exercise-catalog-router.ts'
@@ -127,6 +128,7 @@ import { createStrengthPlansRouter } from '../routes/strength-plans-router.ts'
 import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
+import { createUploadUrlRouter } from '../routes/uploads-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import {
@@ -162,6 +164,7 @@ import { loadPublicPostChartWith, type PostChartDeps } from '../services/post-ch
 import { getSettings, getUserTimezone } from '../services/settings.ts'
 import { resolveDashboardView } from '../services/shared-dashboard-data.ts'
 import { resolveSharedExerciseData } from '../services/shared-exercise-data.ts'
+import { defaultMintUploadUrlDeps } from '../services/upload-urls.ts'
 import { createTemplateLoader } from '../services/web-template.ts'
 
 interface RestRoutesDeps {
@@ -367,6 +370,7 @@ export const mountRestRouters = ({
   httpd.use('/account', createAccountRecoveryRouter(accountRecovery))
   httpd.use(createRawRecordsRouter(authMiddleware))
   httpd.use('/dashboard', createDashboardRouter(authMiddleware))
+  httpd.use('/data-sources', createDataSourcesRouter(authMiddleware))
   httpd.use('/shared-dashboards', createSharedDashboardsRouter(authMiddleware, webHost))
   httpd.use('/shared-exercises', createSharedExercisesRouter(authMiddleware, webHost))
   httpd.use('/activity-type-catalog', createActivityTypeCatalogRouter(authMiddleware))
@@ -381,6 +385,7 @@ export const mountRestRouters = ({
   httpd.use('/feed/followed-tags', createFeedFollowedTagsRouter(authMiddleware, followActions))
   httpd.use('/feed/followers', createFeedFollowersRouter(authMiddleware, followerActions))
   httpd.use('/feed/images', createFeedImagesRouter(authMiddleware, apiBaseUrl))
+  httpd.use('/uploads', createUploadUrlRouter(authMiddleware, defaultMintUploadUrlDeps(apiBaseUrl)))
   httpd.use(
     '/feed',
     createFeedRouter(

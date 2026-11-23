@@ -2,7 +2,9 @@
 import {
   addNoteAttachmentInputSchema,
   DELETED_NOTE_RETENTION_DAYS,
+  INLINE_PICTURE_HINT,
   MAX_ATTACHMENTS_PER_NOTE,
+  NOTE_ATTACHMENT_MAX_BYTES,
   NOTE_ATTACHMENT_MCP_IMAGE_EDGE,
   NOTE_ATTACHMENT_MCP_MAX_BYTES,
 } from '@aurboda/api-spec'
@@ -50,7 +52,7 @@ export const registerNoteAttachmentTools = (
 
   server.tool(
     'add_note_attachment',
-    `Attach a picture or a recording to a journal entry (a "time" or "day" note). A picture (PNG, JPEG, WebP or GIF) is stored as WebP, turned upright, without its metadata, with its longest edge at most 3000 px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV) is stored as it is. Attachments keep upload order as page order. Over MCP a file may be at most ${NOTE_ATTACHMENT_MCP_MAX_BYTES / MB} MB decoded, but the request body is limited to 4 MB of JSON, so about ${PRACTICAL_MCP_MB} MB is the practical limit; larger files go through the app. An entry holds at most ${MAX_ATTACHMENTS_PER_NOTE}. ${DIARY_FLOW}`,
+    `Attach a picture or a recording to a journal entry (a "time" or "day" note). A picture (PNG, JPEG, WebP or GIF) is stored as WebP, turned upright, without its metadata, with its longest edge at most 3000 px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV) is stored as it is. Attachments keep upload order as page order. Over MCP a file may be at most ${NOTE_ATTACHMENT_MCP_MAX_BYTES / MB} MB decoded, but the request body is limited to 4 MB of JSON, so about ${PRACTICAL_MCP_MB} MB is the practical limit. For anything larger than a few hundred kB, or a file on disk, create_upload_url with target note_attachment is the better route: the file goes straight to a URL, up to ${NOTE_ATTACHMENT_MAX_BYTES / MB} MB. An entry holds at most ${MAX_ATTACHMENTS_PER_NOTE}. ${INLINE_PICTURE_HINT} ${DIARY_FLOW}`,
     { ...addNoteAttachmentInputSchema.shape },
     async ({ note_id, data }) => {
       const buffer = Buffer.from(data, 'base64')

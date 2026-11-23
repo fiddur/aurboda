@@ -11,7 +11,7 @@ import { addDays, format, parseISO } from 'date-fns'
 import type { Activity } from '../../state/api/types'
 
 import { toDisplayName } from '../../utils/displayName'
-import { filterPeople } from '../People/people-view'
+import { filterPeople, newPersonName } from '../People/people-view'
 
 /** A link as the editor holds it: the target and the label its chip shows. */
 export type RelatedLink = NoteRelated
@@ -177,9 +177,9 @@ export const insertMention = (
   return { cursor: start + inserted.length, text: `${text.slice(0, start)}${inserted}${after}` }
 }
 
-export const MENTION_MAX_OPTIONS = 8
+export const MENTION_MAX_OPTIONS = 50
 
-/** The people whose name (or relationship or handle) holds the query, names starting with it first, a handful. */
+/** The people whose name (or relationship or handle) holds the query, names starting with it first. */
 export const mentionOptions = <T extends Pick<Person, 'id' | 'name' | 'relationship' | 'actor'>>(
   people: readonly T[],
   query: string,
@@ -190,6 +190,33 @@ export const mentionOptions = <T extends Pick<Person, 'id' | 'name' | 'relations
   const rest = found.filter((p) => !p.name.toLowerCase().startsWith(q))
   return [...starts, ...rest].slice(0, MENTION_MAX_OPTIONS)
 }
+
+export type MentionItem<T> = { kind: 'person'; person: T } | { kind: 'new'; name: string }
+
+/** The `@` menu: the matching people, then "add as a person" when the query names nobody yet. */
+export const mentionItems = <T extends Pick<Person, 'id' | 'name' | 'relationship' | 'actor'>>(
+  offered: readonly T[],
+  all: readonly Pick<Person, 'name'>[],
+  query: string,
+): MentionItem<T>[] => {
+  const people = mentionOptions(offered, query).map((person): MentionItem<T> => ({ kind: 'person', person }))
+  const name = newPersonName(all, query)
+  return name === null ? people : [...people, { kind: 'new', name }]
+}
+
+/**
+ * Whether Enter or Tab takes the item: a person always, "add as a person" only once the user has
+ * arrowed to it, since the query runs on across spaces and Enter there usually means a new line.
+ */
+export const keyPicks = (item: MentionItem<unknown>, navigated: boolean): boolean =>
+  item.kind === 'person' || navigated
+
+/** The index the menu shows as chosen: none while the default would be "add as a person". */
+export const highlighted = (
+  items: readonly MentionItem<unknown>[],
+  choice: number,
+  navigated: boolean,
+): number => (navigated || items[Math.min(choice, items.length - 1)]?.kind !== 'new' ? choice : -1)
 
 /** The arrow-keyed choice, wrapping around. */
 export const moveChoice = (index: number, step: 1 | -1, count: number): number =>
@@ -215,6 +242,21 @@ export const relatedFilterFromQuery = (
 
 export const relatedFilterHref = (filter: RelatedFilter): string =>
   `/journal?${filter.type}=${encodeURIComponent(filter.id)}`
+
+/** What the "Related to" button shows: Anyone, the person's name, or the activity's label once loaded. */
+export const relatedFilterLabel = (
+  filter: RelatedFilter | undefined,
+  people: readonly Pick<Person, 'id' | 'name'>[],
+  activity: string | undefined,
+): string => {
+  if (!filter) return 'Anyone'
+  if (filter.type === 'activity') return activity ?? 'This activity'
+  return people.find((person) => person.id === filter.id)?.name ?? 'Someone'
+}
+
+/** The filter as the single link the picker leaves out of its options. */
+export const relatedFilterLinks = (filter: RelatedFilter | undefined, label: string): RelatedLink[] =>
+  filter ? [{ entity_id: filter.id, entity_type: filter.type, label }] : []
 
 /** A related entry's heading: its title, else its date ("Fri 20 Nov 2026"). */
 export const journalRefHeading = (ref: Pick<JournalEntryRef, 'title' | 'date' | 'start_time'>): string => {

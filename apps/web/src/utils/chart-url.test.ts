@@ -63,6 +63,18 @@ describe('buildChartUrl', () => {
     expect(p.get('breakdown_fields')).toBe('partner,mood')
   })
 
+  test('@people survives the URL round trip', () => {
+    const p = params(
+      buildChartUrl({
+        breakdown_fields: ['@people', 'mood'],
+        chart_type: 'bar',
+        pattern: 'walking',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('breakdown_fields')?.split(',')).toEqual(['@people', 'mood'])
+  })
+
   test('omits breakdown_fields when empty', () => {
     const p = params(
       buildChartUrl({

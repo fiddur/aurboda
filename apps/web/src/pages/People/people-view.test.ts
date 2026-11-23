@@ -16,6 +16,7 @@ import {
   longDate,
   mentionCandidates,
   nameForAccount,
+  newPersonName,
   nextDateByPerson,
   parseNotifyDays,
   relativeDay,
@@ -202,6 +203,15 @@ describe('picker filtering', () => {
   test('names a person from an account', () => {
     expect(nameForAccount({ display_name: 'Cy Lee', handle: '@cy@ex' })).toBe('Cy Lee')
     expect(nameForAccount({ display_name: null, handle: '@cy@ex' })).toBe('cy')
+  })
+
+  test('a new name is trimmed and not one anybody has, archived people included, whatever the case', () => {
+    const archived = person('c', 'Cy Lee', { archived: true })
+    expect(newPersonName([anna, bo], '')).toBeNull()
+    expect(newPersonName([anna, bo], '   ')).toBeNull()
+    expect(newPersonName([anna, bo], '  aNNa ')).toBeNull()
+    expect(newPersonName([anna, bo, archived], 'cy lee')).toBeNull()
+    expect(newPersonName([anna, bo], '  Dana Berg ')).toBe('Dana Berg')
   })
 })
 

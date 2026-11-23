@@ -11,6 +11,7 @@ import {
   deletePersonDate,
   getLivePersonByActor,
   getPeopleForActivities,
+  getPeopleForActivityGroups,
   getPeopleNamesVersion,
   getPerson,
   getPersonDate,
@@ -276,6 +277,32 @@ describe('People Integration Tests', () => {
     await softDeletePerson(user, bo.id)
     expect((await getPeopleForActivities(user, [walk])).has(walk)).toBe(false)
     expect(await getPeopleForActivities(user, [])).toEqual(new Map())
+  })
+
+  test("an activity group's people: its own and its live superseded rows', live people once each", async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const gone = await insertPerson(user, { name: 'Cy' })
+    await softDeletePerson(user, gone.id)
+    const winner = await insertActivity(user, '2026-11-01T10:00:00Z')
+    const superseded = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'garmin' })
+    const deletedSuperseded = await insertActivity(user, '2026-11-01T10:00:00Z', true, { source: 'strava' })
+    const alone = await insertActivity(user, '2026-11-02T10:00:00Z')
+    await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = ANY($2::uuid[])', [
+      winner,
+      [superseded, deletedSuperseded],
+    ])
+    await addActivityPeople(user, winner, [anna.id])
+    await addActivityPeople(user, superseded, [anna.id, bo.id, gone.id])
+    await addActivityPeople(user, deletedSuperseded, [gone.id])
+
+    const people = await getPeopleForActivityGroups(user, [winner, alone])
+
+    expect(people.get(winner)?.map((p) => p.name)).toEqual(['Anna', 'Bo'])
+    expect(people.get(winner)?.[0]).toEqual({ created_at: anna.created_at, id: anna.id, name: 'Anna' })
+    expect(people.has(alone)).toBe(false)
+    expect(await getPeopleForActivityGroups(user, [])).toEqual(new Map())
   })
 
   describe("a person's activities as merge groups", () => {

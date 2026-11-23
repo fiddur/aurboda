@@ -98,6 +98,7 @@ import {
 } from './schemas/correlations.ts'
 import { dailySummaryQuerySchema, dailySummaryResponseSchema } from './schemas/daily-summary.ts'
 import { recentActivitiesQuerySchema } from './schemas/dashboard.ts'
+import { dataSourcesOverviewResponseSchema } from './schemas/data-sources-overview.ts'
 import {
   exerciseCatalogEntryResponseSchema,
   exerciseCatalogQuerySchema,
@@ -202,6 +203,7 @@ import {
 import {
   deleteNoteAttachmentQuerySchema,
   deleteNoteAttachmentResponseSchema,
+  INLINE_PICTURE_HINT,
   MAX_ATTACHMENTS_PER_NOTE,
   NOTE_ATTACHMENT_MAX_BYTES,
   NOTE_ATTACHMENTS_ACCOUNT_BYTES,
@@ -225,6 +227,12 @@ import {
   deleteNoteQuerySchema,
   deleteNoteResponseSchema,
   noteConflictResponseSchema,
+  noteNeighborsQuerySchema,
+  noteNeighborsResponseSchema,
+  noteTagsListQuerySchema,
+  noteTagsListResponseSchema,
+  mergeNoteTagsBodySchema,
+  mergeNoteTagsResponseSchema,
   noteResponseSchema,
   noteRevisionsResponseSchema,
   notesResponseSchema,
@@ -381,6 +389,12 @@ import {
   syncStatusResponseSchema,
 } from './schemas/sync.ts'
 import { activityTrackResponseSchema, trackBackfillResponseSchema } from './schemas/tracks.ts'
+import {
+  createUploadUrlBodySchema,
+  UPLOAD_URL_TTL_MINUTES,
+  uploadResultResponseSchema,
+  uploadUrlResponseSchema,
+} from './schemas/uploads.ts'
 import {
   webauthnAuthOptionsBodySchema,
   webauthnAuthOptionsResponseSchema,
@@ -3461,6 +3475,46 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
     },
+    '/notes/tags': {
+      get: {
+        description:
+          'The tags used on journal entries and comments (explicit tags and #hashtags in the text), with how many live notes carry each and when it was last used, most used first. `entity_types` narrows like search (default: the free-standing journal entries).',
+        requestParams: { query: noteTagsListQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteTagsListResponseSchema } },
+            description: 'The tags',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid query',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'List journal tags',
+        tags: ['Notes'],
+      },
+    },
+    '/notes/tags/merge': {
+      post: {
+        description:
+          'Merge tags: every live note carrying a tag in `from` gets `into` instead. Explicit tags are replaced and #hashtags in the text are rewritten (each rewritten text keeps a revision). Renaming is a merge with one `from`.',
+        requestBody: { content: { 'application/json': { schema: mergeNoteTagsBodySchema } } },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: mergeNoteTagsResponseSchema } },
+            description: 'How many notes changed',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Invalid body',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Merge journal tags',
+        tags: ['Notes'],
+      },
+    },
     '/notes/{id}': {
       get: {
         description:
@@ -3580,6 +3634,29 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
     },
+    '/notes/{id}/neighbors': {
+      get: {
+        description:
+          "The Journal entries just before (older, `previous`) and after (newer, `next`) one entry, in the Journal list's order: the free-standing `time` and `day` entries, newest first by their time or day (a `day` entry at the start of its date in tz).",
+        requestParams: {
+          path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: noteNeighborsQuerySchema,
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: noteNeighborsResponseSchema } },
+            description: 'The neighbouring entries',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a live Journal entry',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the neighbouring Journal entries',
+        tags: ['Notes'],
+      },
+    },
     '/notes/{id}/attachments': {
       get: {
         description:
@@ -3607,7 +3684,7 @@ const openApiDocument = createDocument({
         tags: ['Notes'],
       },
       post: {
-        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account.`,
+        description: `Attach a picture or a recording to a journal entry (a \`time\` or \`day\` thread root), one file per request in page order. A picture (PNG, JPEG, WebP or GIF, by its content) is stored as WebP, turned upright, without metadata, with its longest edge at most ${NOTE_IMAGE_MAX_EDGE} px; a recording (WebM, Ogg, MP4/M4A, MP3 or WAV, by its first bytes) is stored as it is. At most ${NOTE_ATTACHMENT_MAX_BYTES / 1024 / 1024} MB per file, ${MAX_ATTACHMENTS_PER_NOTE} per entry and ${NOTE_ATTACHMENTS_ACCOUNT_BYTES / 1024 / 1024 / 1024} GB per account. ${INLINE_PICTURE_HINT}`,
         requestBody: {
           content: {
             'multipart/form-data': {
@@ -4716,6 +4793,21 @@ const openApiDocument = createDocument({
         tags: ['Sync'],
       },
     },
+    '/data-sources/overview': {
+      get: {
+        description:
+          'Which data sources the user has connected, the kinds of data each brings, which sources feed each kind, and where two sources send the same thing (overlap). The read behind the Data sources page; MCP has the same as get_data_sources_overview.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: dataSourcesOverviewResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the data sources overview',
+        tags: ['Sync'],
+      },
+    },
 
     '/sync/status': {
       get: {
@@ -5759,6 +5851,128 @@ const openApiDocument = createDocument({
         tags: ['Settings'],
       },
     },
+    '/uploads': {
+      post: {
+        description: `Mint a short-lived, single-use upload URL for one target: \`note_attachment\` (a picture or a recording on a journal entry, needs \`note_id\`), \`feed_image\` (a picture to embed in markdown), \`challenge_banner\` (needs \`challenge_id\`) or \`profile_avatar\`. The URL is good for one upload within ${UPLOAD_URL_TTL_MINUTES} minutes and takes the raw bytes without an Authorization header (\`curl -T photo.jpg '<upload_url>'\`), so a client that cannot send multipart or large bodies itself can hand it on. Minting draws on the account's upload budget.`,
+        requestBody: {
+          content: { 'application/json': { schema: createUploadUrlBodySchema } },
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadUrlResponseSchema } },
+            description: 'The upload URL',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'A missing or unexpected id for the target, or a note that is not a journal entry',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The journal entry or challenge was not found',
+          },
+          429: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The account has used its upload budget for now',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Create an upload URL',
+        tags: ['Uploads'],
+      },
+    },
+    '/uploads/{username}/{token}': {
+      post: {
+        description:
+          'Upload the file as multipart/form-data, in field `file`, to a URL from `POST /uploads`. Otherwise the same as the PUT.',
+        requestBody: {
+          content: {
+            'multipart/form-data': {
+              schema: z.object({
+                file: z.string().meta({ description: 'The file', format: 'binary' }),
+              }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({
+            token: z.string().meta({ description: 'The URL token' }),
+            username: z.string().meta({ description: 'The account the URL was minted for' }),
+          }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadResultResponseSchema } },
+            description: 'What the upload stored, by target',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, or a file the target cannot use',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The URL is unknown, expired or already used, or its entry or challenge is gone',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large; the URL can still be used',
+          },
+          415: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a picture Aurboda can use (feed_image)',
+          },
+        },
+        summary: 'Upload a file (multipart)',
+        tags: ['Uploads'],
+      },
+      put: {
+        description: `Upload a file to a URL from \`POST /uploads\`: the body is the file's raw bytes, with any content type, and no Authorization header is needed, since the URL is the credential. The URL works once, within ${UPLOAD_URL_TTL_MINUTES} minutes of minting: a stored upload or a refused file uses it up, while a body over \`max_bytes\` (413) or an empty one (400) leaves it usable. The answer is what the target's own upload would answer, under \`data\` with its \`target\`. An unknown, expired or used URL answers 404 without saying which.`,
+        requestBody: {
+          content: {
+            'application/octet-stream': {
+              schema: z.string().meta({ description: 'The file', format: 'binary' }),
+            },
+          },
+        },
+        requestParams: {
+          path: z.object({
+            token: z.string().meta({ description: 'The URL token' }),
+            username: z.string().meta({ description: 'The account the URL was minted for' }),
+          }),
+        },
+        responses: {
+          201: {
+            content: { 'application/json': { schema: uploadResultResponseSchema } },
+            description: 'What the upload stored, by target',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'No file, or a file the target cannot use',
+          },
+          404: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The URL is unknown, expired or already used, or its entry or challenge is gone',
+          },
+          409: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The entry or the account holds as much as it may',
+          },
+          413: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'The file is too large; the URL can still be used',
+          },
+          415: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Not a picture Aurboda can use (feed_image)',
+          },
+        },
+        summary: 'Upload a file',
+        tags: ['Uploads'],
+      },
+    },
   },
   servers: [
     { description: 'Production', url: 'https://aurboda.net/api' },
@@ -5796,6 +6010,11 @@ const openApiDocument = createDocument({
       name: 'People',
     },
     { description: 'User settings and preferences', name: 'Settings' },
+    {
+      description:
+        'Short-lived, single-use URLs for uploading files without multipart or an Authorization header',
+      name: 'Uploads',
+    },
     {
       description: 'Data synchronization with external services',
       name: 'Sync',

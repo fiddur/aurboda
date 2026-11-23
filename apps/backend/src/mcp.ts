@@ -65,6 +65,7 @@ import { registerChallengeTools } from './mcp/challenge-tools.ts'
 import { registerChartTools } from './mcp/chart-tools.ts'
 import { registerCheckInTools } from './mcp/check-in-tools.ts'
 import { registerCorrelationTools } from './mcp/correlation-tools.ts'
+import { registerDataSourceTools } from './mcp/data-source-tools.ts'
 import { registerDebugTools } from './mcp/debug-tools.ts'
 import { registerDeductionRuleTools } from './mcp/deduction-rule-tools.ts'
 import { registerExerciseCatalogTools } from './mcp/exercise-catalog-tools.ts'
@@ -99,6 +100,7 @@ import { registerSyncTools } from './mcp/sync-tools.ts'
 import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
+import { registerUploadUrlTools } from './mcp/upload-url-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { checkInDeps } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -282,6 +284,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerRouteTools(server, user)
   registerSegmentTools(server, user)
   registerSharedDashboardTools(server, user)
+  registerDataSourceTools(server, user)
   registerSharedExerciseTools(server, user, deps.webHost)
   registerExerciseCatalogTools(server)
   registerStrengthPlanTools(server, user)
@@ -299,6 +302,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
     webHost: deps.webHost,
   })
   registerFeedImageTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
+  registerUploadUrlTools(server, user, { apiBaseUrl: deps.apiBaseUrl, uploadLimiter: accountUploadLimiter })
   registerChallengeTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
     deliver: deps.feedDeliver,
@@ -344,6 +348,12 @@ export function createMcpRouter(auth: Auth, deps: McpDeps = {}): Router {
   router.post('/', json({ limit: '4mb' }), async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req)
     if (!user) {
+      if (deps.webHost) {
+        res.set(
+          'WWW-Authenticate',
+          `Bearer resource_metadata="${deps.webHost}/.well-known/oauth-protected-resource/mcp"`,
+        )
+      }
       res.status(401).json({ error: 'Unauthorized' })
       return
     }

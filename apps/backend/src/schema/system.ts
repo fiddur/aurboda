@@ -14,6 +14,22 @@ export const systemTables: Record<string, string> = {
     CREATE INDEX IF NOT EXISTS idx_mcp_sessions_last_activity ON mcp_sessions (last_activity)
   `,
 
+  // Single-use upload URLs (POST /uploads, create_upload_url). Only the token's SHA-256 is kept.
+  upload_urls: `
+    CREATE TABLE IF NOT EXISTS upload_urls (
+      token_hash  TEXT PRIMARY KEY,
+      target      VARCHAR(50) NOT NULL,
+      target_id   UUID,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at  TIMESTAMPTZ NOT NULL,
+      used_at     TIMESTAMPTZ
+    )
+  `,
+
+  upload_urls_indexes: `
+    CREATE INDEX IF NOT EXISTS idx_upload_urls_expires_at ON upload_urls (expires_at)
+  `,
+
   // Notes/comments on any entity (polymorphic reference).
   // entity_id is nullable: an `entity_type = 'time'` note is anchored to a
   // moment rather than an entity, and carries its own start_time/end_time.

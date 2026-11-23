@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
+import { query } from '../db/connection.ts'
 import { insertCustomMetricDefinition } from '../db/custom-metrics.ts'
-import { insertActivity } from '../db/index.ts'
+import { addActivityPeople, insertActivity, insertPerson } from '../db/index.ts'
 import { deleteTimeSeriesPoint, insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { firstPeriodWeight, getTrend } from './trends.ts'
@@ -378,6 +379,34 @@ describe('getTrend metric integration', () => {
       expect(bob).toHaveLength(11)
       expect(bob.slice(0, 5).every((p) => p.value === 0)).toBe(true)
       expect(alice[0].value).toBeCloseTo(7 / firstPeriodWeight(15, 7), 6)
+    })
+    test('@people breaks the trend down per person, merge groups once, sharing the x-axis', async () => {
+      const user = getTestUser()
+      const anna = await insertPerson(user, { name: 'Anna' })
+      const bo = await insertPerson(user, { name: 'Bo' })
+      await addActivityPeople(user, await run(daysAgo(10)), [anna.id])
+      const winner = await run(daysAgo(5))
+      const superseded = await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date(daysAgo(5).getTime() + 3_600_000),
+        source: 'garmin',
+        start_time: daysAgo(5),
+      })
+      await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = $2', [winner, superseded])
+      await addActivityPeople(user, winner, [bo.id])
+      await addActivityPeople(user, superseded, [anna.id, bo.id])
+      await run(daysAgo(3))
+
+      const result = await runningTrend({ aggregation: 'count', breakdown_fields: ['@people'] })
+      const histories = result.breakdown_histories!
+
+      expect(result.breakdown_series).toEqual(['(none)', 'Anna', 'Bo'])
+      expect(histories['Bo'].map((p) => p.date)).toEqual(histories['Anna'].map((p) => p.date))
+      expect(histories['Anna'][0].date).toBe(dayKey(daysAgo(10)))
+      expect(histories['Bo'].find((p) => p.date === dayKey(daysAgo(5)))!.value).toBeCloseTo(
+        histories['Anna'].find((p) => p.date === dayKey(daysAgo(10)))!.value,
+        6,
+      )
     })
   })
 

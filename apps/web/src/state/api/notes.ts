@@ -2,13 +2,18 @@ import type {
   AddNoteBody,
   AddNoteTemplateBody,
   EntityType,
+  MergeNoteTagsResponse,
   Note,
   NoteAttachment,
   NoteAttachmentResponse,
+  NoteNeighbors,
+  NoteNeighborsResponse,
   NoteResponse,
   NoteRevision,
   NoteRevisionsResponse,
   NotesResponse,
+  NoteTagSummary,
+  NoteTagsListResponse,
   NotesSearchResponse,
   NoteTemplate,
   NoteTemplateResponse,
@@ -138,6 +143,37 @@ export const fetchNote = async (id: string): Promise<Note> => {
     headers: authHeaders(),
   })
   return requireNote(response.data.data)
+}
+
+/** The entries just before (older, `previous`) and after (newer, `next`) one, in the Journal's order. */
+export const fetchJournalNeighbors = async (id: string, tz?: string): Promise<NoteNeighbors> => {
+  const response = await axios.get<NoteNeighborsResponse>(
+    `${API_URL}/notes/${encodeURIComponent(id)}/neighbors`,
+    {
+      headers: authHeaders(),
+      params: tz ? { tz } : {},
+    },
+  )
+  return response.data.data ?? {}
+}
+
+/** The tags on journal entries (or, with `entityTypes`, those comment roots too), most used first. */
+export const fetchNoteTags = async (entityTypes?: readonly EntityType[]): Promise<NoteTagSummary[]> => {
+  const response = await axios.get<NoteTagsListResponse>(`${API_URL}/notes/tags`, {
+    headers: authHeaders(),
+    params: entityTypes && entityTypes.length > 0 ? { entity_types: entityTypes.join(',') } : {},
+  })
+  return response.data.data ?? []
+}
+
+/** Every note carrying a tag in `from` gets `into` instead; answers how many notes changed. */
+export const mergeNoteTags = async (from: readonly string[], into: string): Promise<number> => {
+  const response = await axios.post<MergeNoteTagsResponse>(
+    `${API_URL}/notes/tags/merge`,
+    { from, into },
+    { headers: authHeaders() },
+  )
+  return response.data.data?.changed ?? 0
 }
 
 export const createJournalEntry = async (body: AddNoteBody): Promise<Note> => {

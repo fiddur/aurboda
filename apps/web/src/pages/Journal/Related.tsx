@@ -1,11 +1,19 @@
 import type { Person } from '@aurboda/api-spec'
+import type { JSX } from 'preact'
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'preact/hooks'
 
 import { IconPreview } from '../../components/IconPreview'
-import { fetchActivities, fetchActivityTypeDefinitions, fetchPeople, PEOPLE_KEY } from '../../state/api'
+import {
+  addPerson,
+  fetchActivities,
+  fetchActivityTypeDefinitions,
+  fetchPeople,
+  PEOPLE_KEY,
+} from '../../state/api'
 import { toDisplayName } from '../../utils/displayName'
+import { newPersonName } from '../People/people-view'
 import {
   activityLink,
   activityRowId,
@@ -14,6 +22,7 @@ import {
   dayActivityWindow,
   hasLink,
   linkKey,
+  type MentionItem,
   mentionOptions,
   offeredPeople,
   personLink,
@@ -25,6 +34,15 @@ import {
 /** Every person, archived ones included, for the names of the links they already have. */
 export const usePeople = () =>
   useQuery({ queryFn: () => fetchPeople({ archived: true }), queryKey: [...PEOPLE_KEY, { archived: true }] })
+
+/** Adds a person by name and refreshes the people lists; the caller takes the new person in `onSuccess`. */
+export const useAddPerson = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => addPerson({ name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PEOPLE_KEY }),
+  })
+}
 
 const useTypeDefinitions = () =>
   useQuery({
@@ -100,17 +118,40 @@ export const RelatedChips = ({
   )
 }
 
-const PeopleOptions = ({
+const noPeopleMessage = (anyone: boolean, query: string, allowNew: boolean): string => {
+  if (anyone || query.trim()) return 'Nobody matches.'
+  return allowNew ? 'No people yet. Type a name to add someone.' : 'No people yet.'
+}
+
+/** The people to pick from; with `allowNew` (the default) a typed name not on the list can be added as a person. */
+export const PeopleOptions = ({
   links,
   onAdd,
+  allowNew = true,
 }: {
   links: readonly RelatedLink[]
   onAdd: (link: RelatedLink) => void
+  allowNew?: boolean
 }) => {
   const people = usePeople()
+  const addNew = useAddPerson()
   const [query, setQuery] = useState('')
-  const list = offeredPeople(people.data?.people ?? []).filter((p) => !hasLink(links, personLink(p)))
+  const everyone = people.data?.people ?? []
+  const list = offeredPeople(everyone).filter((p) => !hasLink(links, personLink(p)))
   const shown = query.trim() ? mentionOptions(list, query) : list
+  const newName = allowNew && people.data ? newPersonName(everyone, query) : null
+  const take = (person: Person) => {
+    onAdd(personLink(person))
+    setQuery('')
+  }
+  const create = (name: string) => {
+    if (addNew.isPending) return
+    addNew.mutate(name, {
+      onSuccess: (person) => {
+        if (person) take(person)
+      },
+    })
+  }
   return (
     <div class="journal-related-options">
       <input
@@ -118,35 +159,56 @@ const PeopleOptions = ({
         placeholder="Search people"
         aria-label="Search people"
         value={query}
-        onInput={(e) => setQuery(e.currentTarget.value)}
+        onInput={(e) => {
+          setQuery(e.currentTarget.value)
+          addNew.reset()
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || e.isComposing) return
+          e.preventDefault()
+          if (!query.trim()) return
+          const first = shown[0]
+          if (first) take(first)
+          else if (newName !== null) create(newName)
+        }}
       />
       {people.isLoading && <p class="journal-muted">Loading…</p>}
-      {!people.isLoading && shown.length === 0 && (
-        <p class="journal-muted">
-          {offeredPeople(people.data?.people ?? []).length === 0 ? (
-            <>
-              No people yet. <a href="/people">Add someone</a>.
-            </>
-          ) : (
-            'Nobody matches.'
-          )}
-        </p>
+      {!people.isLoading && shown.length === 0 && newName === null && (
+        <p class="journal-muted">{noPeopleMessage(offeredPeople(everyone).length > 0, query, allowNew)}</p>
       )}
       <ul>
         {shown.map((person: Person) => (
           <li key={person.id}>
-            <button type="button" class="journal-related-option" onClick={() => onAdd(personLink(person))}>
+            <button type="button" class="journal-related-option" onClick={() => take(person)}>
               <strong>{person.name}</strong>
               {person.relationship && <span class="journal-muted"> · {person.relationship}</span>}
             </button>
           </li>
         ))}
+        {newName !== null && (
+          <li>
+            <button
+              type="button"
+              class="journal-related-option"
+              disabled={addNew.isPending}
+              onClick={() => create(newName)}
+            >
+              <NewPersonLabel name={newName} pending={addNew.isPending} />
+            </button>
+          </li>
+        )}
       </ul>
+      {addNew.error && (
+        <p class="journal-error" role="alert">
+          {addNew.error.message}
+        </p>
+      )}
     </div>
   )
 }
 
-const ActivityOptions = ({
+/** The activities of a day (`entryDate` to start with), by type. */
+export const ActivityOptions = ({
   entryDate,
   links,
   onAdd,
@@ -273,28 +335,54 @@ export const RelatedRow = ({
   )
 }
 
-/** The people offered while an `@name` is typed. Keys are handled by the editor's text area. */
+const NewPersonLabel = ({ name, pending }: { name: string; pending: boolean }) =>
+  pending ? (
+    <>Adding “{name}”…</>
+  ) : (
+    <>
+      “{name}”: <span class="journal-muted">add as a person</span>
+    </>
+  )
+
+/** The people offered while an `@name` is typed, and adding the name as a new person. Keys are handled by the editor's text area. */
 export const MentionMenu = ({
-  options,
+  items,
   active,
   onPick,
+  pending = false,
+  menuRef,
+  style,
 }: {
-  options: readonly Person[]
+  items: readonly MentionItem<Person>[]
   active: number
-  onPick: (person: Person) => void
+  onPick: (item: MentionItem<Person>) => void
+  pending?: boolean
+  menuRef?: { current: HTMLUListElement | null }
+  style?: JSX.CSSProperties
 }) =>
-  options.length === 0 ? null : (
-    <ul class="journal-mention-menu" role="listbox" aria-label="People">
-      {options.map((person, index) => (
-        <li key={person.id} role="option" aria-selected={index === active}>
+  items.length === 0 ? null : (
+    <ul class="journal-mention-menu" role="listbox" aria-label="People" ref={menuRef} style={style}>
+      {items.map((item, index) => (
+        <li
+          key={item.kind === 'person' ? item.person.id : `new:${item.name}`}
+          role="option"
+          aria-selected={index === active}
+        >
           <button
             type="button"
             class={index === active ? 'active' : ''}
+            disabled={item.kind === 'new' && pending}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onPick(person)}
+            onClick={() => onPick(item)}
           >
-            {person.name}
-            {person.relationship && <span class="journal-muted"> · {person.relationship}</span>}
+            {item.kind === 'person' ? (
+              <>
+                {item.person.name}
+                {item.person.relationship && <span class="journal-muted"> · {item.person.relationship}</span>}
+              </>
+            ) : (
+              <NewPersonLabel name={item.name} pending={pending} />
+            )}
           </button>
         </li>
       ))}

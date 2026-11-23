@@ -34,7 +34,7 @@ export const registerFeedImageTools = (server: McpServer, user: string, deps: Fe
 
   server.tool(
     'add_feed_image',
-    `Store a picture and get back its public URL, to put in markdown as \`![description](url)\` in an article's prose, a comment or an activity description. The picture is stored as WebP with its longest edge at most 1600 px, turned upright and without its metadata (no camera or GPS position); an animated GIF keeps its first frame. Anyone with the URL can see the picture. One account may store ${MAX_FEED_IMAGES_PER_ACCOUNT} pictures. Returns { id, url, width, height, byte_size, created_at }.`,
+    `Store a picture and get back its public URL, to put in markdown as \`![description](url)\` in an article's prose, a comment or an activity description. The picture is stored as WebP with its longest edge at most 1600 px, turned upright and without its metadata (no camera or GPS position); an animated GIF keeps its first frame. Anyone with the URL can see the picture. One account may store ${MAX_FEED_IMAGES_PER_ACCOUNT} pictures. For a picture larger than a few hundred kB, or one on disk, create_upload_url with target feed_image is the better route: the bytes go straight to a URL instead of base64 through MCP. Returns { id, url, width, height, byte_size, created_at }.`,
     { ...addFeedImageInputSchema.shape },
     async ({ data_base64 }) => {
       if (!deps.apiBaseUrl) return errorResponse('Pictures are not available')

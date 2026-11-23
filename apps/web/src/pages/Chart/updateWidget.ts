@@ -2,7 +2,12 @@
  * Pure helpers for updating an existing board chart widget in place from the
  * chart page. Kept separate from the component so they can be unit-tested.
  */
-import { type DashboardConfig, type DashboardWidget, measureGoalTitle } from '@aurboda/api-spec'
+import {
+  type DashboardConfig,
+  type DashboardWidget,
+  isPeopleBreakdownField,
+  measureGoalTitle,
+} from '@aurboda/api-spec'
 
 import type { ChartOrigin } from '../../utils/chart-url'
 
@@ -47,6 +52,26 @@ export function chartWidgetMaskedFields(widget: DashboardWidget): string[] {
     return widget.config.masked_breakdown_fields ?? []
   }
   return []
+}
+
+/** Whether a chart saved with this mask would show the names of who its activities were with. */
+export const showsPeopleNames = (breakdownFields: string[], masked: string[]): boolean =>
+  breakdownFields.some((f) => isPeopleBreakdownField(f) && !masked.includes(f))
+
+const chartWidgetBreakdownFields = (widget: DashboardWidget): string[] =>
+  widget.type === 'trend_chart' || widget.type === 'bar_chart' ? (widget.config.breakdown_fields ?? []) : []
+
+/**
+ * The masked fields a save form starts with: `@people` when the breakdown has it, so names stay off
+ * public boards unless the owner unticks it. Updating a widget keeps its own mask, adding `@people`
+ * only when the widget did not already break down by it.
+ */
+export function initialMaskedFields(breakdownFields: string[], existing?: DashboardWidget): string[] {
+  const people = breakdownFields.filter(isPeopleBreakdownField)
+  if (!existing) return people
+  const masked = chartWidgetMaskedFields(existing)
+  const hadPeople = chartWidgetBreakdownFields(existing).some(isPeopleBreakdownField)
+  return hadPeople ? masked : [...new Set([...masked, ...people])]
 }
 
 /**

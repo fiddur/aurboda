@@ -5,6 +5,7 @@ import { useState } from 'preact/hooks'
 import { ActivityWatchInstall } from '../../components/ActivityWatchInstall'
 import { fetchProductivity, generateApiToken } from '../../state/api'
 import { auth } from '../../state/auth'
+import { OverlapNote } from './shared'
 import './style.css'
 
 const DATA_TYPES = ['App usage (desktop)', 'Window titles', 'Per-device tracking', 'Productivity categories']
@@ -72,6 +73,8 @@ export function ActivityWatchDesktopSource() {
           and websites you use, and a push agent script sends that data to Aurboda for analysis and
           categorization.
         </p>
+
+        <OverlapNote sourceId="activitywatch_desktop" />
 
         <div class="data-types-section">
           <h2>Data provided</h2>
