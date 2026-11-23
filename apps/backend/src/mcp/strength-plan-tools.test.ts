@@ -13,6 +13,7 @@ type ToolHandler = (params: Record<string, unknown>) => Promise<{ content: Array
 const plan: StrengthPlan = {
   created_at: '2026-11-01T10:00:00.000Z',
   id: '11111111-1111-4111-8111-111111111111',
+  muscle_groups: ['chest'],
   name: 'Push day',
   note: null,
   planned_for: '2026-11-19',

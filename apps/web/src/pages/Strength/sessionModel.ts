@@ -1,3 +1,5 @@
+import type { Activity } from '../../state/api/types'
+
 import { isSameName } from '../../components/knownValueSuggestions'
 
 export type SetRow = Record<string, unknown>
@@ -276,3 +278,12 @@ export const supersetBlockIds = (blocks: ExerciseBlock[]): Set<string> => {
 
 export const setsOfExercise = (blocks: ExerciseBlock[], exercise: string): SetRow[] =>
   blocks.filter((b) => isSameName(b.exercise, exercise)).flatMap((b) => b.sets)
+
+export const isEditable = (
+  activity: Pick<Activity, 'override_target_ids' | 'source'> & { source_records?: unknown[] },
+  id: string,
+): boolean =>
+  activity.source === 'aurboda' &&
+  !activity.override_target_ids?.length &&
+  !id.startsWith('merged:') &&
+  (activity.source_records?.length ?? 0) <= 1

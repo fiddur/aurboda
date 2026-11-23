@@ -89,6 +89,14 @@ describe('repeatCandidates', () => {
       start_time: at(5, 17, 2),
     })
   })
+
+  it('carries the plan a session was started from', () => {
+    const rows = [
+      { data: { ...sets('Squat'), plan_id: 'p1' }, end_time: at(2, 18), id: 'a', start_time: at(2, 17) },
+      { data: { ...sets('Squat'), plan_id: '' }, end_time: at(1, 18), id: 'b', start_time: at(1, 17) },
+    ]
+    expect(repeatCandidates(rows).map((c) => c.plan_id)).toEqual(['p1', undefined])
+  })
 })
 
 describe('recentSessionSets', () => {

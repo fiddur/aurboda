@@ -49,7 +49,6 @@ export const setsPeriod = (now: Date): { end: string; start: string } => ({
   start: startOfDay(subDays(now, SET_DAYS - 1)).toISOString(),
 })
 
-/** Per series the sets of 13 windows of 7 local days, oldest first, the last ending today. */
 export const setWindows = (buckets: ChartDataBreakdownBucket[], now: Date): Map<string, number[]> => {
   const windows = new Map<string, number[]>()
   for (const bucket of buckets) {
@@ -205,7 +204,6 @@ export const statusLine = (
   return parts.length > 0 ? parts.join(' ') : undefined
 }
 
-/** `45 h` under two days ahead, else the weekday as `readyLabel` gives it; undefined once ready. */
 export const shortReadyLabel = (readyAt: string | null, now: Date): string | undefined => {
   if (readyAt === null) return undefined
   const ready = new Date(readyAt)
@@ -235,7 +233,6 @@ export const setsText = (row: Pick<MuscleRow, 'avg' | 'sets7'>): string => {
   return `${sets} ${setsWord(sets)} in the last 7 days · ${formatSetCount(row.avg)} a week on average over ${SET_WINDOWS} weeks`
 }
 
-/** Bar heights as a share of the tallest window, at least five sets to the full height. */
 export const windowHeights = (windows: number[]): number[] => {
   const scale = Math.max(MIN_BAR_SCALE, ...windows)
   return windows.map((v) => v / scale)

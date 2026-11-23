@@ -10,6 +10,7 @@ import {
   exerciseNames,
   expandQuickEntry,
   isDirty,
+  isEditable,
   isInProgress,
   isTimedBlock,
   liveDraftFromServer,
@@ -390,5 +391,19 @@ describe('setsOfExercise', () => {
       { ...block('a', [{ reps: 3 }]), id: 'a2' },
     ]
     expect(setsOfExercise(blocks, 'A')).toEqual([{ reps: 1 }, { reps: 3 }])
+  })
+})
+
+describe('isEditable', () => {
+  it('allows a session logged in Aurboda on its own', () => {
+    expect(isEditable({ source: 'aurboda' }, 'a1')).toBe(true)
+    expect(isEditable({ source: 'aurboda', source_records: [{}] }, 'a1')).toBe(true)
+  })
+
+  it('refuses synced, merged and overriding sessions', () => {
+    expect(isEditable({ source: 'garmin' }, 'a1')).toBe(false)
+    expect(isEditable({ source: 'aurboda' }, 'merged:a1')).toBe(false)
+    expect(isEditable({ source: 'aurboda', source_records: [{}, {}] }, 'a1')).toBe(false)
+    expect(isEditable({ override_target_ids: ['x'], source: 'aurboda' }, 'a1')).toBe(false)
   })
 })

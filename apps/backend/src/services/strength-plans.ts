@@ -1,13 +1,17 @@
-import type {
-  CreateStrengthPlanBody,
-  StoredExerciseCatalog,
-  StrengthPlan,
-  StrengthPlanSet,
-  StrengthPlansQuery,
-  UpdateStrengthPlanBody,
+import {
+  type CreateStrengthPlanBody,
+  EXERCISE_PRIMARY_MUSCLE_WEIGHT,
+  type ExerciseMuscleGroup,
+  type StoredExerciseCatalog,
+  type StoredExerciseCatalogEntry,
+  type StrengthPlan,
+  type StrengthPlanSet,
+  type StrengthPlansQuery,
+  type UpdateStrengthPlanBody,
 } from '@aurboda/api-spec'
 
 import type { StrengthPlanPatch, StrengthPlanRecord, StrengthPlanSessionRecord } from '../db/index.ts'
+import type { ExerciseEntryResolver } from './muscle-group-measures.ts'
 
 import {
   createStrengthPlan,
@@ -19,6 +23,8 @@ import {
 } from '../db/index.ts'
 import { UUID_RE } from '../utils.ts'
 import { getExerciseByKey, loadExerciseCatalog } from './exercise-catalog.ts'
+import { loadExerciseEntryResolver } from './item-value-identities.ts'
+import { muscleGroupWeights } from './muscle-group-measures.ts'
 
 export type StrengthPlanResult<T> =
   | { success: true; data: T }
@@ -60,12 +66,37 @@ export const unknownExerciseKey = (
   return null
 }
 
+export type PlanSetEntry = (set: StrengthPlanSet) => StoredExerciseCatalogEntry | undefined
+
+export const planSetEntry =
+  (catalog: StoredExerciseCatalog, byName: ExerciseEntryResolver | undefined): PlanSetEntry =>
+  (set) =>
+    (set.exercise_key !== undefined ? getExerciseByKey(catalog, set.exercise_key) : undefined) ??
+    byName?.(set.exercise)
+
+export const planMuscleGroups = (sets: StrengthPlanSet[], entryOf: PlanSetEntry): ExerciseMuscleGroup[] => {
+  const groups = new Set<ExerciseMuscleGroup>()
+  for (const set of sets) {
+    const entry = entryOf(set)
+    if (!entry) continue
+    for (const [group, weight] of Object.entries(muscleGroupWeights(entry)) as [
+      ExerciseMuscleGroup,
+      number,
+    ][]) {
+      if (weight >= EXERCISE_PRIMARY_MUSCLE_WEIGHT) groups.add(group)
+    }
+  }
+  return [...groups]
+}
+
 export const serializeStrengthPlan = (
   record: StrengthPlanRecord,
   sessions: StrengthPlanSessionRecord[] = [],
+  entryOf: PlanSetEntry = () => undefined,
 ): StrengthPlan => ({
   created_at: record.created_at.toISOString(),
   id: record.id,
+  muscle_groups: planMuscleGroups(record.sets, entryOf),
   name: record.name,
   note: record.note,
   planned_for: record.planned_for,
@@ -108,17 +139,32 @@ export const strengthPlanPatch = (body: UpdateStrengthPlanBody): StrengthPlanPat
   return Object.keys(patch).length === 0 ? null : patch
 }
 
+export type ExerciseNameResolverLoader = (user: string) => Promise<ExerciseEntryResolver | undefined>
+
+const loadStrengthExerciseResolver: ExerciseNameResolverLoader = (user) =>
+  loadExerciseEntryResolver(user, 'strength_training', 'sets.exercise')
+
 export const createStrengthPlansService = (
   store: StrengthPlanStore = dbStrengthPlanStore,
   catalog: () => StoredExerciseCatalog = loadExerciseCatalog,
+  nameResolver: ExerciseNameResolverLoader = loadStrengthExerciseResolver,
 ) => {
-  const withSessions = async (user: string, record: StrengthPlanRecord): Promise<StrengthPlan> =>
-    serializeStrengthPlan(record, (await store.sessions(user, [record.id])).get(record.id))
+  const entryResolver = async (user: string): Promise<PlanSetEntry> =>
+    planSetEntry(catalog(), await nameResolver(user))
+
+  const withSessions = async (user: string, record: StrengthPlanRecord): Promise<StrengthPlan> => {
+    const [sessions, entryOf] = await Promise.all([store.sessions(user, [record.id]), entryResolver(user)])
+    return serializeStrengthPlan(record, sessions.get(record.id), entryOf)
+  }
 
   const list = async (user: string, status: StrengthPlansQuery['status']): Promise<StrengthPlan[]> => {
-    const [records, sessions] = await Promise.all([store.list(user), store.sessions(user)])
+    const [records, sessions, entryOf] = await Promise.all([
+      store.list(user),
+      store.sessions(user),
+      entryResolver(user),
+    ])
     return selectStrengthPlans(
-      records.map((record) => serializeStrengthPlan(record, sessions.get(record.id))),
+      records.map((record) => serializeStrengthPlan(record, sessions.get(record.id), entryOf)),
       status,
     )
   }
@@ -141,7 +187,7 @@ export const createStrengthPlansService = (
       planned_for: body.planned_for ?? null,
       sets: body.sets,
     })
-    return { data: serializeStrengthPlan(record), success: true }
+    return { data: serializeStrengthPlan(record, [], await entryResolver(user)), success: true }
   }
 
   const update = async (
