@@ -1048,3 +1048,33 @@
   flex-basis: 100%;
   margin: 0;
 }
+
+/* Suggested links */
+
+.journal-suggestion-chip {
+  border-style: dashed;
+}
+
+.journal-related-chip .journal-suggestion-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: inherit;
+}
+
+.journal-suggestion-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-suggestion-add small {
+  font-size: 0.75rem;
+}
+
+.journal-related-chip .journal-suggestion-add:hover .journal-suggestion-label {
+  text-decoration: underline;
+}

@@ -864,3 +864,127 @@ export const mergeNoteTagsResponseSchema = createDataResponseSchema(mergeNoteTag
 })
 
 export type MergeNoteTagsResponse = z.infer<typeof mergeNoteTagsResponseSchema>
+
+export const noteLinkSuggestionReasonSchema = z.enum(['name_in_text', 'night_sleep', 'same_day']).meta({
+  description:
+    "Why it is suggested: `name_in_text` — the person's name (or, when no one else shares it, their first name) is written in the entry's title or text; `night_sleep` — the sleep that ended on the morning of an entry written before noon; `same_day` — an activity that started on the entry's day",
+  id: 'NoteLinkSuggestionReason',
+})
+
+export type NoteLinkSuggestionReason = z.infer<typeof noteLinkSuggestionReasonSchema>
+
+export const NOTE_LINK_SUGGESTIONS_SAME_DAY_MAX = 12
+
+export const noteLinkSuggestionSchema = noteRelatedSchema
+  .extend({ reason: noteLinkSuggestionReasonSchema })
+  .meta({
+    description:
+      'A person or an activity a journal entry could be related to and is not yet. Nothing is linked until the entry is saved with it in `related`.',
+    id: 'NoteLinkSuggestion',
+  })
+
+export type NoteLinkSuggestion = z.infer<typeof noteLinkSuggestionSchema>
+
+export const noteLinkSuggestionsResponseSchema = createDataArrayResponseSchema(noteLinkSuggestionSchema).meta(
+  {
+    description: `The links suggested for one journal entry: the people named in it, then the night's sleep, then the activities of its day (at most ${NOTE_LINK_SUGGESTIONS_SAME_DAY_MAX}). Archived people, what it is already related to and what was dismissed for it are left out.`,
+    id: 'NoteLinkSuggestionsResponse',
+  },
+)
+
+export type NoteLinkSuggestionsResponse = z.infer<typeof noteLinkSuggestionsResponseSchema>
+
+export const dismissNoteLinkSuggestionBodySchema = z
+  .object({
+    entity_id: z.string().uuid().meta({ description: 'ID of the suggested person or activity' }),
+    entity_type: noteRelatedEntityTypeSchema,
+  })
+  .meta({
+    description: 'A suggestion not to offer again for this entry',
+    id: 'DismissNoteLinkSuggestionBody',
+  })
+
+export type DismissNoteLinkSuggestionBody = z.infer<typeof dismissNoteLinkSuggestionBodySchema>
+
+export const NOTE_LINK_SUGGESTIONS_PAGE_DEFAULT_LIMIT = 20
+
+export const NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT = 50
+
+export const noteLinkSuggestionsPageQuerySchema = z
+  .object({
+    cursor: z.string().optional().meta({ description: "Opaque cursor from a previous page's `next_cursor`" }),
+    from: dateOnlySchema.optional().meta({
+      description:
+        "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
+    }),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT)
+      .optional()
+      .meta({
+        description: `How many journal entries to look at (1–${NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT}, default ${NOTE_LINK_SUGGESTIONS_PAGE_DEFAULT_LIMIT}); only those with a suggestion are returned`,
+      }),
+    to: dateOnlySchema.optional().meta({ description: 'Latest local date (YYYY-MM-DD, inclusive)' }),
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone the local dates are read in (default: the user's timezone)",
+    }),
+    unlinked_only: queryBooleanSchema.optional().meta({
+      description:
+        'true (the default) leaves out the entries already related to anything; false includes them',
+    }),
+  })
+  .check((ctx) => {
+    const query = ctx.value
+    if (query.from !== undefined && query.to !== undefined && query.from > query.to) {
+      pushIssue(ctx, 'to', query.to, 'to must not precede from')
+    }
+  })
+  .meta({ id: 'NoteLinkSuggestionsPageQuery' })
+
+export type NoteLinkSuggestionsPageQuery = z.infer<typeof noteLinkSuggestionsPageQuerySchema>
+
+export const noteLinkSuggestionsEntrySchema = z
+  .object({
+    date: noteDateSchema.optional(),
+    entity_type: z.enum(['time', 'day']).meta({ description: 'A journal entry at a time, or for a day' }),
+    excerpt: z.string().meta({
+      description: `The first non-empty line of the text, at most ${JOURNAL_ENTRY_EXCERPT_MAX} characters (may be empty)`,
+    }),
+    id: z.string().uuid().meta({ description: 'Note ID' }),
+    related: z.array(noteRelatedSchema).meta({ description: 'What the entry is already related to' }),
+    start_time: iso8601DateTimeSchema.optional().meta({ description: 'When a `time` entry is anchored' }),
+    suggestions: z.array(noteLinkSuggestionSchema).meta({ description: 'The links suggested for it' }),
+    title: noteTitleResponseSchema.optional(),
+    updated_at: iso8601DateTimeSchema.meta({
+      description: "The entry's `updated_at`, to pass as `expected_updated_at` when saving its links",
+    }),
+  })
+  .meta({ description: 'A journal entry with the links suggested for it', id: 'NoteLinkSuggestionsEntry' })
+
+export type NoteLinkSuggestionsEntry = z.infer<typeof noteLinkSuggestionsEntrySchema>
+
+export const noteLinkSuggestionsPageSchema = z
+  .object({
+    entries: z.array(noteLinkSuggestionsEntrySchema).meta({
+      description: 'The entries of this page that have at least one suggestion, newest first',
+    }),
+    next_cursor: z.string().optional().meta({
+      description:
+        'Cursor of the next page; absent when this is the last. A page may hold fewer entries than `limit`, or none, while there are more pages.',
+    }),
+  })
+  .meta({
+    description:
+      'A page of journal entries, newest first, with the links suggested for each: only the entries with a suggestion are listed, so a page may be shorter than `limit` (or empty) while `next_cursor` is still set',
+    id: 'NoteLinkSuggestionsPage',
+  })
+
+export type NoteLinkSuggestionsPage = z.infer<typeof noteLinkSuggestionsPageSchema>
+
+export const noteLinkSuggestionsPageResponseSchema = createDataResponseSchema(
+  noteLinkSuggestionsPageSchema,
+).meta({ id: 'NoteLinkSuggestionsPageResponse' })
+
+export type NoteLinkSuggestionsPageResponse = z.infer<typeof noteLinkSuggestionsPageResponseSchema>

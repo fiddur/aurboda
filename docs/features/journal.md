@@ -75,6 +75,12 @@ optional end time, or **No time of day** with a date. It opens on "now".
   form's page, where its history is. If a save is refused because a linked target
   was removed since (a draft kept from before, say), the chip turns red and says so;
   remove it and the entry saves.
+- **Suggested**: under Related, once the entry is saved, dashed chips suggest links it
+  does not have yet -- a person named in the text ("named in the text"), the night's
+  sleep ("last night") and the day's activities ("that day"); see
+  [Suggested links](#suggested-links). A tap adds it to Related, as the picker does;
+  **×** stops suggesting it for this entry. There is no row when there is nothing to
+  suggest, and the chips are read again after each save.
 
 ## On the Timeline
 
@@ -187,6 +193,63 @@ nothing about it in the text.
 - **Privacy.** As the rest of People: links never leave your account. A note is never
   shared, and nothing about its links goes into an activity's share, the feed or
   anything federated.
+
+### Suggested links
+
+Aurboda suggests links, and only suggests them: a link is still made by a tap in the
+editor or by `related` on a save, never from the text by itself, and a suggestion never
+changes the text.
+
+- **What is suggested.** For a journal entry (a `time` or `day` note):
+  - a person whose name is written in the title or text, as a whole word, case aside,
+    also with a possessive `s`, `'s` or `’s` ("Saras", "Sara's"). The first name alone
+    counts when the name has more words, the first name has at least three letters and
+    no one else among your people has it. Archived people are never suggested.
+    Reason `name_in_text`, in the order they are first named.
+  - for a `time` entry before noon (in your timezone), the sleep that ended that
+    morning, at or before the entry (the one ending last). Reason `night_sleep`.
+  - the activities other than sleep that started on the entry's day (a `day` entry's
+    date, a `time` entry's local date), in time order, at most 12. Location visits and
+    screen-time spans are left out. Reason `same_day`. Activities are read as the
+    activity list reads them, so merges and rules apply.
+
+  What the entry is already related to, and what was dismissed for it, is left out.
+  Each suggestion is a `related` item (`entity_type`, `entity_id`, `label`, an
+  activity's `activity_type`) plus its `reason`.
+
+- **One entry.** `GET /notes/:id/link-suggestions` (MCP `get_note_link_suggestions`);
+  a `404` for anything but a live journal entry.
+- **Dismissing.** `POST /notes/:id/link-suggestions/dismissals` with
+  `{ entity_type, entity_id }` (MCP `dismiss_note_link_suggestion`) stops suggesting it
+  for that entry; dismissing twice is the same as once. Dismissals live in
+  `note_link_dismissals` (`note_id`, `entity_type`, `entity_id`, `created_at`) and go
+  with the entry when it is removed for good.
+- **Many entries.** `GET /notes/link-suggestions` (MCP `list_note_link_suggestions`)
+  pages through the journal newest first, as search does: `from`/`to` (local dates),
+  `tz`, `cursor` and `limit` (default 20, at most 50 entries looked at per page).
+  `unlinked_only` (default `true`) leaves out entries already related to anything.
+  Each listed entry carries `id`, `entity_type`, `title`, `date` or `start_time`,
+  `excerpt`, `updated_at`, its current `related` and its `suggestions`. Only entries with
+  a suggestion are listed, so a page can be short, or empty, while `next_cursor` is
+  still set: keep paging until it is absent.
+
+#### Going through old entries with an assistant
+
+An assistant (through MCP) can relate the archive in passes, with you deciding:
+
+1. `list_note_link_suggestions` with `from`/`to` for the stretch to go through
+   (`unlinked_only` stays `true`), following `next_cursor` to the end.
+2. Show the proposals grouped per entry -- its date, title or excerpt, and each
+   suggestion's label and reason -- and ask which to keep, entry by entry or for a
+   batch at once.
+3. For each entry with accepted links, `update_note` with `related` set to its current
+   links **plus** the accepted ones (`related` replaces the list) and
+   `expected_updated_at` set to the entry's `updated_at`. A conflict means the entry
+   changed meanwhile: read it again and ask again.
+4. `dismiss_note_link_suggestion` for each refused suggestion, so the next pass skips it.
+
+The assistant never edits an entry's text or title to make a link, and links nothing
+you have not agreed to.
 
 ## Finding entries
 
@@ -341,6 +404,9 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
 | `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
+| `GET`    | `/notes/:id/link-suggestions`                   | `get_note_link_suggestions`     |
+| `POST`   | `/notes/:id/link-suggestions/dismissals`        | `dismiss_note_link_suggestion`  |
+| `GET`    | `/notes/link-suggestions`                       | `list_note_link_suggestions`    |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
 | `GET`    | `/notes/tags`                                   | `list_note_tags`                |
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
