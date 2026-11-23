@@ -37,6 +37,15 @@ export const builtinDashboardMetrics = [
   'training_readiness',
   'intensity_minutes',
   'respiratory_rate',
+  'strength_score',
+  'strength_score_chest',
+  'strength_score_shoulders',
+  'strength_score_back',
+  'strength_score_biceps',
+  'strength_score_triceps',
+  'strength_score_quadriceps',
+  'strength_score_hamstrings',
+  'strength_score_glutes',
 ] as const
 
 export type BuiltinDashboardMetric = (typeof builtinDashboardMetrics)[number]

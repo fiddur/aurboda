@@ -4,44 +4,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { fetchCustomMetrics, fetchMetricCatalog, type CustomMetricDefinition } from '../state/api'
-import { builtinDashboardMetricOptions, getMetricDisplayName } from '../utils/metricLabels'
+import { getMetricDisplayName } from '../utils/metricLabels'
+import { buildMetricEntries, type MetricEntry } from './metricPickerEntries'
 import { matchMetricEntries } from './picker-match'
 import './MetricPicker.css'
-
-interface MetricEntry {
-  value: string
-  label: string
-  group: 'builtin' | 'custom' | 'catalog'
-  keywords?: string[]
-}
-
-const buildEntries = (
-  customMetrics: CustomMetricDefinition[],
-  catalogEntries: MetricCatalogEntry[],
-): MetricEntry[] => {
-  const builtin: MetricEntry[] = builtinDashboardMetricOptions.map((m) => ({
-    group: 'builtin',
-    label: m.label,
-    value: m.value,
-  }))
-
-  const custom: MetricEntry[] = customMetrics.map((m) => ({
-    group: 'custom',
-    label: m.description ?? m.name,
-    value: m.name,
-  }))
-
-  const catalog: MetricEntry[] = catalogEntries
-    .filter((entry) => !entry.in_use)
-    .map((entry) => ({
-      group: 'catalog',
-      keywords: entry.aliases,
-      label: entry.display_name,
-      value: entry.name,
-    }))
-
-  return [...builtin, ...custom, ...catalog]
-}
 
 /**
  * The label to show in the closed input for the selected value: the built-in
@@ -131,7 +97,9 @@ export function MetricPicker({
   })
   const catalogEntries = includeCatalog && !builtinOnly ? (metricCatalog?.entries ?? []) : []
 
-  const entries = buildEntries(builtinOnly ? [] : (customMetrics ?? []), catalogEntries)
+  const entries = buildMetricEntries(builtinOnly ? [] : (customMetrics ?? []), catalogEntries, {
+    writable: includeCatalog,
+  })
 
   const filtered = matchMetricEntries(entries, inputValue)
 

@@ -286,6 +286,32 @@ const pointAt = (
   return { at: at.toISOString(), groups: scores, score: overallOf(groups) }
 }
 
+/**
+ * The score at each of `moments`, in their order. The sets are sorted once and each moment is given only the sets
+ * inside its window, found by two indexes that only move forward over the moments in ascending order.
+ */
+export const strengthScorePoints = (
+  sets: ScoredSet[],
+  references: StrengthReferences,
+  subject: StrengthScoreSubject,
+  moments: Date[],
+): StrengthScoreHistoryPoint[] => {
+  const sorted = sets.toSorted((a, b) => a.start_time.getTime() - b.start_time.getTime())
+  const order = moments
+    .map((_, i) => i)
+    .toSorted((a, b) => (moments[a] as Date).getTime() - (moments[b] as Date).getTime())
+  const points: StrengthScoreHistoryPoint[] = Array.from({ length: moments.length })
+  let low = 0
+  let high = 0
+  for (const i of order) {
+    const at = moments[i] as Date
+    while (high < sorted.length && (sorted[high] as ScoredSet).start_time.getTime() <= at.getTime()) high++
+    while (low < high && (sorted[low] as ScoredSet).start_time.getTime() <= at.getTime() - WINDOW_MS) low++
+    points[i] = pointAt(sorted.slice(low, high), references, subject, at)
+  }
+  return points
+}
+
 /** The moments of a history: `end` and every `step_days` before it down to `start`, oldest first. */
 export const historyMoments = (period: { end: Date; start: Date; step_days: number }): Date[] => {
   const moments: Date[] = []
@@ -307,8 +333,7 @@ export const strengthScoreHistory = (
     end: period.end.toISOString(),
     field,
     missing,
-    points:
-      missing.length > 0 ? [] : historyMoments(period).map((at) => pointAt(sets, references, subject, at)),
+    points: missing.length > 0 ? [] : strengthScorePoints(sets, references, subject, historyMoments(period)),
     start: period.start.toISOString(),
     step_days: period.step_days,
   }

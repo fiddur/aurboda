@@ -32,7 +32,7 @@ import {
 } from '../db/index.ts'
 import { writeWithCatalogAdoption } from './custom-metrics.ts'
 import { catalogMetricDefinition, loadMetricCatalog } from './metric-catalog.ts'
-import { resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
+import { computedMetricWriteError, resolveMetricForWrite, valueForWrite } from './metric-resolution.ts'
 
 export const REPORT_NOT_FOUND = 'Report not found'
 
@@ -149,6 +149,8 @@ const prepareEntry = (
 ): PreparedEntry | { error: string } => {
   const asGiven = { entry: { ...input, series_unit: input.unit, series_value: input.value } }
   const resolved = resolveMetricForWrite(input.metric, customMetrics, catalog)
+  const computedError = resolved && computedMetricWriteError(resolved.metric)
+  if (computedError) return { error: computedError }
   if (!resolved?.entry) return resolved ? { entry: { ...asGiven.entry, metric: resolved.metric } } : asGiven
   const converted = valueForWrite(resolved, input.value, input.unit)
   if ('error' in converted) return { error: `Entry "${input.metric}": ${converted.error}` }
