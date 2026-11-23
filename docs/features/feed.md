@@ -375,6 +375,11 @@ never change) and `X-Content-Type-Options: nosniff`.
 | `GET /feed/images`        | `list_feed_images`  | My pictures, newest first, with the cap (`limit`)                                                |
 | `DELETE /feed/images/:id` | `delete_feed_image` | Delete a picture; markdown that embeds it shows a broken picture                                 |
 
+A picture larger than a few hundred kB, or one on disk, is better sent through an upload URL
+than base64 through MCP: `create_upload_url` (`POST /uploads`) with `target: "feed_image"` mints
+a single-use URL good for 15 minutes, and `curl -T photo.jpg '<upload_url>'` answers the stored
+picture as `add_feed_image` would. See [Uploading files](../mcp-server.md#uploading-files).
+
 The MCP tool is `add_…` rather than `upload_…` so the read-only gate, which decides by prefix,
 refuses it for an account whose plan has ended, as REST's account gate does for `POST` and
 `DELETE`.

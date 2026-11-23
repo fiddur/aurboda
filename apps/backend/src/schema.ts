@@ -268,6 +268,8 @@ export const tableCreationOrder = [
   'profile_avatar',
   'mcp_sessions',
   'mcp_sessions_indexes',
+  'upload_urls',
+  'upload_urls_indexes',
   'outbound_sync_queue',
   'outbound_sync_queue_indexes',
   'deduction_rules',

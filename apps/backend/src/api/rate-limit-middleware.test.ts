@@ -97,6 +97,8 @@ describe('mountRateLimits', () => {
     }
     app.post('/signup', ok)
     app.post('/feed/images', ok)
+    app.post('/uploads', ok)
+    app.put('/uploads/:user/:token', ok)
     app.post('/metrics', ok)
     app.get('/public/:username/feed/:postId/chart.png', ok)
     return supertest(app)
@@ -132,6 +134,20 @@ describe('mountRateLimits', () => {
     await repeat(RATE_LIMITS.uploads.capacity, () => upload('alice'))
     expect((await upload('alice')).status).toBe(429)
     expect((await upload('bob')).status).toBe(200)
+  })
+
+  test('minting an upload URL draws on the account upload budget', async () => {
+    const http = setup()
+    const mint = () => http.post('/uploads').set('Authorization', 'Bearer alice')
+    await repeat(RATE_LIMITS.uploads.capacity, mint)
+    expect((await mint()).status).toBe(429)
+  })
+
+  test('uploads to an upload URL are limited per client IP', async () => {
+    const http = setup()
+    const upload = () => http.put('/uploads/alice/token').set('X-Client-IP', CLIENT)
+    await repeat(RATE_LIMITS.public_reads.capacity, upload)
+    expect((await upload()).status).toBe(429)
   })
 
   test('without a client IP the per-IP limits stand aside', async () => {

@@ -266,6 +266,11 @@ recording is listed over MCP by its metadata only: it is played in the app.
 
 `add_note_attachment` takes a file base64-encoded, at most 5 MB decoded -- in
 practice about 3 MB, since an MCP request is limited to 4 MB of JSON.
+For anything larger than a few hundred kB, or a file on disk, `create_upload_url`
+(`POST /uploads`) with `target: "note_attachment"` and the entry's `note_id` mints a
+single-use URL good for 15 minutes; the client sends the raw bytes there
+(`curl -T page.jpg '<upload_url>'`) and gets back the attachment, up to 20 MB. See
+[Uploading files](../mcp-server.md#uploading-files).
 
 ## Templates
 
@@ -293,6 +298,7 @@ removes it at once. Aurboda ships no templates of its own.
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
+| `POST`   | `/uploads` (`target: note_attachment`)          | `create_upload_url`             |
 | `GET`    | `/notes/:id/attachments/:attachment_id`         | `get_note_attachment`           |
 | `DELETE` | `/notes/:id/attachments/:attachment_id`         | `delete_note_attachment`        |
 | `POST`   | `/notes/:id/attachments/:attachment_id/restore` | `restore_note_attachment`       |

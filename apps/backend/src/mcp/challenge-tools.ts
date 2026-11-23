@@ -166,7 +166,7 @@ export const registerChallengeTools = (
 
   server.tool(
     'remove_challenge_banner',
-    'Remove the banner image of a hosted challenge, bringing back the themed card. Returns the updated challenge. Setting a banner is a binary upload, REST only (POST /challenges/:id/banner).',
+    'Remove the banner image of a hosted challenge, bringing back the themed card. Returns the updated challenge. To set a banner, upload it to a URL from create_upload_url with target challenge_banner.',
     { id: z.string().uuid().describe('Challenge ID') },
     async ({ id }) => {
       if (!(await getChallengeById(user, id))) return errorResponse('Challenge not found')
