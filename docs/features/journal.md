@@ -17,12 +17,17 @@ pictures and recordings. At the top:
 
 - **New entry**, and **New entry from template** when you have templates;
 - **search** (title and text), a **tag** filter (clicking a `#tag` on an entry adds
-  it), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
+  it, as does picking one under **Tags**, which lists them most used first;
+  `/journal?tag=<tag>` opens with it), a **Related to** filter (a person or an
+  activity, picked from People and Activities tabs), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
   comments on activities, meals and reports**, and **Photos without text**;
 - **On this day**: entries from the same date in earlier years, when there are any;
 - **Recently deleted**: deleted entries and templates with the days left before they
   go for good, each with **Restore**;
-- **Manage templates**: add, rename, edit and delete them.
+- **Manage templates**: add, rename, edit and delete them;
+- **Manage tags** (at the foot of **Tags**, `/journal/tags`): every tag with how many
+  entries carry it and when it was last used, each opening the journal filtered on
+  it, and **Merge into…** another tag (see [Tags](#tags)).
 
 ## Writing an entry
 
@@ -178,6 +183,22 @@ has focus. `GET /notes/:id/neighbors` (MCP `get_note_neighbors`) answers them as
 `previous` (older) and `next` (newer), each with its `date` or `start_time`, `title`
 and `excerpt`; an id that is not a live entry is a `404`.
 
+## Tags
+
+A tag is either set explicitly or written as a `#hashtag` in the text; both count
+the same. `GET /notes/tags` (MCP `list_note_tags`) lists them most used first, each
+with `count` (the live notes carrying it, each note once) and `last_used` (the
+newest carrying note's time, a `day` entry at the start of its date in `tz`). Like
+search it reads the free-standing entries unless `entity_types` names more.
+
+`POST /notes/tags/merge` (MCP `merge_note_tags`) with `{ "from": ["running", "jog"],
+"into": "run" }` gives every live note carrying a `from` tag -- entries, comments
+and replies alike -- `into` instead: explicit tags are replaced, and each `#running`
+or `#jog` in the text is rewritten to `#run` (not inside code or a URL). A rewritten
+text keeps its previous version as a revision. Renaming is a merge with one `from`.
+It answers how many notes `changed`; `into` among `from` is a `400`. A synced
+comment (from Oura and the like) is left alone.
+
 The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns the
 `day` entries of the window's dates alongside the timed ones; the daily summary
 lists the day's `day` entries under `notes`, each with its `attachments` like any
@@ -268,6 +289,8 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
 | `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
+| `GET`    | `/notes/tags`                                   | `list_note_tags`                |
+| `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
 | `GET`    | `/notes/:id/attachments/:attachment_id`         | `get_note_attachment`           |

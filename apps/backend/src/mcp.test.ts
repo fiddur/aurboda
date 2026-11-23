@@ -65,6 +65,8 @@ vi.mock('./services/mutations', () => ({
   getNotesForEntity: vi.fn().mockResolvedValue([]),
   getNotesInRange: vi.fn().mockResolvedValue([]),
   listDeletedNotes: vi.fn().mockResolvedValue([]),
+  listNoteTagsForUser: vi.fn(),
+  mergeNoteTags: vi.fn(),
   restoreActivity: vi.fn(),
   restoreNoteById: vi.fn(),
   searchNotesForUser: vi.fn(),
@@ -2377,6 +2379,8 @@ describe('MCP Server', () => {
         'get_note_neighbors',
         'search_notes',
         'list_note_revisions',
+        'list_note_tags',
+        'merge_note_tags',
         'restore_note',
         'list_deleted_notes',
         'add_note_attachment',
@@ -2487,6 +2491,24 @@ describe('MCP Server', () => {
       const parsed = parseSSEResponse(missing.text) as { result: { content: { text: string }[] } }
       expect(parsed.result.content[0].text).toBe('Journal entry not found')
       expect(mutations.getJournalNeighbors).toHaveBeenLastCalledWith('testuser', id, undefined)
+    })
+
+    test('list_note_tags and merge_note_tags pass their parameters on', async () => {
+      const app = createTestApp()
+      const token = auth.createToken('testuser')
+      const tags = [{ count: 2, last_used: '2024-01-15T08:00:00.000Z', tag: 'run' }]
+      vi.mocked(mutations.listNoteTagsForUser).mockResolvedValue({ data: tags, success: true })
+      vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 2 }, success: true })
+
+      const listed = await callNoteTool(app, token, 'list_note_tags', { entity_types: 'time,activity' })
+      expect(listed.toolResult).toEqual({ data: tags, success: true })
+      expect(mutations.listNoteTagsForUser).toHaveBeenCalledWith('testuser', {
+        entity_types: 'time,activity',
+      })
+
+      const merged = await callNoteTool(app, token, 'merge_note_tags', { from: ['running'], into: 'run' })
+      expect(merged.toolResult).toEqual({ data: { changed: 2 }, success: true })
+      expect(mutations.mergeNoteTags).toHaveBeenCalledWith('testuser', { from: ['running'], into: 'run' })
     })
 
     test('add_note, update_note and search_notes take related and its filter', async () => {

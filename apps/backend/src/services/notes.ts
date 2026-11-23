@@ -22,6 +22,7 @@ import {
   DELETED_NOTE_RETENTION_DAYS,
   endPrecedesStart,
   extractHashtags,
+  findHashtags,
   isFreeStandingNoteType,
   isValidEntityId,
   JOURNAL_ENTRY_EXCERPT_MAX,
@@ -31,6 +32,7 @@ import {
   NOTE_REVISION_LIMIT,
   NOTE_REVISION_MIN_INTERVAL_MINUTES,
   NOTE_TAGS_MAX,
+  NOTE_TAGS_MERGE_INTO_ERROR,
   NOTE_TITLE_MAX_LENGTH,
   NOTES_SEARCH_DEFAULT_LIMIT,
   NOTES_SEARCH_MAX_LIMIT,
@@ -46,6 +48,7 @@ import {
   type NoteNeighbors,
   type NoteRelated,
   type NoteRelatedEntityType,
+  type NoteTagSummary,
 } from '@aurboda/api-spec'
 
 import {
@@ -61,6 +64,8 @@ import {
   getNoteRoot as dbGetNoteRoot,
   getNotesForEntity as dbGetNotesForEntity,
   getNotesForTimeRange as dbGetNotesForTimeRange,
+  getNotesWithAnyTag as dbGetNotesWithAnyTag,
+  listNoteTags as dbListNoteTags,
   getRepliesForRootIds as dbGetRepliesForRootIds,
   insertNote as dbInsertNote,
   restoreNote as dbRestoreNote,
@@ -627,12 +632,23 @@ const anchorUpdate = (existing: DbNote, fields: UpdateNoteInput): string | NoteF
   }
 }
 
+/** A merge's rewrite keeps a revision however recent the last one; an edit only every few minutes. */
+const revisionPolicy = (alwaysKeep: boolean) => ({
+  limit: NOTE_REVISION_LIMIT,
+  min_interval_minutes: alwaysKeep ? 0 : NOTE_REVISION_MIN_INTERVAL_MINUTES,
+})
+
 /**
  * Update a comment's content, title and tags and — for a free-standing comment only — its anchor.
  * Moving one moves its whole thread with it. With `expected_updated_at` a change made elsewhere in
  * the meantime is a conflict that writes nothing. The text it replaces is kept as a revision.
  */
-export async function updateNote(user: string, id: string, fields: UpdateNoteInput): Promise<NoteResult> {
+export async function updateNote(
+  user: string,
+  id: string,
+  fields: UpdateNoteInput,
+  options: { always_keep_revision?: boolean } = {},
+): Promise<NoteResult> {
   if (!UUID_RE.test(id)) return notFound()
   const existing = await dbGetNoteById(user, id)
   if (!existing) {
@@ -670,7 +686,7 @@ export async function updateNote(user: string, id: string, fields: UpdateNoteInp
       ...(Object.keys(anchor).length > 0 ? { expected_entity_type: existing.entity_type } : {}),
       expected_updated_at:
         fields.expected_updated_at === undefined ? undefined : new Date(fields.expected_updated_at),
-      revisions: { limit: NOTE_REVISION_LIMIT, min_interval_minutes: NOTE_REVISION_MIN_INTERVAL_MINUTES },
+      revisions: revisionPolicy(options.always_keep_revision === true),
     },
   )
   if (result.status === 'not_found') return notFound()
@@ -914,4 +930,96 @@ export async function syncNoteTimesForEntity(
   endTime?: Date,
 ): Promise<void> {
   await dbUpdateNoteTimesForEntity(user, entityType, entityId, startTime, endTime)
+}
+
+export type NoteTagsListResult =
+  | { success: true; data: NoteTagSummary[] }
+  | { success: false; error: string; errorCode: 'invalid' }
+
+/** The tags on the roots of `entity_types` (default: the free-standing entries), most used first. */
+export async function listNoteTagsForUser(
+  user: string,
+  input: { entity_types?: string; tz?: string },
+): Promise<NoteTagsListResult> {
+  const entityTypes = parseNotesSearchEntityTypes(input.entity_types)
+  const unknownType = entityTypes.find((type) => !(notesSearchRootTypes as readonly string[]).includes(type))
+  if (unknownType !== undefined) {
+    return {
+      error: `Not a comment root type: ${unknownType} (one of ${notesSearchRootTypes.join(', ')})`,
+      errorCode: 'invalid',
+      success: false,
+    }
+  }
+  const tags = await dbListNoteTags(user, {
+    entity_types: entityTypes,
+    tz: input.tz ?? (await getUserTimezone(user)),
+  })
+  return {
+    data: tags.map((tag) => ({ count: tag.count, last_used: tag.last_used.toISOString(), tag: tag.tag })),
+    success: true,
+  }
+}
+
+/**
+ * A note's explicit tags and text with every tag in `from` made `into`: the tags are replaced
+ * (deduplicated, order kept) and each `#from` hashtag rewritten to `#into`. Null when nothing changes.
+ * A rewritten text comes back in NFC, the form the hashtags are found in.
+ */
+export const mergeTagsInNote = (
+  note: { content: string; tags: string[] },
+  from: readonly string[],
+  into: string,
+): { content: string; tags: string[] } | null => {
+  const tags = [...new Set(note.tags.map((tag) => (from.includes(tag) ? into : tag)))]
+  const tagsChanged = tags.length !== note.tags.length || tags.some((tag, i) => tag !== note.tags[i])
+  const normalized = note.content.normalize('NFC')
+  const matches = findHashtags(normalized).filter((match) => from.includes(match.tag))
+  const content = matches.reduceRight(
+    (text, match) =>
+      `${text.slice(0, match.index)}#${into}${text.slice(match.index + 1 + match.text.length)}`,
+    normalized,
+  )
+  if (!tagsChanged && matches.length === 0) return null
+  return { content: matches.length === 0 ? note.content : content, tags }
+}
+
+export type MergeNoteTagsResult =
+  | { success: true; data: { changed: number } }
+  | { success: false; error: string; errorCode: 'invalid' }
+
+/**
+ * Merge tags across every live note: each one carrying a tag in `from` gets `into` instead, through
+ * {@link updateNote}, so its hashtags are recomputed and a rewritten text keeps a revision.
+ */
+export async function mergeNoteTags(
+  user: string,
+  input: { from: string[]; into: string },
+): Promise<MergeNoteTagsResult> {
+  const from = normalizeNoteTags(input.from)
+  const [into] = normalizeNoteTags([input.into]) ?? []
+  if (from === null || into === undefined) {
+    return {
+      error: 'Not a valid tag (letters, digits and _, not only digits)',
+      errorCode: 'invalid',
+      success: false,
+    }
+  }
+  if (from.includes(into)) return { error: NOTE_TAGS_MERGE_INTO_ERROR, errorCode: 'invalid', success: false }
+
+  let changed = 0
+  for (const note of await dbGetNotesWithAnyTag(user, from)) {
+    const merged = mergeTagsInNote({ content: note.content, tags: note.tags ?? [] }, from, into)
+    if (merged === null) continue
+    const result = await updateNote(
+      user,
+      note.id,
+      {
+        content: merged.content === note.content ? undefined : merged.content,
+        tags: merged.tags,
+      },
+      { always_keep_revision: true },
+    )
+    if (result.success) changed++
+  }
+  return { data: { changed }, success: true }
 }
