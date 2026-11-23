@@ -130,6 +130,7 @@ export const cleanTestDb = async (): Promise<void> => {
     'check_ins',
     'check_in_form_versions',
     'check_in_forms',
+    'rule_activity_people',
     'activity_people',
     'person_dates',
     'people',

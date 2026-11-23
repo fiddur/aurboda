@@ -336,8 +336,9 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
             />
           </div>
           <p class="rule-field-hint">
-            Adds these people to each activity the rule {modeVerb[fields.mode]}. People are only ever added:
-            removing one here does not take them off activities the rule already touched.
+            Adds these people to each activity the rule {modeVerb[fields.mode]}, once: a person taken off by
+            hand stays off, and an activity whose people were set by hand is left alone. Removing one here
+            does not take them off activities the rule already touched.
           </p>
 
           {fields.mode === 'enrich' && (
