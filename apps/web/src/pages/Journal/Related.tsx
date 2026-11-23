@@ -13,8 +13,10 @@ import {
   fetchMeals,
   fetchPeople,
   fetchReports,
+  fetchUserSettings,
   PEOPLE_KEY,
 } from '../../state/api'
+import { auth } from '../../state/auth'
 import { toDisplayName } from '../../utils/displayName'
 import { newPersonName } from '../People/people-view'
 import {
@@ -41,6 +43,8 @@ import {
   reportLink,
   reportOptions,
   reportTypeName,
+  zonedDate,
+  zonedTime,
 } from './related'
 
 /** Every person, archived ones included, for the names of the links they already have. */
@@ -54,6 +58,20 @@ export const useAddPerson = () => {
     mutationFn: (name: string) => addPerson({ name }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PEOPLE_KEY }),
   })
+}
+
+/**
+ * The user's configured zone, which the server labels links in; undefined (the browser's) until the
+ * settings load or when none is set.
+ */
+const useUserZone = (): string | undefined => {
+  const settings = useQuery({
+    enabled: Boolean(auth.value.token),
+    queryFn: fetchUserSettings,
+    queryKey: ['userSettings'],
+    staleTime: 5 * 60_000,
+  })
+  return settings.data?.tz ?? undefined
 }
 
 const useTypeDefinitions = () =>
@@ -71,7 +89,7 @@ const useTypeName = (): ((type: string) => string) => {
   }, [definitions.data])
 }
 
-const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
+export const useTypeIcon = (): ((type: string | undefined) => string | undefined) => {
   const definitions = useTypeDefinitions()
   return useMemo(() => {
     const icons = new Map((definitions.data ?? []).map((d) => [d.name, d.icon ?? undefined]))
@@ -87,7 +105,7 @@ const kindIcons: Record<NoteRelatedEntityType, string> = {
   report: '🧪',
 }
 
-const ChipIcon = ({ link, typeIcon }: { link: RelatedLink; typeIcon: string | undefined }) =>
+export const ChipIcon = ({ link, typeIcon }: { link: RelatedLink; typeIcon: string | undefined }) =>
   link.entity_type === 'activity' && typeIcon ? (
     <span aria-hidden="true" class="journal-related-chip-icon">
       <IconPreview icon={typeIcon} size={16} />
@@ -238,6 +256,7 @@ export const ActivityOptions = ({
   const [date, setDate] = useState(entryDate)
   const [type, setType] = useState('')
   const typeName = useTypeName()
+  const tz = useUserZone()
   const range = dayActivityWindow(date)
   const activities = useQuery({
     enabled: /^\d{4}-\d{2}-\d{2}$/.test(date),
@@ -268,16 +287,15 @@ export const ActivityOptions = ({
       {!activities.isLoading && shown.length === 0 && <p class="journal-muted">No activities that day.</p>}
       <ul>
         {shown.map((activity) => {
-          const link = activityLink(activity, typeName)
+          const link = activityLink(activity, typeName, tz)
           return (
             <li key={link.entity_id}>
               <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
                 <strong>{activity.title?.trim() || typeName(activity.activity_type)}</strong>
                 <span class="journal-muted">
                   {' '}
-                  · {activity.start_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  {activity.end_time &&
-                    `–${activity.end_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                  · {zonedTime(activity.start_time, tz)}
+                  {activity.end_time && `–${zonedTime(activity.end_time, tz)}`}
                 </span>
               </button>
             </li>
@@ -287,8 +305,6 @@ export const ActivityOptions = ({
     </div>
   )
 }
-
-const timeOf = (instant: Date) => instant.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 const isDay = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)
 
@@ -310,13 +326,14 @@ export const MealOptions = ({
   onAdd: (link: RelatedLink) => void
 }) => {
   const [date, setDate] = useState(entryDate)
+  const tz = useUserZone()
   const range = dayWindow(date)
   const meals = useQuery({
     enabled: isDay(date),
     queryFn: () => fetchMeals({ end: range.end.toISOString(), start: range.start.toISOString() }),
     queryKey: ['journal-related-meals', date],
   })
-  const shown = dayMealOptions(meals.data?.meals ?? [], date).filter((m) => !hasLink(links, mealLink(m)))
+  const shown = dayMealOptions(meals.data?.meals ?? [], date).filter((m) => !hasLink(links, mealLink(m, tz)))
   return (
     <div class="journal-related-options">
       <div class="journal-related-search">
@@ -326,7 +343,7 @@ export const MealOptions = ({
       {!meals.isLoading && shown.length === 0 && <p class="journal-muted">No meals that day.</p>}
       <ul>
         {shown.map((meal) => {
-          const link = mealLink(meal)
+          const link = mealLink(meal, tz)
           return (
             <li key={link.entity_id}>
               <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
@@ -350,6 +367,7 @@ export const ReportOptions = ({
   onAdd: (link: RelatedLink) => void
 }) => {
   const [type, setType] = useState('')
+  const tz = useUserZone()
   const reports = useQuery({ queryFn: () => fetchReports(), queryKey: ['journal-related-reports'] })
   const shown = reportOptions(
     (reports.data ?? []).filter((r) => !hasLink(links, reportLink(r))),
@@ -368,12 +386,12 @@ export const ReportOptions = ({
       {!reports.isLoading && shown.length === 0 && <p class="journal-muted">No reports.</p>}
       <ul>
         {shown.map((report) => {
-          const link = reportLink(report)
+          const link = reportLink(report, tz)
           return (
             <li key={link.entity_id}>
               <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
                 <strong>{reportTypeName(report.report_type)}</strong>
-                <span class="journal-muted"> · {report.date.toLocaleDateString()}</span>
+                <span class="journal-muted"> · {zonedDate(report.date, tz)}</span>
               </button>
             </li>
           )
@@ -394,6 +412,7 @@ export const CheckInOptions = ({
   onAdd: (link: RelatedLink) => void
 }) => {
   const [date, setDate] = useState(entryDate)
+  const tz = useUserZone()
   const range = dayWindow(date)
   const checkIns = useQuery({
     enabled: isDay(date),
@@ -413,12 +432,12 @@ export const CheckInOptions = ({
       {!checkIns.isLoading && shown.length === 0 && <p class="journal-muted">No check-ins that day.</p>}
       <ul>
         {shown.map((checkIn) => {
-          const link = checkInLink(checkIn)
+          const link = checkInLink(checkIn, tz)
           return (
             <li key={link.entity_id}>
               <button type="button" class="journal-related-option" onClick={() => onAdd(link)}>
                 <strong>{checkIn.form_name}</strong>
-                <span class="journal-muted"> · {timeOf(new Date(checkIn.answered_at))}</span>
+                <span class="journal-muted"> · {zonedTime(new Date(checkIn.answered_at), tz)}</span>
               </button>
             </li>
           )

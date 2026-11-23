@@ -4,10 +4,17 @@ import {
   type DeleteNoteQuery,
   deleteNoteQuerySchema,
   type DeleteNoteResponse,
+  type DismissNoteLinkSuggestionBody,
+  dismissNoteLinkSuggestionBodySchema,
+  type BaseResponse,
   type MergeNoteTagsBody,
   mergeNoteTagsBodySchema,
   type MergeNoteTagsResponse,
   type NoteConflictResponse,
+  type NoteLinkSuggestionsPageQuery,
+  noteLinkSuggestionsPageQuerySchema,
+  type NoteLinkSuggestionsPageResponse,
+  type NoteLinkSuggestionsResponse,
   type NoteNeighborsQuery,
   noteNeighborsQuerySchema,
   type NoteNeighborsResponse,
@@ -43,6 +50,11 @@ import {
   searchNotesForUser,
   updateNote,
 } from '../services/mutations.ts'
+import {
+  dismissNoteLinkSuggestion,
+  getNoteLinkSuggestions,
+  listNoteLinkSuggestionsPage,
+} from '../services/note-link-suggestions.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery, validateQueryOneOf } from '../validation.ts'
 
@@ -82,6 +94,17 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
         return res.status(400).json({ error: result.error, success: false })
       }
       res.json({ data: result.data, next_cursor: result.next_cursor, success: true })
+    },
+  )
+
+  router.get<Record<string, never>, NoteLinkSuggestionsPageResponse, unknown, NoteLinkSuggestionsPageQuery>(
+    '/link-suggestions',
+    authMiddleware,
+    validateQuery(noteLinkSuggestionsPageQuerySchema),
+    async (req, res) => {
+      const result = await listNoteLinkSuggestionsPage(req.user!, req.query)
+      if (!result.success) return res.status(400).json({ error: result.error, success: false })
+      res.json({ data: result.data, success: true })
     },
   )
 
@@ -208,6 +231,29 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
       const neighbors = await getJournalNeighbors(req.user!, req.params.id, req.query.tz)
       if (!neighbors) return res.status(404).json({ error: 'Journal entry not found', success: false })
       res.json({ data: neighbors, success: true })
+    },
+  )
+
+  router.get<{ id: string }, NoteLinkSuggestionsResponse>(
+    '/:id/link-suggestions',
+    authMiddleware,
+    async (req, res) => {
+      const result = await getNoteLinkSuggestions(req.user!, req.params.id)
+      if (!result.success) return res.status(404).json({ error: result.error, success: false })
+      res.json({ data: result.data, success: true })
+    },
+  )
+
+  router.post<{ id: string }, BaseResponse, DismissNoteLinkSuggestionBody>(
+    '/:id/link-suggestions/dismissals',
+    authMiddleware,
+    validateBody(dismissNoteLinkSuggestionBodySchema),
+    async (req, res) => {
+      const result = await dismissNoteLinkSuggestion(req.user!, req.params.id, req.body)
+      if (!result.success) {
+        return res.status(errorStatus(result.errorCode)).json({ error: result.error, success: false })
+      }
+      res.json({ success: true })
     },
   )
 
