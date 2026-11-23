@@ -441,7 +441,8 @@ _&lt;section&gt;_"** at the bottom to replace that widget in place with the new 
 dashboard. This works for both your home dashboard and any shared dashboard you own.
 
 Chart widgets preserve a **breakdown** (splitting an activity type into series by a
-categorical field, e.g. by partner or intensity): the breakdown is saved with the
+categorical field, e.g. by intensity, or by who the activity was with, `@people`; see
+[People: In charts](people.md#in-charts)): the breakdown is saved with the
 widget and rendered as multiple coloured series with a legend, both on your own
 dashboards and on public shared boards.
 
@@ -450,7 +451,8 @@ fields for public viewers: in the Add-to-dashboard / Update-chart form, tick the
 fields to hide under "Mask on public boards". Masked field values are replaced with
 stable positional labels (A, B, C…) — the breakdown structure and volumes still show,
 but the real values (e.g. partner names) never leave the server for a public viewer.
-You always see the real values on your own live view.
+You always see the real values on your own live view. A breakdown by **With** (`@people`) starts
+masked when saved, and unticking it shows a warning that the names will be visible.
 
 ### Metric Picker
 

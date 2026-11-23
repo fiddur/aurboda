@@ -8,6 +8,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
+import { PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
 import { flaggedExclusionSchema, includeFlaggedBodySchema, includeFlaggedSchema } from './flagged-windows.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
@@ -121,10 +122,12 @@ export const getTrendQuerySchema = z
       .uuid()
       .optional()
       .meta({ description: 'Deprecated: use activity_type_id instead' }),
-    breakdown_fields: z.array(z.string()).optional().meta({
-      description:
-        'Data fields to break down by (for activity_type source). Produces per-series EMA histories.',
-    }),
+    breakdown_fields: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: `Data fields to break down by (for activity_type source). Produces per-series EMA histories. ${PEOPLE_BREAKDOWN_NOTE}`,
+      }),
     include_flagged: includeFlaggedBodySchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,
@@ -214,7 +217,7 @@ export const trendQuerySchema = z
     breakdown_fields: z
       .string()
       .optional()
-      .meta({ description: 'Comma-separated data fields to break down by' }),
+      .meta({ description: `Comma-separated data fields to break down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
     include_flagged: includeFlaggedSchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,

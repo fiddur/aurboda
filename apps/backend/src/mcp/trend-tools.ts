@@ -22,6 +22,8 @@ any session that beats it, so one weak session never pulls it down. filter_field
 (filter_field: "sets.exercise", filter_value: "Squat"). A longer half-life such as 120 days suits it. display_period,
 aggregation, breakdown_fields and missing_days do not apply; the result's aggregation is 'max'.
 
+Breakdown (activity_type): breakdown_fields gives one EMA per value of each data field; "@people" gives one per person the activity was with, an activity with several people counted in each, "(none)" for no one.
+
 Metric means: ${timeWeightedAveragesNote}
 
 Metric trends: ${flaggedWindowsNote} A day left without samples is then skipped, not counted as zero.

@@ -21,7 +21,9 @@ auto-share rule never mentions anyone. See
 [Mentioning people](sharing.md#mentioning-people-in-an-activity-share). The other is an article
 you write with a correlation block of the time with one person: it shows readers that person's
 name and the time you spent with them (with a warning, never a refusal; see
-[Sharing warnings](feed.md#sharing-warnings)).
+[Sharing warnings](feed.md#sharing-warnings)). A chart broken down by **With** on a shared board
+shows the people's names unless that field is masked; masking it is the default when the chart is
+saved to a board, and unticking it shows a warning (see [In charts](#in-charts)).
 
 ## On the web
 
@@ -70,6 +72,23 @@ In Explore's **Event onset** mode, **time with people** is a trigger as well: wi
 person, and optionally "at least N minutes" that day, so "what happens on days I meet Anna" can be
 asked there. The result reads "Trigger: Time with Anna" (or "Time with anyone"); see
 [People triggers](../correlations.md#people-triggers).
+
+## In charts
+
+A bar or trend chart of an activity type can be broken down by **With** in the Chart Explorer
+(offered once you have a person, or when the chart already uses it): one series per person by their
+current name, an activity with several people counted in each of their series (so the series can add
+up to more than the total), and `(none)` for an activity with no one. It combines with the data
+fields (`Anna / happy`) and, with a measure, with a per-exercise or per-muscle-group breakdown. A
+synced activity and its override, or the members of a merge, count once with the people of all of
+them; deleted people are left out and archived ones kept, and two people with the same name get
+separate series (`Anna`, `Anna (2)`, by who was added first). Clicking a bar opens its activities
+filtered by the other fields only.
+
+Saving such a chart to a board ticks **With** under "Mask on public boards", so a shared board shows
+A, B, C… instead of names; unticking it warns "Names of the people will be visible to anyone who can
+open a shared board with this chart." In the API and MCP the field is the reserved name `@people` in
+`breakdown_fields` (and in `masked_breakdown_fields`); a data field named `people` stays a field.
 
 ## A person
 

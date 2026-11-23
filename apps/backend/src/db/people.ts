@@ -426,6 +426,57 @@ export const getPeopleForActivities = async (
   return out
 }
 
+export interface BreakdownPerson {
+  id: string
+  name: string
+  created_at: Date
+}
+
+/**
+ * A LATERAL join giving `ppl.person_id`, `ppl.person_name` and `ppl.person_created_at` for each live
+ * person linked to activity row `alias` or to a live row it supersedes: one joined row per person, or
+ * one row of NULLs when there is none, so a merge group counts its people once.
+ */
+export const activityPeopleLateralSql = (alias: string): string => `
+  LEFT JOIN LATERAL (
+    SELECT DISTINCT p.id AS person_id, p.name AS person_name, p.created_at AS person_created_at
+      FROM activity_people ap
+      JOIN people p ON p.id = ap.person_id AND p.deleted_at IS NULL
+     WHERE ap.activity_id = ${alias}.id
+        OR ap.activity_id IN (
+             SELECT s.id FROM activities s WHERE s.superseded_by = ${alias}.id AND s.deleted_at IS NULL)
+  ) ppl ON true`
+
+/** The live people of each of `activityIds` and of the live rows each supersedes. */
+export const getPeopleForActivityGroups = async (
+  user: string,
+  activityIds: string[],
+): Promise<Map<string, BreakdownPerson[]>> => {
+  const out = new Map<string, BreakdownPerson[]>()
+  if (activityIds.length === 0) return out
+  const result = await query<{
+    activity_id: string
+    person_id: string
+    person_name: string
+    person_created_at: Date
+  }>(
+    user,
+    `SELECT a.id AS activity_id, ppl.person_id, ppl.person_name, ppl.person_created_at
+       FROM activities a ${activityPeopleLateralSql('a')}
+      WHERE a.id = ANY($1::uuid[]) AND ppl.person_id IS NOT NULL
+      ORDER BY ppl.person_created_at, ppl.person_id`,
+    [activityIds],
+  )
+  for (const row of result.rows) {
+    out.getOrInsert(row.activity_id, []).push({
+      created_at: row.person_created_at,
+      id: row.person_id,
+      name: row.person_name,
+    })
+  }
+  return out
+}
+
 /**
  * Links `personIds` to `activityId` as its whole set, and drops the links of `clearIds` (the
  * other rows of its merge group, so the set read back is exactly the one given).

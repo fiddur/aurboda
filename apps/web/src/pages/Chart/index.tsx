@@ -61,10 +61,12 @@ import {
   fetchChartData,
   type FetchChartDataParams,
   fetchDashboard,
+  fetchPeople,
   fetchScreentimeCategories,
   fetchTrend,
   type FetchTrendParams,
   listSharedDashboards,
+  PEOPLE_KEY,
   saveDashboard,
   type TrendDisplayPeriod,
   updateSharedDashboard,
@@ -74,6 +76,8 @@ import { CHART_PRIMARY } from '../../theme'
 import { chartRange, localDateKey, sinceForLookback, validateSince } from '../../utils/chart-range'
 import { measureFilter } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
+import { buildBarDataHref } from './barDataHref'
+import { breakdownOptions } from './breakdownOptions'
 import {
   aggregationOptions,
   filterPatch,
@@ -81,7 +85,6 @@ import {
   MEASURE_HALF_LIFE_DEFAULT,
   type MeasureChoice,
   measureParams,
-  itemBreakdownOptions,
   measurePatch,
   muscleFilterOf,
   muscleFilterPatch,
@@ -99,8 +102,8 @@ import { MuscleGroupSelect } from './MuscleGroupSelect'
 import { parseScatterQuery, scatterAllowed, scatterParams, type ScatterState } from './scatterState'
 import {
   boardReturnPath,
-  chartWidgetMaskedFields,
   chartWidgetTitle,
+  initialMaskedFields,
   parseChartOrigin,
   replaceWidgetInConfig,
 } from './updateWidget'
@@ -315,16 +318,15 @@ function MeasureControls({
   )
 }
 
-/** Scalar categorical fields, plus the measure's item breakdowns (per exercise, per muscle group) when charting a measure. */
-const breakdownOptions = (
-  typeDef: ActivityTypeDefinition | undefined,
-  state: ChartState,
-): { label: string; name: string }[] => {
-  const scalar = categoricalFields(typeDef?.data_schema).map((f) => ({
-    label: f.label ?? f.name,
-    name: f.name,
-  }))
-  return [...scalar, ...itemBreakdownOptions(typeDef?.data_schema, state.measure, state)]
+/** Whether the account has anyone to break a chart down by. */
+const useHasPeople = (): boolean => {
+  const { data: count = 0 } = useQuery({
+    queryFn: () => fetchPeople({ archived: true }),
+    queryKey: [...PEOPLE_KEY, { archived: true }],
+    select: (data) => data.people?.length ?? 0,
+    staleTime: 5 * 60 * 1000,
+  })
+  return count > 0
 }
 
 const useActivityTypeDef = (state: ChartState): ActivityTypeDefinition | undefined => {
@@ -348,7 +350,8 @@ function SourcePicker({
 }) {
   const typeDef = useActivityTypeDef(state)
   const scatter = state.chart_type === 'scatter'
-  const breakdownFields = typeDef && !scatter ? breakdownOptions(typeDef, state) : []
+  const hasPeople = useHasPeople()
+  const breakdownFields = typeDef && !scatter ? breakdownOptions(typeDef, state, hasPeople) : []
 
   return (
     <div class="chart-controls-row">
@@ -755,59 +758,6 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
   )
 }
 
-const computeBucketEnd = (start: Date, bucketSize: string): Date => {
-  const end = new Date(start)
-  switch (bucketSize) {
-    case '1m':
-      end.setMinutes(end.getMinutes() + 1)
-      break
-    case '5m':
-      end.setMinutes(end.getMinutes() + 5)
-      break
-    case '15m':
-      end.setMinutes(end.getMinutes() + 15)
-      break
-    case '1h':
-      end.setHours(end.getHours() + 1)
-      break
-    case '1d':
-      end.setDate(end.getDate() + 1)
-      break
-    case '1w':
-      end.setDate(end.getDate() + 7)
-      break
-    case '1M':
-      end.setMonth(end.getMonth() + 1)
-      break
-  }
-  return end
-}
-
-const buildBarDataHref = (
-  info: BarClickInfo,
-  pattern: string,
-  bucketSize: string,
-  breakdownFields?: string[],
-): string => {
-  const bucketStart = new Date(info.bucket_start)
-  const bucketEnd = computeBucketEnd(bucketStart, bucketSize)
-
-  const urlParams = new URLSearchParams()
-  urlParams.set('from', bucketStart.toISOString())
-  urlParams.set('to', bucketEnd.toISOString())
-  urlParams.set('date', bucketStart.toISOString().slice(0, 10))
-  urlParams.set('types', pattern)
-  urlParams.set('hide', 'location,media,meal,report,screentime')
-
-  if (info.series_name && breakdownFields?.length) {
-    const values = info.series_name.split(' / ')
-    const filters = breakdownFields.map((field, i) => `${field}:${values[i] ?? '(none)'}`).join(',')
-    urlParams.set('data_filter', filters)
-  }
-
-  return `/data?${urlParams}`
-}
-
 function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: ComponentChild }) {
   const { source_type, pattern, bucket_size, breakdown_fields } = params
   const getBarHref = useMemo(
@@ -1135,7 +1085,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
           class="btn-add-to-dashboard"
           onClick={() => {
             setTitle(chartWidgetTitle(existingWidget) ?? '')
-            setMasked(chartWidgetMaskedFields(existingWidget))
+            setMasked(initialMaskedFields(state.breakdown_fields, existingWidget))
             setExpanded(true)
           }}
         >

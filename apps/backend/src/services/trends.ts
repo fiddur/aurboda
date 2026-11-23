@@ -30,6 +30,7 @@ import {
   flaggedExclusion,
   loadFlaggedWindows,
 } from './flagged-windows.ts'
+import { activityBreakdownSql, breakdownSeriesKeys } from './people-breakdown.ts'
 import {
   type MeasureFilter,
   measureFilter,
@@ -646,13 +647,10 @@ const calculateActivityTypeBreakdownTrend = async (
   tz: string,
   anchorDay?: string,
 ): Promise<{ series: string[]; histories: Record<string, TrendHistoryPoint[]> }> => {
-  for (const field of breakdownFields) {
-    if (!/^[a-z][a-z0-9_]*$/.test(field)) return { histories: {}, series: [] }
-  }
+  const breakdown = activityBreakdownSql(breakdownFields, 'a')
+  if (!breakdown) return { histories: {}, series: [] }
 
   const multiplier = displayPeriodMultipliers[displayPeriod]
-  const fieldSelects = breakdownFields.map((f, i) => `COALESCE(data->>'${f}', '(none)') AS field_${i}`)
-  const fieldGroupBys = breakdownFields.map((_, i) => `field_${i}`)
   const valueExpr =
     aggregation === 'count'
       ? 'count(*)'
@@ -664,28 +662,28 @@ const calculateActivityTypeBreakdownTrend = async (
   const today = anchorDaySql(params, 3, anchorDay)
   const result = await query(
     user,
-    `SELECT date_trunc('day', start_time AT TIME ZONE $3::text)::date AS day,
-            ${fieldSelects.join(', ')},
+    `SELECT date_trunc('day', a.start_time AT TIME ZONE $3::text)::date AS day,
+            ${breakdown.columns.join(', ')},
             ${valueExpr} AS value,
             (SELECT (MIN(start_time) AT TIME ZONE $3::text)::date::text
                FROM activities
               WHERE activity_type = $1
                 AND deleted_at IS NULL
                 AND superseded_by IS NULL) AS first_day
-       FROM activities
-      WHERE activity_type = $1
-        AND deleted_at IS NULL
-        AND superseded_by IS NULL
-        AND start_time > ${today} - INTERVAL '1 day' * ($2::integer + 1)
-      GROUP BY 1, ${fieldGroupBys.join(', ')}
+       FROM activities a ${breakdown.join}
+      WHERE a.activity_type = $1
+        AND a.deleted_at IS NULL
+        AND a.superseded_by IS NULL
+        AND a.start_time > ${today} - INTERVAL '1 day' * ($2::integer + 1)
+      GROUP BY 1, ${breakdown.groupBy.join(', ')}
       ORDER BY 1`,
     params,
   )
 
+  const seriesKeys = breakdownSeriesKeys(result.rows, breakdownFields)
   const seriesDaily = new Map<string, Map<string, number>>()
-  for (const row of result.rows) {
-    const keyParts = breakdownFields.map((_, i) => row[`field_${i}`] as string)
-    const seriesKey = keyParts.join(' / ')
+  for (const [i, row] of result.rows.entries()) {
+    const seriesKey = seriesKeys[i]
     const day = (row.day as Date).toISOString().split('T')[0]
     const value = Number(row.value)
 

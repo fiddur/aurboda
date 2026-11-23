@@ -180,6 +180,26 @@ describe('chartDataQuerySchema', () => {
     )
   })
 
+  test('@people is a scalar breakdown: no measure needed, and it combines with an item or muscle-group path', () => {
+    expect(chartDataQuerySchema.safeParse({ ...query, breakdown_fields: ['@people'] }).success).toBe(true)
+    expect(
+      chartDataQuerySchema.safeParse({
+        ...query,
+        breakdown_fields: ['@people', 'sets.exercise'],
+        measure: 'e1rm',
+      }).success,
+    ).toBe(true)
+    expect(
+      chartDataQuerySchema.safeParse({
+        ...query,
+        breakdown_fields: ['@people', 'sets.exercise.muscle_group'],
+        measure: 'set_count',
+      }).success,
+    ).toBe(true)
+    expect(chartBreakdownError(['@people'], undefined)).toBeUndefined()
+    expect(chartFilterError('sets.exercise.muscle_group', 'chest', ['@people'], 'set_count')).toBeUndefined()
+  })
+
   test('a muscle-group breakdown cannot be combined with another item path', () => {
     const result = chartDataQuerySchema.safeParse({
       ...query,
