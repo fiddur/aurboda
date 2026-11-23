@@ -55,18 +55,21 @@ export const scoreSeries = (
     return value === null || value === undefined ? [] : [{ date: p.at, value }]
   })
 
-/** The last point's overall score against that of the latest point at least `days` before it. */
+/** The last point's score of `key` against that of the latest point at least `days` before it. */
 export const scoreChange = (
   history: StrengthScoreHistory | null | undefined,
   days: number,
+  key: ScoreSeriesKey = 'overall',
 ): number | undefined => {
   const points = history?.points ?? []
   const last = points.at(-1)
-  if (!last || last.score === null) return undefined
+  const lastValue = last ? pointValue(last, key) : undefined
+  if (!last || lastValue === null || lastValue === undefined) return undefined
   const cutoff = new Date(last.at).getTime() - days * DAY_MS
   const before = points.findLast((p) => new Date(p.at).getTime() <= cutoff)
-  if (!before || before.score === null) return undefined
-  return last.score - before.score
+  const beforeValue = before ? pointValue(before, key) : undefined
+  if (beforeValue === null || beforeValue === undefined) return undefined
+  return lastValue - beforeValue
 }
 
 export const changeLabel = (change: number): string => {

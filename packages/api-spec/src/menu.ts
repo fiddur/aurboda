@@ -56,7 +56,8 @@ export const NAV_SECTIONS: NavSection[] = [
       {
         href: '/strength',
         label: 'Strength',
-        description: 'Start or log a session, and follow your strength score, exercises and muscle recovery.',
+        description:
+          'See how each muscle stands, start or plan a workout, and follow your strength score and exercises.',
       },
       {
         href: '/training-load',
