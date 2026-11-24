@@ -14,6 +14,31 @@ export const withoutInline = <T extends { id: string }>(attachments: readonly T[
   return attachments.filter((attachment) => !inline.has(attachment.id.toLowerCase()))
 }
 
+/**
+ * The order the picture viewer steps through an entry's pictures: those the text shows, in the
+ * text's order, then the rest in the strip's order.
+ */
+export const pictureOrder = (
+  attachments: readonly { id: string; kind: string }[],
+  content: string,
+): string[] => {
+  const images = attachments.filter((attachment) => attachment.kind === 'image')
+  const byId = new Map(images.map((image) => [image.id.toLowerCase(), image.id]))
+  const inline = [...inlineAttachmentIds(content)].flatMap((id) => byId.get(id) ?? [])
+  return [...inline, ...withoutInline(images, content).map((image) => image.id)]
+}
+
+/** Where `current` is among `ids`, and the one `delta` steps away, if any (the ends do not wrap). */
+export const pictureStep = (
+  ids: readonly string[],
+  current: string,
+  delta: number,
+): { index: number; count: number; target?: string } => {
+  const list = ids.includes(current) ? ids : [current]
+  const index = list.indexOf(current)
+  return { count: list.length, index, target: list[index + delta] }
+}
+
 export interface InlinePictureOptions {
   noteId: string
   maxEdge: '400' | '2000'

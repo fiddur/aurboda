@@ -60,7 +60,7 @@ import {
 import { type EntryMode, initialEntryMode } from './entry-mode'
 import { EntryNeighbors } from './EntryNeighbors'
 import { EntryReadView } from './EntryReadView'
-import { attachmentImageMarkdown, withoutInline } from './inline-pictures'
+import { attachmentImageMarkdown, pictureOrder, withoutInline } from './inline-pictures'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
 import { LinkSuggestions } from './LinkSuggestions'
@@ -1028,7 +1028,12 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       )}
 
       {viewing && idRef.current && (
-        <PictureViewer noteId={idRef.current} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+        <PictureViewer
+          noteId={idRef.current}
+          attachmentId={viewing}
+          pictureIds={pictureOrder(attachments, form.content)}
+          onClose={() => setViewing(undefined)}
+        />
       )}
     </div>
   )

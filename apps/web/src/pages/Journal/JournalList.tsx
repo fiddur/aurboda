@@ -21,6 +21,7 @@ import {
 import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
 import { AttachmentStrip, PictureViewer, useInlinePictures } from './Attachments'
+import { pictureOrder } from './inline-pictures'
 import {
   dayHeading,
   daysLeft,
@@ -165,6 +166,7 @@ const EntryFoot = ({
 
 const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => {
   const [viewing, setViewing] = useState<string | undefined>(undefined)
+  const attachments = note.attachments ?? []
   return (
     <article class="journal-entry">
       <EntryHead note={note} />
@@ -175,12 +177,17 @@ const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }
       )}
       <EntryText content={note.content} noteId={note.id} onOpenPicture={setViewing} />
       {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
-      {note.id && (note.attachments ?? []).length > 0 && (
-        <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} content={note.content} />
+      {note.id && attachments.length > 0 && (
+        <AttachmentStrip noteId={note.id} attachments={attachments} content={note.content} />
       )}
       <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
       {viewing && note.id && (
-        <PictureViewer noteId={note.id} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+        <PictureViewer
+          noteId={note.id}
+          attachmentId={viewing}
+          pictureIds={pictureOrder(attachments, note.content)}
+          onClose={() => setViewing(undefined)}
+        />
       )}
     </article>
   )
