@@ -51,6 +51,7 @@ import {
   entryDay,
   type EntryForm,
   entryFormProblem,
+  entryTimelineHref,
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
@@ -349,6 +350,15 @@ const DraftOffer = ({
     </div>
   </div>
 )
+
+const timelineLink = (form: EntryForm) => {
+  const href = entryTimelineHref(form)
+  if (!href) return undefined
+  return {
+    href,
+    title: form.allDay ? 'Show the day on the timeline' : 'Show the 24 hours around it on the timeline',
+  }
+}
 
 const EditorFiles = ({
   noteId,
@@ -909,7 +919,12 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         <StatusLine status={status} problem={saveProblem} isNew={!idRef.current} />
       </div>
 
-      <EntryNeighbors id={idRef.current} loaded={loaded} anchorKey={neighborAnchorKey(form)} />
+      <EntryNeighbors
+        id={idRef.current}
+        loaded={loaded}
+        anchorKey={neighborAnchorKey(form)}
+        timeline={timelineLink(form)}
+      />
 
       {loadError && (
         <p class="journal-error" role="alert">
