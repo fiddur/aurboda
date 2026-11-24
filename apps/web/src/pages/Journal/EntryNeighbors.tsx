@@ -22,7 +22,15 @@ const NeighborText = ({ n }: { n: NoteNeighbor }) => {
 }
 
 /** Under JOURNAL_KEY, so a save, which may move the entry, refreshes them. */
-const NeighborsRow = ({ id, anchorKey }: { id: string; anchorKey: string }) => {
+const NeighborsRow = ({
+  id,
+  anchorKey,
+  timeline,
+}: {
+  id: string
+  anchorKey: string
+  timeline?: { href: string; title: string }
+}) => {
   const { route } = useLocation()
   const { data } = useQuery({
     queryFn: () => fetchJournalNeighbors(id, browserTimezone() ?? undefined),
@@ -44,7 +52,7 @@ const NeighborsRow = ({ id, anchorKey }: { id: string; anchorKey: string }) => {
     return () => window.removeEventListener('keydown', onKey)
   }, [previous, next, route])
 
-  if (!previous && !next) return null
+  if (!previous && !next && !timeline) return null
 
   return (
     <nav class="activity-neighbors-nav" aria-label="Older and newer entries">
@@ -55,6 +63,13 @@ const NeighborsRow = ({ id, anchorKey }: { id: string; anchorKey: string }) => {
           </a>
         ) : (
           <span class="session-muted">No earlier</span>
+        )}
+        {timeline && (
+          <span class="activity-neighbors-scope">
+            <a href={timeline.href} class="activity-neighbors-timeline" title={timeline.title}>
+              Timeline
+            </a>
+          </span>
         )}
         {next ? (
           <a href={journalEntryHref(next.id)} title={`Newer: ${neighborLabel(next)}`}>
@@ -69,15 +84,17 @@ const NeighborsRow = ({ id, anchorKey }: { id: string; anchorKey: string }) => {
 }
 
 /**
- * The older (←) and newer (→) entry in the Journal's order, also on the arrow keys; none until the
- * entry is loaded or, when new, saved.
+ * The older (←) and newer (→) entry in the Journal's order, also on the arrow keys, with a link to
+ * the Timeline around the entry between them; none until the entry is loaded or, when new, saved.
  */
 export const EntryNeighbors = ({
   id,
   loaded,
   anchorKey,
+  timeline,
 }: {
   id?: string
   loaded: boolean
   anchorKey: string
-}) => (loaded && id ? <NeighborsRow id={id} anchorKey={anchorKey} /> : null)
+  timeline?: { href: string; title: string }
+}) => (loaded && id ? <NeighborsRow id={id} anchorKey={anchorKey} timeline={timeline} /> : null)
