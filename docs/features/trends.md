@@ -63,6 +63,10 @@ Tracks hours spent in a screentime category per day, summed from its screen time
 
 The trend value is shown as "hours per day" (or per week/month).
 
+### Journal
+
+Trends journal entries per day (`aggregation: count`, the default) or words written per day (`sum`) with `source_type: 'journal'` and no pattern, zero-filled from the day of the first matching entry. The `journal_*` parameters filter it and `@tags` / `@people` break it down; see [Journal: Charts](journal.md#charts). Trend goals do not take this source.
+
 ## Measure Trends (Decaying Best)
 
 An activity type with list items -- a strength session's sets -- can also be trended on a **measure** of those items (`e1rm`, `max_weight`, `max_time`, `max_reps`, `volume`, `set_count`, `total_reps`; see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)). Instead of an EMA, the trend is the **decaying best**: a running best that decays with the half-life between sessions and is lifted back by any session that beats the decayed value. One weak session never pulls it down; a long break lets it fade.

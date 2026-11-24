@@ -6,6 +6,8 @@ import {
   type ChartDataResponse,
   chartBreakdownError,
   chartFilterError,
+  journalChartError,
+  journalChartFiltersOf,
 } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
@@ -42,12 +44,13 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         : undefined
       const user = req.user!
 
-      if (!pattern && !tag_definition_id) {
+      if (source_type !== 'journal' && !pattern && !tag_definition_id) {
         return res
           .status(400)
           .json({ error: 'Either pattern or tag_definition_id is required', success: false })
       }
       const queryError =
+        journalChartError({ ...req.query, breakdown_fields }) ??
         chartBreakdownError(breakdown_fields, measure) ??
         chartFilterError(filter_field, filter_value, breakdown_fields, measure)
       if (queryError) return res.status(400).json({ error: queryError, success: false })
@@ -65,6 +68,7 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         start,
         tag_definition_id,
         tz,
+        ...journalChartFiltersOf(req.query),
       })
       res.json({
         data: {

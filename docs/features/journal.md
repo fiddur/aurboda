@@ -193,6 +193,8 @@ nothing about it in the text.
 - **Privacy.** As the rest of People: links never leave your account. A note is never
   shared, and nothing about its links goes into an activity's share, the feed or
   anything federated.
+  A journal [chart](#charts) card placed on a shared dashboard shows its visitors the
+  counts and, unless masked, the tag and people names of its series.
 
 ### Suggested links
 
@@ -289,6 +291,47 @@ The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns th
 `day` entries of the window's dates alongside the timed ones; the daily summary
 lists the day's `day` entries under `notes`, each with its `attachments` like any
 other read.
+
+## Charts
+
+The journal is a chart source next to activity types and metrics: `source_type=journal`
+in `GET /chart-data` (MCP `query_chart_data`), in `GET /trends` (MCP `get_trend`), and in a
+dashboard's bar, trend and combined chart cards. It takes no `pattern`.
+
+**What is counted** is what [search](#finding-entries) lists: the live thread roots of the
+chosen types (free-standing `time` and `day` entries by default) whose parent is live;
+replies never count. An entry falls in the bucket of its anchor -- a `day` entry the start
+of its date, a timed one its `start_time` -- in `tz` (UTC when omitted; the web app sends
+the browser's zone).
+
+- `aggregation=count` counts entries; `sum` sums the words written, counted in the entry's
+  own text (not its title or replies), an empty entry 0. `mean` and `max` are refused.
+- `breakdown_fields` takes `@tags` (one series per tag, explicit or `#hashtag`, an entry
+  counted under each of its tags and `(none)` when untagged) and `@people` (one series per
+  live person the entry is [related](#related) to, `(none)` for no one, same-named people
+  kept apart). Both give `<tag> / <person>` series. A journal breakdown keeps at most 12
+  series: the 11 with the highest total over the range, sorted by name, and the rest summed
+  as `Other`, listed last.
+- The filters are search's, prefixed: `journal_tags` (comma-separated, entries carrying all
+  of them), `journal_related_type` with `journal_related_id`, `journal_q` (full text) and
+  `journal_entity_types` (default `time,day`). They are refused with another source, and
+  `@tags` is refused with another source too. `measure`, `filter_field` and
+  `filter_value` do not apply.
+
+A **trend** is the EMA of the daily count (or words), zero-filled from the day of the first
+matching entry, so days before the journal started are not zeros; `display_unit` is
+`per week` (or `words per week`). With a breakdown it answers `breakdown_series` and
+`breakdown_histories`, the series folded to the cap before the EMA. `missing_days` and
+`include_flagged` do not apply.
+
+On a **dashboard**, a bar, trend or combined chart card with `source_type: "journal"`
+carries the `journal_*` filters in its config; on a shared dashboard `@tags` and `@people`
+can be listed in `masked_breakdown_fields`. Goals and challenges do not take the journal
+as a source.
+
+```http
+GET /chart-data?source_type=journal&start=2026-01-01T00:00:00Z&end=2026-12-31T23:59:59Z&bucket_size=1M&aggregation=sum&journal_tags=travel&tz=Europe/Stockholm
+```
 
 ## Pictures and recordings
 
@@ -410,6 +453,8 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/search`                                 | `search_notes`                  |
 | `GET`    | `/notes/tags`                                   | `list_note_tags`                |
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
+| `GET`    | `/chart-data?source_type=journal`               | `query_chart_data`              |
+| `GET`    | `/trends?source_type=journal`                   | `get_trend`                     |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
 | `POST`   | `/uploads` (`target: note_attachment`)          | `create_upload_url`             |

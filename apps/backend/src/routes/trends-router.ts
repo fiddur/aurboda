@@ -1,4 +1,10 @@
-import { type TrendQuery, trendQuerySchema, type TrendResponse } from '@aurboda/api-spec'
+import {
+  journalChartError,
+  journalChartFiltersOf,
+  type TrendQuery,
+  trendQuerySchema,
+  type TrendResponse,
+} from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getUserTimezone } from '../services/settings.ts'
@@ -38,11 +44,13 @@ export const createTrendsRouter = (authMiddleware: AnyMiddleware): TypedRouter =
         : undefined
       const user = req.user!
 
-      if (!pattern && !tag_definition_id) {
+      if (source_type !== 'journal' && !pattern && !tag_definition_id) {
         return res
           .status(400)
           .json({ error: 'Either pattern or tag_definition_id is required', success: false })
       }
+      const journalError = journalChartError({ ...req.query, breakdown_fields })
+      if (journalError) return res.status(400).json({ error: journalError, success: false })
 
       const halfLifeDays = half_life_days ? parseInt(half_life_days, 10) : undefined
       const lookbackDays = lookback_days ? parseInt(lookback_days, 10) : undefined
@@ -65,6 +73,7 @@ export const createTrendsRouter = (authMiddleware: AnyMiddleware): TypedRouter =
         source_type,
         tag_definition_id,
         tz: tz ?? (await getUserTimezone(user)),
+        ...journalChartFiltersOf(req.query),
       })
       res.json({ data: result, success: true })
     },

@@ -2,6 +2,7 @@ import {
   type ActivityMeasure,
   activityMeasures,
   type Goal,
+  type GoalTrendSourceType,
   type TrendDisplayPeriod,
   type TrendGoal,
   type TrendSourceType,
@@ -95,7 +96,7 @@ const trendGoalFromQuery = (query: Record<string, string>, id: string): TrendGoa
     id,
     ...(measure ? { measure } : {}),
     pattern,
-    source_type: source_type as TrendSourceType,
+    source_type: source_type as GoalTrendSourceType,
   }
 }
 

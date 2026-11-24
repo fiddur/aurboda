@@ -10,6 +10,8 @@ import {
   deleteNotesForEntitiesIn,
   deleteNotesForEntityIn,
   getDeletedNotes,
+  getFirstJournalDay,
+  getJournalSeries,
   getNoteById,
   getNoteNeighbors,
   getNoteRevisions,
@@ -21,6 +23,7 @@ import {
   getRepliesForRootIds,
   getUserNotesJoined,
   insertNote,
+  type JournalSeriesParams,
   listNoteTags,
   type NoteFieldUpdates,
   type NotesSearchParams,
@@ -33,6 +36,7 @@ import {
   updateNoteTimesForEntity,
   upsertSyncedNote,
 } from './notes.ts'
+import { insertPerson, softDeletePerson } from './people.ts'
 import { deleteProductivityRecord, insertProductivity, restoreProductivityRecord } from './productivity.ts'
 import { insertReport } from './reports.ts'
 
@@ -1641,6 +1645,224 @@ describe('Notes Integration Tests', () => {
         [root.id, reply.id, comment.id].sort(),
       )
       expect(await getNotesWithAnyTag(user, ['nothing'])).toEqual([])
+    })
+  })
+  describe('getJournalSeries', () => {
+    const series = (user: string, params: Partial<JournalSeriesParams> = {}) =>
+      getJournalSeries(user, {
+        breakdown: { people: false, tags: false },
+        bucket_size: '1d',
+        end: new Date('2024-12-31T23:59:59Z'),
+        entity_types: ['time', 'day'],
+        start: new Date('2024-01-01T00:00:00Z'),
+        tz: 'UTC',
+        value: 'count',
+        ...params,
+      })
+
+    const plain = (rows: Awaited<ReturnType<typeof getJournalSeries>>) =>
+      rows.map((r) => ({ bucket_start: r.bucket_start.toISOString(), value: r.value }))
+
+    const expectSameMembers = (actual: unknown[], expected: unknown[]) => {
+      expect(actual).toHaveLength(expected.length)
+      expect(actual).toEqual(expect.arrayContaining(expected))
+    }
+
+    test('buckets a day and a time entry by their local day in tz', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'day', null, 'Day', undefined, undefined, { date: '2024-03-10' })
+      await insertNote(user, 'time', null, 'Late', new Date('2024-03-10T22:30:00Z'))
+      await insertNote(user, 'time', null, 'Early', new Date('2024-03-09T23:30:00Z'))
+
+      expect(plain(await series(user, { tz: 'Europe/Stockholm' }))).toEqual([
+        { bucket_start: '2024-03-09T23:00:00.000Z', value: 3 },
+      ])
+      expect(plain(await series(user))).toEqual([
+        { bucket_start: '2024-03-09T00:00:00.000Z', value: 1 },
+        { bucket_start: '2024-03-10T00:00:00.000Z', value: 2 },
+      ])
+    })
+
+    test('weekly and monthly buckets', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'time', null, 'Mon', new Date('2024-03-04T10:00:00Z'))
+      await insertNote(user, 'time', null, 'Sun', new Date('2024-03-10T10:00:00Z'))
+      await insertNote(user, 'time', null, 'Next Mon', new Date('2024-03-11T10:00:00Z'))
+      await insertNote(user, 'day', null, 'April', undefined, undefined, { date: '2024-04-02' })
+
+      expect(plain(await series(user, { bucket_size: '1w' }))).toEqual([
+        { bucket_start: '2024-03-04T00:00:00.000Z', value: 2 },
+        { bucket_start: '2024-03-11T00:00:00.000Z', value: 1 },
+        { bucket_start: '2024-04-01T00:00:00.000Z', value: 1 },
+      ])
+      expect(plain(await series(user, { bucket_size: '1M' }))).toEqual([
+        { bucket_start: '2024-03-01T00:00:00.000Z', value: 3 },
+        { bucket_start: '2024-04-01T00:00:00.000Z', value: 1 },
+      ])
+    })
+
+    test('keeps to the range', async () => {
+      const user = getTestUser()
+      await insertNote(user, 'time', null, 'In', new Date('2024-03-04T10:00:00Z'))
+      await insertNote(user, 'time', null, 'Out', new Date('2024-02-04T10:00:00Z'))
+
+      expect(
+        plain(
+          await series(user, {
+            end: new Date('2024-03-31T00:00:00Z'),
+            start: new Date('2024-03-01T00:00:00Z'),
+          }),
+        ),
+      ).toEqual([{ bucket_start: '2024-03-04T00:00:00.000Z', value: 1 }])
+    })
+
+    test('leaves out deleted roots and replies; an activity comment counts only when asked for', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      const activityId = await insertActivity(user, {
+        activity_type: 'exercise',
+        end_time: new Date('2024-03-04T11:00:00Z'),
+        source: 'manual',
+        start_time: start,
+      })
+      const root = await insertNote(user, 'time', null, 'Root', start)
+      await insertNote(user, 'note', root.id, 'Reply', start)
+      const gone = await insertNote(user, 'time', null, 'Gone', start)
+      await softDeleteNote(user, gone.id)
+      await insertNote(user, 'activity', activityId, 'On it', start)
+
+      expect(plain(await series(user))).toEqual([{ bucket_start: '2024-03-04T00:00:00.000Z', value: 1 }])
+      expect(plain(await series(user, { entity_types: ['time', 'activity'] }))).toEqual([
+        { bucket_start: '2024-03-04T00:00:00.000Z', value: 2 },
+      ])
+    })
+
+    test('@tags: an entry counts under each distinct tag, once when tag and hashtag agree, NULL untagged', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      await insertNote(user, 'time', null, 'A #travel', start, undefined, {
+        hashtags: ['travel'],
+        tags: ['travel', 'family'],
+      })
+      await insertNote(user, 'time', null, 'B', start, undefined, { tags: ['travel'] })
+      await insertNote(user, 'time', null, 'C', start)
+
+      const rows = await series(user, { breakdown: { people: false, tags: true } })
+      expectSameMembers(
+        rows.map((r) => [r.tag, r.value]),
+        [
+          ['family', 1],
+          ['travel', 2],
+          [null, 1],
+        ],
+      )
+    })
+
+    test('@people: each live person related, a deleted one hidden, NULL for no one', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      const alex = await insertPerson(user, { name: 'Alex' })
+      const sam = await insertPerson(user, { name: 'Sam' })
+      const gone = await insertPerson(user, { name: 'Robin' })
+      await insertNote(user, 'time', null, 'Both', start, undefined, {
+        related: [
+          { entity_id: alex.id, entity_type: 'person' },
+          { entity_id: sam.id, entity_type: 'person' },
+        ],
+      })
+      await insertNote(user, 'time', null, 'Alex', start, undefined, {
+        related: [{ entity_id: alex.id, entity_type: 'person' }],
+      })
+      await insertNote(user, 'time', null, 'Robin', start, undefined, {
+        related: [{ entity_id: gone.id, entity_type: 'person' }],
+      })
+      await insertNote(user, 'time', null, 'No one', start)
+      await softDeletePerson(user, gone.id)
+
+      const rows = await series(user, { breakdown: { people: true, tags: false } })
+      expectSameMembers(
+        rows.map((r) => [r.person?.name ?? null, r.value]),
+        [
+          ['Alex', 2],
+          ['Sam', 1],
+          [null, 2],
+        ],
+      )
+      expect(rows.find((r) => r.person?.name === 'Alex')?.person).toMatchObject({ id: alex.id })
+    })
+
+    test('both breakdowns together give one row per tag and person', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      const alex = await insertPerson(user, { name: 'Alex' })
+      await insertNote(user, 'time', null, 'X', start, undefined, {
+        related: [{ entity_id: alex.id, entity_type: 'person' }],
+        tags: ['travel', 'work'],
+      })
+      await insertNote(user, 'time', null, 'Y', start, undefined, { tags: ['travel'] })
+
+      const rows = await series(user, { breakdown: { people: true, tags: true } })
+      expectSameMembers(
+        rows.map((r) => [r.tag, r.person?.name ?? null, r.value]),
+        [
+          ['travel', 'Alex', 1],
+          ['travel', null, 1],
+          ['work', 'Alex', 1],
+        ],
+      )
+    })
+
+    test('filters by tags, a related entity and text', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      const alex = await insertPerson(user, { name: 'Alex' })
+      await insertNote(user, 'time', null, 'A long walk by the sea', start, undefined, {
+        related: [{ entity_id: alex.id, entity_type: 'person' }],
+        tags: ['travel', 'family'],
+      })
+      await insertNote(user, 'time', null, 'Office day', start, undefined, { tags: ['travel'] })
+
+      const total = async (params: Partial<JournalSeriesParams>) =>
+        (await series(user, params)).reduce((sum, r) => sum + r.value, 0)
+      expect(await total({ tags: ['travel'] })).toBe(2)
+      expect(await total({ tags: ['travel', 'family'] })).toBe(1)
+      expect(await total({ related: { entity_id: alex.id, entity_type: 'person' } })).toBe(1)
+      expect(await total({ text: { websearch: 'sea' } })).toBe(1)
+      expect(await total({ text: { prefix: 'off', websearch: '' } })).toBe(1)
+    })
+
+    test('words: the words of the root only, an empty entry none', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-03-04T10:00:00Z')
+      const root = await insertNote(user, 'time', null, '  One two\nthree  ', start, undefined, {
+        title: 'Title words do not count',
+      })
+      await insertNote(user, 'note', root.id, 'Reply words do not count', start)
+      await insertNote(user, 'time', null, ' \n ', start)
+      await insertNote(user, 'time', null, 'four', start)
+
+      expect(plain(await series(user, { value: 'words' }))).toEqual([
+        { bucket_start: '2024-03-04T00:00:00.000Z', value: 4 },
+      ])
+    })
+  })
+
+  describe('getFirstJournalDay', () => {
+    test('the local day of the earliest matching entry, with and without a filter', async () => {
+      const user = getTestUser()
+      const params = { entity_types: ['time' as const, 'day' as const], tz: 'Europe/Stockholm' }
+      expect(await getFirstJournalDay(user, params)).toBeUndefined()
+
+      await insertNote(user, 'time', null, 'First', new Date('2024-03-09T23:30:00Z'))
+      await insertNote(user, 'day', null, 'Later', undefined, undefined, {
+        date: '2024-04-02',
+        tags: ['travel'],
+      })
+
+      expect(await getFirstJournalDay(user, params)).toBe('2024-03-10')
+      expect(await getFirstJournalDay(user, { ...params, tz: 'UTC' })).toBe('2024-03-09')
+      expect(await getFirstJournalDay(user, { ...params, tags: ['travel'] })).toBe('2024-04-02')
+      expect(await getFirstJournalDay(user, { ...params, tags: ['work'] })).toBeUndefined()
     })
   })
 })

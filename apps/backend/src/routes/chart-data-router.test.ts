@@ -104,3 +104,61 @@ describe('GET /chart-data breakdown by an item path', () => {
     expect(getChartData).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /chart-data journal source', () => {
+  beforeEach(() => {
+    vi.mocked(getChartData).mockReset()
+    vi.mocked(getChartData).mockResolvedValue({ buckets: [] })
+  })
+
+  const journal = '/chart-data?source_type=journal&start=2026-03-01T00:00:00Z&end=2026-04-01T00:00:00Z'
+
+  test('needs no pattern and passes the journal filters on', async () => {
+    const id = '00000000-0000-4000-8000-000000000001'
+    const res = await supertest(app).get(
+      `${journal}&breakdown_fields=%40tags,%40people&journal_tags=travel&journal_q=sea&journal_entity_types=time,day&journal_related_type=person&journal_related_id=${id}`,
+    )
+    expect(res.status).toBe(200)
+    expect(vi.mocked(getChartData).mock.calls[0]?.[1]).toMatchObject({
+      breakdown_fields: ['@tags', '@people'],
+      journal_entity_types: 'time,day',
+      journal_q: 'sea',
+      journal_related_id: id,
+      journal_related_type: 'person',
+      journal_tags: 'travel',
+      source_type: 'journal',
+    })
+  })
+
+  test.each([
+    ['&breakdown_fields=mood', 'a journal breakdown is @tags or @people'],
+    ['&measure=e1rm', 'measure and filter_field are for activity_type sources'],
+    ['&aggregation=mean', 'a journal chart counts entries (count) or sums their words (sum)'],
+    ['&journal_tags=not%20a%20tag!', 'Not a valid tag list (letters, digits and _, comma-separated)'],
+    ['&journal_entity_types=note', 'Not a comment root type: note'],
+    ['&journal_related_type=person', 'related_type and related_id go together'],
+  ])('refuses %s with 400 without querying', async (params, error) => {
+    const res = await supertest(app).get(`${journal}${params}`)
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain(error)
+    expect(getChartData).not.toHaveBeenCalled()
+  })
+
+  test('refuses journal filters and @tags on another source', async () => {
+    const filtered = await supertest(app).get(`${base}&journal_tags=travel`)
+    expect(filtered.status).toBe(400)
+    expect(filtered.body.error).toBe('journal_* filters need source_type journal')
+    const tags = await supertest(app).get(`${base}&breakdown_fields=%40tags`)
+    expect(tags.status).toBe(400)
+    expect(tags.body.error).toBe('@tags is a journal breakdown')
+    expect(getChartData).not.toHaveBeenCalled()
+  })
+
+  test('still needs a pattern for another source', async () => {
+    const res = await supertest(app).get(
+      '/chart-data?source_type=metric&start=2026-03-01T00:00:00Z&end=2026-04-01T00:00:00Z',
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Either pattern or tag_definition_id is required')
+  })
+})

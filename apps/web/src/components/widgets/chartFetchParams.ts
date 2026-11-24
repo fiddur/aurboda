@@ -61,7 +61,7 @@ export const trendFetchParams = (source: TrendSource, lookbackDays: number): Fet
         }),
     half_life_days: source.half_life_days ?? (measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT),
     lookback_days: lookbackDays,
-    pattern: source.pattern,
+    pattern: source.pattern ?? '',
     source_type,
     ...(missing_days ? { missing_days } : {}),
   }

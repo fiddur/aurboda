@@ -32,6 +32,7 @@ import {
   dayOverviewDefaultMetrics,
   hrZoneMetrics,
   isSleepType,
+  journalChartFiltersOf,
   metricCardLookbackDays,
   percentChange,
   periodGranularityOf,
@@ -292,6 +293,7 @@ const resolveTrendChart = async (
     pattern: config.pattern,
     source_type: config.source_type,
     tz,
+    ...journalChartFiltersOf(config),
     ...(options.window ? { end: inclusiveRange(options.window).end } : {}),
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
@@ -342,6 +344,7 @@ const resolveBarChart = async (
     source_type: config.source_type,
     start: start.toISOString(),
     tz,
+    ...journalChartFiltersOf(config),
     ...(config.breakdown_fields?.length ? { breakdown_fields: config.breakdown_fields } : {}),
   })
 

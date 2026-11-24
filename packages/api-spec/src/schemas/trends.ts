@@ -11,13 +11,14 @@ import { activityMeasureSchema } from './activity-measures.ts'
 import { PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
 import { flaggedExclusionSchema, includeFlaggedBodySchema, includeFlaggedSchema } from './flagged-windows.ts'
+import { JOURNAL_BREAKDOWN_NOTE, journalChartFilterShape } from './journal-chart.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const trendSourceTypeSchema = z
-  .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+  .enum(['tag', 'metric', 'productivity_category', 'activity_type', 'journal'])
   .meta({
     description:
-      "Type of data source for trend calculation. 'tag' is a deprecated alias for 'activity_type'.",
+      "Type of data source for trend calculation. 'tag' is a deprecated alias for 'activity_type'. 'journal' trends journal entries per period (count) or words written per period (sum) and takes no pattern; the journal_* parameters filter it.",
     example: 'activity_type',
     id: 'TrendSourceType',
   })
@@ -93,7 +94,7 @@ export const getTrendQuerySchema = z
       .enum(['count', 'sum', 'mean'])
       .optional()
       .meta({
-        description: `Aggregation method. count: occurrences / samples per period; sum: total (hours for activity types); mean: average (metrics). Defaults to count for activity types, mean for metrics. ${timeWeightedAveragesNote}`,
+        description: `Aggregation method. count: occurrences / samples per period (entries for the journal); sum: total (hours for activity types, words for the journal); mean: average (metrics). Defaults to count for activity types and the journal, mean for metrics. ${timeWeightedAveragesNote}`,
       }),
     display_period: trendDisplayPeriodSchema
       .default('monthly')
@@ -107,9 +108,10 @@ export const getTrendQuerySchema = z
       .positive()
       .default(90)
       .meta({ description: 'How many days of historical data to include' }),
-    pattern: z
-      .string()
-      .meta({ description: 'For activity types: regex pattern to match. For metrics: metric name.' }),
+    pattern: z.string().optional().meta({
+      description:
+        "For activity types: regex pattern to match. For metrics: metric name. Required unless source_type is 'journal'.",
+    }),
     source_type: trendSourceTypeSchema,
     activity_type_id: z
       .string()
@@ -126,12 +128,13 @@ export const getTrendQuerySchema = z
       .array(z.string())
       .optional()
       .meta({
-        description: `Data fields to break down by (for activity_type source). Produces per-series EMA histories. ${PEOPLE_BREAKDOWN_NOTE}`,
+        description: `Data fields to break down by (for activity_type source). Produces per-series EMA histories. ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
       }),
     include_flagged: includeFlaggedBodySchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,
     ...trendMeasureShape,
+    ...journalChartFilterShape,
   })
   .meta({ id: 'GetTrendQuery' })
 
@@ -193,15 +196,14 @@ export const trendQuerySchema = z
       .enum(['count', 'sum', 'mean'])
       .optional()
       .meta({
-        description: `count: occurrences / samples per period; sum: total; mean: average. Defaults to count for activity types, mean for metrics. ${timeWeightedAveragesNote}`,
+        description: `count: occurrences / samples per period (entries for the journal); sum: total (words for the journal); mean: average. Defaults to count for activity types and the journal, mean for metrics. ${timeWeightedAveragesNote}`,
       }),
     display_period: trendDisplayPeriodSchema.optional(),
     half_life_days: z.string().optional().meta({ description: 'EMA half-life in days', example: '15' }),
     lookback_days: z.string().optional().meta({ description: 'Days of historical data', example: '90' }),
-    pattern: z
-      .string()
-      .optional()
-      .meta({ description: 'Pattern (required unless activity_type_id is provided)' }),
+    pattern: z.string().optional().meta({
+      description: "Pattern (required unless activity_type_id is provided or source_type is 'journal')",
+    }),
     source_type: trendSourceTypeSchema,
     activity_type_id: z
       .string()
@@ -217,11 +219,14 @@ export const trendQuerySchema = z
     breakdown_fields: z
       .string()
       .optional()
-      .meta({ description: `Comma-separated data fields to break down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
+      .meta({
+        description: `Comma-separated data fields to break down by. ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
+      }),
     include_flagged: includeFlaggedSchema.meta({ description: TREND_INCLUDE_FLAGGED }),
     missing_days: trendMissingDaysSchema.optional(),
     tz: trendTzSchema,
     ...trendMeasureShape,
+    ...journalChartFilterShape,
   })
   .meta({ id: 'TrendQuery' })
 

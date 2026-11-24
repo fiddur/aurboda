@@ -27,6 +27,15 @@ export const durationStringSchema = z
     id: 'DurationString',
   })
 
+/** A trend goal's sources: every trend source but the journal. */
+export const goalTrendSourceTypeSchema = trendSourceTypeSchema.exclude(['journal']).meta({
+  description: "Type of data source for a trend goal. 'tag' is a deprecated alias for 'activity_type'.",
+  example: 'activity_type',
+  id: 'GoalTrendSourceType',
+})
+
+export type GoalTrendSourceType = z.infer<typeof goalTrendSourceTypeSchema>
+
 export type DurationUnit = 'd' | 'h' | 'M' | 'm' | 's' | 'w'
 
 export interface ParsedDuration {
@@ -95,7 +104,7 @@ export const trendGoalSchema = z
     max: z.number().optional().meta({ description: 'Maximum target value' }),
     min: z.number().optional().meta({ description: 'Minimum target value' }),
     pattern: z.string().meta({ description: 'Activity type name, metric name, or category path' }),
-    source_type: trendSourceTypeSchema.meta({ description: 'Type of data source for the trend' }),
+    source_type: goalTrendSourceTypeSchema.meta({ description: 'Type of data source for the trend' }),
     ...trendMeasureShape,
   })
   .refine((data) => data.min !== undefined || data.max !== undefined, {
@@ -228,7 +237,7 @@ export const trendGoalProgressSchema = z
     max: z.number().optional(),
     min: z.number().optional(),
     pattern: z.string().meta({ description: 'Source pattern name' }),
-    source_type: trendSourceTypeSchema,
+    source_type: goalTrendSourceTypeSchema,
     ...trendMeasureShape,
   })
   .meta({ description: 'Progress for a trend goal', id: 'TrendGoalProgress' })

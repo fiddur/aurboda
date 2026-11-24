@@ -12,6 +12,7 @@ import {
   getMetricAggregation,
   getMetricUnit,
   isTimeWeightedMetric,
+  type JournalChartFilters,
   type MetricType,
   type TrendDisplayPeriod,
   type TrendHistoryPoint,
@@ -30,6 +31,7 @@ import {
   flaggedExclusion,
   loadFlaggedWindows,
 } from './flagged-windows.ts'
+import { getJournalTrend } from './journal-chart.ts'
 import { activityBreakdownSql, breakdownSeriesKeys } from './people-breakdown.ts'
 import {
   type MeasureFilter,
@@ -37,14 +39,11 @@ import {
   queryMeasuredActivities,
 } from './queries/activity-measure-series.ts'
 import { categoryPathMatchSql, subcategoryLikePattern } from './screentime-sql.ts'
+import { computeEma, displayUnits, firstPeriodWeight, LN2, warmupLength } from './trend-ema.ts'
 
-/**
- * Natural log of 2, used for EMA decay calculation.
- * exp(-LN2 * days / halfLife) gives weight that drops to 50% after halfLife days.
- */
-const LN2 = 0.693147
+export { computeEma, firstPeriodWeight }
 
-export interface GetTrendInput {
+export interface GetTrendInput extends JournalChartFilters {
   activity_type_id?: string
   aggregation?: 'count' | 'mean' | 'sum'
   breakdown_fields?: string[]
@@ -56,7 +55,8 @@ export interface GetTrendInput {
   lookback_days?: number
   measure?: ActivityMeasure
   missing_days?: TrendMissingDays
-  pattern: string
+  /** Required by every source but the journal; an empty pattern matches nothing. */
+  pattern?: string
   source_type: TrendSourceType
   /** @deprecated Use activity_type_id instead */
   tag_definition_id?: string
@@ -83,25 +83,6 @@ const metricDailyValueSql: Record<'count' | 'mean' | 'sum', string> = {
   mean: 'AVG(value)',
   sum: 'SUM(sum_value)',
 }
-
-/**
- * The summed EMA weight of a display period's days. A zero-filled series divides by at least this, so until it is
- * one period old the days before its first sample are counted as zeros: a lone first session then reads as itself per
- * period, not as that day's amount scaled up to a period. Beyond the first period the floor has no effect.
- */
-export const firstPeriodWeight = (halfLifeDays: number, periodDays: number): number =>
-  Array.from({ length: Math.max(1, periodDays) }, (_, k) => Math.exp((-LN2 * k) / halfLifeDays)).reduce(
-    (a, b) => a + b,
-    0,
-  )
-
-/**
- * Days of warm-up before the lookback: three half-lives, and at least a display period less a day so the oldest
- * displayed point of a series older than the window weighs a full period and `firstPeriodWeight` only ever bites at a
- * series' real start.
- */
-const warmupLength = (halfLifeDays: number, periodDays: number): number =>
-  Math.max(3 * halfLifeDays, periodDays - 1)
 
 /**
  * The `series_start` and `date_range` CTEs: the days from the warm-up start (`$6` days back) to today, but
@@ -511,44 +492,6 @@ const calculateActivityTypeCountTrend = async (
 
 const DAY_MS = 86_400_000
 
-/**
- * The zero-filled EMA over `days`, by the same formula as the SQL trends: for each day,
- * multiplier * sum(value_i * weight_i) / max(sum(weight_i), firstPeriodWeight), with
- * weight_i = exp(-LN2 * daysAgo / halfLife) over at most the 90 days ending that day. Days before `firstDay` are
- * not part of the series: they have no weight and no point. Only points from `displayStartIdx` on are returned.
- */
-export const computeEma = (
-  dailyValues: Map<string, number>,
-  days: string[],
-  halfLifeDays: number,
-  multiplier: number,
-  { displayStartIdx = 0, firstDay = days[0] }: { displayStartIdx?: number; firstDay?: string } = {},
-): TrendHistoryPoint[] => {
-  const firstIdx = days.findIndex((day) => day >= firstDay)
-  if (firstIdx === -1) return []
-  const floor = firstPeriodWeight(halfLifeDays, multiplier)
-  const history: TrendHistoryPoint[] = []
-
-  for (let i = firstIdx; i < days.length; i++) {
-    let weightedSum = 0
-    let weightSum = 0
-    const currentDay = Date.parse(days[i])
-
-    for (let j = i; j >= firstIdx && i - j < 90; j--) {
-      const daysAgo = (currentDay - Date.parse(days[j])) / DAY_MS
-      const weight = Math.exp((-LN2 * daysAgo) / halfLifeDays)
-      weightedSum += (dailyValues.get(days[j]) ?? 0) * weight
-      weightSum += weight
-    }
-
-    if (i >= displayStartIdx) {
-      history.push({ date: days[i], value: (multiplier * weightedSum) / Math.max(weightSum, floor) })
-    }
-  }
-
-  return history
-}
-
 const oneDecimal = (value: number): number => Math.round(value * 10) / 10
 
 /**
@@ -712,15 +655,9 @@ const calculateActivityTypeBreakdownTrend = async (
 const anchorDayOf = (end: Date | undefined, tz: string): string | undefined =>
   end === undefined ? undefined : dayKey(end, tz)
 
-const displayUnits: Record<TrendDisplayPeriod, string> = {
-  daily: 'per day',
-  monthly: 'per month',
-  weekly: 'per week',
-}
-
 const getActivityTypeTrend = async (
   user: string,
-  input: GetTrendInput & { aggregation: 'count' | 'mean' | 'sum' },
+  input: GetTrendInput & { aggregation: 'count' | 'mean' | 'sum'; pattern: string },
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
@@ -804,7 +741,7 @@ const metricDisplayUnit = (
 
 const getMetricTrend = async (
   user: string,
-  input: GetTrendInput,
+  input: GetTrendInput & { pattern: string },
   halfLifeDays: number,
   lookbackDays: number,
   displayPeriod: TrendDisplayPeriod,
@@ -861,11 +798,15 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     display_period: displayPeriod = 'monthly',
     half_life_days: halfLifeDays = 15,
     lookback_days: lookbackDays = 90,
-    pattern,
+    pattern = '',
     source_type: sourceType,
     tz = 'UTC',
   } = input
   const anchorDay = anchorDayOf(input.end, tz)
+
+  if (sourceType === 'journal') {
+    return getJournalTrend(user, input, { displayPeriod, halfLifeDays, lookbackDays, tz })
+  }
 
   if (sourceType === 'activity_type' && input.measure) {
     const { filter_field: filterField, filter_value: filterValue, measure } = input
@@ -922,7 +863,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
   } else if (sourceType === 'activity_type') {
     return getActivityTypeTrend(
       user,
-      { ...input, aggregation },
+      { ...input, aggregation, pattern },
       halfLifeDays,
       lookbackDays,
       displayPeriod,
@@ -951,6 +892,6 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
       source_type: sourceType,
     }
   } else {
-    return getMetricTrend(user, input, halfLifeDays, lookbackDays, displayPeriod, tz)
+    return getMetricTrend(user, { ...input, pattern }, halfLifeDays, lookbackDays, displayPeriod, tz)
   }
 }

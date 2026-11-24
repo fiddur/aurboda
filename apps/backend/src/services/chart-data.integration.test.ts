@@ -5,6 +5,7 @@ import {
   addActivityPeople,
   insertActivity,
   insertActivityTypeDefinition,
+  insertNote,
   insertPerson,
   insertTimeSeries,
   softDeletePerson,
@@ -588,5 +589,127 @@ describe('breaking a chart down by who the activity was with (@people)', () => {
         },
       },
     ])
+  })
+})
+
+describe('journal chart data', () => {
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const range = { end: '2024-03-31T23:59:59Z', start: '2024-03-01T00:00:00Z' }
+  const at = (iso: string) => new Date(iso)
+
+  test('counts entries and sums their words per bucket', async () => {
+    const user = getTestUser()
+    await insertNote(user, 'time', null, 'one two three', at('2024-03-04T10:00:00Z'))
+    await insertNote(user, 'time', null, 'four', at('2024-03-05T10:00:00Z'))
+    await insertNote(user, 'day', null, '', undefined, undefined, { date: '2024-03-12' })
+
+    const base = { ...range, bucket_size: '1w' as const, source_type: 'journal' as const, tz: 'UTC' }
+    expect(await getChartData(user, { ...base, aggregation: 'count' })).toEqual({
+      buckets: [
+        { bucket_start: '2024-03-04T00:00:00.000Z', value: 2 },
+        { bucket_start: '2024-03-11T00:00:00.000Z', value: 1 },
+      ],
+    })
+    expect(await getChartData(user, { ...base, aggregation: 'sum' })).toEqual({
+      buckets: [
+        { bucket_start: '2024-03-04T00:00:00.000Z', value: 4 },
+        { bucket_start: '2024-03-11T00:00:00.000Z', value: 0 },
+      ],
+    })
+  })
+
+  test('breaks down by tag, by person and by both', async () => {
+    const user = getTestUser()
+    const alex = await insertPerson(user, { name: 'Alex' })
+    await insertNote(user, 'time', null, 'A', at('2024-03-04T10:00:00Z'), undefined, {
+      related: [{ entity_id: alex.id, entity_type: 'person' }],
+      tags: ['travel', 'family'],
+    })
+    await insertNote(user, 'time', null, 'B', at('2024-03-04T11:00:00Z'))
+    const base = {
+      ...range,
+      aggregation: 'count' as const,
+      bucket_size: '1M' as const,
+      source_type: 'journal' as const,
+    }
+
+    expect(await getChartData(user, { ...base, breakdown_fields: ['@tags'] })).toEqual({
+      breakdown_fields: ['@tags'],
+      breakdown_series: ['(none)', 'family', 'travel'],
+      buckets: [{ bucket_start: '2024-03-01T00:00:00.000Z', series: { '(none)': 1, family: 1, travel: 1 } }],
+    })
+    expect(await getChartData(user, { ...base, breakdown_fields: ['@people'] })).toMatchObject({
+      breakdown_series: ['(none)', 'Alex'],
+      buckets: [{ series: { '(none)': 1, Alex: 1 } }],
+    })
+    expect(await getChartData(user, { ...base, breakdown_fields: ['@tags', '@people'] })).toMatchObject({
+      breakdown_series: ['(none) / (none)', 'family / Alex', 'travel / Alex'],
+    })
+  })
+
+  test('folds a breakdown of more than twelve tags into the eleven largest and Other', async () => {
+    const user = getTestUser()
+    for (let i = 0; i < 13; i++) {
+      const tag = `tag${String(i).padStart(2, '0')}`
+      for (let n = 0; n <= i; n++) {
+        await insertNote(user, 'time', null, 'x', at(`2024-03-0${1 + (n % 2)}T10:00:00Z`), undefined, {
+          tags: [tag],
+        })
+      }
+    }
+    const result = await getChartData(user, {
+      ...range,
+      aggregation: 'count',
+      breakdown_fields: ['@tags'],
+      bucket_size: '1M',
+      source_type: 'journal',
+    })
+    expect(result.breakdown_series).toEqual([
+      ...Array.from({ length: 11 }, (_, i) => `tag${String(i + 2).padStart(2, '0')}`),
+      'Other',
+    ])
+    expect(result.buckets).toEqual([
+      expect.objectContaining({ series: expect.objectContaining({ Other: 3, tag12: 13 }) }),
+    ])
+  })
+
+  test('filters by tags, a related person and text', async () => {
+    const user = getTestUser()
+    const sam = await insertPerson(user, { name: 'Sam' })
+    await insertNote(user, 'time', null, 'By the sea', at('2024-03-04T10:00:00Z'), undefined, {
+      related: [{ entity_id: sam.id, entity_type: 'person' }],
+      tags: ['travel'],
+    })
+    await insertNote(user, 'time', null, 'At the office', at('2024-03-04T11:00:00Z'), undefined, {
+      tags: ['work'],
+    })
+    const count = async (filters: Record<string, string>) => {
+      const result = await getChartData(user, {
+        ...range,
+        aggregation: 'count',
+        bucket_size: '1M',
+        source_type: 'journal',
+        ...filters,
+      })
+      return result.buckets.reduce((sum, b) => sum + ('value' in b ? b.value : 0), 0)
+    }
+    expect(await count({})).toBe(2)
+    expect(await count({ journal_tags: 'travel' })).toBe(1)
+    expect(await count({ journal_related_id: sam.id, journal_related_type: 'person' })).toBe(1)
+    expect(await count({ journal_q: 'office' })).toBe(1)
+  })
+
+  test('refuses a mean and a bad filter', async () => {
+    const user = getTestUser()
+    const base = { ...range, bucket_size: '1d' as const, source_type: 'journal' as const }
+    await expect(getChartData(user, { ...base, aggregation: 'mean' })).rejects.toThrow(
+      'a journal chart counts entries (count) or sums their words (sum)',
+    )
+    await expect(
+      getChartData(user, { ...base, aggregation: 'count', journal_tags: 'no good!' }),
+    ).rejects.toThrow('Not a valid tag list')
   })
 })

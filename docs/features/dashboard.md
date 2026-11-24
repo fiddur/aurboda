@@ -90,6 +90,8 @@ A full-width EMA (Exponential Moving Average) trend chart for any tag or metric.
 
 **Configuration:** Source type (tag or metric), pattern (tag regex or metric name), half-life (default 15 days), lookback period (default 90 days) or a fixed start date (`since`, see below), display period (daily/weekly/monthly), aggregation method (count/sum/mean).
 
+A trend chart of the **journal** (`source_type: "journal"`, no `pattern`) trends entries or words written per period, filtered by the `journal_*` fields (`journal_tags`, `journal_related_type` and `journal_related_id`, `journal_q`, `journal_entity_types`) and broken down by `@tags` or `@people`; see [Journal: Charts](journal.md#charts).
+
 A trend chart can instead show a **measure's decaying best** (an activity type's `measure`, with `filter_field` and `filter_value` for one exercise): the running best that decays with the half-life (default 120 days) between sessions. Display period and aggregation do not apply, and the title defaults to the exercise and measure, e.g. "Squat · Best e1RM". Add one from an exercise's Trend chart menu or from the Chart Explorer's **Trend (best)**.
 
 ### Bar Chart
@@ -97,6 +99,8 @@ A trend chart can instead show a **measure's decaying best** (an activity type's
 A full-width bar chart of bucketed values (`GET /chart-data`) for an activity type, metric or screentime category, optionally broken down into one stacked series per value of a categorical field.
 
 **Configuration:** Source type, pattern, bucket size, lookback period, aggregation (count/sum/mean/max), optional breakdown fields. For an activity type with list items (strength sets), `measure` charts that measure of each session instead of its duration or count, `filter_field`/`filter_value` (e.g. `sets.exercise` = `Bench Press`) take it over one exercise's items, and a `sets.exercise` breakdown gives one series per exercise (see [Activity Types: Exercises and measures](activity-types.md#exercises-and-measures)).
+
+A bar chart of the **journal** (`source_type: "journal"`, no `pattern`) counts entries (`count`) or sums their words (`sum`) per bucket, takes the same `journal_*` filters and the `@tags` and `@people` breakdowns, at most 12 series with the rest as `Other`; see [Journal: Charts](journal.md#charts).
 
 A trend or bar chart can have a fixed start instead of a rolling lookback: `since` (`YYYY-MM-DD`) charts from that date up to today and wins over `lookback_days`. Bars start at the date's midnight and a trend looks back the whole days from the date to today, in the viewer's timezone on your own board and in the owner's timezone on a shared one. The Chart Explorer's **Since…** range saves it this way. A period dashboard's window still overrides it, as it does every lookback.
 
@@ -112,10 +116,12 @@ days); it has no form for the layers.
 layer, and `layers`, a list of typed layers drawn in order:
 
 - `{ "kind": "bars", ... }` takes a bar chart's source fields (`source_type`, `pattern`,
-  `bucket_size`, `aggregation`, `measure`, `filter_field`, `filter_value`, `tag_definition_id`);
+  `bucket_size`, `aggregation`, `measure`, `filter_field`, `filter_value`, `tag_definition_id`,
+  and for the journal the `journal_*` filters);
 - `{ "kind": "trend", ... }` takes a trend chart's source fields (`source_type`, `pattern`,
   `half_life_days`, `aggregation`, `display_period`, `missing_days`, `measure`, `filter_field`,
-  `filter_value`, `tag_definition_id`) and an optional line `color`.
+  `filter_value`, `tag_definition_id`, and for the journal the `journal_*` filters) and an optional
+  line `color`.
 
 A layer has no title, lookback or breakdown of its own. For now a combined chart has exactly one
 `bars` layer and one to three `trend` layers; that rule may be relaxed as more layer kinds are
@@ -453,6 +459,8 @@ stable positional labels (A, B, C…) — the breakdown structure and volumes st
 but the real values (e.g. partner names) never leave the server for a public viewer.
 You always see the real values on your own live view. A breakdown by **With** (`@people`) starts
 masked when saved, and unticking it shows a warning that the names will be visible.
+A journal chart's `@tags` can be masked the same way; its `Other` series names no tag or
+person and keeps its name in a two-field breakdown.
 
 ### Metric Picker
 
