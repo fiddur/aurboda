@@ -123,6 +123,16 @@ export const formToUpdateBody = (
 export const isEntryEmpty = (form: Pick<EntryForm, 'title' | 'content'>, attachmentCount: number): boolean =>
   form.title.trim() === '' && form.content.trim() === '' && attachmentCount === 0
 
+/**
+ * Whether leaving the editor throws the entry away. Only an entry this visit started from `/journal/new`
+ * is: an editor opened on a saved entry can be unmounted before its load lands (the router remounts the
+ * old route while the next one loads), and its form is then the empty initial one, not the entry's.
+ */
+export const discardOnLeave = (
+  opened: { savedEntry: boolean; deleted: boolean },
+  isEmpty: boolean,
+): boolean => !opened.savedEntry && !opened.deleted && isEmpty
+
 /** Two forms say the same thing to the server. */
 export const sameEntry = (a: EntryForm, b: EntryForm): boolean =>
   a.title.trim() === b.title.trim() &&

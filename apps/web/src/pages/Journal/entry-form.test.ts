@@ -11,6 +11,7 @@ import {
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
+  discardOnLeave,
   isEntryEmpty,
   sameEntry,
   tagChips,
@@ -128,6 +129,21 @@ describe('isEntryEmpty and sameEntry', () => {
       true,
     )
     expect(sameEntry(base, { ...base, content: 'x' })).toBe(false)
+  })
+})
+
+describe('discardOnLeave', () => {
+  test('an empty entry started in this visit is thrown away', () => {
+    expect(discardOnLeave({ deleted: false, savedEntry: false }, true)).toBe(true)
+    expect(discardOnLeave({ deleted: false, savedEntry: false }, false)).toBe(false)
+  })
+
+  test('a saved entry opened in the editor is never thrown away, even when its form reads empty', () => {
+    expect(discardOnLeave({ deleted: false, savedEntry: true }, true)).toBe(false)
+  })
+
+  test('an entry already deleted is left alone', () => {
+    expect(discardOnLeave({ deleted: true, savedEntry: false }, true)).toBe(false)
   })
 })
 
