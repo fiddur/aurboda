@@ -20,4 +20,9 @@ describe('blankRequiredFields', () => {
     expect(blankRequiredFields('last_sleep', {})).toEqual([])
     expect(blankRequiredFields('bar_chart', {})).toEqual([])
   })
+
+  it('requires a pattern of a trend chart, except on the journal', () => {
+    expect(blankRequiredFields('trend_chart', { source_type: 'activity_type' })).toEqual(['pattern'])
+    expect(blankRequiredFields('trend_chart', { source_type: 'journal' })).toEqual([])
+  })
 })

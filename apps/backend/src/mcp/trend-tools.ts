@@ -1,4 +1,12 @@
-import { flaggedWindowsNote, getTrendQuerySchema, timeWeightedAveragesNote } from '@aurboda/api-spec'
+import {
+  flaggedWindowsNote,
+  getTrendQuerySchema,
+  JOURNAL_BREAKDOWN_MAX_SERIES,
+  JOURNAL_OTHER_SERIES,
+  journalChartError,
+  journalChartFiltersOf,
+  timeWeightedAveragesNote,
+} from '@aurboda/api-spec'
 
 import { getCustomMetrics } from '../services/mutations.ts'
 import { getUserTimezone } from '../services/settings.ts'
@@ -24,6 +32,9 @@ aggregation, breakdown_fields and missing_days do not apply; the result's aggreg
 
 Breakdown (activity_type): breakdown_fields gives one EMA per value of each data field; "@people" gives one per person the activity was with, an activity with several people counted in each, "(none)" for no one.
 
+Journal: source_type="journal" (no pattern) trends the journal's entries, the thread roots search_notes lists, from the day of the first matching entry: aggregation count (default) is entries per display period, sum words written per display period. breakdown_fields takes "@tags" and "@people" (one EMA per tag or per person the entry is related to, "(none)" for none), at most ${JOURNAL_BREAKDOWN_MAX_SERIES} series with the rest summed as "${JOURNAL_OTHER_SERIES}". Filters as in search_notes: journal_tags, journal_related_type + journal_related_id, journal_q, journal_entity_types. measure, missing_days and include_flagged do not apply.
+Example: words written per month in entries tagged travel: source_type="journal", aggregation="sum", display_period="monthly", journal_tags="travel"
+
 Metric means: ${timeWeightedAveragesNote}
 
 Metric trends: ${flaggedWindowsNote} A day left without samples is then skipped, not counted as zero.
@@ -35,22 +46,28 @@ Common half-life values:
 - 15 days (responsive): Balanced, good default
 - 30 days (stable): Smooths out short-term variation`,
     { ...getTrendQuerySchema.shape },
-    async ({
-      aggregation,
-      breakdown_fields,
-      display_period,
-      filter_field,
-      filter_value,
-      half_life_days,
-      include_flagged,
-      lookback_days,
-      measure,
-      missing_days,
-      pattern,
-      source_type,
-      tag_definition_id,
-      tz,
-    }) => {
+    async (params) => {
+      const {
+        aggregation,
+        breakdown_fields,
+        display_period,
+        filter_field,
+        filter_value,
+        half_life_days,
+        include_flagged,
+        lookback_days,
+        measure,
+        missing_days,
+        pattern,
+        source_type,
+        tag_definition_id,
+        tz,
+      } = params
+      if (source_type !== 'journal' && !pattern) {
+        return jsonResponse({ error: 'pattern is required unless source_type is journal', success: false })
+      }
+      const queryError = journalChartError(params)
+      if (queryError) return jsonResponse({ error: queryError, success: false })
       try {
         const customMetrics = await getCustomMetrics(user)
 
@@ -70,6 +87,7 @@ Common half-life values:
           source_type,
           tag_definition_id,
           tz: tz ?? (await getUserTimezone(user)),
+          ...journalChartFiltersOf(params),
         })
         return jsonResponse({ data: result, success: true })
       } catch (error) {

@@ -120,6 +120,7 @@ describe('GET /notes/search', () => {
       data: [noteData],
       next_cursor: 'abc',
       success: true,
+      total: 120,
     })
 
     const res = await supertest(buildApp())
@@ -127,7 +128,7 @@ describe('GET /notes/search', () => {
       .query({ from: '2024-01-01', limit: '10', q: 'walk', tags: 'travel', tz: 'Europe/Stockholm' })
 
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ data: [noteData], next_cursor: 'abc', success: true })
+    expect(res.body).toEqual({ data: [noteData], next_cursor: 'abc', success: true, total: 120 })
     expect(mutations.searchNotesForUser).toHaveBeenCalledWith('tester', {
       from: '2024-01-01',
       limit: 10,

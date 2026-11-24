@@ -1,9 +1,10 @@
 import type { AddNoteBody, Note, UpdateNoteBody } from '@aurboda/api-spec'
 
 import { extractHashtags, normalizeTag } from '@aurboda/api-spec'
-import { format } from 'date-fns'
+import { addDays, format } from 'date-fns'
 
 import { fromDatetimeLocal, toDatetimeLocal } from '../../components/CommentThread/datetimeLocal'
+import { timelineHref } from '../Timeline/viewHash'
 import { linksToInput, type RelatedLink, sameLinks } from './related'
 
 /** What the editor holds. `start`/`end` are datetime-local values; `date` is YYYY-MM-DD. */
@@ -122,6 +123,16 @@ export const formToUpdateBody = (
 export const isEntryEmpty = (form: Pick<EntryForm, 'title' | 'content'>, attachmentCount: number): boolean =>
   form.title.trim() === '' && form.content.trim() === '' && attachmentCount === 0
 
+/**
+ * Whether leaving the editor throws the entry away. Only an entry this visit started from `/journal/new`
+ * is: an editor opened on a saved entry can be unmounted before its load lands (the router remounts the
+ * old route while the next one loads), and its form is then the empty initial one, not the entry's.
+ */
+export const discardOnLeave = (
+  opened: { savedEntry: boolean; deleted: boolean },
+  isEmpty: boolean,
+): boolean => !opened.savedEntry && !opened.deleted && isEmpty
+
 /** Two forms say the same thing to the server. */
 export const sameEntry = (a: EntryForm, b: EntryForm): boolean =>
   a.title.trim() === b.title.trim() &&
@@ -132,5 +143,17 @@ export const sameEntry = (a: EntryForm, b: EntryForm): boolean =>
   (a.allDay ? a.date === b.date : a.start === b.start && a.end === b.end)
 
 /** The local day the entry is on, for picking that day's activities. */
+/** The Timeline around the entry: its whole day for a day entry, else the 24 hours around its time. */
+export const entryTimelineHref = (
+  form: Pick<EntryForm, 'allDay' | 'date' | 'start' | 'end'>,
+): string | undefined => {
+  if (form.allDay) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(form.date) ? fromDatetimeLocal(`${form.date}T00:00`) : undefined
+    return day ? timelineHref(day, addDays(day, 1)) : undefined
+  }
+  const start = fromDatetimeLocal(form.start)
+  return start ? timelineHref(start, fromDatetimeLocal(form.end)) : undefined
+}
+
 export const entryDay = (form: Pick<EntryForm, 'allDay' | 'date' | 'start'>): string =>
   form.allDay ? form.date : form.start.slice(0, 10)

@@ -51,16 +51,18 @@ import {
   entryDay,
   type EntryForm,
   entryFormProblem,
+  entryTimelineHref,
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
+  discardOnLeave,
   isEntryEmpty,
   tagChips,
 } from './entry-form'
 import { type EntryMode, initialEntryMode } from './entry-mode'
 import { EntryNeighbors } from './EntryNeighbors'
 import { EntryReadView } from './EntryReadView'
-import { attachmentImageMarkdown, withoutInline } from './inline-pictures'
+import { attachmentImageMarkdown, pictureOrder, withoutInline } from './inline-pictures'
 import { entryGlimpse } from './journal-list'
 import { JOURNAL_KEY } from './JournalList'
 import { LinkSuggestions } from './LinkSuggestions'
@@ -349,6 +351,15 @@ const DraftOffer = ({
     </div>
   </div>
 )
+
+const timelineLink = (form: EntryForm) => {
+  const href = entryTimelineHref(form)
+  if (!href) return undefined
+  return {
+    href,
+    title: form.allDay ? 'Show the day on the timeline' : 'Show the 24 hours around it on the timeline',
+  }
+}
 
 const EditorFiles = ({
   noteId,
@@ -719,12 +730,11 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   }, [templates.data])
 
   const discardIfEmpty = useCallback(async () => {
-    if (deletedRef.current) return
-    if (isEntryEmpty(formRef.current, attachmentsRef.current.length)) {
-      removeDraft(storage, draftKey())
-      if (idRef.current) await deleteJournalEntry(idRef.current, { purge: true }).catch(() => undefined)
-    }
-  }, [storage])
+    const opened = { deleted: deletedRef.current, savedEntry: initialId !== undefined }
+    if (!discardOnLeave(opened, isEntryEmpty(formRef.current, attachmentsRef.current.length))) return
+    removeDraft(storage, draftKey())
+    if (idRef.current) await deleteJournalEntry(idRef.current, { purge: true }).catch(() => undefined)
+  }, [initialId, storage])
 
   useEffect(() => {
     const onHide = () => void autosaver.flush()
@@ -909,7 +919,12 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
         <StatusLine status={status} problem={saveProblem} isNew={!idRef.current} />
       </div>
 
-      <EntryNeighbors id={idRef.current} loaded={loaded} anchorKey={neighborAnchorKey(form)} />
+      <EntryNeighbors
+        id={idRef.current}
+        loaded={loaded}
+        anchorKey={neighborAnchorKey(form)}
+        timeline={timelineLink(form)}
+      />
 
       {loadError && (
         <p class="journal-error" role="alert">
@@ -1028,7 +1043,12 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       )}
 
       {viewing && idRef.current && (
-        <PictureViewer noteId={idRef.current} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+        <PictureViewer
+          noteId={idRef.current}
+          attachmentId={viewing}
+          pictureIds={pictureOrder(attachments, form.content)}
+          onClose={() => setViewing(undefined)}
+        />
       )}
     </div>
   )

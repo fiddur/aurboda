@@ -1,4 +1,5 @@
 import type { Note, NotesSearchResponse } from '@aurboda/api-spec'
+import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query'
 
 import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -6,12 +7,8 @@ import { useLocation } from 'preact-iso'
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import {
-  fetchActivityById,
   fetchDeletedEntries,
-  fetchMeal,
-  fetchNoteTags,
   fetchNoteTemplates,
-  fetchReport,
   type JournalQuery,
   restoreJournalEntry,
   restoreNoteTemplate,
@@ -21,37 +18,37 @@ import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
 import { AttachmentStrip, PictureViewer, useInlinePictures } from './Attachments'
 import {
+  ActiveTags,
+  JOURNAL_KEY,
+  RelatedToButton,
+  RelatedToPicker,
+  TagsPicker,
+  useDebounced,
+} from './filters'
+import { pictureOrder } from './inline-pictures'
+import {
   dayHeading,
   daysLeft,
   daysLeftLabel,
+  entryCountLabel,
   entryGlimpse,
   entryTimeLabel,
   groupEntriesByDay,
   isLongText,
+  commentsFromQuery,
   isUnfiltered,
+  journalChartHref,
   type JournalFilters as Filters,
   journalQueryFor,
   localToday,
+  searchFromQuery,
   tagsFromQuery,
 } from './journal-list'
-import { tagOptions } from './journal-tags'
-import { RelatedChips, RelatedTabs, usePeople } from './Related'
-import {
-  activityLabel,
-  mealLabel,
-  type RelatedFilter,
-  relatedFilterFromQuery,
-  relatedFilterHref,
-  relatedFilterLabel,
-  relatedFilterLinks,
-  type RelatedLink,
-  reportLabel,
-} from './related'
+import { RelatedChips } from './Related'
+import { type RelatedFilter, relatedFilterFromQuery, relatedFilterHref } from './related'
 import { DELETED_TEMPLATES_KEY, TEMPLATES_KEY, TemplateManager, useTemplates } from './Templates'
 
-export const JOURNAL_KEY = ['journal'] as const
-
-export const JOURNAL_TAGS_KEY = [...JOURNAL_KEY, 'tags'] as const
+export { JOURNAL_KEY, JOURNAL_TAGS_KEY } from './filters'
 
 const browserTimezone = (): string | undefined => {
   try {
@@ -59,15 +56,6 @@ const browserTimezone = (): string | undefined => {
   } catch {
     return undefined
   }
-}
-
-const useDebounced = <T,>(value: T, ms: number): T => {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms)
-    return () => clearTimeout(timer)
-  }, [value, ms])
-  return debounced
 }
 
 const ANCHOR_LABELS: Partial<Record<Note['entity_type'], string>> = {
@@ -163,6 +151,7 @@ const EntryFoot = ({
 
 const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => {
   const [viewing, setViewing] = useState<string | undefined>(undefined)
+  const attachments = note.attachments ?? []
   return (
     <article class="journal-entry">
       <EntryHead note={note} />
@@ -173,12 +162,17 @@ const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }
       )}
       <EntryText content={note.content} noteId={note.id} onOpenPicture={setViewing} />
       {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
-      {note.id && (note.attachments ?? []).length > 0 && (
-        <AttachmentStrip noteId={note.id} attachments={note.attachments ?? []} content={note.content} />
+      {note.id && attachments.length > 0 && (
+        <AttachmentStrip noteId={note.id} attachments={attachments} content={note.content} />
       )}
       <EntryFoot tags={note.tags ?? []} replies={note.replies?.length ?? 0} onTag={onTag} />
       {viewing && note.id && (
-        <PictureViewer noteId={note.id} attachmentId={viewing} onClose={() => setViewing(undefined)} />
+        <PictureViewer
+          noteId={note.id}
+          attachmentId={viewing}
+          pictureIds={pictureOrder(attachments, note.content)}
+          onClose={() => setViewing(undefined)}
+        />
       )}
     </article>
   )
@@ -291,7 +285,7 @@ const RecentlyDeleted = () => {
   )
 }
 
-const JournalHeader = () => {
+const JournalHeader = ({ count }: { count: string | undefined }) => {
   const { route } = useLocation()
   const templates = useTemplates()
   const [picking, setPicking] = useState(false)
@@ -299,7 +293,10 @@ const JournalHeader = () => {
   return (
     <>
       <div class="journal-header">
-        <h1>Journal</h1>
+        <div class="journal-title">
+          <h1>Journal</h1>
+          {count && <span class="journal-muted journal-count">{count}</span>}
+        </div>
         <div class="journal-row">
           <a class="btn-primary journal-new" href="/journal/new">
             New entry
@@ -340,116 +337,6 @@ const replaceQuery = (filter: RelatedFilter | undefined) => {
 
 type FilterPicker = 'related' | 'tags' | undefined
 
-const RelatedToButton = ({
-  related,
-  open,
-  onToggle,
-  onClear,
-}: {
-  related: RelatedFilter | undefined
-  open: boolean
-  onToggle: () => void
-  onClear: () => void
-}) => {
-  const people = usePeople()
-  const activity = useQuery({
-    enabled: related?.type === 'activity',
-    queryFn: () => fetchActivityById(related!.id),
-    queryKey: ['journal-related-activity', related?.id],
-  })
-  const meal = useQuery({
-    enabled: related?.type === 'meal',
-    queryFn: () => fetchMeal(related!.id),
-    queryKey: ['journal-related-meal', related?.id],
-  })
-  const report = useQuery({
-    enabled: related?.type === 'report',
-    queryFn: () => fetchReport(related!.id),
-    queryKey: ['journal-related-report', related?.id],
-  })
-  const targetLabel = (): string | undefined => {
-    if (related?.type === 'activity' && activity.data) return activityLabel(activity.data.activity)
-    if (related?.type === 'meal' && meal.data) return mealLabel(meal.data)
-    if (related?.type === 'report' && report.data) return reportLabel(report.data)
-    return undefined
-  }
-  const label = relatedFilterLabel(related, people.data?.people ?? [], targetLabel())
-  return (
-    <span class="journal-related-filter">
-      <span>Related to</span>
-      <button type="button" class="btn-secondary journal-related-add" aria-expanded={open} onClick={onToggle}>
-        {label}
-      </button>
-      {related && (
-        <button type="button" class="journal-link-btn" onClick={onClear}>
-          Clear
-        </button>
-      )}
-    </span>
-  )
-}
-
-/** "Related to": a person, a report, or an activity, meal or check-in of any day, picked from a tab per kind. */
-const RelatedToPicker = ({
-  related,
-  today,
-  onPick,
-}: {
-  related: RelatedFilter | undefined
-  today: string
-  onPick: (related: RelatedFilter) => void
-}) => {
-  const links = relatedFilterLinks(related, '')
-  const take = (link: RelatedLink) => onPick({ id: link.entity_id, type: link.entity_type })
-  return (
-    <div class="journal-card journal-related-picker" aria-label="Related to">
-      <RelatedTabs
-        entryDate={today}
-        links={links}
-        onAdd={take}
-        initial={related?.type}
-        allowNewPerson={false}
-      />
-    </div>
-  )
-}
-
-/** The tags to filter on, most used first, leaving out those already in the filter. */
-const TagsPicker = ({ active, onPick }: { active: readonly string[]; onPick: (tag: string) => void }) => {
-  const [search, setSearch] = useState('')
-  const tags = useQuery({ queryFn: () => fetchNoteTags(), queryKey: JOURNAL_TAGS_KEY })
-  const shown = tagOptions(tags.data ?? [], search, active)
-  return (
-    <div class="journal-card journal-related-picker journal-related-options" aria-label="Tags">
-      <input
-        type="search"
-        placeholder="Search tags"
-        aria-label="Search tags"
-        value={search}
-        onInput={(e) => setSearch(e.currentTarget.value)}
-      />
-      {tags.isLoading && <p class="journal-muted">Loading…</p>}
-      {tags.isError && <p class="journal-error">The tags could not be loaded.</p>}
-      {tags.isSuccess && shown.length === 0 && (
-        <p class="journal-muted">{(tags.data ?? []).length === 0 ? 'No tags yet.' : 'No tag matches.'}</p>
-      )}
-      <ul>
-        {shown.map((tag) => (
-          <li key={tag.tag}>
-            <button type="button" class="journal-related-option" onClick={() => onPick(tag.tag)}>
-              <strong>#{tag.tag}</strong>
-              <span class="journal-muted"> · {tag.count}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <a class="journal-link-btn" href="/journal/tags">
-        Manage tags
-      </a>
-    </div>
-  )
-}
-
 const FilterSwitches = ({
   filters,
   onChange,
@@ -476,23 +363,6 @@ const FilterSwitches = ({
     </label>
   </>
 )
-
-const ActiveTags = ({ tags, onChange }: { tags: string[]; onChange: (patch: Partial<Filters>) => void }) =>
-  tags.length > 0 ? (
-    <div class="journal-active-tags" aria-label="Showing entries tagged">
-      {tags.map((tag) => (
-        <button
-          key={tag}
-          type="button"
-          class="journal-chip active"
-          onClick={() => onChange({ tags: tags.filter((t) => t !== tag) })}
-          aria-label={`Stop filtering by #${tag}`}
-        >
-          #{tag} ✕
-        </button>
-      ))}
-    </div>
-  ) : null
 
 const SearchControls = ({
   filters,
@@ -531,11 +401,13 @@ const SearchControls = ({
 
 const JournalFilters = ({
   filters,
+  q,
   today,
   onChange,
   onTag,
 }: {
   filters: Filters
+  q: string
   today: string
   onChange: (patch: Partial<Filters>) => void
   onTag: (tag: string) => void
@@ -566,6 +438,9 @@ const JournalFilters = ({
         >
           Tags
         </button>
+        <a class="btn-secondary journal-related-add" href={journalChartHref(filters, q)}>
+          Chart
+        </a>
       </div>
       {picker === 'related' && (
         <RelatedToPicker related={filters.related} today={today} onPick={chooseRelated} />
@@ -579,7 +454,7 @@ const JournalFilters = ({
           }}
         />
       )}
-      <ActiveTags tags={filters.tags} onChange={onChange} />
+      <ActiveTags tags={filters.tags} onChange={(tags) => onChange({ tags })} />
     </>
   )
 }
@@ -600,24 +475,28 @@ const EmptyJournal = ({ unfiltered }: { unfiltered: boolean }) => (
   </div>
 )
 
-const JournalEntries = ({
-  query,
-  today,
-  unfiltered,
-  onTag,
-}: {
-  query: JournalQuery
-  today: string
-  unfiltered: boolean
-  onTag: (tag: string) => void
-}) => {
-  const list = useInfiniteQuery({
+type JournalPages = UseInfiniteQueryResult<InfiniteData<NotesSearchResponse>>
+
+const useJournalPages = (query: JournalQuery): JournalPages =>
+  useInfiniteQuery({
     getNextPageParam: (last: NotesSearchResponse) => last.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       searchJournal({ ...query, cursor: pageParam }),
     queryKey: [...JOURNAL_KEY, 'list', query],
   })
+
+const JournalEntries = ({
+  list,
+  today,
+  unfiltered,
+  onTag,
+}: {
+  list: JournalPages
+  today: string
+  unfiltered: boolean
+  onTag: (tag: string) => void
+}) => {
   const notes = useMemo(() => list.data?.pages.flatMap((page) => page.data ?? []) ?? [], [list.data])
   const days = useMemo(() => groupEntriesByDay(notes), [notes])
 
@@ -670,9 +549,9 @@ export const JournalList = () => {
     jumpTo: urlQuery.date ?? '',
     needsText: false,
     related: relatedFilterFromQuery(urlQuery),
-    search: '',
+    search: searchFromQuery(urlQuery),
     tags: tagsFromQuery(urlQuery),
-    withComments: false,
+    withComments: commentsFromQuery(urlQuery),
   })
   const [showTemplates, setShowTemplates] = useState(false)
   const q = useDebounced(filters.search, 350)
@@ -685,13 +564,14 @@ export const JournalList = () => {
 
   const query: JournalQuery = journalQueryFor(filters, q, browserTimezone())
   const unfiltered = isUnfiltered(filters, q)
+  const list = useJournalPages(query)
 
   return (
     <div class="page journal-page">
-      <JournalHeader />
-      <JournalFilters filters={filters} today={today} onChange={change} onTag={addTag} />
+      <JournalHeader count={entryCountLabel(list.data?.pages[0]?.total, unfiltered)} />
+      <JournalFilters filters={filters} q={q} today={today} onChange={change} onTag={addTag} />
       {unfiltered && <OnThisDay today={today} />}
-      <JournalEntries query={query} today={today} unfiltered={unfiltered} onTag={addTag} />
+      <JournalEntries list={list} today={today} unfiltered={unfiltered} onTag={addTag} />
       <RecentlyDeleted />
       <details
         class="journal-card journal-templates-section"

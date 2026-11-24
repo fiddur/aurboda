@@ -4,6 +4,7 @@ import type {
   ChartDataBucket,
   ChartDataResponse,
   ChartDataSourceType,
+  JournalChartFilters,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -11,8 +12,9 @@ import axios from 'axios'
 import { API_URL } from '../../config'
 import { auth } from '../auth'
 import { browserTz } from './client'
+import { setJournalFilters } from './journal-chart-params'
 
-export interface FetchChartDataParams {
+export interface FetchChartDataParams extends JournalChartFilters {
   source_type: ChartDataSourceType
   start: string
   end: string
@@ -51,6 +53,7 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
     query.filter_field = params.filter_field
     query.filter_value = params.filter_value
   }
+  setJournalFilters(query, params)
 
   const response = await axios.get<ChartDataResponse>(`${API_URL}/chart-data`, {
     headers: { Authorization: `Bearer ${token}` },

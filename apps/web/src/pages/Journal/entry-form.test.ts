@@ -2,6 +2,7 @@ import type { Note } from '@aurboda/api-spec'
 
 import { describe, expect, test } from 'vitest'
 
+import { timelineHref } from '../Timeline/viewHash'
 import {
   addTags,
   emptyEntryForm,
@@ -10,9 +11,11 @@ import {
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
+  discardOnLeave,
   isEntryEmpty,
   sameEntry,
   tagChips,
+  entryTimelineHref,
 } from './entry-form'
 
 const base = emptyEntryForm(new Date(2026, 10, 20, 9, 30))
@@ -129,6 +132,21 @@ describe('isEntryEmpty and sameEntry', () => {
   })
 })
 
+describe('discardOnLeave', () => {
+  test('an empty entry started in this visit is thrown away', () => {
+    expect(discardOnLeave({ deleted: false, savedEntry: false }, true)).toBe(true)
+    expect(discardOnLeave({ deleted: false, savedEntry: false }, false)).toBe(false)
+  })
+
+  test('a saved entry opened in the editor is never thrown away, even when its form reads empty', () => {
+    expect(discardOnLeave({ deleted: false, savedEntry: true }, true)).toBe(false)
+  })
+
+  test('an entry already deleted is left alone', () => {
+    expect(discardOnLeave({ deleted: true, savedEntry: false }, true)).toBe(false)
+  })
+})
+
 describe('related links', () => {
   const anna = {
     entity_id: '00000000-0000-4000-8000-00000000000a',
@@ -170,5 +188,29 @@ describe('entryDay', () => {
   test('an all-day entry is on its date, a timed one on its start day', () => {
     expect(entryDay({ allDay: true, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-20')
     expect(entryDay({ allDay: false, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-19')
+  })
+})
+
+describe('entryTimelineHref', () => {
+  const form = { allDay: false, date: '', end: '', start: '' }
+
+  test('a day entry shows its whole local day', () => {
+    expect(entryTimelineHref({ ...form, allDay: true, date: '2026-11-20' })).toBe(
+      timelineHref(new Date(2026, 10, 20), new Date(2026, 10, 21)),
+    )
+  })
+
+  test('a timed entry shows the 24 hours around it', () => {
+    expect(entryTimelineHref({ ...form, start: '2026-11-20T09:30' })).toBe(
+      timelineHref(new Date(2026, 10, 20, 9, 30)),
+    )
+    expect(entryTimelineHref({ ...form, end: '2026-11-20T11:30', start: '2026-11-20T09:30' })).toBe(
+      timelineHref(new Date(2026, 10, 20, 9, 30), new Date(2026, 10, 20, 11, 30)),
+    )
+  })
+
+  test('none without a valid time or date', () => {
+    expect(entryTimelineHref(form)).toBeUndefined()
+    expect(entryTimelineHref({ ...form, allDay: true, date: '2026-11' })).toBeUndefined()
   })
 })

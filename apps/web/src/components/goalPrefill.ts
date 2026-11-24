@@ -2,9 +2,9 @@ import {
   type ActivityMeasure,
   activityMeasures,
   type Goal,
+  type GoalTrendSourceType,
   type TrendDisplayPeriod,
   type TrendGoal,
-  type TrendSourceType,
 } from '@aurboda/api-spec'
 
 import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../utils/half-life'
@@ -20,7 +20,7 @@ interface ItemFilter {
 export type GoalPrefill =
   | ({
       new: 'trend'
-      source_type: TrendSourceType
+      source_type: GoalTrendSourceType
       pattern: string
       half_life_days?: number
       display_period?: TrendDisplayPeriod
@@ -34,7 +34,7 @@ const SOURCE_TYPES: readonly string[] = [
   'metric',
   'productivity_category',
   'activity_type',
-] satisfies TrendSourceType[]
+] satisfies GoalTrendSourceType[]
 const DISPLAY_PERIODS: readonly string[] = ['daily', 'weekly', 'monthly'] satisfies TrendDisplayPeriod[]
 const TREND_AGGREGATIONS: readonly string[] = ['count', 'sum', 'mean'] satisfies TrendAggregation[]
 
@@ -95,7 +95,7 @@ const trendGoalFromQuery = (query: Record<string, string>, id: string): TrendGoa
     id,
     ...(measure ? { measure } : {}),
     pattern,
-    source_type: source_type as TrendSourceType,
+    source_type: source_type as GoalTrendSourceType,
   }
 }
 

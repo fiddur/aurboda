@@ -4,7 +4,12 @@
  * dashboard); the public renderer omits it.
  */
 
-import { measureGoalTitle, type TrendChartConfig, type TrendChartData } from '@aurboda/api-spec'
+import {
+  journalChartFiltersOf,
+  measureGoalTitle,
+  type TrendChartConfig,
+  type TrendChartData,
+} from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
@@ -16,12 +21,18 @@ import { BreakdownLegend, SERIES_COLORS } from '../charts/breakdown'
 import { trendPlot, trendPlotSeries } from '../charts/trendGaps'
 import { TrendLineChart } from '../charts/TrendLineChart'
 import { trendFetchParams } from './chartFetchParams'
+import { journalChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const NO_POINTS: TrendChartData['history'] = []
 
-const trendChartTitle = ({ filter_value, measure, pattern, title }: TrendChartConfig): string =>
-  title ?? (measure ? measureGoalTitle(measure, filter_value, pattern) : `${pattern} trend`)
+const trendChartTitle = (config: TrendChartConfig): string => {
+  const { filter_value, measure, pattern, title } = config
+  if (title) return title
+  const journal = journalChartTitle(config)
+  if (journal) return `${journal} trend`
+  return measure ? measureGoalTitle(measure, filter_value, pattern) : `${pattern} trend`
+}
 
 interface TrendChartViewProps {
   config: TrendChartConfig
@@ -117,6 +128,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
   } = config
   const params = trendFetchParams(config, widgetLookbackDays(lookback_days, since, new Date()))
   const { aggregation, display_period, half_life_days } = params
+  const journalFilters = journalChartFiltersOf(params)
 
   const trendQuery = useQuery({
     queryFn: () => fetchTrend({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
@@ -133,6 +145,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
       measure,
       filter_field,
       filter_value,
+      journalFilters,
     ],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
@@ -168,6 +181,7 @@ export function TrendChartWidget({ config, origin }: TrendChartWidgetProps) {
     since,
     source_type,
     activity_type_id: config.tag_definition_id,
+    ...journalFilters,
     origin,
   })
 

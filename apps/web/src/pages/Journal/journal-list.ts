@@ -6,6 +6,8 @@ import { addDays, format, parseISO } from 'date-fns'
 import type { JournalQuery } from '../../state/api'
 import type { RelatedFilter } from './related'
 
+import { JOURNAL_WITH_COMMENTS_ENTITY_TYPES } from '../../state/api/journal-params'
+
 /** The local calendar date an entry belongs to: a `day` entry's own date, else its start's date here. */
 export const entryDate = (note: Note): string | undefined => {
   if (note.date) return note.date
@@ -118,6 +120,14 @@ export const journalQueryFor = (
   tz,
 })
 
+/** The count under the Journal heading: every entry, or those the filters keep; none when there are none. */
+export const entryCountLabel = (total: number | undefined, unfiltered: boolean): string | undefined => {
+  if (!total) return undefined
+  const count = total.toLocaleString('en')
+  if (unfiltered) return total === 1 ? '1 entry' : `${count} entries`
+  return total === 1 ? '1 entry matches' : `${count} entries match`
+}
+
 export const isUnfiltered = (filters: JournalFilters, q: string): boolean =>
   !q.trim() &&
   filters.tags.length === 0 &&
@@ -126,8 +136,43 @@ export const isUnfiltered = (filters: JournalFilters, q: string): boolean =>
   !filters.needsText &&
   filters.related === undefined
 
-/** The tag filter `/journal?tag=<tag>` opens with: that tag as stored, or none when it is not a tag. */
-export const tagsFromQuery = (query: Record<string, string | undefined>): string[] => {
-  const tag = query.tag ? normalizeTag(query.tag) : null
-  return tag ? [tag] : []
+/** A comma-separated tag list as stored: each tag normalised, those that are not tags and repeats left out. */
+export const tagList = (raw: string | undefined): string[] => [
+  ...new Set(
+    (raw ?? '').split(',').flatMap((part) => {
+      const tag = part.trim() ? normalizeTag(part) : null
+      return tag ? [tag] : []
+    }),
+  ),
+]
+
+/** The tag filter `/journal?tag=<tag>,<tag>` opens with: those tags as stored, leaving out what is not a tag. */
+export const tagsFromQuery = (query: Record<string, string | undefined>): string[] => tagList(query.tag)
+
+/** The search `/journal?q=` opens with. */
+export const searchFromQuery = (query: Record<string, string | undefined>): string => query.q ?? ''
+
+/** Whether `/journal?comments=1` opens with comments on activities, meals and reports shown. */
+export const commentsFromQuery = (query: Record<string, string | undefined>): boolean =>
+  query.comments === '1'
+
+/** The Chart page charting the entries these filters keep, per week over a year; the date to go to and "Photos without text" are not carried. */
+export const journalChartHref = (
+  filters: Pick<JournalFilters, 'tags' | 'related' | 'withComments'>,
+  q: string,
+): string => {
+  const params = new URLSearchParams({
+    bucket_size: '1w',
+    chart_type: 'bar',
+    lookback_days: '365',
+    source_type: 'journal',
+  })
+  if (filters.tags.length > 0) params.set('journal_tags', filters.tags.join(','))
+  if (filters.related) {
+    params.set('journal_related_type', filters.related.type)
+    params.set('journal_related_id', filters.related.id)
+  }
+  if (q.trim()) params.set('journal_q', q.trim())
+  if (filters.withComments) params.set('journal_entity_types', JOURNAL_WITH_COMMENTS_ENTITY_TYPES)
+  return `/chart?${params}`
 }

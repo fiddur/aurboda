@@ -8,9 +8,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { initialMaskedFields, showsPeopleNames } from '../pages/Chart/updateWidget'
+import { initialMaskedFields, unmaskedNamesWarning } from '../pages/Chart/updateWidget'
 import { fetchDashboard, listSharedDashboards, saveDashboard, updateSharedDashboard } from '../state/api'
 import { newSectionId } from '../utils/widget-id'
+import { journalChartTitle } from './widgets/chartTitle'
 import './AddToDashboardModal.css'
 import './DashboardEditor/style.css'
 
@@ -25,6 +26,7 @@ export function BreakdownMaskPicker({
   onToggle: (field: string) => void
 }) {
   if (fields.length === 0) return null
+  const warning = unmaskedNamesWarning(fields, masked)
   return (
     <div class="form-group">
       <label>Mask on public boards</label>
@@ -37,11 +39,7 @@ export function BreakdownMaskPicker({
         ))}
       </div>
       <p class="mask-hint">Masked field values are shown as A, B, C… to public viewers.</p>
-      {showsPeopleNames(fields, masked) && (
-        <p class="mask-warning">
-          Names of the people will be visible to anyone who can open a shared board with this chart.
-        </p>
-      )}
+      {warning && <p class="mask-warning">{warning}</p>}
     </div>
   )
 }
@@ -54,6 +52,12 @@ const newSectionText = {
   charts: { example: 'e.g., My Charts', title: 'Charts' },
   metrics: { example: 'e.g., Records', title: 'Records' },
 }
+
+/** What a chart card saved without a title is called. */
+const defaultTitle = (config: DashboardWidget['config']): string =>
+  ('source_type' in config && journalChartTitle(config)) ||
+  ('pattern' in config && config.pattern) ||
+  'Chart title'
 
 export interface AddToDashboardModalProps {
   /** Builds the widget to add; `title` is what the user typed (may be ''), `masked` the masked breakdown fields. */
@@ -108,8 +112,7 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
   const placeholderWidget = widget('', [])
   const sectionType = sectionTypeFor(placeholderWidget.type)
   const sections = targetConfig?.sections.filter((s) => s.type === sectionType) ?? []
-  const placeholder = placeholderWidget.config
-  const titlePlaceholder = ('pattern' in placeholder && placeholder.pattern) || 'Chart title'
+  const titlePlaceholder = defaultTitle(placeholderWidget.config)
 
   const handleTargetChange = (id: string) => {
     setTargetId(id)

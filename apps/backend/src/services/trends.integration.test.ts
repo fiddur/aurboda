@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { query } from '../db/connection.ts'
 import { insertCustomMetricDefinition } from '../db/custom-metrics.ts'
-import { addActivityPeople, insertActivity, insertPerson } from '../db/index.ts'
+import { addActivityPeople, insertActivity, insertNote, insertPerson } from '../db/index.ts'
 import { deleteTimeSeriesPoint, insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { firstPeriodWeight, getTrend } from './trends.ts'
@@ -488,5 +488,89 @@ describe('getTrend metric integration', () => {
       expect(result.history).toEqual([])
       expect(result.current_value).toBe(0)
     })
+  })
+})
+
+describe('getTrend journal integration', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  const end = new Date('2024-03-20T12:00:00Z')
+  const base = {
+    display_period: 'weekly' as const,
+    end,
+    half_life_days: 15,
+    lookback_days: 10,
+    source_type: 'journal' as const,
+    tz: 'UTC',
+  }
+
+  test('the EMA of entries per day from the first entry, as a weekly rate', async () => {
+    const user = getTestUser()
+    await insertNote(user, 'time', null, 'one', new Date('2024-03-15T10:00:00Z'))
+    await insertNote(user, 'time', null, 'two words', new Date('2024-03-15T11:00:00Z'))
+
+    const result = await getTrend(user, base)
+    expect(result).toMatchObject({
+      aggregation: 'count',
+      display_unit: 'per week',
+      pattern: '',
+      source_type: 'journal',
+    })
+    expect(result.history[0]?.date).toBe('2024-03-15')
+    expect(result.history.at(-1)?.date).toBe('2024-03-20')
+    expect(result.history[0]?.value).toBeCloseTo((7 * 2) / firstPeriodWeight(15, 7), 6)
+    expect(result.current_value).toBe(result.history.at(-1)?.value)
+
+    const words = await getTrend(user, { ...base, aggregation: 'sum' })
+    expect(words.display_unit).toBe('words per week')
+    expect(words.history[0]?.value).toBeCloseTo((7 * 3) / firstPeriodWeight(15, 7), 6)
+  })
+
+  test('starts at the first matching entry, also one before the window', async () => {
+    const user = getTestUser()
+    await insertNote(user, 'time', null, 'early', new Date('2024-01-02T10:00:00Z'), undefined, {
+      tags: ['travel'],
+    })
+    await insertNote(user, 'time', null, 'late', new Date('2024-03-18T10:00:00Z'), undefined, {
+      tags: ['work'],
+    })
+
+    const all = await getTrend(user, base)
+    expect(all.history).toHaveLength(11)
+    expect(all.history[0]?.date).toBe('2024-03-10')
+
+    const work = await getTrend(user, { ...base, journal_tags: 'work' })
+    expect(work.history[0]?.date).toBe('2024-03-18')
+    expect(await getTrend(user, { ...base, journal_tags: 'family' })).toMatchObject({
+      current_value: 0,
+      history: [],
+    })
+  })
+
+  test('a breakdown gives one EMA per series', async () => {
+    const user = getTestUser()
+    const alex = await insertPerson(user, { name: 'Alex' })
+    await insertNote(user, 'time', null, 'a', new Date('2024-03-15T10:00:00Z'), undefined, {
+      related: [{ entity_id: alex.id, entity_type: 'person' }],
+    })
+    await insertNote(user, 'time', null, 'b', new Date('2024-03-16T10:00:00Z'))
+
+    const result = await getTrend(user, { ...base, breakdown_fields: ['@people'] })
+    expect(result).toMatchObject({ breakdown_series: ['(none)', 'Alex'], current_value: 0, history: [] })
+    expect(result.breakdown_histories?.Alex?.[0]).toEqual({
+      date: '2024-03-15',
+      value: expect.closeTo(7 / firstPeriodWeight(15, 7), 6),
+    })
+    expect(result.breakdown_histories?.['(none)']?.[0]).toEqual({ date: '2024-03-15', value: 0 })
   })
 })

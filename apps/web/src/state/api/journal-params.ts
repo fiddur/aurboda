@@ -19,6 +19,9 @@ export interface JournalQuery {
 /** The comment roots the "Also show comments" switch adds to the journal's own `time` and `day` entries. */
 export const JOURNAL_COMMENT_TYPES = ['activity', 'meal', 'report'] as const
 
+/** The `entity_types` the journal searches with that switch on: its own entries and the comments it adds. */
+export const JOURNAL_WITH_COMMENTS_ENTITY_TYPES = ['time', 'day', ...JOURNAL_COMMENT_TYPES].join(',')
+
 export const journalSearchParams = (query: JournalQuery): Record<string, string> => {
   const params: Record<string, string> = {}
   const q = query.q?.trim()
@@ -27,7 +30,7 @@ export const journalSearchParams = (query: JournalQuery): Record<string, string>
   if (query.to) params.to = query.to
   if (query.on_this_day) params.on_this_day = query.on_this_day
   if (query.needs_text) params.needs_text = 'true'
-  if (query.include_comments) params.entity_types = ['time', 'day', ...JOURNAL_COMMENT_TYPES].join(',')
+  if (query.include_comments) params.entity_types = JOURNAL_WITH_COMMENTS_ENTITY_TYPES
   if (query.related) {
     params.related_type = query.related.type
     params.related_id = query.related.id

@@ -8,15 +8,22 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, isSummedActivityMeasure } from './activity-measures.ts'
+import { isPeopleBreakdownField } from './breakdown-fields.ts'
 import { baseResponseSchema, timeWeightedAveragesNote } from './common.ts'
 import { type ExerciseMuscleGroup, exerciseMuscleGroups } from './exercise-catalog.ts'
+import {
+  isTagsBreakdownField,
+  JOURNAL_BREAKDOWN_NOTE,
+  journalChartError,
+  journalChartFilterShape,
+} from './journal-chart.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 
 export const chartDataSourceTypeSchema = z
-  .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+  .enum(['tag', 'metric', 'productivity_category', 'activity_type', 'journal'])
   .meta({
     description:
-      "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'. 'productivity_category' selects screentime by category path (pattern 'Work > Programming', sub-categories included); each screentime category is also an activity type (its activity_type_name), usable with 'activity_type'.",
+      "Type of data source for chart data query. 'tag' is a deprecated alias for 'activity_type'. 'productivity_category' selects screentime by category path (pattern 'Work > Programming', sub-categories included); each screentime category is also an activity type (its activity_type_name), usable with 'activity_type'. 'journal' counts journal entries (count) or sums their words (sum) and takes no pattern; the journal_* parameters filter it.",
     example: 'activity_type',
     id: 'ChartDataSourceType',
   })
@@ -33,7 +40,7 @@ export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', 
 export type ChartDataBucketSize = z.infer<typeof chartDataBucketSizeSchema>
 
 export const chartDataAggregationSchema = z.enum(['count', 'sum', 'mean', 'max']).meta({
-  description: `Aggregation method: count, sum, mean or max. For a metric with buckets wider than 5 minutes: ${timeWeightedAveragesNote}`,
+  description: `Aggregation method: count, sum, mean or max. For a metric with buckets wider than 5 minutes: ${timeWeightedAveragesNote} For a journal source: count (entries) or sum (words written).`,
   example: 'count',
   id: 'ChartDataAggregation',
 })
@@ -48,12 +55,12 @@ const chartDataTzSchema = ianaTimezoneSchema.optional().meta({
   example: 'Europe/Stockholm',
 })
 
-/** The reserved breakdown field for the people an activity was with; the `@` keeps a data field named `people` a field. */
-export const PEOPLE_BREAKDOWN_FIELD = '@people'
+export { isPeopleBreakdownField, PEOPLE_BREAKDOWN_FIELD } from './breakdown-fields.ts'
 
-export const isPeopleBreakdownField = (field: string): boolean => field === PEOPLE_BREAKDOWN_FIELD
-
-export const breakdownFieldLabel = (field: string): string => (isPeopleBreakdownField(field) ? 'With' : field)
+export const breakdownFieldLabel = (field: string): string => {
+  if (isPeopleBreakdownField(field)) return 'With'
+  return isTagsBreakdownField(field) ? 'Tags' : field
+}
 
 export const PEOPLE_BREAKDOWN_NOTE =
   '@people breaks down by who the activity was with: one series per person by name, an activity with several people counted in each, (none) for no one.'
@@ -239,9 +246,10 @@ export const chartDataQuerySchema = z
       .array(z.string())
       .optional()
       .meta({
-        description: `Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path. ${PEOPLE_BREAKDOWN_NOTE}`,
+        description: `Data fields to break down by (for activity_type source). Multiple fields produce compound series keys. With a measure, an item path such as sets.exercise gives one series per exercise. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight (bench press: 1 set for the chest, 0.5 for the shoulders); exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". It combines with scalar fields, not with another item path. ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
       }),
     ...chartMeasureShape,
+    ...journalChartFilterShape,
     tz: chartDataTzSchema,
   })
   .refine((query) => !itemBreakdownWithoutMeasure(query.breakdown_fields, query.measure), {
@@ -272,6 +280,10 @@ export const chartDataQuerySchema = z
     message: MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH,
     path: ['breakdown_fields'],
   })
+  .superRefine((query, ctx) => {
+    const message = journalChartError(query)
+    if (message) ctx.addIssue({ code: 'custom', message, path: ['source_type'] })
+  })
   .meta({ id: 'ChartDataQuery', description: 'Query parameters for bucketed chart data' })
 
 export type ChartDataQuery = z.infer<typeof chartDataQuerySchema>
@@ -286,9 +298,10 @@ export const chartDataHttpQuerySchema = z
       .string()
       .optional()
       .meta({
-        description: `Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight; exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". ${PEOPLE_BREAKDOWN_NOTE}`,
+        description: `Comma-separated data fields (or item paths) to break down by. With measure set_count, volume or total_reps, sets.exercise.muscle_group gives one series per muscle group, each set counted by the exercise's recruitment weight; exercises not in the catalogue fall under "Not in the catalogue", and those in it without muscle data under "No muscle group". ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
       }),
     ...chartMeasureShape,
+    ...journalChartFilterShape,
     bucket_size: z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).optional(),
     end: z.string().meta({ description: 'End of time range (ISO 8601 string)' }),
     pattern: z.string().optional().meta({ description: 'Pattern to match' }),

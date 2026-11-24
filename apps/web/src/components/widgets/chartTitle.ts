@@ -5,6 +5,7 @@ import {
   muscleGroupFilter,
 } from '@aurboda/api-spec'
 
+import { tagList } from '../../pages/Journal/journal-list'
 import { toDisplayName } from '../../utils/displayName'
 
 interface ChartSource {
@@ -35,4 +36,22 @@ export const measureChartTitle = ({
   const typeName = pattern ? toDisplayName(pattern) : undefined
   const subject = filterSubject(filter_field, filter_value)
   return measure ? measureGoalTitle(measure, subject, typeName) : (subject ?? typeName)
+}
+
+interface JournalTitleSource {
+  aggregation?: string
+  journal_tags?: string
+  source_type: string
+}
+
+/** `Journal entries` or `Journal words`, then ` · #travel #work` when filtered by tags; undefined for any other source. */
+export const journalChartTitle = ({
+  aggregation,
+  journal_tags,
+  source_type,
+}: JournalTitleSource): string | undefined => {
+  if (source_type !== 'journal') return undefined
+  const base = aggregation === 'sum' ? 'Journal words' : 'Journal entries'
+  const tags = tagList(journal_tags)
+  return tags.length > 0 ? `${base} · ${tags.map((tag) => `#${tag}`).join(' ')}` : base
 }

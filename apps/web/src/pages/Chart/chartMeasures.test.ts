@@ -68,6 +68,9 @@ describe('parseAggregation', () => {
   test('the default for the source without one', () => {
     expect(parseAggregation(undefined, 'activity_type', '')).toBe('count')
     expect(parseAggregation(undefined, 'metric', '')).toBe('mean')
+    expect(parseAggregation(undefined, 'journal', '')).toBe('count')
+    expect(parseAggregation('sum', 'journal', '')).toBe('sum')
+    expect(parseAggregation('mean', 'journal', '')).toBe('count')
   })
 
   test("the measure's default without one, or with count", () => {
@@ -165,6 +168,10 @@ describe('aggregationOptions', () => {
   test('per source without a measure', () => {
     expect(values(aggregationOptions('metric', ''))).toEqual(['mean', 'sum', 'count'])
     expect(values(aggregationOptions('activity_type', ''))).toEqual(['sum', 'count'])
+    expect(aggregationOptions('journal', '')).toEqual([
+      { label: 'Entries', value: 'count' },
+      { label: 'Words', value: 'sum' },
+    ])
   })
 
   test('sum, max and average with a measure', () => {

@@ -12,9 +12,13 @@ const requiredText: Partial<Record<WidgetType, readonly string[]>> = {
   trend_chart: ['pattern'],
 }
 
+/** A journal trend takes no pattern: the journal is its source. */
+const journalTrend = (type: WidgetType, config: Record<string, unknown>): boolean =>
+  type === 'trend_chart' && config.source_type === 'journal'
+
 /** The `min(1)` text fields of a widget's config schema that are still blank, which saving the dashboard would reject. */
 export const blankRequiredFields = (type: WidgetType, config: Record<string, unknown>): string[] =>
-  (requiredText[type] ?? []).filter((key) => {
+  (journalTrend(type, config) ? [] : (requiredText[type] ?? [])).filter((key) => {
     const value = config[key]
     return typeof value !== 'string' || !value.trim()
   })

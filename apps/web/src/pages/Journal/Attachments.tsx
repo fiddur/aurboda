@@ -3,7 +3,7 @@ import type { NoteAttachment } from '@aurboda/api-spec'
 import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { fetchNoteAttachmentBlob } from '../../state/api'
-import { resolveInlinePictures, withoutInline } from './inline-pictures'
+import { pictureOrder, pictureStep, resolveInlinePictures, withoutInline } from './inline-pictures'
 
 /**
  * An attachment's bytes as an object URL: fetched with the token (an `<img src>` cannot send it)
@@ -61,29 +61,77 @@ export const useInlinePictures = (
   }, [container, noteId, html, maxEdge])
 }
 
+const STEP_KEYS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 }
+
+/**
+ * One picture full size, stepping to the entry's other `pictureIds` with the arrow keys or the
+ * buttons. The keys are taken in the capture phase so they do not also step to another entry.
+ */
 export const PictureViewer = ({
   noteId,
   attachmentId,
+  pictureIds = [],
   onClose,
 }: {
   noteId: string
   attachmentId: string
+  pictureIds?: readonly string[]
   onClose: () => void
 }) => {
-  const { url, failed } = useAttachmentUrl(noteId, attachmentId, '2000')
+  const [current, setCurrent] = useState(attachmentId)
+  const { url, failed } = useAttachmentUrl(noteId, current, '2000')
+  const previous = pictureStep(pictureIds, current, -1).target
+  const { count, index, target: next } = pictureStep(pictureIds, current, 1)
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') return onClose()
+      const delta = STEP_KEYS[event.key]
+      if (!delta || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+      event.preventDefault()
+      event.stopPropagation()
+      const target = delta < 0 ? previous : next
+      if (target) setCurrent(target)
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose, previous, next])
+  const step = (target: string) => (event: MouseEvent) => {
+    event.stopPropagation()
+    setCurrent(target)
+  }
   return (
     <div class="journal-viewer" role="dialog" aria-label="Picture" onClick={onClose}>
       {url ? (
         <img src={url} alt="" />
       ) : (
         <p>{failed ? 'The picture could not be loaded.' : 'Loading the picture…'}</p>
+      )}
+      {count > 1 && (
+        <>
+          {previous && (
+            <button
+              type="button"
+              class="journal-viewer-step journal-viewer-previous"
+              onClick={step(previous)}
+              aria-label="Previous picture"
+            >
+              ‹
+            </button>
+          )}
+          {next && (
+            <button
+              type="button"
+              class="journal-viewer-step journal-viewer-next"
+              onClick={step(next)}
+              aria-label="Next picture"
+            >
+              ›
+            </button>
+          )}
+          <span class="journal-viewer-count">
+            {index + 1} / {count}
+          </span>
+        </>
       )}
       <button type="button" class="journal-viewer-close" onClick={onClose} aria-label="Close">
         ✕
@@ -159,7 +207,14 @@ export const AttachmentStrip = ({
       {recordings.map((recording) => (
         <RecordingPlayer key={recording.id} noteId={noteId} attachment={recording} />
       ))}
-      {open && <PictureViewer noteId={noteId} attachmentId={open.id} onClose={() => setOpen(undefined)} />}
+      {open && (
+        <PictureViewer
+          noteId={noteId}
+          attachmentId={open.id}
+          pictureIds={pictureOrder(attachments, content)}
+          onClose={() => setOpen(undefined)}
+        />
+      )}
     </div>
   )
 }

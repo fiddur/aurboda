@@ -76,6 +76,29 @@ describe('widgetSources', () => {
   })
 })
 
+test('a journal chart has no source to wait for, and is shown on a new account', () => {
+  const journal: DashboardWidget = {
+    config: { bucket_size: '1w', journal_tags: 'travel', lookback_days: 365, source_type: 'journal' },
+    id: 'journal',
+    type: 'bar_chart',
+  }
+  const combined: DashboardWidget = {
+    config: {
+      layers: [
+        { bucket_size: '1w', kind: 'bars', source_type: 'journal' },
+        { kind: 'trend', pattern: 'steps', source_type: 'metric' },
+      ],
+      lookback_days: 90,
+    },
+    id: 'combined',
+    type: 'combined_chart',
+  }
+  expect(widgetSources(journal)).toBeNull()
+  expect(widgetSources(combined)).toBeNull()
+  const presence = { activity_types: {}, metrics: { steps: false } }
+  expect(waitingWidgetIds(board(journal, combined), presence).size).toBe(0)
+})
+
 describe('dashboardSources', () => {
   test('collects the default dashboard into one sorted, de-duplicated query', () => {
     expect(dashboardSources(defaultDashboardConfig)).toEqual({

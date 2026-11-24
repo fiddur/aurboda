@@ -37,6 +37,8 @@ import {
   NOTES_SEARCH_DEFAULT_LIMIT,
   NOTES_SEARCH_MAX_LIMIT,
   NOTES_SEARCH_RELATED_PAIR_ERROR,
+  NOTES_SEARCH_TAGS_ERROR,
+  notesSearchEntityTypeError,
   normalizeNoteTags,
   normalizeNoteTitle,
   notesSearchRootTypes,
@@ -189,7 +191,7 @@ export interface NotesSearchInput {
 }
 
 export type NotesSearchResult =
-  | { success: true; data: NoteData[]; next_cursor: string | null }
+  | { success: true; data: NoteData[]; next_cursor: string | null; total?: number }
   | { success: false; error: string; errorCode: 'invalid' }
 
 export const NOTE_CONFLICT_ERROR = 'This comment was changed elsewhere'
@@ -855,14 +857,10 @@ const searchInvalid = (error: string): NotesSearchResult => ({ error, errorCode:
 // eslint-disable-next-line complexity -- one check per query parameter
 export async function searchNotesForUser(user: string, input: NotesSearchInput): Promise<NotesSearchResult> {
   const tags = parseNotesSearchTags(input.tags)
-  if (tags === null) return searchInvalid('Not a valid tag list (letters, digits and _, comma-separated)')
+  if (tags === null) return searchInvalid(NOTES_SEARCH_TAGS_ERROR)
   const entityTypes = parseNotesSearchEntityTypes(input.entity_types)
   const unknownType = entityTypes.find((type) => !(notesSearchRootTypes as readonly string[]).includes(type))
-  if (unknownType !== undefined) {
-    return searchInvalid(
-      `Not a comment root type: ${unknownType} (one of ${notesSearchRootTypes.join(', ')})`,
-    )
-  }
+  if (unknownType !== undefined) return searchInvalid(notesSearchEntityTypeError(unknownType))
   for (const date of [input.from, input.to, input.on_this_day]) {
     if (date !== undefined && !isCalendarDate(date)) return searchInvalid(`Not a date (YYYY-MM-DD): ${date}`)
   }
@@ -902,6 +900,7 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
     data: await withReplies(user, page.notes),
     next_cursor: page.next_cursor ? encodeNotesCursor(page.next_cursor) : null,
     success: true,
+    total: page.total,
   }
 }
 

@@ -8,16 +8,54 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { tagList } from '../../pages/Journal/journal-list'
 import { fetchCorrelationSelectors } from '../../state/api'
 import { getMetricDisplayName } from '../../utils/metricLabels'
 import { ActivityTypePicker } from '../ActivityTypePicker'
 import { MetricPicker } from '../MetricPicker'
-import { editConfigValues } from './configValues'
+import { type ConfigValues, editConfigValues, withConfigValue } from './configValues'
 import { offeredWidgetTypes } from './periodWidgets'
 import { RecentActivitiesConfigForm } from './RecentActivitiesConfigForm'
 import { blankRequiredFields } from './requiredConfig'
 import { DAY_OVERVIEW_VISITOR_WARNING, VisibleToVisitorsField } from './VisibleToVisitorsField'
 import './style.css'
+
+const JOURNAL_CONFIG_KEYS = [
+  'journal_entity_types',
+  'journal_q',
+  'journal_related_id',
+  'journal_related_type',
+  'journal_tags',
+] as const
+
+/** A trend card's config on another source: the journal takes no pattern, the others no journal filters. */
+const withTrendSource = (config: ConfigValues, source_type: string): ConfigValues => {
+  const rest = Object.fromEntries(
+    Object.entries(config).filter(
+      ([key]) => !(JOURNAL_CONFIG_KEYS as readonly string[]).includes(key) && key !== 'pattern',
+    ),
+  )
+  return source_type === 'journal'
+    ? { ...rest, source_type }
+    : { ...rest, ...(config.pattern === undefined ? {} : { pattern: config.pattern }), source_type }
+}
+
+/** The journal tags a chart counts, typed comma-separated and kept as stored tags. */
+function JournalTagsInput({ value, onChange }: { value: string; onChange: (tags: string) => void }) {
+  const [text, setText] = useState(value)
+  return (
+    <input
+      type="text"
+      value={text}
+      onInput={(e) => {
+        const raw = (e.target as HTMLInputElement).value
+        setText(raw)
+        onChange(tagList(raw).join(','))
+      }}
+      placeholder="e.g., travel, work"
+    />
+  )
+}
 
 type DashboardEditorProps = {
   sectionId: string
@@ -144,7 +182,7 @@ const widgetTemplates: WidgetTemplate[] = [
       pattern: 'coffee',
       source_type: 'activity_type',
     }),
-    description: 'EMA trend visualization for activity types or metrics',
+    description: 'EMA trend visualization for activity types, metrics or the journal',
     label: 'Trend Chart',
     type: 'trend_chart',
   },
@@ -459,28 +497,41 @@ export function DashboardEditor({
               <label>Source Type</label>
               <select
                 value={(configValues.source_type as string) ?? 'activity_type'}
-                onChange={(e) => updateConfig('source_type', (e.target as HTMLSelectElement).value)}
+                onChange={(e) =>
+                  setConfigValues((prev) => withTrendSource(prev, (e.target as HTMLSelectElement).value))
+                }
               >
                 <option value="activity_type">Activity Type</option>
                 <option value="metric">Metric</option>
+                <option value="journal">Journal</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>{(configValues.source_type as string) === 'metric' ? 'Metric' : 'Pattern'}</label>
-              {(configValues.source_type as string) === 'metric' ? (
-                <MetricPicker
-                  value={(configValues.pattern as string) ?? ''}
-                  onChange={(metric) => updateConfig('pattern', metric)}
-                  placeholder="Search metrics..."
+            {(configValues.source_type as string) === 'journal' ? (
+              <div class="form-group">
+                <label>Tags (comma-separated)</label>
+                <JournalTagsInput
+                  value={(configValues.journal_tags as string) ?? ''}
+                  onChange={(tags) => setConfigValues((prev) => withConfigValue(prev, 'journal_tags', tags))}
                 />
-              ) : (
-                <ActivityTypePicker
-                  value={(configValues.pattern as string) ?? ''}
-                  onChange={(activityType) => updateConfig('pattern', activityType)}
-                  placeholder="e.g., coffee, exercise"
-                />
-              )}
-            </div>
+              </div>
+            ) : (
+              <div class="form-group">
+                <label>{(configValues.source_type as string) === 'metric' ? 'Metric' : 'Pattern'}</label>
+                {(configValues.source_type as string) === 'metric' ? (
+                  <MetricPicker
+                    value={(configValues.pattern as string) ?? ''}
+                    onChange={(metric) => updateConfig('pattern', metric)}
+                    placeholder="Search metrics..."
+                  />
+                ) : (
+                  <ActivityTypePicker
+                    value={(configValues.pattern as string) ?? ''}
+                    onChange={(activityType) => updateConfig('pattern', activityType)}
+                    placeholder="e.g., coffee, exercise"
+                  />
+                )}
+              </div>
+            )}
             <div class="form-group">
               <label>Display Period</label>
               <select
