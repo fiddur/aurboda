@@ -209,6 +209,38 @@ describe('buildChartUrl', () => {
       measure: 'e1rm',
     })
   })
+
+  test('a journal chart carries its filters, no pattern and its words aggregation', () => {
+    const p = params(
+      buildChartUrl({
+        aggregation: 'sum',
+        breakdown_fields: ['@tags'],
+        bucket_size: '1w',
+        chart_type: 'bar',
+        journal_entity_types: 'time,day,activity,meal,report',
+        journal_q: 'lake',
+        journal_related_id: '00000000-0000-4000-8000-000000000001',
+        journal_related_type: 'person',
+        journal_tags: 'travel,work',
+        lookback_days: 365,
+        source_type: 'journal',
+      }),
+    )
+    expect(p.get('source_type')).toBe('journal')
+    expect(p.has('pattern')).toBe(false)
+    expect(p.get('aggregation')).toBe('sum')
+    expect(p.get('breakdown_fields')).toBe('@tags')
+    expect(p.get('journal_tags')).toBe('travel,work')
+    expect(p.get('journal_q')).toBe('lake')
+    expect(p.get('journal_related_type')).toBe('person')
+    expect(p.get('journal_related_id')).toBe('00000000-0000-4000-8000-000000000001')
+    expect(p.get('journal_entity_types')).toBe('time,day,activity,meal,report')
+  })
+
+  test('leaves out empty journal filters', () => {
+    const p = params(buildChartUrl({ chart_type: 'trend', journal_q: '', source_type: 'journal' }))
+    expect(p.has('journal_q')).toBe(false)
+  })
 })
 
 describe('sessionScatterHref', () => {

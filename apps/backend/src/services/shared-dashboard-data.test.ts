@@ -1263,3 +1263,90 @@ describe('resolveDashboardData: correlation', () => {
     })
   })
 })
+
+describe('resolveDashboardData: a journal chart', () => {
+  beforeEach(() => {
+    vi.mocked(getChartData).mockReset()
+    vi.mocked(getTrend).mockReset()
+  })
+
+  test('passes the journal filters to the chart and masks its @tags series', async () => {
+    vi.mocked(getChartData).mockResolvedValue({
+      breakdown_fields: ['@tags', '@people'],
+      breakdown_series: ['travel / Alex', 'work / Alex', 'Other'],
+      buckets: [
+        {
+          bucket_start: '2026-03-02T00:00:00.000Z',
+          series: { Other: 3, 'travel / Alex': 1, 'work / Alex': 2 },
+        },
+      ],
+    })
+    const data = await resolveDashboardData(
+      'alice',
+      board({
+        config: {
+          breakdown_fields: ['@tags', '@people'],
+          bucket_size: '1w',
+          journal_related_id: '00000000-0000-4000-8000-000000000001',
+          journal_related_type: 'person',
+          journal_tags: 'family',
+          lookback_days: 30,
+          masked_breakdown_fields: ['@tags'],
+          source_type: 'journal',
+        },
+        id: 'bars',
+        type: 'bar_chart',
+      }),
+    )
+
+    expect(vi.mocked(getChartData).mock.calls[0]?.[1]).toMatchObject({
+      journal_related_id: '00000000-0000-4000-8000-000000000001',
+      journal_related_type: 'person',
+      journal_tags: 'family',
+      source_type: 'journal',
+    })
+    expect(data.bars).toEqual({
+      data: {
+        breakdown_buckets: [
+          { bucket_start: '2026-03-02T00:00:00.000Z', series: { 'A / Alex': 1, 'B / Alex': 2, Other: 3 } },
+        ],
+        breakdown_series: ['A / Alex', 'B / Alex', 'Other'],
+        buckets: [],
+      },
+      type: 'bar_chart',
+    })
+  })
+
+  test('passes the journal filters to the trend and masks a single @tags field, (none) and Other included', async () => {
+    vi.mocked(getTrend).mockResolvedValue({
+      aggregation: 'count',
+      breakdown_histories: { '(none)': [], Other: [], travel: [] },
+      breakdown_series: ['(none)', 'travel', 'Other'],
+      current_value: 0,
+      display_period: 'monthly',
+      display_unit: 'per month',
+      half_life_days: 15,
+      history: [],
+      lookback_days: 30,
+      pattern: '',
+      source_type: 'journal',
+    })
+    const data = await resolveDashboardData(
+      'alice',
+      board({
+        config: {
+          breakdown_fields: ['@tags'],
+          journal_q: 'sea',
+          lookback_days: 30,
+          masked_breakdown_fields: ['@tags'],
+          source_type: 'journal',
+        },
+        id: 'trend',
+        type: 'trend_chart',
+      }),
+    )
+
+    expect(vi.mocked(getTrend).mock.calls[0]?.[1]).toMatchObject({ journal_q: 'sea', source_type: 'journal' })
+    expect(data.trend).toMatchObject({ data: { breakdown_series: ['A', 'C', 'B'] } })
+  })
+})

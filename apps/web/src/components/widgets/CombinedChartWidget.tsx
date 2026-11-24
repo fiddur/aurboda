@@ -7,7 +7,7 @@ import { fetchChartData, fetchTrend } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
 import { BarChart } from '../charts/BarChart'
 import { barsFetchParams, trendFetchParams } from './chartFetchParams'
-import { measureChartTitle } from './chartTitle'
+import { journalChartTitle, measureChartTitle } from './chartTitle'
 import { type CombinedChartBars, combinedChartParts, nullLayer } from './combinedChart'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
@@ -23,7 +23,7 @@ const NO_BUCKETS: CombinedChartBars['buckets'] = []
 const combinedChartTitle = ({ layers, title }: CombinedChartConfig): string => {
   if (title) return title
   const bars = layers.find((layer) => layer.kind === 'bars')
-  return (bars && (measureChartTitle(bars) ?? bars.pattern)) ?? 'Combined chart'
+  return (bars && (journalChartTitle(bars) ?? measureChartTitle(bars) ?? bars.pattern)) ?? 'Combined chart'
 }
 
 interface CombinedChartViewProps {

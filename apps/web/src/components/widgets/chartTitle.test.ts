@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { measureChartTitle } from './chartTitle'
+import { journalChartTitle, measureChartTitle } from './chartTitle'
 
 describe('measureChartTitle', () => {
   test('names the exercise and the measure', () => {
@@ -35,5 +35,23 @@ describe('measureChartTitle', () => {
   test('is undefined for sources without a measure or item filter', () => {
     expect(measureChartTitle({ pattern: 'running', source_type: 'activity_type' })).toBeUndefined()
     expect(measureChartTitle({ pattern: 'hrv', source_type: 'metric' })).toBeUndefined()
+  })
+})
+
+describe('journalChartTitle', () => {
+  test('counts entries by default and sums words', () => {
+    expect(journalChartTitle({ source_type: 'journal' })).toBe('Journal entries')
+    expect(journalChartTitle({ aggregation: 'count', source_type: 'journal' })).toBe('Journal entries')
+    expect(journalChartTitle({ aggregation: 'sum', source_type: 'journal' })).toBe('Journal words')
+  })
+
+  test('names the tags it is filtered by', () => {
+    expect(journalChartTitle({ journal_tags: 'travel,work', source_type: 'journal' })).toBe(
+      'Journal entries · #travel #work',
+    )
+  })
+
+  test('is undefined for any other source', () => {
+    expect(journalChartTitle({ source_type: 'activity_type' })).toBeUndefined()
   })
 })

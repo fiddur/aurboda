@@ -6,6 +6,7 @@ import {
   type DashboardConfig,
   type DashboardWidget,
   isPeopleBreakdownField,
+  isTagsBreakdownField,
   measureGoalTitle,
 } from '@aurboda/api-spec'
 
@@ -54,24 +55,34 @@ export function chartWidgetMaskedFields(widget: DashboardWidget): string[] {
   return []
 }
 
-/** Whether a chart saved with this mask would show the names of who its activities were with. */
-export const showsPeopleNames = (breakdownFields: string[], masked: string[]): boolean =>
-  breakdownFields.some((f) => isPeopleBreakdownField(f) && !masked.includes(f))
+const isNamesField = (field: string): boolean => isPeopleBreakdownField(field) || isTagsBreakdownField(field)
+
+/** What visitors of a shared board would see of a chart saved with this mask: the tag names, the people's names, or neither. */
+export const unmaskedNamesWarning = (breakdownFields: string[], masked: string[]): string | undefined => {
+  const shown = breakdownFields.filter((f) => isNamesField(f) && !masked.includes(f))
+  const tags = shown.some(isTagsBreakdownField)
+  const people = shown.some(isPeopleBreakdownField)
+  if (!tags && !people) return undefined
+  const what = [tags ? 'the tag names' : '', people ? 'the names of the people' : '']
+    .filter(Boolean)
+    .join(' and ')
+  return `Visitors of a shared board with this chart will see ${what}.`
+}
 
 const chartWidgetBreakdownFields = (widget: DashboardWidget): string[] =>
   widget.type === 'trend_chart' || widget.type === 'bar_chart' ? (widget.config.breakdown_fields ?? []) : []
 
 /**
- * The masked fields a save form starts with: `@people` when the breakdown has it, so names stay off
- * public boards unless the owner unticks it. Updating a widget keeps its own mask, adding `@people`
- * only when the widget did not already break down by it.
+ * The masked fields a save form starts with: `@people` and `@tags` when the breakdown has them, so
+ * names stay off public boards unless the owner unticks them. Updating a widget keeps its own mask,
+ * adding each of them only when the widget did not already break down by it.
  */
 export function initialMaskedFields(breakdownFields: string[], existing?: DashboardWidget): string[] {
-  const people = breakdownFields.filter(isPeopleBreakdownField)
-  if (!existing) return people
-  const masked = chartWidgetMaskedFields(existing)
-  const hadPeople = chartWidgetBreakdownFields(existing).some(isPeopleBreakdownField)
-  return hadPeople ? masked : [...new Set([...masked, ...people])]
+  const names = breakdownFields.filter(isNamesField)
+  if (!existing) return names
+  const had = chartWidgetBreakdownFields(existing)
+  const added = names.filter((f) => !had.includes(f))
+  return [...new Set([...chartWidgetMaskedFields(existing), ...added])]
 }
 
 /**

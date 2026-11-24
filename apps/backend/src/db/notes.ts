@@ -4,6 +4,7 @@ import type { Queryable } from './pool.ts'
 import type { EntityType, Note, NoteRevision } from './types.ts'
 
 import { UUID_RE } from '../utils.ts'
+import { buildBucketExpr } from './bucket-expr.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { buildDynamicUpdate } from './dynamic-update.ts'
 import { type NoteLinkInput, relatedToCondition, replaceNoteLinks } from './note-links.ts'
@@ -440,7 +441,12 @@ const anchoredRootsSql = (
        ) n
        WHERE ${PARENT_IS_LIVE}`
 
-const searchConditions = (param: Param, tz: string, params: NotesSearchParams): string[] => {
+type NotesSearchFilters = Pick<
+  NotesSearchParams,
+  'from' | 'needs_text' | 'on_this_day' | 'related' | 'tags' | 'text' | 'to'
+>
+
+const searchConditions = (param: Param, tz: string, params: NotesSearchFilters): string[] => {
   const localDay = `CASE WHEN n.entity_type = 'day' THEN n."date" ELSE (n.start_time AT TIME ZONE ${tz})::date END`
   const conditions: string[] = []
   if (params.text) {
@@ -588,6 +594,111 @@ export const listNoteTags = async (
     last_used: new Date(row.last_used),
     tag: row.tag,
   }))
+}
+
+/** The search filters a journal chart narrows its entries by, as {@link searchNotes} reads them. */
+export interface JournalFilterParams {
+  entity_types: EntityType[]
+  tz: string
+  text?: NotesSearchParams['text']
+  tags?: string[]
+  related?: NoteLinkInput
+}
+
+export interface JournalSeriesParams extends JournalFilterParams {
+  start: Date
+  end: Date
+  bucket_size: string
+  /** `count` counts entries; `words` sums the words of each entry's own content. */
+  value: 'count' | 'words'
+  breakdown: { tags: boolean; people: boolean }
+}
+
+export interface JournalSeriesRow {
+  bucket_start: Date
+  /** With the tags breakdown: the tag, or null for an untagged entry. */
+  tag?: string | null
+  /** With the people breakdown: the person, or null for an entry related to no live person. */
+  person?: { id: string; name: string; created_at: Date } | null
+  value: number
+}
+
+const WORDS_SQL = `CASE WHEN n.content ~ '^\\s*$' THEN 0
+              ELSE array_length(regexp_split_to_array(regexp_replace(n.content, '^\\s+|\\s+$', '', 'g'), '\\s+'), 1) END`
+
+const ENTRY_TAGS_LATERAL = `LEFT JOIN LATERAL (SELECT DISTINCT unnest(n.tags || n.hashtags) AS tag) t ON TRUE`
+
+const ENTRY_PEOPLE_LATERAL = `LEFT JOIN LATERAL (
+       SELECT DISTINCT p.id AS person_id, p.name AS person_name, p.created_at AS person_created_at
+         FROM note_links l
+         JOIN people p ON p.id = l.entity_id AND p.deleted_at IS NULL
+        WHERE l.note_id = n.id AND l.entity_type = 'person'
+     ) ppl ON TRUE`
+
+/**
+ * The roots {@link searchNotes} lists for the filters, anchored in [start, end], per bucket of their
+ * anchor: how many there are, or how many words they hold. With a breakdown, one row per bucket and
+ * tag (each distinct tag of an entry, explicit or #hashtag) and/or person (each live person the
+ * entry is related to), an entry counted under each of its tags and people.
+ */
+export const getJournalSeries = async (
+  user: string,
+  params: JournalSeriesParams,
+): Promise<JournalSeriesRow[]> => {
+  const { param, values } = paramList()
+  const tz = param(params.tz)
+  const roots = anchoredRootsSql(param, tz, params.entity_types, searchConditions(param, tz, params))
+  const bucket = buildBucketExpr(params.bucket_size, 'n.anchor', values.length + 1, params.tz)
+  values.push(...bucket.params)
+  const start = param(params.start)
+  const end = param(params.end)
+  const columns = [
+    ...(params.breakdown.tags ? ['t.tag'] : []),
+    ...(params.breakdown.people ? ['ppl.person_id', 'ppl.person_name', 'ppl.person_created_at'] : []),
+  ]
+  const result = await query(
+    user,
+    `SELECT ${bucket.expr} AS bucket_start,
+            ${[...columns, params.value === 'count' ? 'count(*)' : `SUM(${WORDS_SQL})`].join(', ')} AS value
+       FROM (${roots}
+     ) n
+     ${params.breakdown.tags ? ENTRY_TAGS_LATERAL : ''}
+     ${params.breakdown.people ? ENTRY_PEOPLE_LATERAL : ''}
+      WHERE n.anchor BETWEEN ${start} AND ${end}
+      GROUP BY ${['1', ...columns].join(', ')}
+      ORDER BY 1`,
+    values,
+  )
+  return result.rows.map((row) => ({
+    bucket_start: new Date(row.bucket_start),
+    ...(params.breakdown.tags ? { tag: row.tag ?? null } : {}),
+    ...(params.breakdown.people
+      ? {
+          person:
+            row.person_id == null
+              ? null
+              : { created_at: new Date(row.person_created_at), id: row.person_id, name: row.person_name },
+        }
+      : {}),
+    value: Number(row.value),
+  }))
+}
+
+/** The local day (`YYYY-MM-DD` in `tz`) of the earliest root {@link searchNotes} lists for the filters. */
+export const getFirstJournalDay = async (
+  user: string,
+  params: JournalFilterParams,
+): Promise<string | undefined> => {
+  const { param, values } = paramList()
+  const tz = param(params.tz)
+  const roots = anchoredRootsSql(param, tz, params.entity_types, searchConditions(param, tz, params))
+  const result = await query<{ first_day: string | null }>(
+    user,
+    `SELECT to_char(min(n.anchor) AT TIME ZONE ${tz}, 'YYYY-MM-DD') AS first_day FROM (${roots}
+     ) n`,
+    values,
+  )
+  return result.rows[0]?.first_day ?? undefined
 }
 
 /** Every live note, of any kind (replies included), carrying one of `tags` explicitly or as a #hashtag. */

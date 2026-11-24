@@ -592,6 +592,15 @@ export const notesSearchRootTypes = entityTypes.filter((type) => type !== 'note'
 
 export const NOTES_SEARCH_RELATED_PAIR_ERROR = 'related_type and related_id go together'
 
+export const NOTES_SEARCH_TAGS_ERROR = 'Not a valid tag list (letters, digits and _, comma-separated)'
+
+export const notesSearchEntityTypeError = (type: string): string =>
+  `Not a comment root type: ${type} (one of ${notesSearchRootTypes.join(', ')})`
+
+/** The first type in the `entity_types` search parameter that is not a comment root type. */
+export const unknownNotesSearchEntityType = (raw: string | undefined): string | undefined =>
+  splitList(raw).find((type) => !(notesSearchRootTypes as readonly string[]).includes(type))
+
 export const NOTES_SEARCH_DEFAULT_ENTITY_TYPES: readonly EntityType[] = freeStandingNoteTypes
 
 const splitList = (raw: string | undefined): string[] =>
@@ -619,12 +628,7 @@ const notesEntityTypesQuerySchema = z.string().optional().meta({
 const checkEntityTypes = (ctx: CheckContext, raw: string | undefined): void => {
   for (const type of splitList(raw)) {
     if (!(notesSearchRootTypes as readonly string[]).includes(type)) {
-      pushIssue(
-        ctx,
-        'entity_types',
-        type,
-        `Not a comment root type: ${type} (one of ${notesSearchRootTypes.join(', ')})`,
-      )
+      pushIssue(ctx, 'entity_types', type, notesSearchEntityTypeError(type))
     }
   }
 }
@@ -678,7 +682,7 @@ export const notesSearchQuerySchema = z
   .check((ctx) => {
     const query = ctx.value
     if (parseNotesSearchTags(query.tags) === null) {
-      pushIssue(ctx, 'tags', query.tags, 'Not a valid tag list (letters, digits and _, comma-separated)')
+      pushIssue(ctx, 'tags', query.tags, NOTES_SEARCH_TAGS_ERROR)
     }
     checkEntityTypes(ctx, query.entity_types)
     if (query.from !== undefined && query.to !== undefined && query.from > query.to) {

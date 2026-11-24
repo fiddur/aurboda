@@ -8,6 +8,7 @@ import {
   type ExerciseMuscleGroup,
   isPeopleBreakdownField,
   isTimeWeightedMetric,
+  type JournalChartFilters,
   muscleGroupBreakdownPath,
   muscleGroupFilter,
 } from '@aurboda/api-spec'
@@ -24,6 +25,7 @@ import {
 } from '../db/index.ts'
 import { sampleRowsSql } from '../db/time-weighted.ts'
 import { combineMeasures, listItems, parseFieldPath } from './activity-measures.ts'
+import { getJournalChartData } from './journal-chart.ts'
 import {
   type ExerciseEntryResolver,
   muscleGroupContributions,
@@ -50,7 +52,7 @@ import { getEffectiveHrZones } from './settings.ts'
 
 export { buildBucketExpr }
 
-export interface ChartDataInput {
+export interface ChartDataInput extends JournalChartFilters {
   activity_type_id?: string
   aggregation: ChartDataAggregation
   breakdown_fields?: string[]
@@ -661,6 +663,8 @@ export const getChartData = async (user: string, input: ChartDataInput): Promise
   const { activity_type_id, aggregation, bucket_size, end, pattern, source_type, start, tag_definition_id } =
     input
   const tz = input.tz ?? 'UTC'
+
+  if (source_type === 'journal') return getJournalChartData(user, input, tz)
 
   if (source_type === 'activity_type') {
     return pattern ? queryActivityTypeChart(user, input, pattern, tz) : { buckets: [] }

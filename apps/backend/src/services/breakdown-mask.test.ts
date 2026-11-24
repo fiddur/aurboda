@@ -62,4 +62,11 @@ describe('maskBreakdownNames', () => {
     const map = maskBreakdownNames(names, ['partner', 'place'], ['partner'])
     expect(new Set(map.values()).size).toBe(names.length)
   })
+
+  test("a journal breakdown's Other keeps its name among composite series", () => {
+    const map = maskBreakdownNames(['travel / Alex', 'work / Sam', 'Other'], ['@tags', '@people'], ['@tags'])
+    expect(map.get('travel / Alex')).toBe('A / Alex')
+    expect(map.get('work / Sam')).toBe('B / Sam')
+    expect(map.get('Other') ?? 'Other').toBe('Other')
+  })
 })

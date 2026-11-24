@@ -7,12 +7,15 @@ import {
   combinedChartBarsLayerSchema,
   dataFieldDefinitionSchema,
   dataItemFieldDefinitionSchema,
+  goalSchema,
+  journalChartError,
   muscleGroupBreakdownPath,
   muscleGroupFilter,
   muscleGroupHistoryPeriod,
   muscleGroupHistoryQuerySchema,
   recordCardConfigSchema,
   storedActivityTypeCatalogEntrySchema,
+  trendChartConfigSchema,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
@@ -381,5 +384,102 @@ describe('muscleGroupHistoryQuerySchema', () => {
       start: '2026-03-01T00:00:00Z',
     })
     expect(result.error?.issues.map((i) => i.message)).toEqual(['start must be before end'])
+  })
+})
+
+describe('journalChartError', () => {
+  const journal = { source_type: 'journal' }
+
+  test('a journal query with its own fields and filters passes', () => {
+    expect(
+      journalChartError({
+        ...journal,
+        aggregation: 'sum',
+        breakdown_fields: ['@tags', '@people'],
+        journal_entity_types: 'time,day,activity',
+        journal_related_id: '00000000-0000-4000-8000-000000000001',
+        journal_related_type: 'person',
+        journal_tags: 'travel,work',
+      }),
+    ).toBeUndefined()
+  })
+
+  test.each([
+    [{ breakdown_fields: ['mood'] }, 'a journal breakdown is @tags or @people'],
+    [{ measure: 'e1rm' }, 'measure and filter_field are for activity_type sources'],
+    [{ filter_field: 'sets.exercise' }, 'measure and filter_field are for activity_type sources'],
+    [{ aggregation: 'mean' }, 'a journal chart counts entries (count) or sums their words (sum)'],
+    [{ aggregation: 'max' }, 'a journal chart counts entries (count) or sums their words (sum)'],
+    [{ journal_tags: 'not a tag!' }, 'Not a valid tag list (letters, digits and _, comma-separated)'],
+    [{ journal_entity_types: 'time,note' }, expect.stringContaining('Not a comment root type: note')],
+    [{ journal_related_type: 'person' }, 'related_type and related_id go together'],
+  ])('a journal query with %o is refused', (extra, message) => {
+    expect(journalChartError({ ...journal, ...extra })).toEqual(message)
+  })
+
+  test('the breakdown rule comes first', () => {
+    expect(journalChartError({ ...journal, aggregation: 'mean', breakdown_fields: ['mood'] })).toBe(
+      'a journal breakdown is @tags or @people',
+    )
+  })
+
+  test('another source takes no journal filter and no @tags', () => {
+    const metric = { pattern: 'weight', source_type: 'metric' }
+    expect(journalChartError(metric)).toBeUndefined()
+    expect(journalChartError({ ...metric, journal_q: 'sea' })).toBe(
+      'journal_* filters need source_type journal',
+    )
+    expect(journalChartError({ ...metric, breakdown_fields: ['@tags'] })).toBe('@tags is a journal breakdown')
+  })
+
+  test('chartDataQuerySchema mirrors it', () => {
+    const query = { end: '2026-04-01T00:00:00Z', start: '2026-03-01T00:00:00Z' }
+    expect(chartDataQuerySchema.safeParse({ ...query, source_type: 'journal' }).success).toBe(true)
+    expect(
+      chartDataQuerySchema
+        .safeParse({ ...query, aggregation: 'mean', source_type: 'journal' })
+        .error?.issues.map((i) => i.message),
+    ).toEqual(['a journal chart counts entries (count) or sums their words (sum)'])
+    expect(
+      chartDataQuerySchema
+        .safeParse({ ...query, journal_tags: 'travel', pattern: 'weight', source_type: 'metric' })
+        .error?.issues.map((i) => i.message),
+    ).toEqual(['journal_* filters need source_type journal'])
+  })
+
+  test('a trend goal does not take the journal source', () => {
+    const goal = {
+      goal_type: 'trend',
+      id: '00000000-0000-4000-8000-000000000001',
+      min: 1,
+      pattern: 'running',
+    }
+    expect(goalSchema.safeParse({ ...goal, source_type: 'activity_type' }).success).toBe(true)
+    expect(goalSchema.safeParse({ ...goal, source_type: 'journal' }).success).toBe(false)
+  })
+})
+
+describe('dashboard chart configs with the journal source', () => {
+  test('a bar chart and a trend chart take it without a pattern, with its filters', () => {
+    expect(
+      barChartConfigSchema.safeParse({
+        breakdown_fields: ['@tags'],
+        bucket_size: '1w',
+        journal_tags: 'travel',
+        lookback_days: 30,
+        source_type: 'journal',
+      }).success,
+    ).toBe(true)
+    expect(trendChartConfigSchema.safeParse({ journal_q: 'sea', source_type: 'journal' }).success).toBe(true)
+  })
+
+  test('a combined chart bars layer keeps the journal filters', () => {
+    const layer = combinedChartBarsLayerSchema.parse({
+      bucket_size: '1w',
+      journal_tags: 'travel',
+      kind: 'bars',
+      source_type: 'journal',
+    })
+    expect(layer.journal_tags).toBe('travel')
   })
 })

@@ -4,6 +4,7 @@ import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
 import { chartFilterFieldSchema, PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, queryBooleanSchema } from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
+import { JOURNAL_BREAKDOWN_NOTE, journalChartFilterShape } from './journal-chart.ts'
 import { mediaPlaySourceSchema } from './media.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
 import { trendMeasureShape, trendMissingDaysSchema } from './trends.ts'
@@ -110,10 +111,12 @@ export const trendChartConfigSchema = z
     breakdown_fields: z
       .array(z.string())
       .optional()
-      .meta({ description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
+      .meta({
+        description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
+      }),
     masked_breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names',
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names, @tags to show letters instead of tags',
     }),
     display_period: z
       .enum(['daily', 'weekly', 'monthly'])
@@ -122,9 +125,15 @@ export const trendChartConfigSchema = z
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
     lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
     missing_days: trendMissingDaysSchema.optional(),
-    pattern: z.string().min(1).meta({ description: 'Tag pattern (regex) or metric name' }),
+    pattern: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({ description: "Tag pattern (regex) or metric name; not used by the 'journal' source" }),
     since: chartSinceSchema,
-    source_type: z.enum(['tag', 'metric', 'activity_type']).meta({ description: 'Data source type' }),
+    source_type: z
+      .enum(['tag', 'metric', 'activity_type', 'journal'])
+      .meta({ description: 'Data source type' }),
     tag_definition_id: z
       .string()
       .uuid()
@@ -132,6 +141,7 @@ export const trendChartConfigSchema = z
       .meta({ description: 'Tag definition ID (alternative to pattern)' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
     ...trendMeasureShape,
+    ...journalChartFilterShape,
   })
   .meta({ id: 'TrendChartConfig' })
 
@@ -155,19 +165,25 @@ export const barChartConfigSchema = z
     breakdown_fields: z
       .array(z.string())
       .optional()
-      .meta({ description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE}` }),
+      .meta({
+        description: `Categorical data fields to break the series down by. ${PEOPLE_BREAKDOWN_NOTE} ${JOURNAL_BREAKDOWN_NOTE}`,
+      }),
     masked_breakdown_fields: z.array(z.string()).optional().meta({
       description:
-        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names',
+        'Subset of breakdown_fields whose values are masked (shown as A, B, C…) to public viewers of a shared board; list @people to show letters instead of names, @tags to show letters instead of tags',
     }),
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),
     lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
-    pattern: z.string().min(1).optional().meta({ description: 'Tag pattern (regex) or metric name' }),
+    pattern: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({ description: "Tag pattern (regex) or metric name; not used by the 'journal' source" }),
     since: chartSinceSchema,
     source_type: z
-      .enum(['tag', 'metric', 'productivity_category', 'activity_type'])
+      .enum(['tag', 'metric', 'productivity_category', 'activity_type', 'journal'])
       .meta({ description: 'Data source type' }),
     tag_definition_id: z
       .string()
@@ -175,6 +191,7 @@ export const barChartConfigSchema = z
       .optional()
       .meta({ description: 'Tag definition ID (alternative to pattern)' }),
     title: z.string().optional().meta({ description: 'Chart title' }),
+    ...journalChartFilterShape,
   })
   .meta({ id: 'BarChartConfig' })
 

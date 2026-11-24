@@ -14,7 +14,11 @@ import {
   isLongText,
   isUnfiltered,
   type JournalFilters,
+  commentsFromQuery,
+  journalChartHref,
   journalQueryFor,
+  searchFromQuery,
+  tagList,
   tagsFromQuery,
 } from './journal-list'
 
@@ -153,6 +157,57 @@ describe('tagsFromQuery', () => {
     expect(tagsFromQuery({ tag: '' })).toEqual([])
     expect(tagsFromQuery({ tag: '123' })).toEqual([])
     expect(tagsFromQuery({ person: 'x' })).toEqual([])
+  })
+})
+
+describe('tagList', () => {
+  test('normalises each tag, drops what is not one and repeats', () => {
+    expect(tagList('#Travel, work,,123,travel')).toEqual(['travel', 'work'])
+    expect(tagList(undefined)).toEqual([])
+    expect(tagList('')).toEqual([])
+  })
+})
+
+describe('the other URL readers', () => {
+  test('a comma-separated ?tag= opens with each tag', () => {
+    expect(tagsFromQuery({ tag: 'travel,Work' })).toEqual(['travel', 'work'])
+  })
+
+  test('?q= prefills the search, ?comments=1 shows comments', () => {
+    expect(searchFromQuery({ q: 'lake walk' })).toBe('lake walk')
+    expect(searchFromQuery({})).toBe('')
+    expect(commentsFromQuery({ comments: '1' })).toBe(true)
+    expect(commentsFromQuery({ comments: '0' })).toBe(false)
+    expect(commentsFromQuery({})).toBe(false)
+  })
+})
+
+describe('journalChartHref', () => {
+  const params = (href: string) => Object.fromEntries(new URLSearchParams(href.split('?')[1]))
+  const none = { related: undefined, tags: [], withComments: false }
+
+  test('without filters, entries per week over a year', () => {
+    const href = journalChartHref(none, '')
+    expect(href.startsWith('/chart?')).toBe(true)
+    expect(params(href)).toEqual({
+      bucket_size: '1w',
+      chart_type: 'bar',
+      lookback_days: '365',
+      source_type: 'journal',
+    })
+  })
+
+  test('carries the tags, the related filter, the search and the comments', () => {
+    const related = { id: '00000000-0000-4000-8000-000000000001', type: 'person' as const }
+    expect(
+      params(journalChartHref({ related, tags: ['travel', 'work'], withComments: true }, ' lake ')),
+    ).toMatchObject({
+      journal_entity_types: 'time,day,activity,meal,report',
+      journal_q: 'lake',
+      journal_related_id: related.id,
+      journal_related_type: 'person',
+      journal_tags: 'travel,work',
+    })
   })
 })
 

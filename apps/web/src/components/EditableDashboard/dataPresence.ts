@@ -28,8 +28,9 @@ const metricSource = (metric: string): WidgetSources => ({
 })
 const typeSource = (...types: string[]): WidgetSources => ({ activity_types: types, metrics: [] })
 
+/** A journal chart, like one without a pattern, has no metric or activity type to check, so it is always shown. */
 const chartSource = (sourceType: string, pattern: string | undefined): WidgetSources | null => {
-  if (!pattern) return null
+  if (sourceType === 'journal' || !pattern) return null
   if (sourceType === 'metric') return metricSource(pattern)
   if (sourceType === 'activity_type') return typeSource(pattern)
   return null

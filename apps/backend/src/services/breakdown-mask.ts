@@ -18,6 +18,8 @@
  * no actual value.
  */
 
+import { JOURNAL_OTHER_SERIES } from '@aurboda/api-spec'
+
 const SERIES_DELIMITER = ' / '
 
 /** Spreadsheet-style positional label: 0→A, 1→B, … 25→Z, 26→AA, 27→AB, … */
@@ -60,7 +62,11 @@ export function maskBreakdownNames(
 
   if (maskedIndexes.length === 0 || seriesNames.length === 0) return new Map()
 
-  const splitsCleanly = seriesNames.every(
+  // A journal breakdown's folded rest names no value of any field; with several fields it is one part, not one per field.
+  const composites =
+    breakdownFields.length > 1 ? seriesNames.filter((name) => name !== JOURNAL_OTHER_SERIES) : seriesNames
+
+  const splitsCleanly = composites.every(
     (name) => name.split(SERIES_DELIMITER).length === breakdownFields.length,
   )
 
@@ -73,11 +79,11 @@ export function maskBreakdownNames(
   // Per masked field, letter its distinct values independently.
   const labelByIndex = new Map<number, Map<string, string>>()
   for (const i of maskedIndexes) {
-    labelByIndex.set(i, labelMap(seriesNames.map((name) => name.split(SERIES_DELIMITER)[i])))
+    labelByIndex.set(i, labelMap(composites.map((name) => name.split(SERIES_DELIMITER)[i])))
   }
 
   const result = new Map<string, string>()
-  for (const name of seriesNames) {
+  for (const name of composites) {
     const masked = name
       .split(SERIES_DELIMITER)
       .map((part, i) => labelByIndex.get(i)?.get(part) ?? part)
