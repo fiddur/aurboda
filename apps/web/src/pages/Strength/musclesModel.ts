@@ -263,6 +263,13 @@ export const scoredAsOneNote = (group: StrengthScoreGroupResult): string | undef
     ? `${group.name} is scored as one group: ${andList(group.muscle_groups.map((g) => exerciseMuscleInfo[g].name))}.`
     : undefined
 
+export const notScoredLabel = (name: string): string =>
+  `${name} ${name.endsWith('s') ? 'aren’t' : 'isn’t'} scored`
+
+export const SCORE_CHANGE_COLUMN = `±${SCORE_CHANGE_DAYS} d`
+
+export const SCORE_CHANGE_TITLE = `Change in ${SCORE_CHANGE_DAYS} days`
+
 export const unscoredText = (name: string): string =>
   `No lift is scored for ${name.toLowerCase()}, so it has no strength score.`
 

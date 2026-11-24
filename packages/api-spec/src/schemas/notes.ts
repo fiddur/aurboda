@@ -700,6 +700,9 @@ export const notesSearchResponseSchema = baseResponseSchema
       .nullable()
       .optional()
       .meta({ description: 'Cursor of the next page, or null when this is the last' }),
+    total: z.number().int().min(0).optional().meta({
+      description: 'How many entries match the query across every page; on the first page (no cursor) only',
+    }),
   })
   .meta({ id: 'NotesSearchResponse' })
 

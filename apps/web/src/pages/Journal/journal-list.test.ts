@@ -6,6 +6,7 @@ import {
   dayHeading,
   daysLeft,
   daysLeftLabel,
+  entryCountLabel,
   entryDate,
   entryGlimpse,
   entryTimeLabel,
@@ -152,5 +153,19 @@ describe('tagsFromQuery', () => {
     expect(tagsFromQuery({ tag: '' })).toEqual([])
     expect(tagsFromQuery({ tag: '123' })).toEqual([])
     expect(tagsFromQuery({ person: 'x' })).toEqual([])
+  })
+})
+
+describe('entryCountLabel', () => {
+  test('counts every entry without filters, the matching ones with', () => {
+    expect(entryCountLabel(1234, true)).toBe('1,234 entries')
+    expect(entryCountLabel(1, true)).toBe('1 entry')
+    expect(entryCountLabel(12, false)).toBe('12 entries match')
+    expect(entryCountLabel(1, false)).toBe('1 entry matches')
+  })
+
+  test('says nothing when there are none or the count is not known', () => {
+    expect(entryCountLabel(0, true)).toBeUndefined()
+    expect(entryCountLabel(undefined, false)).toBeUndefined()
   })
 })

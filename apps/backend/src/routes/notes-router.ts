@@ -93,7 +93,7 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
       }
-      res.json({ data: result.data, next_cursor: result.next_cursor, success: true })
+      res.json({ data: result.data, next_cursor: result.next_cursor, success: true, total: result.total })
     },
   )
 

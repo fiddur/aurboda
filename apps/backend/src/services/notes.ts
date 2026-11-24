@@ -189,7 +189,7 @@ export interface NotesSearchInput {
 }
 
 export type NotesSearchResult =
-  | { success: true; data: NoteData[]; next_cursor: string | null }
+  | { success: true; data: NoteData[]; next_cursor: string | null; total?: number }
   | { success: false; error: string; errorCode: 'invalid' }
 
 export const NOTE_CONFLICT_ERROR = 'This comment was changed elsewhere'
@@ -902,6 +902,7 @@ export async function searchNotesForUser(user: string, input: NotesSearchInput):
     data: await withReplies(user, page.notes),
     next_cursor: page.next_cursor ? encodeNotesCursor(page.next_cursor) : null,
     success: true,
+    total: page.total,
   }
 }
 
