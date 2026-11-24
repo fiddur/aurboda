@@ -20,7 +20,7 @@ export const parseScatterQuery = (
 
 /** The scatter is a chart of an activity type's sessions: any other source falls back to the default chart. */
 export const scatterAllowed = (query: Partial<Record<'chart_type' | 'source_type', string>>): boolean =>
-  query.chart_type === 'scatter' && query.source_type !== 'metric'
+  query.chart_type === 'scatter' && query.source_type !== 'metric' && query.source_type !== 'journal'
 
 export const scatterParams = (state: ScatterState): Record<string, string> => ({
   y: state.scatter_y,

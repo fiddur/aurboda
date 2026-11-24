@@ -1,4 +1,9 @@
-import type { BarChartConfig, TrendChartConfig } from '@aurboda/api-spec'
+import {
+  type BarChartConfig,
+  type JournalChartFilters,
+  journalChartFiltersOf,
+  type TrendChartConfig,
+} from '@aurboda/api-spec'
 
 import type { FetchChartDataParams } from '../../state/api/chart-data'
 import type { FetchTrendParams } from '../../state/api/trends'
@@ -15,7 +20,8 @@ type BarsSource = Pick<
   | 'pattern'
   | 'source_type'
   | 'tag_definition_id'
->
+> &
+  JournalChartFilters
 
 type TrendSource = Pick<
   TrendChartConfig,
@@ -28,7 +34,8 @@ type TrendSource = Pick<
   | 'missing_days'
   | 'pattern'
   | 'source_type'
->
+> &
+  JournalChartFilters
 
 /** The chart-data query of a bar chart source: shared by the bar chart widget and a combined chart's bars layer. */
 export const barsFetchParams = (
@@ -46,6 +53,7 @@ export const barsFetchParams = (
     ...(source.tag_definition_id ? { activity_type_id: source.tag_definition_id } : {}),
     ...(measure ? { measure } : {}),
     ...(measure && filter_field && filter_value ? { filter_field, filter_value } : {}),
+    ...journalChartFiltersOf(source),
   }
 }
 
@@ -61,8 +69,9 @@ export const trendFetchParams = (source: TrendSource, lookbackDays: number): Fet
         }),
     half_life_days: source.half_life_days ?? (measure ? MEASURE_HALF_LIFE_DEFAULT : EMA_HALF_LIFE_DEFAULT),
     lookback_days: lookbackDays,
-    pattern: source.pattern ?? '',
+    ...(source_type === 'journal' ? {} : { pattern: source.pattern ?? '' }),
     source_type,
     ...(missing_days ? { missing_days } : {}),
+    ...journalChartFiltersOf(source),
   }
 }

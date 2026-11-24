@@ -1,3 +1,4 @@
+import { JOURNAL_BREAKDOWN_MAX_SERIES } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { query } from '../db/connection.ts'
@@ -667,12 +668,16 @@ describe('journal chart data', () => {
       bucket_size: '1M',
       source_type: 'journal',
     })
+    const kept = JOURNAL_BREAKDOWN_MAX_SERIES - 1
+    const folded = 13 - kept
     expect(result.breakdown_series).toEqual([
-      ...Array.from({ length: 11 }, (_, i) => `tag${String(i + 2).padStart(2, '0')}`),
+      ...Array.from({ length: kept }, (_, i) => `tag${String(i + folded).padStart(2, '0')}`),
       'Other',
     ])
     expect(result.buckets).toEqual([
-      expect.objectContaining({ series: expect.objectContaining({ Other: 3, tag12: 13 }) }),
+      expect.objectContaining({
+        series: expect.objectContaining({ Other: (folded * (folded + 1)) / 2, tag12: 13 }),
+      }),
     ])
   })
 

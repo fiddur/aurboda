@@ -1,3 +1,5 @@
+import { type JournalChartFilters, journalChartFiltersOf } from '@aurboda/api-spec'
+
 /**
  * Origin of a chart the user navigated from: identifies the exact board widget
  * so the chart page can offer to update it in place. `board_id` is 'home' for
@@ -9,7 +11,7 @@ export interface ChartOrigin {
   widget_id: string
 }
 
-interface ChartUrlParams {
+interface ChartUrlParams extends JournalChartFilters {
   aggregation?: string
   bucket_size?: string
   chart_type: 'trend' | 'bar'
@@ -38,6 +40,12 @@ function setModeParams(qs: URLSearchParams, params: ChartUrlParams) {
   }
 }
 
+function setJournalParams(qs: URLSearchParams, params: JournalChartFilters) {
+  for (const [key, value] of Object.entries(journalChartFiltersOf(params))) {
+    if (value) qs.set(key, value)
+  }
+}
+
 export function buildChartUrl(params: ChartUrlParams): string {
   const qs = new URLSearchParams()
   qs.set('source_type', params.source_type)
@@ -59,6 +67,8 @@ export function buildChartUrl(params: ChartUrlParams): string {
     qs.set('filter_field', params.filter_field)
     qs.set('filter_value', params.filter_value)
   }
+
+  setJournalParams(qs, params)
 
   if (params.origin) {
     qs.set('board_id', params.origin.board_id)

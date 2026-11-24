@@ -3,7 +3,12 @@
  * links to the full chart page only when an `href` is supplied (home dashboard).
  */
 
-import { type BarChartConfig, type BarChartData, muscleGroupFilter } from '@aurboda/api-spec'
+import {
+  type BarChartConfig,
+  type BarChartData,
+  journalChartFiltersOf,
+  muscleGroupFilter,
+} from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'preact/hooks'
 
@@ -14,7 +19,7 @@ import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, breakdownBarSeries } from '../charts/breakdown'
 import { barsFetchParams } from './chartFetchParams'
-import { measureChartTitle } from './chartTitle'
+import { journalChartTitle, measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
 
 const NO_BUCKETS: BarChartData['buckets'] = []
@@ -26,9 +31,20 @@ interface BarChartViewProps {
   href?: string
 }
 
+const barChartTitle = (config: BarChartConfig): string =>
+  config.title ??
+  journalChartTitle(config) ??
+  measureChartTitle(config) ??
+  `${config.pattern ?? 'chart'} (${config.bucket_size})`
+
+/** A journal breakdown's tags or people are parts of one count, and a muscle group's parts of one measure. */
+const stackedBars = (config: BarChartConfig): boolean =>
+  config.source_type === 'journal' ||
+  muscleGroupFilter(config.filter_field, config.filter_value) !== undefined
+
 export function BarChartView({ config, data, href }: BarChartViewProps) {
-  const { pattern, title, bucket_size } = config
-  const displayTitle = title ?? measureChartTitle(config) ?? `${pattern ?? 'chart'} (${bucket_size})`
+  const { bucket_size } = config
+  const displayTitle = barChartTitle(config)
 
   const breakdownSeries = data?.breakdown_series
   const breakdownBuckets = data?.breakdown_buckets
@@ -48,7 +64,7 @@ export function BarChartView({ config, data, href }: BarChartViewProps) {
             height={200}
             bucketSize={bucket_size}
             multiSeries={multiSeries}
-            stacked={muscleGroupFilter(config.filter_field, config.filter_value) !== undefined}
+            stacked={stackedBars(config)}
           />
         </>
       ) : (
@@ -82,7 +98,6 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     source_type,
     pattern,
     tag_definition_id: activity_type_id,
-    title,
     bucket_size,
     lookback_days,
     breakdown_fields,
@@ -93,9 +108,10 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
   } = config
   const params = barsFetchParams(config, widgetRange(lookback_days, since, new Date()))
   const { aggregation } = params
+  const journalFilters = journalChartFiltersOf(params)
 
   const chartQuery = useQuery({
-    enabled: Boolean(pattern ?? activity_type_id),
+    enabled: source_type === 'journal' || Boolean(pattern ?? activity_type_id),
     queryFn: () => fetchChartData({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'chart-data',
@@ -110,6 +126,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
       measure,
       filter_field,
       filter_value,
+      journalFilters,
     ],
     ...HEAVY_QUERY_OPTIONS,
     staleTime: 5 * 60 * 1000,
@@ -132,7 +149,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     [chartData],
   )
 
-  const displayTitle = title ?? measureChartTitle(config) ?? `${pattern ?? 'chart'} (${bucket_size})`
+  const displayTitle = barChartTitle(config)
   const chartUrl = buildChartUrl({
     aggregation,
     breakdown_fields,
@@ -146,6 +163,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     measure: params.measure,
     filter_field: params.filter_field,
     filter_value: params.filter_value,
+    ...journalFilters,
     origin,
   })
 

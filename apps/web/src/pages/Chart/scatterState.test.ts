@@ -25,6 +25,7 @@ describe('scatterAllowed', () => {
     expect(scatterAllowed({ chart_type: 'scatter', source_type: 'activity_type' })).toBe(true)
     expect(scatterAllowed({ chart_type: 'scatter' })).toBe(true)
     expect(scatterAllowed({ chart_type: 'scatter', source_type: 'metric' })).toBe(false)
+    expect(scatterAllowed({ chart_type: 'scatter', source_type: 'journal' })).toBe(false)
     expect(scatterAllowed({ chart_type: 'bar', source_type: 'activity_type' })).toBe(false)
   })
 })

@@ -9,7 +9,7 @@ import {
   initialMaskedFields,
   parseChartOrigin,
   replaceWidgetInConfig,
-  showsPeopleNames,
+  unmaskedNamesWarning,
 } from './updateWidget'
 
 const trendWidget = (id: string, title?: string): DashboardWidget => ({
@@ -167,16 +167,37 @@ describe('initialMaskedFields', () => {
     expect(initialMaskedFields(['mood'], masked)).toEqual(['mood'])
   })
 
+  test('a new chart masks @tags as it does @people', () => {
+    expect(initialMaskedFields(['@tags', '@people'])).toEqual(['@tags', '@people'])
+    expect(initialMaskedFields(['@tags'])).toEqual(['@tags'])
+  })
+
+  test('an update that adds @tags keeps an unmasked @people unmasked', () => {
+    const widget = barWidget({ breakdown_fields: ['@people'], source_type: 'journal' })
+    expect(initialMaskedFields(['@people', '@tags'], widget)).toEqual(['@tags'])
+  })
+
   test('an update that adds @people to the breakdown masks it', () => {
     const widget = barWidget({ breakdown_fields: ['mood'], masked_breakdown_fields: ['mood'] })
     expect(initialMaskedFields(['mood', '@people'], widget)).toEqual(['mood', '@people'])
   })
 })
 
-describe('showsPeopleNames', () => {
-  test('only when @people is in the breakdown and not masked', () => {
-    expect(showsPeopleNames(['@people'], [])).toBe(true)
-    expect(showsPeopleNames(['@people'], ['@people'])).toBe(false)
-    expect(showsPeopleNames(['mood'], [])).toBe(false)
+describe('unmaskedNamesWarning', () => {
+  test('only when @people or @tags is in the breakdown and not masked', () => {
+    expect(unmaskedNamesWarning(['@people'], [])).toBe(
+      'Visitors of a shared board with this chart will see the names of the people.',
+    )
+    expect(unmaskedNamesWarning(['@tags'], [])).toBe(
+      'Visitors of a shared board with this chart will see the tag names.',
+    )
+    expect(unmaskedNamesWarning(['@tags', '@people'], [])).toBe(
+      'Visitors of a shared board with this chart will see the tag names and the names of the people.',
+    )
+    expect(unmaskedNamesWarning(['@tags', '@people'], ['@people'])).toBe(
+      'Visitors of a shared board with this chart will see the tag names.',
+    )
+    expect(unmaskedNamesWarning(['@people'], ['@people'])).toBeUndefined()
+    expect(unmaskedNamesWarning(['mood'], [])).toBeUndefined()
   })
 })

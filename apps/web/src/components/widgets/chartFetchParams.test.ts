@@ -78,6 +78,46 @@ describe('barsFetchParams', () => {
   })
 })
 
+describe('journal sources', () => {
+  const journal = {
+    journal_entity_types: 'time,day,activity,meal,report',
+    journal_q: 'lake',
+    journal_related_id: '00000000-0000-4000-8000-000000000001',
+    journal_related_type: 'person' as const,
+    journal_tags: 'travel,work',
+  }
+
+  test('bars pass the journal filters through and count entries by default', () => {
+    expect(barsFetchParams({ bucket_size: '1w', source_type: 'journal', ...journal }, range)).toEqual({
+      aggregation: 'count',
+      bucket_size: '1w',
+      pattern: undefined,
+      source_type: 'journal',
+      ...journal,
+      ...range,
+    })
+  })
+
+  test('a trend passes the journal filters through, counts by default and sends no pattern', () => {
+    const params = trendFetchParams({ source_type: 'journal', ...journal }, 365)
+    expect(params).toEqual({
+      aggregation: 'count',
+      display_period: 'monthly',
+      half_life_days: EMA_HALF_LIFE_DEFAULT,
+      lookback_days: 365,
+      source_type: 'journal',
+      ...journal,
+    })
+    expect(params).not.toHaveProperty('pattern')
+  })
+
+  test('a journal trend keeps its words aggregation', () => {
+    expect(trendFetchParams({ aggregation: 'sum', source_type: 'journal' }, 30)).toMatchObject({
+      aggregation: 'sum',
+    })
+  })
+})
+
 describe('trendFetchParams', () => {
   test('a measure trend keeps its filter and explicit half-life, and takes no rate fields', () => {
     expect(

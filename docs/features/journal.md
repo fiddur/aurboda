@@ -16,11 +16,14 @@ tags, the start of its text (**Show more** for the rest) and small previews of i
 pictures and recordings. At the top:
 
 - **New entry**, and **New entry from template** when you have templates;
-- **search** (title and text), a **tag** filter (clicking a `#tag` on an entry adds
-  it, as does picking one under **Tags**, which lists them most used first;
-  `/journal?tag=<tag>` opens with it), a **Related to** filter (a person or an
-  activity, picked from People and Activities tabs), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
-  comments on activities, meals and reports**, and **Photos without text**;
+- **search** (title and text; `/journal?q=<text>` opens with it), a **tag** filter
+  (clicking a `#tag` on an entry adds it, as does picking one under **Tags**, which
+  lists them most used first; `/journal?tag=<tag>` opens with it, `?tag=<tag>,<tag>` with
+  several), a **Related to** filter (a person or an activity, picked from People and
+  Activities tabs), **Go to date** (`/journal?date=YYYY-MM-DD` opens there), **Also show
+  comments on activities, meals and reports** (`/journal?comments=1` opens with it on), and
+  **Photos without text**;
+- **Chart**: the [Chart page](#charts) charting the entries the filters keep;
 - **On this day**: entries from the same date in earlier years, when there are any;
 - **Recently deleted**: deleted entries and templates with the days left before they
   go for good, each with **Restore**;
@@ -309,8 +312,8 @@ the browser's zone).
 - `breakdown_fields` takes `@tags` (one series per tag, explicit or `#hashtag`, an entry
   counted under each of its tags and `(none)` when untagged) and `@people` (one series per
   live person the entry is [related](#related) to, `(none)` for no one, same-named people
-  kept apart). Both give `<tag> / <person>` series. A journal breakdown keeps at most 12
-  series: the 11 with the highest total over the range, sorted by name, and the rest summed
+  kept apart). Both give `<tag> / <person>` series. A journal breakdown keeps at most 8
+  series: the 7 with the highest total over the range, sorted by name, and the rest summed
   as `Other`, listed last.
 - The filters are search's, prefixed: `journal_tags` (comma-separated, entries carrying all
   of them), `journal_related_type` with `journal_related_id`, `journal_q` (full text) and
@@ -332,6 +335,36 @@ as a source.
 ```http
 GET /chart-data?source_type=journal&start=2026-01-01T00:00:00Z&end=2026-12-31T23:59:59Z&bucket_size=1M&aggregation=sum&journal_tags=travel&tz=Europe/Stockholm
 ```
+
+### On the web
+
+The journal page's **Chart** link (next to **Tags**) opens the Chart page on the journal,
+entries per week over the last year, filtered as the list is: its tags, **Related to**, the
+search text and **Also show comments…** come along; **Go to date** and **Photos without
+text** do not.
+
+On the Chart page (`/chart`), **Journal** is a source next to Activity Type and Metric.
+With it the source row has **Related to** and **Tags** (the journal page's own pickers, the
+picked tags shown as chips to remove), **Search text**, **Also count comments on
+activities, meals and reports**, and **Breakdown by:** **Tags** and **With** (With only
+when you have people). **Aggregation** is **Entries** or **Words**; Bars and Trend both
+work, Sessions does not. A breakdown's bars are stacked. The URL names the filters as the
+API does, so a chart link reads like the query:
+
+```text
+/chart?source_type=journal&chart_type=bar&bucket_size=1w&lookback_days=365&journal_tags=travel&journal_related_type=person&journal_related_id=<id>&journal_q=lake&journal_entity_types=time,day,activity,meal,report
+```
+
+A related filter counts comments as the journal page's does. Clicking a bar opens the
+journal at that bar: gone to its last day (`/journal?date=`, which lists that day and
+older, so the bar's entries come first), with the chart's tags (`tag=`), related filter,
+search (`q=`) and comments (`comments=1`), and, in a breakdown by tag, the clicked tag
+added (not for `(none)` or `Other`).
+
+**Add to dashboard** saves the chart as a card titled `Journal entries` or `Journal words`
+(followed by the tags, e.g. `Journal entries · #travel`) unless you type a title; a
+breakdown by Tags or With starts masked for shared boards. See
+[Dashboard](./dashboard.md#trend-chart).
 
 ## Pictures and recordings
 

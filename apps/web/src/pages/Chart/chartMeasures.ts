@@ -14,8 +14,9 @@ import { EMA_HALF_LIFE_DEFAULT, MEASURE_HALF_LIFE_DEFAULT } from '../../utils/ha
 
 export { MEASURE_HALF_LIFE_DEFAULT }
 import { defaultAggregation } from '../../utils/measures'
+import { JOURNAL_AGGREGATION_OPTIONS, parseJournalAggregation } from './journalSource'
 
-type SourceType = 'metric' | 'activity_type'
+type SourceType = 'metric' | 'activity_type' | 'journal'
 
 export type MeasureChoice = ActivityMeasure | ''
 
@@ -113,6 +114,7 @@ export const parseAggregation = (
   source_type: SourceType,
   measure: MeasureChoice,
 ): ChartDataAggregation => {
+  if (source_type === 'journal') return parseJournalAggregation(raw)
   const fallback = measure ? defaultAggregation(measure) : sourceDefaultAggregation(source_type)
   if (raw === undefined || !AGGREGATIONS.includes(raw)) return fallback
   if (measure ? raw === 'count' : raw === 'max') return fallback
@@ -200,6 +202,7 @@ export const aggregationOptions = (
       { label: 'Average', value: 'mean' },
     ]
   }
+  if (source_type === 'journal') return JOURNAL_AGGREGATION_OPTIONS
   if (source_type === 'metric') {
     return [
       { label: 'Average', value: 'mean' },

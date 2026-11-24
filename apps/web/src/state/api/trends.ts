@@ -1,5 +1,6 @@
 import type {
   ActivityMeasure,
+  JournalChartFilters,
   TrendDisplayPeriod,
   TrendMissingDays,
   TrendQuery,
@@ -12,10 +13,11 @@ import axios from 'axios'
 
 import { API_URL } from '../../config'
 import { auth } from '../auth'
+import { setJournalFilters } from './journal-chart-params'
 
-export interface FetchTrendParams {
+export interface FetchTrendParams extends JournalChartFilters {
   source_type: TrendSourceType
-  pattern: string
+  pattern?: string
   half_life_days?: number
   lookback_days?: number
   display_period?: TrendDisplayPeriod
@@ -31,10 +33,8 @@ export interface FetchTrendParams {
 export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult> => {
   const { token } = auth.value
   // Only include defined values to avoid sending empty strings
-  const query: Partial<TrendQuery> = {
-    pattern: params.pattern,
-    source_type: params.source_type,
-  }
+  const query: Partial<TrendQuery> = { source_type: params.source_type }
+  if (params.pattern !== undefined) query.pattern = params.pattern
   if (params.aggregation) query.aggregation = params.aggregation
   if (params.display_period) query.display_period = params.display_period
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
@@ -49,6 +49,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
       query.filter_value = params.filter_value
     }
   }
+  setJournalFilters(query, params)
 
   const response = await axios.get<TrendResponse>(`${API_URL}/trends`, {
     headers: { Authorization: `Bearer ${token}` },

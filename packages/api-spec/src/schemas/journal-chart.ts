@@ -23,7 +23,7 @@ export const isTagsBreakdownField = (field: string): boolean => field === TAGS_B
 
 export const JOURNAL_BREAKDOWN_FIELDS: readonly string[] = [TAGS_BREAKDOWN_FIELD, PEOPLE_BREAKDOWN_FIELD]
 
-export const JOURNAL_BREAKDOWN_MAX_SERIES = 12
+export const JOURNAL_BREAKDOWN_MAX_SERIES = 8
 
 export const JOURNAL_OTHER_SERIES = 'Other'
 

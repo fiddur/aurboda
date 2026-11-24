@@ -9,6 +9,7 @@ import type { ComponentChild } from 'preact'
  *   /chart?source_type=activity_type&pattern=strength_training&chart_type=bar&bucket_size=1w&measure=e1rm&aggregation=max&filter_field=sets.exercise&filter_value=Squat
  *   /chart?source_type=activity_type&pattern=strength_training&chart_type=trend&half_life_days=120&measure=e1rm&filter_field=sets.exercise&filter_value=Squat
  *   /chart?source_type=activity_type&pattern=yoga&chart_type=scatter&y=z3_minutes&group_by=session_name&collapse=1
+ *   /chart?source_type=journal&chart_type=bar&bucket_size=1w&journal_tags=travel&breakdown_fields=@people
  */
 import {
   activityMeasureLabels,
@@ -16,6 +17,7 @@ import {
   type ChartDataAggregation,
   type DashboardConfig,
   type DashboardWidget,
+  type JournalChartFilters,
   muscleGroupFilter,
   type TrendMissingDays,
 } from '@aurboda/api-spec'
@@ -53,6 +55,7 @@ import {
   listFields,
   sessionGroupings,
 } from '../../components/sessions/sessionView'
+import { journalChartTitle } from '../../components/widgets/chartTitle'
 import {
   type ActivityTypeDefinition,
   fetchActivityFieldValues,
@@ -97,6 +100,15 @@ import {
   trendFilterPatch,
   withMuscleFilterRules,
 } from './chartMeasures'
+import { type JournalPicker, JournalFilterControls, JournalFilterPickers } from './JournalControls'
+import {
+  EMPTY_JOURNAL_STATE,
+  journalBarHref,
+  journalBreakdownOptions,
+  journalFilters,
+  type JournalState,
+  parseJournalQuery,
+} from './journalSource'
 import { mapLegacyCategorySource } from './legacySource'
 import { MuscleGroupSelect } from './MuscleGroupSelect'
 import { parseScatterQuery, scatterAllowed, scatterParams, type ScatterState } from './scatterState'
@@ -109,7 +121,7 @@ import {
 } from './updateWidget'
 import './style.css'
 
-type SourceType = 'metric' | 'activity_type'
+type SourceType = 'metric' | 'activity_type' | 'journal'
 type ChartType = 'trend' | 'bar' | 'scatter'
 type BucketSize = '1m' | '5m' | '15m' | '1h' | '1d' | '1w' | '1M'
 
@@ -138,7 +150,7 @@ const BUCKET_SIZE_OPTIONS: { label: string; value: BucketSize }[] = [
 
 type MissingDaysChoice = '' | TrendMissingDays
 
-interface ChartState extends ScatterState {
+interface ChartState extends ScatterState, JournalState {
   aggregation: ChartDataAggregation
   breakdown_fields: string[]
   bucket_size: BucketSize
@@ -172,8 +184,12 @@ const parseSinceQuery = (value: string | undefined): string => {
   return 'since' in result ? result.since : ''
 }
 
+const parseSourceType = (raw: string | undefined): SourceType =>
+  raw === 'metric' || raw === 'journal' ? raw : 'activity_type'
+
 function parseQuery(query: Record<string, string>): ChartState {
-  const source_type: SourceType = query.source_type === 'metric' ? 'metric' : 'activity_type'
+  const source_type = parseSourceType(query.source_type)
+  const journal = source_type === 'journal'
   const scatter = scatterAllowed(query)
   const parsedMeasure = parseMeasureQuery(scatter ? {} : query, source_type)
   const { measure } = parsedMeasure
@@ -195,12 +211,21 @@ function parseQuery(query: Record<string, string>): ChartState {
     ...measureState,
     lookback_days: Number(query.lookback_days) || 90,
     missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
-    pattern: query.source_type === LEGACY_CATEGORY_SOURCE ? '' : (query.pattern ?? ''),
+    ...(journal ? parseJournalQuery(query) : EMPTY_JOURNAL_STATE),
+    pattern: query.source_type === LEGACY_CATEGORY_SOURCE || journal ? '' : (query.pattern ?? ''),
     since: parseSinceQuery(query.since),
     source_type,
     activity_type_id: query.activity_type_id ?? '',
   }
 }
+
+/** The journal source's filters, as URL, query and card config fields; none for another source. */
+const journalParamsOf = (state: ChartState): JournalChartFilters =>
+  state.source_type === 'journal' ? journalFilters(state) : {}
+
+/** A trend's pattern: the journal takes none. */
+const trendPatternOf = (state: ChartState): { pattern?: string } =>
+  state.source_type === 'journal' ? {} : { pattern: state.pattern }
 
 const setOriginParams = (params: URLSearchParams, origin: ChartOrigin | null) => {
   if (!origin) return
@@ -238,7 +263,9 @@ function syncUrl(state: ChartState, origin: ChartOrigin | null) {
   if (state.breakdown_fields.length > 0) {
     params.set('breakdown_fields', state.breakdown_fields.join(','))
   }
-  for (const [key, value] of Object.entries(measureParams(state))) params.set(key, value)
+  for (const [key, value] of Object.entries({ ...measureParams(state), ...journalParamsOf(state) })) {
+    params.set(key, value)
+  }
   setOriginParams(params, origin)
   history.replaceState(null, '', `${window.location.pathname}?${params}`)
 }
@@ -343,15 +370,24 @@ const useActivityTypeDef = (state: ChartState): ActivityTypeDefinition | undefin
 /** Source picker shared between both chart modes. */
 function SourcePicker({
   state,
+  journalPicker,
+  onJournalPicker,
   onUpdate,
 }: {
   state: ChartState
+  journalPicker: JournalPicker
+  onJournalPicker: (picker: JournalPicker) => void
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
   const typeDef = useActivityTypeDef(state)
   const scatter = state.chart_type === 'scatter'
   const hasPeople = useHasPeople()
-  const breakdownFields = typeDef && !scatter ? breakdownOptions(typeDef, state, hasPeople) : []
+  const journal = state.source_type === 'journal'
+  const breakdownFields = journal
+    ? journalBreakdownOptions(state.breakdown_fields, hasPeople)
+    : typeDef && !scatter
+      ? breakdownOptions(typeDef, state, hasPeople)
+      : []
 
   return (
     <div class="chart-controls-row">
@@ -361,52 +397,64 @@ function SourcePicker({
           value={state.source_type}
           onChange={(e) => {
             const source_type = (e.target as HTMLSelectElement).value as SourceType
+            onJournalPicker(undefined)
             onUpdate({
               activity_type_id: '',
               aggregation: sourceDefaultAggregation(source_type),
               breakdown_fields: [],
               ...filterPatch(undefined, ''),
+              ...EMPTY_JOURNAL_STATE,
               measure: '',
               missing_days: '',
               pattern: '',
               source_type,
-              ...(source_type === 'metric' && scatter ? { chart_type: 'trend' as const } : {}),
+              ...(source_type !== 'activity_type' && scatter ? { chart_type: 'trend' as const } : {}),
             })
           }}
         >
           <option value="activity_type">Activity Type</option>
           <option value="metric">Metric</option>
+          <option value="journal">Journal</option>
         </select>
       </label>
 
-      <label class="source-picker">
-        {state.source_type === 'activity_type' ? (
-          <>
-            Activity Type
-            <ActivityTypePicker
-              value={state.pattern}
-              onChange={(pattern) =>
-                onUpdate({
-                  breakdown_fields: [],
-                  pattern,
-                  ...(state.measure ? measurePatch([], '') : {}),
-                  ...(pattern === state.pattern ? {} : { collapse: false, group_by: '' }),
-                })
-              }
-              placeholder="Search activity types..."
-            />
-          </>
-        ) : (
-          <>
-            Metric
-            <MetricPicker
-              value={state.pattern}
-              onChange={(pattern) => onUpdate({ pattern })}
-              placeholder="Search metrics..."
-            />
-          </>
-        )}
-      </label>
+      {journal ? (
+        <JournalFilterControls
+          state={state}
+          picker={journalPicker}
+          onPicker={onJournalPicker}
+          onUpdate={onUpdate}
+        />
+      ) : (
+        <label class="source-picker">
+          {state.source_type === 'activity_type' ? (
+            <>
+              Activity Type
+              <ActivityTypePicker
+                value={state.pattern}
+                onChange={(pattern) =>
+                  onUpdate({
+                    breakdown_fields: [],
+                    pattern,
+                    ...(state.measure ? measurePatch([], '') : {}),
+                    ...(pattern === state.pattern ? {} : { collapse: false, group_by: '' }),
+                  })
+                }
+                placeholder="Search activity types..."
+              />
+            </>
+          ) : (
+            <>
+              Metric
+              <MetricPicker
+                value={state.pattern}
+                onChange={(pattern) => onUpdate({ pattern })}
+                placeholder="Search metrics..."
+              />
+            </>
+          )}
+        </label>
+      )}
 
       {typeDef && !scatter && listFields(typeDef.data_schema).length > 0 && (
         <MeasureControls state={state} typeDef={typeDef} onUpdate={onUpdate} />
@@ -550,9 +598,13 @@ function ScatterControls({
 
 function ChartControls({
   state,
+  journalPicker,
+  onJournalPicker,
   onUpdate,
 }: {
   state: ChartState
+  journalPicker: JournalPicker
+  onJournalPicker: (picker: JournalPicker) => void
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
   const measureTrend = isMeasureTrend(state)
@@ -597,7 +649,12 @@ function ChartControls({
         </label>
       </div>
 
-      <SourcePicker state={state} onUpdate={onUpdate} />
+      <SourcePicker
+        state={state}
+        journalPicker={journalPicker}
+        onJournalPicker={onJournalPicker}
+        onUpdate={onUpdate}
+      />
 
       <div class="chart-controls-row">
         <RangeControl state={state} onUpdate={onUpdate} />
@@ -693,9 +750,13 @@ function ChartControls({
 const NO_TREND_POINTS: { date: string; value: number }[] = []
 const NO_BAR_BUCKETS: { bucket_start: string; value: number }[] = []
 
+/** A journal chart needs no pattern: the journal is its source. */
+const hasSource = (params: { activity_type_id?: string; pattern?: string; source_type: string }): boolean =>
+  params.source_type === 'journal' || Boolean(params.pattern || params.activity_type_id)
+
 function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: ComponentChild }) {
   const trendQuery = useQuery({
-    enabled: Boolean(params.pattern),
+    enabled: hasSource(params),
     queryFn: () => fetchTrend(params),
     queryKey: ['trend', params],
     staleTime: 5 * 60 * 1000,
@@ -716,7 +777,7 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
   }, [trendData])
   const single = useMemo(() => trendPlot(trendData?.history ?? NO_TREND_POINTS), [trendData])
 
-  if (!params.pattern) return <div class="chart-empty">Select a source to view trend data.</div>
+  if (!hasSource(params)) return <div class="chart-empty">Select a source to view trend data.</div>
   if (trendQuery.isLoading) return <div class="chart-loading">Loading trend data...</div>
   if (trendQuery.isError || !trendQuery.data) return <div class="chart-error">Failed to load trend data.</div>
 
@@ -760,16 +821,35 @@ function TrendDisplay({ params, menu }: { params: FetchTrendParams; menu: Compon
 
 function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: ComponentChild }) {
   const { source_type, pattern, bucket_size, breakdown_fields } = params
-  const getBarHref = useMemo(
-    () =>
-      source_type === 'activity_type' && pattern
-        ? (info: BarClickInfo) => buildBarDataHref(info, pattern, bucket_size ?? '1d', breakdown_fields)
-        : undefined,
-    [source_type, pattern, bucket_size, breakdown_fields],
-  )
+  const { journal_entity_types, journal_q, journal_related_id, journal_related_type, journal_tags } = params
+  const getBarHref = useMemo(() => {
+    if (source_type === 'journal') {
+      const filters = {
+        journal_entity_types,
+        journal_q,
+        journal_related_id,
+        journal_related_type,
+        journal_tags,
+      }
+      return (info: BarClickInfo) => journalBarHref(info, bucket_size ?? '1d', breakdown_fields, filters)
+    }
+    return source_type === 'activity_type' && pattern
+      ? (info: BarClickInfo) => buildBarDataHref(info, pattern, bucket_size ?? '1d', breakdown_fields)
+      : undefined
+  }, [
+    source_type,
+    pattern,
+    bucket_size,
+    breakdown_fields,
+    journal_entity_types,
+    journal_q,
+    journal_related_id,
+    journal_related_type,
+    journal_tags,
+  ])
 
   const barQuery = useQuery({
-    enabled: Boolean(params.pattern || params.activity_type_id),
+    enabled: hasSource(params),
     queryFn: () => fetchChartData(params),
     queryKey: ['chart-data', params],
     staleTime: 5 * 60 * 1000,
@@ -789,7 +869,7 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
     }))
   }, [result])
 
-  if (!params.pattern && !params.activity_type_id) {
+  if (!hasSource(params)) {
     return <div class="chart-empty">Select a source to view chart data.</div>
   }
 
@@ -814,7 +894,10 @@ function BarDisplay({ params, menu }: { params: FetchChartDataParams; menu: Comp
           rangeEnd={params.end}
           getBarHref={getBarHref}
           multiSeries={multiSeries}
-          stacked={muscleGroupFilter(params.filter_field, params.filter_value) !== undefined}
+          stacked={
+            source_type === 'journal' ||
+            muscleGroupFilter(params.filter_field, params.filter_value) !== undefined
+          }
         />
       </div>
     )
@@ -956,6 +1039,7 @@ function buildWidgetFromState(
     ...(state.breakdown_fields.length ? { breakdown_fields: state.breakdown_fields } : {}),
     ...(masked.length ? { masked_breakdown_fields: masked } : {}),
   }
+  const journalConfig = journalParamsOf(state)
 
   if (state.chart_type === 'bar') {
     return {
@@ -968,6 +1052,7 @@ function buildWidgetFromState(
         ...(state.pattern ? { pattern: state.pattern } : {}),
         source_type: state.source_type,
         ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
+        ...journalConfig,
         ...(title ? { title } : {}),
       },
       id,
@@ -984,9 +1069,10 @@ function buildWidgetFromState(
       half_life_days: state.half_life_days,
       ...range,
       ...(state.source_type === 'metric' && state.missing_days ? { missing_days: state.missing_days } : {}),
-      pattern: state.pattern,
+      ...trendPatternOf(state),
       source_type: state.source_type,
       ...(state.activity_type_id ? { tag_definition_id: state.activity_type_id } : {}),
+      ...journalConfig,
       ...(title ? { title } : {}),
     },
     id,
@@ -996,7 +1082,7 @@ function buildWidgetFromState(
 
 /** The Goals page prefilled with a goal on this chart: its trend, or its measure for a measure's bars. */
 function chartGoalHref(state: ChartState): string | undefined {
-  if (!state.pattern || muscleFilterOf(state)) return undefined
+  if (state.source_type === 'journal' || !state.pattern || muscleFilterOf(state)) return undefined
   if (state.chart_type === 'trend') {
     return goalsHref({
       ...(state.measure
@@ -1017,6 +1103,16 @@ function chartGoalHref(state: ChartState): string | undefined {
       })
     : undefined
 }
+
+/** What a chart card saved without a title is called, as the title field's placeholder. */
+const defaultChartTitle = (state: ChartState): string =>
+  journalChartTitle({
+    ...journalFilters(state),
+    aggregation: state.aggregation,
+    source_type: state.source_type,
+  }) ||
+  state.pattern ||
+  'Chart title'
 
 /**
  * Bottom-of-page control shown when the user navigated here from a board chart.
@@ -1114,7 +1210,7 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
             type="text"
             value={title}
             onInput={(e) => setTitle((e.target as HTMLInputElement).value)}
-            placeholder={state.pattern || 'Chart title'}
+            placeholder={defaultChartTitle(state)}
           />
         </label>
       </div>
@@ -1137,6 +1233,7 @@ export function Chart() {
   const { query } = useLocation()
   const [state, setState] = useState(() => parseQuery(query))
   const [origin] = useState(() => parseChartOrigin(query))
+  const [journalPicker, setJournalPicker] = useState<JournalPicker>(undefined)
   const [legacyCategoryPath, setLegacyCategoryPath] = useState(() =>
     query.source_type === LEGACY_CATEGORY_SOURCE ? (query.pattern ?? '') : null,
   )
@@ -1187,8 +1284,10 @@ export function Chart() {
     [state.lookback_days, state.since],
   )
   const scatter = state.chart_type === 'scatter'
+  const journal = state.source_type === 'journal'
+  const journalParams = journalParamsOf(state)
   const menu =
-    !scatter && (state.pattern || state.activity_type_id) ? (
+    !scatter && (journal || state.pattern || state.activity_type_id) ? (
       <ChartMenu
         widget={(title, masked) => buildWidgetFromState(state, title, undefined, masked)}
         breakdownFields={state.breakdown_fields}
@@ -1203,10 +1302,24 @@ export function Chart() {
         Explore time-weighted averages (EMA) or raw bucketed data for activity types and metrics. Screentime
         categories are activity types too. Toggle between Trend and Bar chart modes, or plot an activity
         type's Sessions by length and exertion. A measure of an activity's list items, such as an exercise's
-        e1RM, charts as bars or as its decaying best.
+        e1RM, charts as bars or as its decaying best. The Journal source counts your entries or the words in
+        them, filtered and broken down by tag or by who they are about.
       </p>
 
-      <ChartControls state={state} onUpdate={handleUpdate} />
+      <ChartControls
+        state={state}
+        journalPicker={journalPicker}
+        onJournalPicker={setJournalPicker}
+        onUpdate={handleUpdate}
+      />
+      {journal && (
+        <JournalFilterPickers
+          state={state}
+          picker={journalPicker}
+          onPicker={setJournalPicker}
+          onUpdate={handleUpdate}
+        />
+      )}
 
       {scatter ? (
         <ScatterDisplay key={state.group_by} state={state} start={start} end={end} onUpdate={handleUpdate} />
@@ -1223,7 +1336,8 @@ export function Chart() {
             ...(state.source_type === 'metric' && state.missing_days
               ? { missing_days: state.missing_days }
               : {}),
-            pattern: state.pattern,
+            ...trendPatternOf(state),
+            ...journalParams,
             source_type: state.source_type,
             ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
           }}
@@ -1241,6 +1355,7 @@ export function Chart() {
             source_type: state.source_type,
             start,
             ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
+            ...journalParams,
           }}
         />
       )}
