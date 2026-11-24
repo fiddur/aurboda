@@ -118,6 +118,14 @@ export const journalQueryFor = (
   tz,
 })
 
+/** The count under the Journal heading: every entry, or those the filters keep; none when there are none. */
+export const entryCountLabel = (total: number | undefined, unfiltered: boolean): string | undefined => {
+  if (!total) return undefined
+  const count = total.toLocaleString('en')
+  if (unfiltered) return total === 1 ? '1 entry' : `${count} entries`
+  return total === 1 ? '1 entry matches' : `${count} entries match`
+}
+
 export const isUnfiltered = (filters: JournalFilters, q: string): boolean =>
   !q.trim() &&
   filters.tags.length === 0 &&

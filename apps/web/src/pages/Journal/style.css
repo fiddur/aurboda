@@ -20,6 +20,13 @@
   font-size: 1.7rem;
 }
 
+.journal-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
 .journal-row {
   display: flex;
   flex-wrap: wrap;

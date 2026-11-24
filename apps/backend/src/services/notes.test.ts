@@ -1309,12 +1309,12 @@ describe('searchNotesForUser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(db.getRepliesForRootIds).mockResolvedValue(new Map())
-    vi.mocked(db.searchNotes).mockResolvedValue({ next_cursor: null, notes: [] })
+    vi.mocked(db.searchNotes).mockResolvedValue({ next_cursor: null, notes: [], total: 0 })
   })
 
   test('defaults to the free-standing entries, 50 at a time, in the user’s zone', async () => {
     const result = await searchNotesForUser('user', {})
-    expect(result).toEqual({ data: [], next_cursor: null, success: true })
+    expect(result).toStrictEqual({ data: [], next_cursor: null, success: true, total: 0 })
     expect(db.searchNotes).toHaveBeenCalledWith('user', {
       cursor: undefined,
       entity_types: ['time', 'day'],

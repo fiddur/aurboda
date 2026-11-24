@@ -1,4 +1,5 @@
 import type { Note, NotesSearchResponse } from '@aurboda/api-spec'
+import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query'
 
 import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +25,7 @@ import {
   dayHeading,
   daysLeft,
   daysLeftLabel,
+  entryCountLabel,
   entryGlimpse,
   entryTimeLabel,
   groupEntriesByDay,
@@ -291,7 +293,7 @@ const RecentlyDeleted = () => {
   )
 }
 
-const JournalHeader = () => {
+const JournalHeader = ({ count }: { count: string | undefined }) => {
   const { route } = useLocation()
   const templates = useTemplates()
   const [picking, setPicking] = useState(false)
@@ -299,7 +301,10 @@ const JournalHeader = () => {
   return (
     <>
       <div class="journal-header">
-        <h1>Journal</h1>
+        <div class="journal-title">
+          <h1>Journal</h1>
+          {count && <span class="journal-muted journal-count">{count}</span>}
+        </div>
         <div class="journal-row">
           <a class="btn-primary journal-new" href="/journal/new">
             New entry
@@ -600,24 +605,28 @@ const EmptyJournal = ({ unfiltered }: { unfiltered: boolean }) => (
   </div>
 )
 
-const JournalEntries = ({
-  query,
-  today,
-  unfiltered,
-  onTag,
-}: {
-  query: JournalQuery
-  today: string
-  unfiltered: boolean
-  onTag: (tag: string) => void
-}) => {
-  const list = useInfiniteQuery({
+type JournalPages = UseInfiniteQueryResult<InfiniteData<NotesSearchResponse>>
+
+const useJournalPages = (query: JournalQuery): JournalPages =>
+  useInfiniteQuery({
     getNextPageParam: (last: NotesSearchResponse) => last.next_cursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       searchJournal({ ...query, cursor: pageParam }),
     queryKey: [...JOURNAL_KEY, 'list', query],
   })
+
+const JournalEntries = ({
+  list,
+  today,
+  unfiltered,
+  onTag,
+}: {
+  list: JournalPages
+  today: string
+  unfiltered: boolean
+  onTag: (tag: string) => void
+}) => {
   const notes = useMemo(() => list.data?.pages.flatMap((page) => page.data ?? []) ?? [], [list.data])
   const days = useMemo(() => groupEntriesByDay(notes), [notes])
 
@@ -685,13 +694,14 @@ export const JournalList = () => {
 
   const query: JournalQuery = journalQueryFor(filters, q, browserTimezone())
   const unfiltered = isUnfiltered(filters, q)
+  const list = useJournalPages(query)
 
   return (
     <div class="page journal-page">
-      <JournalHeader />
+      <JournalHeader count={entryCountLabel(list.data?.pages[0]?.total, unfiltered)} />
       <JournalFilters filters={filters} today={today} onChange={change} onTag={addTag} />
       {unfiltered && <OnThisDay today={today} />}
-      <JournalEntries query={query} today={today} unfiltered={unfiltered} onTag={addTag} />
+      <JournalEntries list={list} today={today} unfiltered={unfiltered} onTag={addTag} />
       <RecentlyDeleted />
       <details
         class="journal-card journal-templates-section"

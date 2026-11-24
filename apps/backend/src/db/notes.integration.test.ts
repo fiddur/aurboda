@@ -1442,6 +1442,21 @@ describe('Notes Integration Tests', () => {
       expect(seen).toEqual(['D the 16th', 'E 15th 08:00 again', 'A 15th 08:00', 'B the 15th', 'C 14th 20:00'])
     })
 
+    test('counts every matching entry on the first page only, past the page size', async () => {
+      const user = getTestUser()
+      for (const hour of ['08', '09', '10']) {
+        await insertNote(user, 'time', null, `Walk ${hour}`, new Date(`2024-01-15T${hour}:00:00Z`))
+      }
+      await insertNote(user, 'time', null, 'Swim', new Date('2024-01-15T11:00:00Z'))
+
+      const first = await search(user, { limit: 2, text: { websearch: 'walk' } })
+      expect(first.notes).toHaveLength(2)
+      expect(first.total).toBe(3)
+      const second = await search(user, { cursor: first.next_cursor ?? undefined, limit: 2 })
+      expect(second.total).toBeUndefined()
+      expect((await search(user, { tags: ['none'] })).total).toBe(0)
+    })
+
     test('leaves out comments with no anchor and types not asked for', async () => {
       const user = getTestUser()
       await insertNote(user, 'metric', '2024-01-15T10:00:00.000Z|heart_rate|oura', 'Metric comment')

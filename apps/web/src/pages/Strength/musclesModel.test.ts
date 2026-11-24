@@ -25,6 +25,8 @@ import {
   nameList,
   newestSource,
   noStrengthSessions,
+  notScoredLabel,
+  SCORE_CHANGE_COLUMN,
   recoveryText,
   scoredAsOneNote,
   scoreLine,
@@ -393,6 +395,9 @@ describe('labels', () => {
     expect(scoredAsOneNote(scoreGroup({}))).toBe('Back is scored as one group: Lats and Middle back.')
     expect(scoredAsOneNote(scoreGroup({ muscle_groups: ['chest'] }))).toBeUndefined()
     expect(unscoredText('Traps')).toBe('No lift is scored for traps, so it has no strength score.')
+    expect(notScoredLabel('Traps')).toBe('Traps aren’t scored')
+    expect(notScoredLabel('Neck')).toBe('Neck isn’t scored')
+    expect(SCORE_CHANGE_COLUMN).toBe('±30 d')
   })
 
   test('the score card lines', () => {

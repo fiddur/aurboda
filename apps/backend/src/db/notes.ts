@@ -398,6 +398,8 @@ export interface NotesSearchParams {
 export interface NotesSearchPage {
   notes: Note[]
   next_cursor: NotesSearchCursor | null
+  /** How many roots match across every page; only on the first page (no cursor). */
+  total?: number
 }
 
 type Param = (value: unknown) => string
@@ -438,16 +440,8 @@ const anchoredRootsSql = (
        ) n
        WHERE ${PARENT_IS_LIVE}`
 
-/**
- * Thread roots, newest first by anchor (a `day` note's anchor is the start of its date in `tz`),
- * then created_at and id, with keyset pagination on that order. A text match in a live reply
- * returns its root. Roots with no anchor at all (metric comments) are left out.
- */
-export const searchNotes = async (user: string, params: NotesSearchParams): Promise<NotesSearchPage> => {
-  const { param, values } = paramList()
-  const tz = param(params.tz)
+const searchConditions = (param: Param, tz: string, params: NotesSearchParams): string[] => {
   const localDay = `CASE WHEN n.entity_type = 'day' THEN n."date" ELSE (n.start_time AT TIME ZONE ${tz})::date END`
-
   const conditions: string[] = []
   if (params.text) {
     const websearch = `websearch_to_tsquery('simple', ${param(params.text.websearch)})`
@@ -472,6 +466,18 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
     conditions.push(`EXTRACT(YEAR FROM ${localDay}) < ${param(params.on_this_day.before_year)}`)
     conditions.push(`to_char(${localDay}, 'MM-DD') = ANY(${param(params.on_this_day.month_days)}::text[])`)
   }
+  return conditions
+}
+
+/**
+ * Thread roots, newest first by anchor (a `day` note's anchor is the start of its date in `tz`),
+ * then created_at and id, with keyset pagination on that order. A text match in a live reply
+ * returns its root. Roots with no anchor at all (metric comments) are left out.
+ */
+export const searchNotes = async (user: string, params: NotesSearchParams): Promise<NotesSearchPage> => {
+  const { param, values } = paramList()
+  const tz = param(params.tz)
+  const conditions = searchConditions(param, tz, params)
   const roots = anchoredRootsSql(param, tz, params.entity_types, conditions)
   const cursorCondition = params.cursor
     ? `WHERE (n.anchor, n.created_at, n.id) < (${param(params.cursor.anchor)}::timestamptz, ${param(
@@ -484,8 +490,10 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
     user,
     `SELECT ${NOTE_COLUMNS},
             to_char(anchor AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_anchor,
-            to_char(created_at AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_created_at
-       FROM (${roots}
+            to_char(created_at AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_created_at,
+            total
+       FROM (SELECT n.*, count(*) OVER ()::int AS total FROM (${roots}
+       ) n
      ) n
      ${cursorCondition}
      ORDER BY n.anchor DESC, n.created_at DESC, n.id DESC
@@ -501,6 +509,7 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
         ? { anchor: last.cursor_anchor, created_at: last.cursor_created_at, id: last.id }
         : null,
     notes: rows.map(mapNoteRow),
+    ...(params.cursor ? {} : { total: result.rows[0]?.total ?? 0 }),
   }
 }
 

@@ -23,7 +23,9 @@ import {
   type MuscleRow as Row,
   type MuscleSort,
   noStrengthSessions,
+  SCORE_CHANGE_COLUMN,
   SCORE_CHANGE_DAYS,
+  SCORE_CHANGE_TITLE,
   SET_WINDOWS,
   setsPeriod,
   setWindows,
@@ -133,7 +135,10 @@ const MuscleList = ({
         <span>Muscle · last trained</span>
         <span>Recovery</span>
         <span>Sets, 7 d</span>
-        <span>Score</span>
+        <span class="strength-muscle-cell" title={SCORE_CHANGE_TITLE}>
+          Score
+          <span>{SCORE_CHANGE_COLUMN}</span>
+        </span>
         <span />
       </div>
       {sections.map((section) => (
