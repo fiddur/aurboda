@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   attachmentImageMarkdown,
   inlineAttachmentIds,
+  pictureOrder,
+  pictureStep,
   resolveInlinePictures,
   withoutInline,
 } from './inline-pictures'
@@ -128,5 +130,30 @@ describe('resolveInlinePictures', () => {
     resolveInlinePictures(box, { fetchBlob, maxEdge: '400', noteId: 'n1', objectUrls: fakeUrls() })
     await settle()
     expect(fetchBlob).not.toHaveBeenCalled()
+  })
+})
+
+describe('pictureOrder', () => {
+  const image = (id: string) => ({ id, kind: 'image' })
+  it('puts the pictures in the text first, in its order, then the strip, and leaves out recordings', () => {
+    const content = `one ${attachmentImageMarkdown(c)} two ${attachmentImageMarkdown(a.toUpperCase())}`
+    const attachments = [image(a), { id: 'rec', kind: 'audio' }, image(b), image(c)]
+    expect(pictureOrder(attachments, content)).toEqual([c, a, b])
+  })
+
+  it('skips a picture the text names that is not an attachment', () => {
+    expect(pictureOrder([image(a)], attachmentImageMarkdown(b))).toEqual([a])
+  })
+})
+
+describe('pictureStep', () => {
+  it('steps to the neighbours without wrapping', () => {
+    expect(pictureStep([a, b, c], b, 1)).toEqual({ count: 3, index: 1, target: c })
+    expect(pictureStep([a, b, c], a, -1)).toEqual({ count: 3, index: 0, target: undefined })
+    expect(pictureStep([a, b, c], c, 1)).toEqual({ count: 3, index: 2, target: undefined })
+  })
+
+  it('treats a picture missing from the list as the only one', () => {
+    expect(pictureStep([a, b], c, 1)).toEqual({ count: 1, index: 0, target: undefined })
   })
 })
