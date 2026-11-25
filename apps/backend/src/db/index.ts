@@ -280,6 +280,7 @@ export {
 } from './screentime-categories.ts'
 
 export {
+  deleteBlankNote,
   deleteNote,
   deleteNotesForEntityIn,
   type DeletedNote,

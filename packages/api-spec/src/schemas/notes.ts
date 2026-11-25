@@ -583,7 +583,16 @@ export const noteResponseSchema = createDataResponseSchema(noteSchema).meta({
 
 export type NoteResponse = z.infer<typeof noteResponseSchema>
 
-export const deleteNoteResponseSchema = baseResponseSchema.meta({ id: 'DeleteNoteResponse' })
+export const deleteNoteResponseSchema = baseResponseSchema
+  .extend({
+    purged: z
+      .boolean()
+      .optional()
+      .describe(
+        'true when the comment was removed for good (asked to purge, or it held nothing to restore), so it cannot be restored',
+      ),
+  })
+  .meta({ id: 'DeleteNoteResponse' })
 
 export type DeleteNoteResponse = z.infer<typeof deleteNoteResponseSchema>
 

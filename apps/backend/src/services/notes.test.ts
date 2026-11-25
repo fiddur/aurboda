@@ -30,6 +30,7 @@ import {
 } from './notes.ts'
 
 vi.mock('../db', () => ({
+  deleteBlankNote: vi.fn(),
   deleteNote: vi.fn(),
   getActivityById: vi.fn(),
   getDeletedNotes: vi.fn(),
@@ -1112,30 +1113,42 @@ describe('deleteNoteById', () => {
   })
 
   test('soft-deletes by default', async () => {
+    vi.mocked(db.deleteBlankNote).mockResolvedValue(false)
     vi.mocked(db.softDeleteNote).mockResolvedValue(true)
     const result = await deleteNoteById('user', randomUUID())
-    expect(result).toEqual({ deleted: true, success: true })
+    expect(result).toEqual({ deleted: true, purged: false, success: true })
     expect(db.deleteNote).not.toHaveBeenCalled()
+  })
+
+  test('removes a note that holds nothing for good, and says so', async () => {
+    vi.mocked(db.deleteBlankNote).mockResolvedValue(true)
+    const id = randomUUID()
+    const result = await deleteNoteById('user', id)
+    expect(result).toEqual({ deleted: true, purged: true, success: true })
+    expect(db.deleteBlankNote).toHaveBeenCalledWith('user', id)
+    expect(db.softDeleteNote).not.toHaveBeenCalled()
   })
 
   test('removes for good with purge', async () => {
     vi.mocked(db.deleteNote).mockResolvedValue(true)
     const id = randomUUID()
     const result = await deleteNoteById('user', id, { purge: true })
-    expect(result).toEqual({ deleted: true, success: true })
+    expect(result).toEqual({ deleted: true, purged: true, success: true })
     expect(db.deleteNote).toHaveBeenCalledWith('user', id)
     expect(db.softDeleteNote).not.toHaveBeenCalled()
+    expect(db.deleteBlankNote).not.toHaveBeenCalled()
   })
 
   test('returns success=false and deleted=false when note not found', async () => {
+    vi.mocked(db.deleteBlankNote).mockResolvedValue(false)
     vi.mocked(db.softDeleteNote).mockResolvedValue(false)
     const result = await deleteNoteById('user', randomUUID())
-    expect(result).toEqual({ deleted: false, success: false })
+    expect(result).toEqual({ deleted: false, purged: false, success: false })
   })
 
   test('treats a non-UUID id as not found without querying', async () => {
     const result = await deleteNoteById('user', 'not-a-uuid')
-    expect(result).toEqual({ deleted: false, success: false })
+    expect(result).toEqual({ deleted: false, purged: false, success: false })
     expect(db.deleteNote).not.toHaveBeenCalled()
     expect(db.softDeleteNote).not.toHaveBeenCalled()
   })

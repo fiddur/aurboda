@@ -13,6 +13,7 @@ import { addDays, format, parseISO } from 'date-fns'
 import type { Activity, Meal, Report } from '../../state/api/types'
 
 import { toDisplayName } from '../../utils/displayName'
+import { foldedStartsWith, searchFold } from '../../utils/searchFold'
 import { filterPeople, newPersonName } from '../People/people-view'
 
 /** A link as the editor holds it: the target and the label its chip shows. */
@@ -307,15 +308,15 @@ export const insertMention = (
 
 export const MENTION_MAX_OPTIONS = 50
 
-/** The people whose name (or relationship or handle) holds the query, names starting with it first. */
+/** The people whose name (or relationship or handle) holds the query, names starting with it first, ignoring case and accents. */
 export const mentionOptions = <T extends Pick<Person, 'id' | 'name' | 'relationship' | 'actor'>>(
   people: readonly T[],
   query: string,
 ): T[] => {
-  const q = query.trim().toLowerCase()
-  const found = filterPeople(people, q)
-  const starts = found.filter((p) => p.name.toLowerCase().startsWith(q))
-  const rest = found.filter((p) => !p.name.toLowerCase().startsWith(q))
+  const found = filterPeople(people, query)
+  const q = searchFold(query.trim())
+  const starts = found.filter((p) => foldedStartsWith(p.name, q))
+  const rest = found.filter((p) => !foldedStartsWith(p.name, q))
   return [...starts, ...rest].slice(0, MENTION_MAX_OPTIONS)
 }
 

@@ -1,3 +1,5 @@
+import { foldedIncludes, searchFold } from '../utils/searchFold'
+
 const toSnakeCase = (s: string): string =>
   s
     .trim()
@@ -28,7 +30,10 @@ export const matchActivityTypes = <T extends NamedType>(
 
   const isExact = (d: T) =>
     d.display_name.toLowerCase() === query || d.name === query || d.name === snakeInput
-  const matching = defs.filter((d) => d.display_name.toLowerCase().includes(query) || d.name.includes(query))
+  const folded = searchFold(query)
+  const matching = defs.filter(
+    (d) => foldedIncludes(d.display_name, folded) || foldedIncludes(d.name, folded),
+  )
   const exact = defs.filter(isExact)
   const filtered = [...exact, ...matching.filter((d) => !isExact(d))]
   const isNewType = !isLoading && snakeInput.length > 0 && exact.length === 0
@@ -39,12 +44,12 @@ export const matchMetricEntries = <T extends { keywords?: string[]; label: strin
   entries: T[],
   input: string,
 ): T[] => {
-  const query = input.trim().toLowerCase()
+  const query = searchFold(input.trim())
   return entries.filter(
     (entry) =>
-      entry.label.toLowerCase().includes(query) ||
-      entry.value.toLowerCase().includes(query) ||
-      entry.value.toLowerCase().replaceAll('_', ' ').includes(query) ||
-      (entry.keywords ?? []).some((keyword) => keyword.toLowerCase().includes(query)),
+      foldedIncludes(entry.label, query) ||
+      foldedIncludes(entry.value, query) ||
+      foldedIncludes(entry.value.replaceAll('_', ' '), query) ||
+      (entry.keywords ?? []).some((keyword) => foldedIncludes(keyword, query)),
   )
 }

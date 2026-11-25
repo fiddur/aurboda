@@ -5,7 +5,9 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { deleteActivity, insertActivity, restoreActivity } from './activities/index.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
+import { insertNoteAttachment } from './note-attachments.ts'
 import {
+  deleteBlankNote,
   deleteNote,
   deleteNotesForEntitiesIn,
   deleteNotesForEntityIn,
@@ -1212,6 +1214,56 @@ describe('Notes Integration Tests', () => {
       expect(await softDeleteNote(user, note.id)).toBe(true)
       expect(await softDeleteNote(user, note.id)).toBe(false)
       expect(await softDeleteNote(user, randomUUID())).toBe(false)
+    })
+
+    test('deleteBlankNote removes a note that holds nothing for good, and a restore finds nothing', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const empty = await insertNote(user, 'time', null, '', start)
+      const spaces = await insertNote(user, 'time', null, ' \n\t', start, undefined, { title: '  ' })
+
+      expect(await deleteBlankNote(user, empty.id)).toBe(true)
+      expect(await deleteBlankNote(user, spaces.id)).toBe(true)
+
+      expect(await getNoteById(user, empty.id, { include_deleted: true })).toBeNull()
+      expect(await getNoteById(user, spaces.id, { include_deleted: true })).toBeNull()
+      expect((await restoreNote(user, empty.id)).status).toBe('not_found')
+      expect(await deleteBlankNote(user, empty.id)).toBe(false)
+    })
+
+    test('deleteBlankNote leaves a note with text, a title, a tag, a link, a picture, a reply or a revision', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const person = await insertPerson(user, { name: 'Alex' })
+      const written = await insertNote(user, 'time', null, 'Words', start)
+      const titled = await insertNote(user, 'time', null, '', start, undefined, { title: 'Morning' })
+      const tagged = await insertNote(user, 'time', null, '', start, undefined, { tags: ['walk'] })
+      const linked = await insertNote(user, 'time', null, '', start, undefined, {
+        related: [{ entity_id: person.id, entity_type: 'person' }],
+      })
+      const pictured = await insertNote(user, 'time', null, '', start)
+      await insertNoteAttachment(user, pictured.id, 1, {
+        bytes: Buffer.alloc(5, 7),
+        height: 40,
+        kind: 'image',
+        mime: 'image/webp',
+        width: 20,
+      })
+      const answered = await insertNote(user, 'time', null, '', start)
+      await insertNote(user, 'note', answered.id, 'A reply', start)
+      const cleared = await insertNote(user, 'time', null, '', start)
+      await query(
+        user,
+        `INSERT INTO note_revisions (note_id, content, title) VALUES ($1, 'Old text', NULL)`,
+        [cleared.id],
+      )
+      const gone = await insertNote(user, 'time', null, '', start)
+      await softDeleteNote(user, gone.id)
+
+      for (const note of [written, titled, tagged, linked, pictured, answered, cleared, gone]) {
+        expect(await deleteBlankNote(user, note.id)).toBe(false)
+        expect(await getNoteById(user, note.id, { include_deleted: true })).not.toBeNull()
+      }
     })
 
     test('restoring a root brings back the replies deleted with it, not one deleted before', async () => {

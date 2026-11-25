@@ -727,6 +727,26 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
 }
 
 /**
+ * Remove a live note for good when it holds nothing a restore could bring back: no text, title
+ * or tags, and no attachments, links, replies or revisions, deleted ones included. Answers
+ * whether it did; a note with anything in it is left alone.
+ */
+export const deleteBlankNote = async (user: string, id: string): Promise<boolean> => {
+  const result = await query(
+    user,
+    `DELETE FROM notes n
+      WHERE n.id = $1 AND n.deleted_at IS NULL
+        AND n.content !~ '\\S' AND COALESCE(n.title, '') !~ '\\S' AND cardinality(n.tags) = 0
+        AND NOT EXISTS (SELECT 1 FROM note_attachments a WHERE a.note_id = n.id)
+        AND NOT EXISTS (SELECT 1 FROM note_links l WHERE l.note_id = n.id)
+        AND NOT EXISTS (SELECT 1 FROM note_revisions v WHERE v.note_id = n.id)
+        AND NOT EXISTS (SELECT 1 FROM notes r WHERE r.entity_type = 'note' AND r.entity_id = n.id::text)`,
+    [id],
+  )
+  return (result.rowCount ?? 0) > 0
+}
+
+/**
  * Soft-delete a live note. A thread root takes its live replies with it, under the same
  * `deleted_at`, which is how a restore tells them from a reply deleted on its own earlier.
  */

@@ -735,16 +735,25 @@ describe('DELETE /notes/:id', () => {
   })
 
   test('deletes the comment', async () => {
-    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, success: true })
+    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, purged: false, success: true })
 
     const res = await supertest(buildApp()).delete(`/${NOTE_ID}`)
 
     expect(res.status).toBe(200)
+    expect(res.body).toEqual({ purged: false, success: true })
     expect(mutations.deleteNoteById).toHaveBeenCalledWith('tester', NOTE_ID, { purge: false })
   })
 
+  test('says when a plain delete removed the comment for good', async () => {
+    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, purged: true, success: true })
+
+    const res = await supertest(buildApp()).delete(`/${NOTE_ID}`)
+
+    expect(res.body).toEqual({ purged: true, success: true })
+  })
+
   test('purges with ?purge=true', async () => {
-    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, success: true })
+    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, purged: true, success: true })
 
     const res = await supertest(buildApp()).delete(`/${NOTE_ID}`).query({ purge: 'true' })
 
@@ -760,7 +769,7 @@ describe('DELETE /notes/:id', () => {
   })
 
   test('404s when nothing was deleted', async () => {
-    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: false, success: false })
+    vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: false, purged: false, success: false })
 
     const res = await supertest(buildApp()).delete(`/${NOTE_ID}`)
 

@@ -699,9 +699,13 @@
   gap: 0.75rem;
 }
 
-.journal-tag-editor input {
+.journal-tag-input {
   flex: 1 1 8rem;
   min-width: 6rem;
+}
+
+.journal-tag-input input {
+  width: 100%;
 }
 
 .journal-editor-actions {

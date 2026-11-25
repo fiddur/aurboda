@@ -42,6 +42,12 @@ describe('matchActivityTypes', () => {
     expect(match.snakeInput).toBe('rock_climbing')
   })
 
+  test('matches a display name ignoring accents', () => {
+    const own = [...defs, { display_name: 'Café visit', name: 'cafe_visit' }]
+    expect(names(matchActivityTypes(own, 'cafe v').filtered)).toEqual(['cafe_visit'])
+    expect(names(matchActivityTypes(own, 'Café').filtered)).toEqual(['cafe_visit'])
+  })
+
   test('a blank input lists everything and offers nothing new', () => {
     const match = matchActivityTypes(defs, '   ')
     expect(match.filtered).toEqual(defs)

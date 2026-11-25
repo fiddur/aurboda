@@ -197,7 +197,7 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
         return res.status(404).json({ error: 'Note not found', success: false })
       }
 
-      res.json({ success: true })
+      res.json({ purged: result.purged, success: true })
     },
   )
 
