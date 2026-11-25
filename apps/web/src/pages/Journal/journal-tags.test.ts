@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'vitest'
 
-import { entriesLabel, lastUsedLabel, mergeTargetTag, tagFilterHref, tagOptions } from './journal-tags'
+import {
+  completeTyped,
+  entriesLabel,
+  lastTypedWord,
+  lastUsedLabel,
+  mergeTargetTag,
+  tagFilterHref,
+  tagOptions,
+  tagSuggestions,
+} from './journal-tags'
 
 const tags = [
   { count: 5, last_used: '2026-11-20T08:00:00.000Z', tag: 'run' },
@@ -53,5 +62,55 @@ describe('labels', () => {
 
   test('tagFilterHref', () => {
     expect(tagFilterHref('löpning')).toBe('/journal?tag=l%C3%B6pning')
+  })
+})
+
+describe('tagSuggestions', () => {
+  const more = [{ count: 9, last_used: '2026-11-21T08:00:00.000Z', tag: 'longrun' }, ...tags]
+
+  test('the most used tags when nothing is typed yet', () => {
+    expect(tagSuggestions(more, '', []).map((t) => t.tag)).toEqual(['longrun', 'run', 'running', 'family'])
+  })
+
+  test('tags starting with the word first, then those holding it, each most used first', () => {
+    expect(tagSuggestions(more, 'ru', []).map((t) => t.tag)).toEqual(['run', 'running', 'longrun'])
+  })
+
+  test('completes the last word only, with or without #', () => {
+    expect(tagSuggestions(more, 'family, #fam', []).map((t) => t.tag)).toEqual(['family'])
+    expect(tagSuggestions(more, 'run ', []).map((t) => t.tag)).toEqual([
+      'longrun',
+      'run',
+      'running',
+      'family',
+    ])
+  })
+
+  test('leaves out the tags the entry already has', () => {
+    expect(tagSuggestions(more, 'run', ['run', 'longrun']).map((t) => t.tag)).toEqual(['running'])
+  })
+
+  test('at most eight', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      count: 12 - i,
+      last_used: '2026-11-01T08:00:00.000Z',
+      tag: `t${i}`,
+    }))
+    expect(tagSuggestions(many, '', [])).toHaveLength(8)
+  })
+})
+
+describe('lastTypedWord and completeTyped', () => {
+  test('the word after the last space or comma', () => {
+    expect(lastTypedWord('')).toBe('')
+    expect(lastTypedWord('run')).toBe('run')
+    expect(lastTypedWord('run, fam')).toBe('fam')
+    expect(lastTypedWord('run ')).toBe('')
+  })
+
+  test('replaces only that word', () => {
+    expect(completeTyped('fam', 'family')).toBe('family')
+    expect(completeTyped('run, #fam', 'family')).toBe('run, family')
+    expect(completeTyped('run ', 'family')).toBe('run family')
   })
 })

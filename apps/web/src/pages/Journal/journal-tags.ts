@@ -25,3 +25,25 @@ export const lastUsedLabel = (lastUsed: string): string => {
 }
 
 export const tagFilterHref = (tag: string): string => `/journal?tag=${encodeURIComponent(tag)}`
+
+const TAG_SUGGESTION_LIMIT = 8
+
+/** The word being typed at the end of the tag input: the one a suggestion completes. */
+export const lastTypedWord = (typed: string): string => typed.split(/[\s,]+/).at(-1) ?? ''
+
+/** Existing tags to offer for the word being typed, those starting with it first, leaving out `taken`. */
+export const tagSuggestions = (
+  tags: readonly NoteTagSummary[],
+  typed: string,
+  taken: readonly string[],
+): NoteTagSummary[] => {
+  const word = lastTypedWord(typed)
+  const needle = word.replace(/^#/, '').normalize('NFC').toLowerCase()
+  const options = tagOptions(tags, word, taken)
+  const starting = options.filter((t) => t.tag.startsWith(needle))
+  const containing = options.filter((t) => !t.tag.startsWith(needle))
+  return [...starting, ...containing].slice(0, TAG_SUGGESTION_LIMIT)
+}
+
+/** What was typed, with its last word replaced by `tag`. */
+export const completeTyped = (typed: string, tag: string): string => typed.replace(/[^\s,]*$/, tag)
