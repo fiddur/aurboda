@@ -5,6 +5,7 @@ import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-te
 import { deleteActivity, insertActivity, restoreActivity } from './activities/index.ts'
 import { query, withUserTransaction } from './connection.ts'
 import { insertMeal } from './meals.ts'
+import { insertNoteAttachment } from './note-attachments.ts'
 import {
   deleteNote,
   deleteNotesForEntitiesIn,
@@ -1212,6 +1213,46 @@ describe('Notes Integration Tests', () => {
       expect(await softDeleteNote(user, note.id)).toBe(true)
       expect(await softDeleteNote(user, note.id)).toBe(false)
       expect(await softDeleteNote(user, randomUUID())).toBe(false)
+    })
+
+    test('a blank entry is removed for good, not kept as deleted', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const empty = await insertNote(user, 'time', null, '', start)
+      const spaces = await insertNote(user, 'time', null, ' \n\t', start, undefined, { title: '  ' })
+
+      expect(await softDeleteNote(user, empty.id)).toBe(true)
+      expect(await softDeleteNote(user, spaces.id)).toBe(true)
+
+      expect(await getNoteById(user, empty.id, { include_deleted: true })).toBeNull()
+      expect(await getNoteById(user, spaces.id, { include_deleted: true })).toBeNull()
+      expect(await softDeleteNote(user, empty.id)).toBe(false)
+    })
+
+    test('an entry with a title, a tag, a link, a picture or a reply is only soft-deleted', async () => {
+      const user = getTestUser()
+      const start = new Date('2024-01-15T09:00:00Z')
+      const person = await insertPerson(user, { name: 'Alex' })
+      const titled = await insertNote(user, 'time', null, '', start, undefined, { title: 'Morning' })
+      const tagged = await insertNote(user, 'time', null, '', start, undefined, { tags: ['walk'] })
+      const linked = await insertNote(user, 'time', null, '', start, undefined, {
+        related: [{ entity_id: person.id, entity_type: 'person' }],
+      })
+      const pictured = await insertNote(user, 'time', null, '', start)
+      await insertNoteAttachment(user, pictured.id, 1, {
+        bytes: Buffer.alloc(5, 7),
+        height: 40,
+        kind: 'image',
+        mime: 'image/webp',
+        width: 20,
+      })
+      const answered = await insertNote(user, 'time', null, '', start)
+      await insertNote(user, 'note', answered.id, 'A reply', start)
+
+      for (const note of [titled, tagged, linked, pictured, answered]) {
+        expect(await softDeleteNote(user, note.id)).toBe(true)
+        expect((await getNoteById(user, note.id, { include_deleted: true }))?.deleted_at).toBeInstanceOf(Date)
+      }
     })
 
     test('restoring a root brings back the replies deleted with it, not one deleted before', async () => {

@@ -727,11 +727,27 @@ export const deleteNote = async (user: string, id: string): Promise<boolean> => 
 }
 
 /**
+ * A live note with nothing in it: no text, title or tags, and no attachments, links or replies,
+ * deleted or not. Deleting one removes it for good, as there is nothing to restore.
+ */
+const BLANK_NOTE = `n.content !~ '\\S' AND COALESCE(n.title, '') !~ '\\S' AND cardinality(n.tags) = 0
+  AND NOT EXISTS (SELECT 1 FROM note_attachments a WHERE a.note_id = n.id)
+  AND NOT EXISTS (SELECT 1 FROM note_links l WHERE l.note_id = n.id)
+  AND NOT EXISTS (SELECT 1 FROM notes r WHERE r.entity_type = 'note' AND r.entity_id = n.id::text)`
+
+/**
  * Soft-delete a live note. A thread root takes its live replies with it, under the same
  * `deleted_at`, which is how a restore tells them from a reply deleted on its own earlier.
+ * A blank note is removed for good instead, so an entry left empty does not linger as deleted.
  */
 export const softDeleteNote = async (user: string, id: string): Promise<boolean> =>
   withUserTransaction(user, async (tx) => {
+    const blank = await query(
+      tx,
+      `DELETE FROM notes n WHERE n.id = $1 AND n.deleted_at IS NULL AND ${BLANK_NOTE} RETURNING n.id`,
+      [id],
+    )
+    if ((blank.rowCount ?? 0) > 0) return true
     const deleted = await query<{ id: string; entity_type: string }>(
       tx,
       `UPDATE notes SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id, entity_type`,

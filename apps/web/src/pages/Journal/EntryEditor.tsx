@@ -733,7 +733,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     const opened = { deleted: deletedRef.current, savedEntry: initialId !== undefined }
     if (!discardOnLeave(opened, isEntryEmpty(formRef.current, attachmentsRef.current.length))) return
     removeDraft(storage, draftKey())
-    if (idRef.current) await deleteJournalEntry(idRef.current, { purge: true }).catch(() => undefined)
+    if (idRef.current) await deleteJournalEntry(idRef.current).catch(() => undefined)
   }, [initialId, storage])
 
   useEffect(() => {
