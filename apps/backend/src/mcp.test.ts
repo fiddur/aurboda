@@ -2642,7 +2642,7 @@ describe('MCP Server', () => {
       const app = createTestApp()
       const token = auth.createToken('testuser')
       const id = '00000000-0000-4000-8000-000000000000'
-      vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, success: true })
+      vi.mocked(mutations.deleteNoteById).mockResolvedValue({ deleted: true, purged: true, success: true })
       vi.mocked(mutations.restoreNoteById).mockResolvedValue({ success: true })
       vi.mocked(mutations.getNoteRevisionsById).mockResolvedValue({ data: [], success: true })
       vi.mocked(mutations.listDeletedNotes).mockResolvedValue([])
