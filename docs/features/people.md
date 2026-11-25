@@ -47,7 +47,8 @@ seconds.
 
 The activity forms (Add Data, and Edit on an activity's page; the Timeline's "Add activity"
 opens Add Data) have a **With** picker: type a name, pick from your people, and remove a chip
-to unlink. Below your people it offers the followed accounts that have no profile yet
+to unlink. Matching ignores case and accents, so `the` finds Thérèse and `oberg` finds Öberg;
+the journal's `@` menu and tag suggestions match the same way. Below your people it offers the followed accounts that have no profile yet
 ("@anna@example.social: add as a person"), which adds the person with that handle and picks
 them, and a name nobody has yet can be added as a person from there too. An activity's page lists **With** Anna, Bo, each linking to the person.
 
