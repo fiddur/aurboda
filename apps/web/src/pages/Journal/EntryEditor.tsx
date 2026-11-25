@@ -4,9 +4,11 @@ import { DELETED_NOTE_RETENTION_DAYS, NOTE_TITLE_MAX_LENGTH } from '@aurboda/api
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'preact/hooks'
 
 import { CommentThread } from '../../components/CommentThread'
+import { stepActiveIndex } from '../../components/knownValueSuggestions'
+import '../../components/KnownValuesInput.css'
 import {
   insertOnOwnLine,
   stillUploading,
@@ -21,6 +23,7 @@ import {
   deleteNoteAttachment,
   fetchNote,
   fetchNoteRevisions,
+  fetchNoteTags,
   restoreJournalEntry,
   restoreNoteAttachment,
   updateComment,
@@ -64,7 +67,8 @@ import { EntryNeighbors } from './EntryNeighbors'
 import { EntryReadView } from './EntryReadView'
 import { attachmentImageMarkdown, pictureOrder, withoutInline } from './inline-pictures'
 import { entryGlimpse } from './journal-list'
-import { JOURNAL_KEY } from './JournalList'
+import { completeTyped, tagSuggestions } from './journal-tags'
+import { JOURNAL_KEY, JOURNAL_TAGS_KEY } from './JournalList'
 import { LinkSuggestions } from './LinkSuggestions'
 import { MentionEditor } from './MentionEditor'
 import { neighborAnchorKey } from './neighbors'
@@ -105,20 +109,63 @@ const TagEditor = ({
   content: string
   onChange: (tags: string[]) => void
 }) => {
+  const listId = useId()
   const [typed, setTyped] = useState('')
   const [rejected, setRejected] = useState<string[]>([])
-  const commit = () => {
-    if (!typed.trim()) return
-    const result = addTags(tags, typed)
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const known = useQuery({ queryFn: () => fetchNoteTags(), queryKey: JOURNAL_TAGS_KEY })
+  const chips = tagChips(tags, content)
+  const suggestions = useMemo(
+    () =>
+      tagSuggestions(
+        known.data ?? [],
+        typed,
+        chips.map((chip) => chip.tag),
+      ),
+    [known.data, typed, tags, content],
+  )
+  const expanded = open && suggestions.length > 0
+
+  const add = (text: string) => {
+    if (!text.trim()) return
+    const result = addTags(tags, text)
     setRejected(result.rejected)
     setTyped('')
+    setActiveIndex(-1)
     if (result.tags.length !== tags.length) onChange(result.tags)
   }
+  const pick = (tag: string) => add(completeTyped(typed, tag))
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!expanded) {
+        setOpen(true)
+        return
+      }
+      setActiveIndex((current) =>
+        stepActiveIndex(current, e.key === 'ArrowDown' ? 1 : -1, suggestions.length),
+      )
+    } else if (e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault()
+      if (expanded && activeIndex >= 0) pick(suggestions[activeIndex].tag)
+      else add(typed)
+    } else if (e.key === ',') {
+      e.preventDefault()
+      add(typed)
+    } else if (e.key === 'Escape' && expanded) {
+      e.preventDefault()
+      e.stopPropagation()
+      setOpen(false)
+    }
+  }
+
   return (
     <div class="journal-field">
       <span>Tags</span>
       <div class="journal-tag-editor">
-        {tagChips(tags, content).map((chip) =>
+        {chips.map((chip) =>
           chip.fromText ? (
             <span key={chip.tag} class="journal-chip from-text" title="From the text">
               #{chip.tag}
@@ -135,20 +182,50 @@ const TagEditor = ({
             </button>
           ),
         )}
-        <input
-          type="text"
-          value={typed}
-          placeholder="Add a tag"
-          aria-label="Add a tag"
-          onInput={(e) => setTyped(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ',') {
-              e.preventDefault()
-              commit()
-            }
-          }}
-          onBlur={commit}
-        />
+        <span class="known-values journal-tag-input">
+          <input
+            type="text"
+            value={typed}
+            placeholder="Add a tag"
+            aria-label="Add a tag"
+            autoComplete="off"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={expanded}
+            aria-controls={listId}
+            aria-activedescendant={expanded && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+            onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
+            onInput={(e) => {
+              setTyped(e.currentTarget.value)
+              setActiveIndex(-1)
+              setOpen(true)
+            }}
+            onKeyDown={onKeyDown}
+            onBlur={() => {
+              setOpen(false)
+              add(typed)
+            }}
+          />
+          {expanded && (
+            <ul id={listId} role="listbox" class="known-values-list" onMouseDown={(e) => e.preventDefault()}>
+              {suggestions.map((tag, i) => (
+                <li
+                  key={tag.tag}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  class={`known-values-option${i === activeIndex ? ' active' : ''}`}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => pick(tag.tag)}
+                >
+                  <span class="known-values-value">#{tag.tag}</span>
+                  <span class="known-values-count">{tag.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </span>
       </div>
       {rejected.length > 0 && (
         <small class="journal-error">Not a tag: {rejected.join(', ')} (letters, digits and _ only)</small>
