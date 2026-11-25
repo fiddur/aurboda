@@ -2,6 +2,7 @@ import type {
   AddNoteBody,
   AddNoteTemplateBody,
   BaseResponse,
+  DeleteNoteResponse,
   DismissNoteLinkSuggestionBody,
   EntityType,
   MergeNoteTagsResponse,
@@ -219,12 +220,19 @@ export const updateJournalEntry = async (id: string, body: UpdateNoteBody): Prom
   }
 }
 
-/** Recoverable for DELETED_NOTE_RETENTION_DAYS unless `purge`, which removes it for good at once. */
-export const deleteJournalEntry = async (id: string, options: { purge?: boolean } = {}): Promise<void> => {
-  await axios.delete(`${API_URL}/notes/${encodeURIComponent(id)}`, {
+/**
+ * Recoverable for DELETED_NOTE_RETENTION_DAYS unless `purge`, or unless the server finds nothing in
+ * it to restore; either way the answer's `purged` says it is gone for good.
+ */
+export const deleteJournalEntry = async (
+  id: string,
+  options: { purge?: boolean } = {},
+): Promise<{ purged: boolean }> => {
+  const response = await axios.delete<DeleteNoteResponse>(`${API_URL}/notes/${encodeURIComponent(id)}`, {
     headers: authHeaders(),
     params: options.purge ? { purge: 'true' } : {},
   })
+  return { purged: response.data.purged === true }
 }
 
 export const restoreJournalEntry = async (id: string): Promise<Note> => {

@@ -864,11 +864,12 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       return
     }
     await autosaver.flush().catch(() => undefined)
-    await deleteJournalEntry(id)
+    const { purged } = await deleteJournalEntry(id)
     deletedRef.current = true
     removeDraft(storage, id)
     void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY })
-    setDeleted(true)
+    if (purged) route('/journal')
+    else setDeleted(true)
   }
 
   useEffect(() => {

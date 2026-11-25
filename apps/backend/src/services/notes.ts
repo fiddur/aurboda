@@ -54,6 +54,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  deleteBlankNote as dbDeleteBlankNote,
   deleteNote as dbDeleteNote,
   getDeletedNotes as dbGetDeletedNotes,
   getNoteAttachmentsForNoteIds as dbGetNoteAttachmentsForNoteIds,
@@ -735,16 +736,22 @@ export async function updateNote(
 
 /**
  * Delete a comment, and on a thread root its replies. Without `purge` it can be restored for
- * {@link DELETED_NOTE_RETENTION_DAYS} days; with it, it is removed for good at once, deleted or not.
+ * {@link DELETED_NOTE_RETENTION_DAYS} days, unless it holds nothing to restore, which removes it
+ * for good; with it, it is removed for good at once, deleted or not. `purged` says which happened.
  */
 export async function deleteNoteById(
   user: string,
   id: string,
   options: { purge?: boolean } = {},
-): Promise<{ success: boolean; deleted: boolean }> {
-  if (!UUID_RE.test(id)) return { deleted: false, success: false }
-  const deleted = options.purge ? await dbDeleteNote(user, id) : await dbSoftDeleteNote(user, id)
-  return { deleted, success: deleted }
+): Promise<{ success: boolean; deleted: boolean; purged: boolean }> {
+  if (!UUID_RE.test(id)) return { deleted: false, purged: false, success: false }
+  if (options.purge) {
+    const deleted = await dbDeleteNote(user, id)
+    return { deleted, purged: deleted, success: deleted }
+  }
+  if (await dbDeleteBlankNote(user, id)) return { deleted: true, purged: true, success: true }
+  const deleted = await dbSoftDeleteNote(user, id)
+  return { deleted, purged: false, success: deleted }
 }
 
 /** Bring back a deleted comment, with the replies deleted with it. A live one is answered as it is. */

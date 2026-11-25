@@ -198,7 +198,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'delete_note',
-    `Delete a comment or journal entry by its ID. Deleting a comment also deletes the replies in its thread. It can be restored with restore_note for ${DELETED_NOTE_RETENTION_DAYS} days (see list_deleted_notes); purge: true removes it for good at once.`,
+    `Delete a comment or journal entry by its ID. Deleting a comment also deletes the replies in its thread. It can be restored with restore_note for ${DELETED_NOTE_RETENTION_DAYS} days (see list_deleted_notes), unless it held nothing to restore (no text, title, tags, attachments, links, replies or revisions), which removes it for good; purge: true removes it for good at once. The answer's purged says whether it can no longer be restored.`,
     {
       id: noteIdSchema('delete'),
       purge: z

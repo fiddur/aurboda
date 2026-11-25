@@ -132,9 +132,10 @@ material too: search includes them when `entity_types` names them.
   `@aurboda/api-spec`): `GET /notes/deleted` lists what can be restored and
   `POST /notes/:id/restore` brings an entry back with its replies. After 30 days the
   daily prune removes it for good; `DELETE /notes/:id?purge=true` does so at once.
-  A plain `DELETE` of a blank note (no text, title or tags, and no attachments, links
-  or replies, deleted ones included) removes it for good, as there is nothing to
-  restore. The server decides that, not the client.
+  A plain `DELETE` of a blank note (no text, title or tags, and no attachments, links,
+  replies or revisions, deleted ones included) removes it for good, as there is nothing
+  to restore. The server decides that, not the client, and answers `purged: true` so the
+  client offers no Undo; the editor's **Delete** then goes straight back to the Journal.
   The account export carries deleted entries too.
 
 See [Comments](./comments.md) for the exact rules.
