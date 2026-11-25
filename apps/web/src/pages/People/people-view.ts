@@ -2,6 +2,8 @@ import type { FollowingActor, ImportantDate, Person, PersonDateKind, PostMention
 
 import { formatBirthDate, parseBirthDate } from '@aurboda/api-spec'
 
+import { foldedIncludes, searchFold } from '../../utils/searchFold'
+
 const MONTHS = [
   'January',
   'February',
@@ -115,14 +117,12 @@ export const birthdayLabel = (birthDate: string | null): string => {
 }
 
 const matches = (person: Pick<Person, 'name' | 'relationship' | 'actor'>, query: string): boolean => {
-  const q = query.trim().toLowerCase()
+  const q = searchFold(query.trim())
   if (!q) return true
-  return [person.name, person.relationship, person.actor?.handle].some((text) =>
-    text?.toLowerCase().includes(q),
-  )
+  return [person.name, person.relationship, person.actor?.handle].some((text) => foldedIncludes(text, q))
 }
 
-/** The people whose name, relationship or handle contains the query. */
+/** The people whose name, relationship or handle contains the query, ignoring case and accents. */
 export const filterPeople = <T extends Pick<Person, 'name' | 'relationship' | 'actor'>>(
   people: readonly T[],
   query: string,
@@ -157,10 +157,10 @@ export const withPickerOptions = (
   chosen: readonly string[],
   query: string,
 ): WithPickerOptions => {
-  const q = query.trim().toLowerCase()
+  const q = searchFold(query.trim())
   return {
     accounts: followedWithoutProfile(following, people).filter(
-      (f) => !q || [f.handle, f.display_name].some((text) => text?.toLowerCase().includes(q)),
+      (f) => !q || [f.handle, f.display_name].some((text) => foldedIncludes(text, q)),
     ),
     people: filterPeople(
       people.filter((p) => !chosen.includes(p.id)),

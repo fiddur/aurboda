@@ -86,6 +86,15 @@ describe('tagSuggestions', () => {
     ])
   })
 
+  test('matches tags ignoring accents', () => {
+    const swedish = [
+      { count: 2, last_used: '2026-11-21T08:00:00.000Z', tag: 'kvällslöpning' },
+      { count: 1, last_used: '2026-11-21T08:00:00.000Z', tag: 'löpning' },
+    ]
+    expect(tagSuggestions(swedish, 'lop', []).map((t) => t.tag)).toEqual(['löpning', 'kvällslöpning'])
+    expect(tagOptions(swedish, 'KVALL').map((t) => t.tag)).toEqual(['kvällslöpning'])
+  })
+
   test('leaves out the tags the entry already has', () => {
     expect(tagSuggestions(more, 'run', ['run', 'longrun']).map((t) => t.tag)).toEqual(['running'])
   })

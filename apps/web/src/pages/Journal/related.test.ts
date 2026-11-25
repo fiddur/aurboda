@@ -147,6 +147,12 @@ describe('typing @', () => {
     expect(mentionOptions(people, '')).toHaveLength(3)
   })
 
+  test('matches names ignoring accents, starts first', () => {
+    const people = [person('1', 'Anna-Thérèse'), person('2', 'Thérèse'), person('3', 'Theo')]
+    expect(mentionOptions(people, 'therese').map((p) => p.name)).toEqual(['Thérèse', 'Anna-Thérèse'])
+    expect(mentionOptions(people, 'Thé').map((p) => p.name)).toEqual(['Thérèse', 'Theo', 'Anna-Thérèse'])
+  })
+
   test('offers everyone who matches, well past a handful, up to the cap', () => {
     const many = (n: number) => Array.from({ length: n }, (_, i) => person(String(i), `P${i}`))
     expect(mentionOptions(many(12), 'p')).toHaveLength(12)

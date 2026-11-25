@@ -3,17 +3,19 @@ import type { NoteTagSummary } from '@aurboda/api-spec'
 import { normalizeTag } from '@aurboda/api-spec'
 import { format } from 'date-fns'
 
+import { foldedIncludes, foldedStartsWith, searchFold } from '../../utils/searchFold'
+
 /** A typed tag as stored (trimmed, lowercase, no leading `#`), or null when it is not a valid tag. */
 export const mergeTargetTag = (input: string): string | null => normalizeTag(input)
 
-/** The tags whose name holds the search (with or without `#`), most used first as listed, minus `exclude`. */
+/** The tags whose name holds the search (with or without `#`, ignoring accents), most used first as listed, minus `exclude`. */
 export const tagOptions = (
   tags: readonly NoteTagSummary[],
   search: string,
   exclude: readonly string[] = [],
 ): NoteTagSummary[] => {
-  const needle = search.trim().replace(/^#/, '').normalize('NFC').toLowerCase()
-  return tags.filter((t) => !exclude.includes(t.tag) && t.tag.includes(needle))
+  const needle = searchFold(search.trim().replace(/^#/, ''))
+  return tags.filter((t) => !exclude.includes(t.tag) && foldedIncludes(t.tag, needle))
 }
 
 export const entriesLabel = (count: number): string => (count === 1 ? '1 entry' : `${count} entries`)
@@ -38,10 +40,10 @@ export const tagSuggestions = (
   taken: readonly string[],
 ): NoteTagSummary[] => {
   const word = lastTypedWord(typed)
-  const needle = word.replace(/^#/, '').normalize('NFC').toLowerCase()
+  const needle = searchFold(word.replace(/^#/, ''))
   const options = tagOptions(tags, word, taken)
-  const starting = options.filter((t) => t.tag.startsWith(needle))
-  const containing = options.filter((t) => !t.tag.startsWith(needle))
+  const starting = options.filter((t) => foldedStartsWith(t.tag, needle))
+  const containing = options.filter((t) => !foldedStartsWith(t.tag, needle))
   return [...starting, ...containing].slice(0, TAG_SUGGESTION_LIMIT)
 }
 

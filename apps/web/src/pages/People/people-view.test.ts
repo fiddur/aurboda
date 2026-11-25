@@ -186,6 +186,17 @@ describe('picker filtering', () => {
     expect(filterPeople([anna, bo], ' ')).toHaveLength(2)
   })
 
+  test('a typed name finds people whatever their accents', () => {
+    const therese = person('t', 'Thérèse')
+    const asa = person('s', 'Åsa Öberg', { relationship: 'kusin' })
+    expect(filterPeople([anna, therese, asa], 'The').map((p) => p.id)).toEqual(['t'])
+    expect(filterPeople([anna, therese, asa], 'oberg').map((p) => p.id)).toEqual(['s'])
+    expect(withPickerOptions([anna, therese], [], [], 'the').people.map((p) => p.id)).toEqual(['t'])
+    expect(
+      withPickerOptions([], [follow('https://ex/zoe', '@zoe@ex', 'Zoë')], [], 'zoe').accounts,
+    ).toHaveLength(1)
+  })
+
   test('offers followed accounts without a profile, leaving out the chosen people', () => {
     const following = [
       follow('https://ex/anna', '@anna@example.social'),
