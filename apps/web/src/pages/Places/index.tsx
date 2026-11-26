@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 
 import type { PlaceVisit, StoredDetectedLocation } from '../../state/api'
 
+import { osmTileLayer } from '../../components/charts/osm-tile-layer'
 import {
   addNamedLocation,
   apiErrorMessage,
@@ -144,10 +145,7 @@ export const Places = () => {
       zoomControl: true,
     })
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map)
+    osmTileLayer().addTo(map)
 
     leafletMapRef.current = map
 
