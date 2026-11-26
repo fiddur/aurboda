@@ -35,6 +35,8 @@ Between consecutive visits, **transit** entries appear as dashed connectors show
 
 An interactive OpenStreetMap map. Clicking a place in the visit list places a marker on the map and centers on that location.
 
+The map and the route maps share one tile layer (`apps/web/src/components/charts/osm-tile-layer.ts`). The site sends `Referrer-Policy: same-origin`, so the tile layer sets its own `strict-origin-when-cross-origin`: OpenStreetMap's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) requires a Referer from web pages and serves an "Access blocked" tile without one (#2032).
+
 ### Naming Locations
 
 Clicking an unnamed place (detected or unknown) opens a naming dialog. Enter a name like "Home" or "Office", and the location is promoted to a named location. Named locations are then recognized automatically in all future visits.
