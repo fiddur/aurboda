@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks'
 
 import { CHART_PRIMARY } from '../../theme'
 import { interpolatePosition } from './chart-utils'
+import { osmTileLayer } from './osm-tile-layer'
 import { useInView } from './useInView'
 import './RouteMap.css'
 
@@ -62,10 +63,7 @@ export const RouteMap = ({ points, hoverTime, highlight }: RouteMapProps) => {
 
     const map = L.map(mapContainerRef.current, { zoomControl: true })
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map)
+    osmTileLayer().addTo(map)
 
     const latLngs: L.LatLngExpression[] = points.map((p) => [p.lat, p.lon])
     const polyline = L.polyline(latLngs, {
