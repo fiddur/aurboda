@@ -213,6 +213,7 @@ describe('journal context form', () => {
       expect(metricCarriesForward('weight')).toBe(true)
       expect(metricCarriesForward('rhr_30day')).toBe(false)
       expect(metricCarriesForward('zone2_weekly')).toBe(false)
+      expect(metricCarriesForward('hr_zone_2_sec')).toBe(false)
       expect(metricCarriesForward('hrv_sleep')).toBe(false)
     })
 

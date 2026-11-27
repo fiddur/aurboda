@@ -289,10 +289,11 @@ export const trainingLoadAt = async (
 }
 
 /**
- * The process's training load deps without the wait for a recompute: a note read never waits for one, and the item is
- * left out until the backfill is done. The recompute state is the process's own, shared with every other reader.
+ * The process's training load deps with a short wait for a recompute: long enough for the incremental one a sync
+ * leaves behind, so a note read is not held by a long backfill, whose item is left out until it is done. The recompute
+ * state is the process's own, shared with every other reader.
  */
-export const journalTrainingLoadDeps: TrainingLoadDeps = { ...createTrainingLoadDeps(), recomputeWaitMs: 0 }
+export const journalTrainingLoadDeps: TrainingLoadDeps = { ...createTrainingLoadDeps(), recomputeWaitMs: 500 }
 
 export const defaultJournalContextDeps: JournalContextDeps = {
   daysSinceActivity: (user, pattern, day, tz) => getDaysSinceActivity(user, pattern, day, tz),

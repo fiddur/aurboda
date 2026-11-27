@@ -519,8 +519,9 @@ your timezone. There are five kinds of item:
 - **Training load** (`training_load`): the [training load](./training-load.md)
   at the end of the day -- fitness (`ctl`, the default), fatigue (`atl`) or form
   (`tsb`, which can be negative). Left out when there is no training load data,
-  and while the training load is being recomputed (after older data arrived);
-  reading an entry never waits for that.
+  and while a long recompute of the training load runs (the first read, or one
+  reaching back before what is computed); reading an entry waits at most half a
+  second for a recompute, which covers the short one a sync leaves behind.
 
 The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
 ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,

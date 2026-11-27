@@ -39,6 +39,7 @@ const ContextDialog = ({ date, onClose }: { date: string; onClose: () => void })
       <div
         class="dashboard-editor-modal journal-context-dialog"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="journal-context-dialog-title"
         onKeyDown={(e) => {

@@ -112,7 +112,9 @@ export const metricHasSource = (metric: string): boolean =>
 
 /** Whether a metric item's `missing: carry_forward` means anything: not for a figure over a window. */
 export const metricCarriesForward = (metric: string): boolean =>
-  !isJournalContextDerivedMetric(metric) && !isContextualHrvMetric(metric as MetricType)
+  !isJournalContextDerivedMetric(metric) &&
+  !isHrZoneMetric(metric as MetricType) &&
+  !isContextualHrvMetric(metric as MetricType)
 
 /** `item` showing `metric`, without the options the server ignores for it. */
 export const withMetric = (item: MetricItem, metric: string): MetricItem => {
