@@ -27,6 +27,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -172,10 +173,24 @@ fun EmbeddedWebScreen(
     val baseOrigin = originOf(baseUrl)
     val trusted = baseOrigin != null && originOf(url) == baseOrigin
 
+    val leaveGuard = if (trusted) LocalWebLeaveGuard.current else null
+    val guardedWebView = webView
+    if (leaveGuard != null && guardedWebView != null) {
+        DisposableEffect(leaveGuard, guardedWebView) {
+            val ask: ((String?) -> Unit) -> Unit = { onAnswer ->
+                guardedWebView.evaluateJavascript(LEAVE_GUARD_JS) { onAnswer(parseLeaveGuardResult(it)) }
+            }
+            leaveGuard.ask = ask
+            onDispose {
+                if (leaveGuard.ask === ask) leaveGuard.ask = null
+            }
+        }
+    }
+
     // Let the WebView consume the system back gesture to walk its own history
     // before the back press falls through to leaving the screen.
     BackHandler(enabled = canGoBack) {
-        webView?.goBack()
+        if (leaveGuard != null) leaveGuard.confirmThen { webView?.goBack() } else webView?.goBack()
     }
 
     Box(modifier = modifier.fillMaxSize()) {
