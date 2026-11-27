@@ -20,6 +20,20 @@ const itemBaseShape = {
 
 const trendShape = trendChartConfigSchema.shape
 
+/** Dashboard metrics a metric item computes over the days ending on the entry's day. */
+export const journalContextDerivedMetrics = [
+  'hrv_7day',
+  'hrv_30day',
+  'rhr_7day',
+  'rhr_30day',
+  'zone2_weekly',
+] as const
+
+export type JournalContextDerivedMetric = (typeof journalContextDerivedMetrics)[number]
+
+export const isJournalContextDerivedMetric = (metric: string): metric is JournalContextDerivedMetric =>
+  (journalContextDerivedMetrics as readonly string[]).includes(metric)
+
 export const journalContextMetricItemSchema = z
   .object({
     ...itemBaseShape,
@@ -32,11 +46,14 @@ export const journalContextMetricItemSchema = z
       description:
         "What a day without a value shows: 'hide' leaves the item out, 'carry_forward' shows the latest value before the day",
     }),
-    source: dataSourceSchema.optional().meta({ description: 'Only count samples from this data source' }),
+    source: dataSourceSchema.optional().meta({
+      description:
+        'Only count samples from this data source; ignored for the heart rate zone metrics (zone2_weekly, hr_zone_N_sec) and the contextual HRV metrics (hrv_sleep, hrv_awake, hrv_activity), which are computed from all sources',
+    }),
   })
   .meta({
     description:
-      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average)",
+      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average). The dashboard's derived metrics are computed as of the day: rhr_7day / rhr_30day / hrv_7day / hrv_30day are the mean of the daily values over the 7 / 30 days ending on the day, zone2_weekly the minutes in heart rate zone 2 over the 7 days ending on the day (computed from heart_rate samples); 'carry_forward' does not apply to them",
     id: 'JournalContextMetricItem',
   })
 
@@ -96,12 +113,28 @@ export const journalContextMoonItemSchema = z
     id: 'JournalContextMoonItem',
   })
 
+export const journalContextTrainingLoadItemSchema = z
+  .object({
+    ...itemBaseShape,
+    kind: z.literal('training_load'),
+    value: z.enum(['ctl', 'atl', 'tsb']).default('ctl').meta({
+      description:
+        "What is shown: 'ctl' (fitness, Chronic Training Load), 'atl' (fatigue, Acute Training Load) or 'tsb' (form, Training Stress Balance = CTL - ATL, may be negative)",
+    }),
+  })
+  .meta({
+    description:
+      'The training load (Banister model) at the end of the day; left out when there is no training load data',
+    id: 'JournalContextTrainingLoadItem',
+  })
+
 export const journalContextItemSchema = z
   .discriminatedUnion('kind', [
     journalContextMetricItemSchema,
     journalContextTrendItemSchema,
     journalContextDaysSinceItemSchema,
     journalContextMoonItemSchema,
+    journalContextTrainingLoadItemSchema,
   ])
   .meta({ description: 'One item of the journal context line', id: 'JournalContextItem' })
 
@@ -123,7 +156,9 @@ export const journalContextValueSchema = z
   .object({
     decimals: z.number().int().meta({ description: 'Decimals the value is shown with' }),
     id: z.string().meta({ description: 'The configured item id' }),
-    kind: z.enum(['metric', 'trend', 'days_since', 'moon']).meta({ description: 'The item kind' }),
+    kind: z
+      .enum(['metric', 'trend', 'days_since', 'moon', 'training_load'])
+      .meta({ description: 'The item kind' }),
     label: z.string().meta({ description: 'The label (for the moon followed by the phase emoji)' }),
     name: z.string().meta({ description: 'A full name of the item, e.g. for a tooltip' }),
     suffix: z.string().meta({ description: 'Unit suffix after the value ("%", "d" or empty)' }),

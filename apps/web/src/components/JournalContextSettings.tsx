@@ -1,22 +1,33 @@
 import type { DataSource, JournalContextItem, UserSettingsResponse } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
-import { contextToken } from '../pages/Journal/context-line'
-import { apiErrorMessage, fetchJournalContext, updateUserSettings } from '../state/api'
+import { ContextTokens } from '../pages/Journal/ContextTokens'
+import {
+  apiErrorMessage,
+  fetchActivityTypeDefinitions,
+  fetchJournalContext,
+  updateUserSettings,
+} from '../state/api'
 import { browserTimezone } from '../utils/browserTimezone'
 import { ActivityTypePicker } from './ActivityTypePicker'
 import {
   addItem,
+  autosaveStep,
   type ContextKind,
   contextKindLabels,
-  itemProblem,
+  type IconSources,
+  itemsToSaveOnClose,
+  metricCarriesForward,
+  metricHasSource,
   moveItem,
   removeItem,
   replaceItem,
   withDaysSinceSource,
   withKind,
+  withMetric,
+  withSuggestedLabel,
 } from './journal-context-form'
 import { MetricPicker } from './MetricPicker'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
@@ -37,11 +48,7 @@ const metricSources: DataSource[] = [
   'aurboda',
 ]
 
-const todayKey = (): string => {
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
+const AUTOSAVE_DELAY_MS = 600
 
 const inputValue = (e: Event): string => (e.target as HTMLInputElement | HTMLSelectElement).value
 
@@ -57,34 +64,38 @@ const MetricFields = ({
   <>
     <div class="form-group">
       <label>Metric</label>
-      <MetricPicker value={item.metric} onChange={(metric) => onChange({ ...item, metric })} />
+      <MetricPicker value={item.metric} onChange={(metric) => onChange(withMetric(item, metric))} />
     </div>
-    <div class="form-group">
-      <label>Source</label>
-      <select
-        value={item.source ?? ''}
-        onChange={(e) =>
-          onChange({ ...item, source: (inputValue(e) || undefined) as DataSource | undefined })
-        }
-      >
-        <option value="">Any</option>
-        {metricSources.map((source) => (
-          <option key={source} value={source}>
-            {source}
-          </option>
-        ))}
-      </select>
-    </div>
-    <div class="form-group">
-      <label>No value that day</label>
-      <select
-        value={item.missing}
-        onChange={(e) => onChange({ ...item, missing: inputValue(e) as typeof item.missing })}
-      >
-        <option value="hide">Leave it out</option>
-        <option value="carry_forward">Show the latest earlier value</option>
-      </select>
-    </div>
+    {metricHasSource(item.metric) && (
+      <div class="form-group">
+        <label>Source</label>
+        <select
+          value={item.source ?? ''}
+          onChange={(e) =>
+            onChange({ ...item, source: (inputValue(e) || undefined) as DataSource | undefined })
+          }
+        >
+          <option value="">Any</option>
+          {metricSources.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+    {metricCarriesForward(item.metric) && (
+      <div class="form-group">
+        <label>No value that day</label>
+        <select
+          value={item.missing}
+          onChange={(e) => onChange({ ...item, missing: inputValue(e) as typeof item.missing })}
+        >
+          <option value="hide">Leave it out</option>
+          <option value="carry_forward">Show the latest earlier value</option>
+        </select>
+      </div>
+    )}
   </>
 )
 
@@ -214,6 +225,26 @@ const MoonFields = ({
   </div>
 )
 
+const TrainingLoadFields = ({
+  item,
+  onChange,
+}: {
+  item: Extract<JournalContextItem, { kind: 'training_load' }>
+  onChange: Change
+}) => (
+  <div class="form-group">
+    <label>Show</label>
+    <select
+      value={item.value}
+      onChange={(e) => onChange({ ...item, value: inputValue(e) as typeof item.value })}
+    >
+      <option value="ctl">Fitness (CTL)</option>
+      <option value="atl">Fatigue (ATL)</option>
+      <option value="tsb">Form (TSB)</option>
+    </select>
+  </div>
+)
+
 const KindFields = ({ item, onChange }: { item: JournalContextItem; onChange: Change }) => {
   switch (item.kind) {
     case 'metric':
@@ -224,6 +255,8 @@ const KindFields = ({ item, onChange }: { item: JournalContextItem; onChange: Ch
       return <DaysSinceFields item={item} onChange={onChange} />
     case 'moon':
       return <MoonFields item={item} onChange={onChange} />
+    case 'training_load':
+      return <TrainingLoadFields item={item} onChange={onChange} />
   }
 }
 
@@ -255,27 +288,6 @@ const ItemEditor = ({
           </option>
         ))}
       </select>
-      <input
-        type="text"
-        aria-label="Label"
-        placeholder="Label"
-        maxLength={12}
-        class="journal-context-label"
-        value={item.label}
-        onInput={(e) => onChange({ ...item, label: inputValue(e) })}
-      />
-      <label class="journal-context-decimals">
-        Decimals
-        <input
-          type="number"
-          min={0}
-          max={3}
-          value={item.decimals}
-          onChange={(e) =>
-            onChange({ ...item, decimals: Math.min(3, Math.max(0, parseInt(inputValue(e), 10) || 0)) })
-          }
-        />
-      </label>
       <span class="journal-context-item-actions">
         <button
           type="button"
@@ -303,11 +315,33 @@ const ItemEditor = ({
     <div class="journal-context-item-fields">
       <KindFields item={item} onChange={onChange} />
     </div>
+    <div class="journal-context-item-look">
+      <input
+        type="text"
+        aria-label="Label"
+        placeholder="Label"
+        maxLength={12}
+        class="journal-context-label"
+        value={item.label}
+        onInput={(e) => onChange({ ...item, label: inputValue(e) })}
+      />
+      <label class="journal-context-decimals">
+        Decimals
+        <input
+          type="number"
+          min={0}
+          max={3}
+          value={item.decimals}
+          onChange={(e) =>
+            onChange({ ...item, decimals: Math.min(3, Math.max(0, parseInt(inputValue(e), 10) || 0)) })
+          }
+        />
+      </label>
+    </div>
   </div>
 )
 
-const PreviewLine = () => {
-  const date = todayKey()
+const PreviewLine = ({ date }: { date: string }) => {
   const { data } = useQuery({
     queryFn: () => fetchJournalContext(date, browserTimezone() ?? undefined),
     queryKey: ['journal-context', date],
@@ -315,66 +349,117 @@ const PreviewLine = () => {
   if (!data) return null
   return (
     <p class="field-description">
-      Preview for today (saved items):{' '}
+      Preview for this entry's day, {date} (saved items):{' '}
       {data.items.length === 0 ? (
         'nothing to show'
       ) : (
         <span class="journal-context-preview">
-          {data.items.map((item, index) => (
-            <span key={item.id}>
-              {index > 0 && ', '}
-              <span title={item.name}>{contextToken(item)}</span>
-            </span>
-          ))}
+          <ContextTokens context={data} />
         </span>
       )}
     </p>
   )
 }
 
-/** The journal context line: the figures shown under a journal entry for its day. */
-export function JournalContextSettings({ settings }: { settings: UserSettingsResponse | undefined }) {
+const useIconSources = (settings: UserSettingsResponse | undefined): IconSources => {
+  const { data: typeDefs } = useQuery({
+    queryFn: fetchActivityTypeDefinitions,
+    queryKey: ['activityTypeDefinitions'],
+    staleTime: 30 * 60 * 1000,
+  })
+  return useMemo(
+    () => ({
+      itemIcons: settings?.item_icons ?? {},
+      typeIcons: new Map((typeDefs ?? []).map((def) => [def.name, def.icon])),
+    }),
+    [settings?.item_icons, typeDefs],
+  )
+}
+
+/**
+ * The journal context line's editor: the figures shown under a journal entry for its day. Changes save by
+ * themselves once every item is complete; `date` is the day the preview is for.
+ */
+export function JournalContextSettings({
+  settings,
+  date,
+}: {
+  settings: UserSettingsResponse | undefined
+  date: string
+}) {
   const queryClient = useQueryClient()
   const saved = settings?.journal_context
   const [items, setItems] = useState<JournalContextItem[]>(saved ?? [])
   const itemsRef = useRef(items)
   itemsRef.current = items
-  const [dirty, setDirty] = useState(false)
+  const savedRef = useRef(JSON.stringify(saved ?? []))
+  const editedRef = useRef(false)
+  const savingRef = useRef(false)
+  const mountedRef = useRef(true)
+  const closingRef = useRef(false)
   const [status, setStatus] = useState<SaveStatus>({ status: 'idle' })
+  const icons = useIconSources(settings)
 
   useEffect(() => {
-    if (!dirty) setItems(saved ?? [])
-  }, [saved, dirty])
+    if (editedRef.current) return
+    setItems(saved ?? [])
+    savedRef.current = JSON.stringify(saved ?? [])
+  }, [saved])
 
   const edit = (next: JournalContextItem[]) => {
+    editedRef.current = true
     setItems(next)
-    setDirty(true)
   }
 
-  const problems = items.map(itemProblem)
-  const problem = problems.find((p) => p !== undefined)
-
-  const save = async () => {
-    setStatus({ status: 'saving' })
-    const sent = items
+  const save = async (sent: JournalContextItem[]) => {
+    savingRef.current = true
+    if (mountedRef.current) setStatus({ status: 'saving' })
     try {
       const result = await updateUserSettings({ journal_context: sent })
+      savedRef.current = JSON.stringify(sent)
       queryClient.setQueryData(['userSettings'], result)
-      setDirty(itemsRef.current !== sent)
-      setStatus({ status: 'saved', time: new Date() })
       void queryClient.invalidateQueries({ queryKey: ['journal-context'] })
+      savingRef.current = false
+      if (mountedRef.current) setStatus({ status: 'saved', time: new Date() })
+      runAutosave()
     } catch (err) {
-      setStatus({ error: apiErrorMessage(err, 'Failed to save'), status: 'error' })
+      savingRef.current = false
+      if (mountedRef.current) setStatus({ error: apiErrorMessage(err, 'Failed to save'), status: 'error' })
     }
   }
 
+  const runAutosave = () => {
+    const current = closingRef.current ? itemsToSaveOnClose(itemsRef.current) : itemsRef.current
+    const step = autosaveStep(current, savedRef.current, savingRef.current)
+    if (step.action === 'save') void save(step.items)
+  }
+  const runAutosaveRef = useRef(runAutosave)
+  runAutosaveRef.current = runAutosave
+
+  useEffect(() => {
+    if (!editedRef.current) return
+    const timer = setTimeout(() => runAutosaveRef.current(), AUTOSAVE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [items])
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+      closingRef.current = true
+      if (editedRef.current) runAutosaveRef.current()
+    },
+    [],
+  )
+
+  const pending = autosaveStep(items, savedRef.current, true)
+  const problem = pending.action === 'blocked' ? pending.problem : undefined
+
   return (
     <div class="form-field journal-context-settings">
-      <h3>Context line</h3>
       <p class="field-description">
         A short line of figures shown under a journal entry's title, computed for the entry's day, e.g. a
         readiness score, a trend, the days since an activity or the moon. An item without a value that day is
-        left out.
+        left out. Changes are saved as you make them.
       </p>
       {items.map((item, index) => (
         <ItemEditor
@@ -382,7 +467,7 @@ export function JournalContextSettings({ settings }: { settings: UserSettingsRes
           item={item}
           index={index}
           count={items.length}
-          onChange={(next) => edit(replaceItem(items, index, next))}
+          onChange={(next) => edit(replaceItem(items, index, withSuggestedLabel(item, next, icons)))}
           onMove={(by) => edit(moveItem(items, index, by))}
           onRemove={() => edit(removeItem(items, index))}
         />
@@ -403,18 +488,15 @@ export function JournalContextSettings({ settings }: { settings: UserSettingsRes
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          class="btn-primary"
-          disabled={!dirty || problem !== undefined || status.status === 'saving'}
-          onClick={() => void save()}
-        >
-          Save context line
-        </button>
         <SaveStatusIndicator state={status} />
+        {status.status === 'error' && (
+          <button type="button" class="btn-secondary" onClick={() => runAutosave()}>
+            Retry
+          </button>
+        )}
       </div>
-      {dirty && problem && <p class="field-description">{problem}</p>}
-      <PreviewLine />
+      {problem && <p class="field-description">{problem}</p>}
+      <PreviewLine date={date} />
     </div>
   )
 }

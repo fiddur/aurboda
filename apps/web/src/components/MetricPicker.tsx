@@ -139,6 +139,10 @@ export function MetricPicker({
       e.preventDefault()
       selectMetric(flatFiltered[highlightedIndex].value)
     } else if (e.key === 'Escape') {
+      if (isOpen) {
+        e.stopPropagation()
+        e.preventDefault()
+      }
       setIsOpen(false)
       setInputValue('')
     }
