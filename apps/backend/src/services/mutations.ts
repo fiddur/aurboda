@@ -956,7 +956,7 @@ export async function updateActivity(
   }
   await storeItemValueMappings(user, keyed.data.mappings)
   if (input.people !== undefined) {
-    await setGroupPeople(user, updated.id!, updated.id!, input.people)
+    await setGroupPeople(user, target.id!, updated.id!, input.people)
   }
 
   // Route a body-level `notes` update into the notes table. Replace semantics:
