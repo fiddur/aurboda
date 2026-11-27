@@ -21,6 +21,7 @@ import {
   StatusBanner,
   SyncStatusBar,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 
 const DATA_TYPES: DataTypeItem[] = [
@@ -54,7 +55,7 @@ function StravaConnection({
   const [connectError, setConnectError] = useState<string | null>(() => callbackErrorText('Strava'))
 
   const refreshConnection = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await invalidateSourceQueries(queryClient)
     await queryClient.invalidateQueries({ queryKey: ['stravaSyncStatus'] })
   }, [queryClient])
 
@@ -111,7 +112,7 @@ function StravaConnection({
     setDisconnecting(true)
     try {
       await disconnectStrava()
-      await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      await invalidateSourceQueries(queryClient)
     } catch {
       // Silently handle
     } finally {

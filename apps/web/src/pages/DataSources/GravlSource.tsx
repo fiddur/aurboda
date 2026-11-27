@@ -25,6 +25,7 @@ import {
   SyncIntervalField,
   SyncStatusBar,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 import { refetchWhileSyncing } from './syncPolling'
 
@@ -136,7 +137,7 @@ function GravlTokenSection({ connection }: { connection: GravlConnection }) {
       setSaveStatus({ status: 'saving' })
       try {
         const result = await updateUserSettings({ gravl_api_token: value })
-        queryClient.setQueryData(['userSettings'], result)
+        await invalidateSourceQueries(queryClient, result)
         setSaveStatus({ status: 'saved' })
       } catch (err) {
         setSaveStatus({ error: err instanceof Error ? err.message : 'Failed to save', status: 'error' })
@@ -273,7 +274,7 @@ export function GravlSource() {
   })
 
   const refreshSettings = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await invalidateSourceQueries(queryClient)
   }, [queryClient])
 
   if (!isLoggedIn) return <LoginRequiredToFinish provider="gravl" providerName="Gravl" />

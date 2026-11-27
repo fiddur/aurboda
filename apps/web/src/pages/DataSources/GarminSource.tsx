@@ -38,6 +38,7 @@ import {
   SyncIntervalField,
   SyncStatusBar,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 
 interface GarminDataTypeInfo {
@@ -348,7 +349,7 @@ function GarminDataTypesSection({
       sources={sources}
       onToggle={async (types) => {
         await updateUserSettings({ garmin_disabled_data_types: types })
-        await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+        await invalidateSourceQueries(queryClient)
       }}
     />
   )
@@ -593,18 +594,18 @@ export function GarminSource() {
 
   const handleLoginSuccess = useCallback(async () => {
     setLoginStatus('idle')
-    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await invalidateSourceQueries(queryClient)
   }, [queryClient])
 
   const handlePersonalKeyChanged = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await invalidateSourceQueries(queryClient)
   }, [queryClient])
 
   const handleDisconnect = useCallback(async () => {
     setDisconnecting(true)
     try {
       await disconnectGarmin()
-      await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      await invalidateSourceQueries(queryClient)
     } catch {
       // Silently handle — the user can try again
     } finally {

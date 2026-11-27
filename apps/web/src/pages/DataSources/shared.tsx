@@ -8,6 +8,7 @@ import { fetchDataSourcesOverview, fetchUserSettings, updateUserSettings } from 
 import { auth } from '../../state/auth'
 import { type OAuthProvider, oauthReturn } from './oauthReturn'
 import { otherSourcesCovering, overlapNoteText } from './overview'
+import { invalidateSourceQueries } from './sourceQueries'
 
 export { type SaveStatus, SaveStatusIndicator }
 
@@ -20,7 +21,6 @@ export function StatusBanner({ connected, label }: { connected: boolean; label: 
   )
 }
 
-/** On a source's own page: says when another active source already sends the same data. */
 export function OverlapNote({ sourceId }: { sourceId: DataSourceId }) {
   const { data: overview } = useQuery({
     enabled: !!auth.value.token,
@@ -281,7 +281,7 @@ export function SyncIntervalField({
     setSaveStatus({ status: 'saving' })
     try {
       const result = await updateUserSettings({ sync_intervals: next })
-      queryClient.setQueryData(['userSettings'], result)
+      await invalidateSourceQueries(queryClient, result)
       setSaveStatus({ status: 'saved' })
     } catch (err) {
       setSaveStatus({ error: err instanceof Error ? err.message : 'Failed to save', status: 'error' })
