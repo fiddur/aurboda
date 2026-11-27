@@ -878,6 +878,7 @@
 
 .dashboard .dashboard-intro-input,
 .dashboard .section-intro-input {
+  box-sizing: border-box;
   width: 100%;
   font: inherit;
   color: var(--neutral-l33);

@@ -92,6 +92,6 @@
 
 .due-today .checkin-error {
   margin: 0 0 0.75rem;
-  color: var(--color-danger, var(--red-600));
+  color: var(--color-danger-text);
   font-size: 0.9rem;
 }

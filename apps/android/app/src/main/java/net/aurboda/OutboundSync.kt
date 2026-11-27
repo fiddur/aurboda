@@ -476,36 +476,51 @@ private suspend fun writeUpsertRecord(
   return if (recordId != null) WriteResult.Success(recordId) else WriteResult.Skipped("insertRecords returned no ID")
 }
 
+internal data class DeleteTarget(
+  val recordIds: List<String>,
+  val clientRecordIds: List<String>,
+)
+
+/**
+ * Without a Health Connect record id (an activity deleted before its insert was acknowledged), the
+ * record is found by the client record id every outbound write sets.
+ */
+internal fun deleteTargetOf(
+  hcRecordId: String?,
+  entityId: String,
+): DeleteTarget =
+  if (hcRecordId != null) {
+    DeleteTarget(recordIds = listOf(hcRecordId), clientRecordIds = emptyList())
+  } else {
+    DeleteTarget(recordIds = emptyList(), clientRecordIds = listOf("$OUTBOUND_SYNC_CLIENT_ID_PREFIX$entityId"))
+  }
+
 /**
  * Returns true if the delete succeeded or the entry is unprocessable (should be ack'd to prevent
- * infinite retry). Returns false only on transient failures that should be retried.
+ * infinite retry). Returns false only on transient failures that should be retried. Health Connect
+ * ignores ids that match no record, so a delete of an absent record also succeeds.
  */
 private suspend fun deleteHealthConnectRecord(
   entry: OutboundSyncEntryApi,
   healthConnectClient: HealthConnectClient,
 ): Boolean {
-  val hcRecordId =
-    entry.payload.getString("hc_record_id")
-      ?: entry.hc_record_id
-  if (hcRecordId == null) {
-    // No HC record ID available — this entry can never be processed, so ack it to avoid
-    // infinite retry. This can happen if the record was created before outbound sync tracked IDs.
-    Log.w(TAG, "⚠️ No HC record ID for delete on entry ${entry.id}, acknowledging as unprocessable")
-    return true
-  }
-
   val recordClass = hcRecordTypeToClass(entry.hc_record_type)
   if (recordClass == null) {
     Log.w(TAG, "⚠️ Unknown record type for delete: ${entry.hc_record_type}, acknowledging as unprocessable")
     return true
   }
 
+  val target =
+    deleteTargetOf(
+      hcRecordId = entry.payload.getString("hc_record_id") ?: entry.hc_record_id,
+      entityId = entry.entity_id,
+    )
   healthConnectClient.deleteRecords(
     recordType = recordClass,
-    recordIdsList = listOf(hcRecordId),
-    clientRecordIdsList = emptyList(),
+    recordIdsList = target.recordIds,
+    clientRecordIdsList = target.clientRecordIds,
   )
-  Log.d(TAG, "🗑️ Deleted ${entry.hc_record_type} from Health Connect: $hcRecordId")
+  Log.d(TAG, "🗑️ Deleted ${entry.hc_record_type} from Health Connect: $target")
   return true
 }
 
@@ -692,8 +707,9 @@ private inline fun <reified T : Record> hasWritePermission(grantedPermissions: S
   return granted
 }
 
-private fun hcRecordTypeToClass(typeName: String): kotlin.reflect.KClass<out Record>? =
+internal fun hcRecordTypeToClass(typeName: String): kotlin.reflect.KClass<out Record>? =
   when (typeName) {
+    "ActiveCaloriesBurnedRecord" -> ActiveCaloriesBurnedRecord::class
     "WeightRecord" -> WeightRecord::class
     "HeightRecord" -> HeightRecord::class
     "BodyFatRecord" -> BodyFatRecord::class

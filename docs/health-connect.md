@@ -168,7 +168,9 @@ check-in (an edit that keeps a point's metric and time just overwrites it). A po
 wrote gets a `delete` entry carrying the record id the app acknowledged; a point still waiting in the
 queue is dropped from it, so the phone never writes it; a point that was never queued is left alone.
 A later write of the same point (restoring the check-in, say) drops a pending delete of it and is queued
-as a fresh insert.
+as a fresh insert. The app deletes by the entry's record id, or, for a `delete` without one (an activity
+deleted before the phone acknowledged its insert, say), by the `clientRecordId` it writes every record
+with; Health Connect ignores ids that match nothing, so either way the entry is acknowledged.
 
 Not covered:
 
@@ -176,11 +178,9 @@ Not covered:
   `check_in` answer, say): they share one Health Connect record, since the record is keyed by metric
   and time, so deleting either takes the shared record off the phone.
 - A point whose insert was acknowledged more than 14 days ago: synced time-series queue rows are pruned
-  then, and with them the record id the delete needs.
+  then, and with them the record of the write, so no delete is queued.
 - An acknowledged insert the app wrote without returning a record id (skipped for a missing
   permission, say): there is nothing to delete.
-- `ActiveCaloriesBurnedRecord`: the app does not know that type for a delete and acknowledges the entry
-  without deleting anything. Calorie recomputes only rewrite minutes, they never delete one.
 - Points removed by a source's own sync or by the rebuild paths (calorie and training-load recomputes),
   which are not points Aurboda queued for writing or are rewritten right after.
 

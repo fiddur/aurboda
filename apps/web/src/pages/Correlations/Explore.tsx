@@ -19,6 +19,7 @@ import {
   fetchGenericCorrelation,
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { correlationErrorText } from './correlationError'
 import { comparisonsNote, SIGNIFICANCE_LEVEL } from './effects'
 import { eventTriggerLabel, toTriggerCondition } from './eventTrigger'
 import { describeCompleteness, fiveNumberSummary, linearRegression, selectorAxisLabel } from './exploreCharts'
@@ -809,7 +810,9 @@ export function ExploreTab() {
       {resultQuery.isFetching && <div class="loading">Analyzing…</div>}
       {resultQuery.isError && (
         <div class="explore-error">
-          {apiErrorMessage(resultQuery.error, 'Analysis failed. Check the inputs and retry.')}
+          {correlationErrorText(
+            apiErrorMessage(resultQuery.error, 'Analysis failed. Check the inputs and retry.'),
+          )}
         </div>
       )}
       {result?.kind === 'event' && (
