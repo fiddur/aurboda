@@ -11,6 +11,7 @@ import type { ContinuousResult } from './continuous.ts'
 import type { Selector } from './selectors.ts'
 import type { EventOutcomeConfig, EventOutcomeBlock, TriggerCondition } from './types.ts'
 
+import { activityPeopleError } from '../activity-people.ts'
 import { type FlaggedWindow, flaggedDays, flaggedExclusion, loadFlaggedWindows } from '../flagged-windows.ts'
 import { triggerCorrelationSyncs } from './background-sync.ts'
 import { computeContinuous } from './continuous.ts'
@@ -58,6 +59,21 @@ export interface ContinuousCorrelation extends ContinuousResult {
   trigger: Selector
   outcome: Selector
   period: { start: string; end: string; days: number }
+}
+
+/**
+ * Why the selectors cannot be correlated, for a 400 before any work: a people selector's person must
+ * be live, as for a people trigger in event mode, rather than read as a person never seen.
+ */
+export const continuousSelectorsError = async (
+  user: string,
+  selectors: Selector[],
+  peopleError: typeof activityPeopleError = activityPeopleError,
+): Promise<string | null> => {
+  const ids = [
+    ...new Set(selectors.flatMap((s) => (s.kind === 'people' && s.person_id ? [s.person_id] : []))),
+  ]
+  return ids.length === 0 ? null : peopleError(user, ids)
 }
 
 /**

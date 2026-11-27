@@ -264,7 +264,9 @@ rule, and links the person to every matching activity, old and new.
 - Deleting the rule drops its record; the people it added stay.
 - Enrich links the people to the rows the data enrichment reads (every row of `output_activity_type` overlapping a
   match, synced or not); a link never creates an override, as with a manual people-only edit. Retype links them to
-  the activities it retypes in that run.
+  the activities it retypes in that run and, on every run, to the activities of `output_activity_type` in the
+  window that it retyped earlier (marked `_retyped_by` with the rule's id), which no longer match its activity
+  condition: a person added to a retype rule later reaches them too, even on a run with no match.
 - Saving a rule with an unknown, deleted or malformed id is a `400` naming it. A person deleted after the rule was
   saved is skipped when it runs; the rule keeps the id, and the rule list shows it as "a removed person".
 - Re-running a rule on activities that already have its people changes nothing and counts nothing; the preview

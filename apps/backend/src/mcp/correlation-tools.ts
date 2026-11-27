@@ -18,6 +18,7 @@ import {
 } from '@aurboda/api-spec'
 
 import {
+  continuousSelectorsError,
   genericTriggersError,
   getActivityImpact,
   getBaseline,
@@ -213,7 +214,8 @@ Dimensions (selectors) can be a metric, nutrition (carbs/protein/fat/calories/fi
 a tag/activity, a productivity category/app, or a sensitivity flag ({kind:"sensitivity", flag:<flag id>}:
 meals that day carrying the flag; known on days with a meal or marked meal log completed, other days
 unknown), or time with people ({kind:"people"} for anyone, {kind:"people", person_id:<person id>} for one
-person: minutes per day of activities with them, overlapping activities counted once, every day known).
+person: minutes per day of activities with them, overlapping activities counted once, every day known; an
+unknown or deleted person_id is refused).
 Aligns only on days where both sides are known.
 A night's sleep metrics (sleep_score, the sleep hrv_rmssd) are stamped on the day the night ends, so
 lag_days: 1 pairs a day with the night that follows it.
@@ -234,6 +236,8 @@ ${flaggedWindowsNote} Here a day overlapping a flagged window is left out on eit
       trigger,
       tz,
     }) => {
+      const selectorsError = await continuousSelectorsError(user, [trigger as Selector, outcome as Selector])
+      if (selectorsError) return errorResponse(selectorsError)
       const result = await getContinuousCorrelation(
         user,
         {

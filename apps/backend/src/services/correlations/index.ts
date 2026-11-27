@@ -12,6 +12,7 @@ export { getImpactMetrics } from './impact-metrics.ts'
 export {
   type ContinuousCorrelation,
   type ContinuousParams,
+  continuousSelectorsError,
   getCompoundEventOutcome,
   getContinuousCorrelation,
 } from './explore.ts'

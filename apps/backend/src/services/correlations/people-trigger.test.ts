@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { OutcomeConfig, TriggerCondition } from './types.ts'
 
 import * as db from '../../db/index.ts'
-import { triggerConditionToSelector } from './explore.ts'
+import { continuousSelectorsError, triggerConditionToSelector } from './explore.ts'
 import { genericTriggersError, getGenericCorrelation } from './generic.ts'
 
 vi.mock('../../db', () => ({
@@ -124,6 +124,40 @@ describe('genericTriggersError', () => {
         live,
       ),
     ).toBeNull()
+    expect(live).not.toHaveBeenCalled()
+  })
+})
+
+describe('continuousSelectorsError', () => {
+  const GONE = '22222222-2222-4222-8222-222222222222'
+  const live = vi.fn(async (_user: string, ids: string[] | undefined) =>
+    ids?.some((id) => id !== ANNA) ? `Unknown people: ${ids.filter((id) => id !== ANNA).join(', ')}` : null,
+  )
+  const metric = { kind: 'metric' as const, metric: 'sleep_score' }
+
+  beforeEach(() => live.mockClear())
+
+  test('names an unknown or deleted person on either side, as a people trigger does', async () => {
+    const message = `Unknown people: ${GONE}`
+    expect(await continuousSelectorsError('user', [{ kind: 'people', person_id: GONE }, metric], live)).toBe(
+      message,
+    )
+    expect(await continuousSelectorsError('user', [metric, { kind: 'people', person_id: GONE }], live)).toBe(
+      message,
+    )
+    expect(await genericTriggersError('user', [{ person_id: GONE, type: 'people' }], outcome, live)).toBe(
+      message,
+    )
+  })
+
+  test('accepts a live person and the time with anyone', async () => {
+    expect(
+      await continuousSelectorsError('user', [{ kind: 'people', person_id: ANNA }, { kind: 'people' }], live),
+    ).toBeNull()
+  })
+
+  test('leaves other selectors alone', async () => {
+    expect(await continuousSelectorsError('user', [metric, { kind: 'tag', pattern: 'x' }], live)).toBeNull()
     expect(live).not.toHaveBeenCalled()
   })
 })

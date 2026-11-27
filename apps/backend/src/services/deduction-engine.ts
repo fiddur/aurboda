@@ -162,6 +162,13 @@ export interface DeductionEngineDeps {
   getEarliestActivityTime: (user: string) => Promise<Date | null>
   /** The rows `enrichActivities` reads for these ranges, whether or not it would patch them. */
   getEnrichTargets: (user: string, activityType: string, ranges: TimeRange[]) => Promise<string[]>
+  /** The live activities of the type overlapping the window that the rule retyped. */
+  getRetypedByRule: (
+    user: string,
+    ruleId: string,
+    activityType: string,
+    window: EvaluationWindow,
+  ) => Promise<string[]>
   listLivePersonIds: (user: string, ids: string[]) => Promise<string[]>
   /**
    * Ids of the activities that gained at least one of the people, or with dryRun would. The rule
@@ -489,7 +496,15 @@ const retype = async (
 
   const candidates = await deps.findActivities(user, target, window, rule.output_activity_type)
   const toRetype = candidates.filter((c) => overlapsAny(c, matched))
-  if (dryRun) return nothingAffected(toRetype.length)
+  // An activity retyped in an earlier run no longer matches the rule's activity condition, so it is
+  // found by the rule's mark on it, in the whole window, and still gains the people added since.
+  const retypedEarlier = rule.output_people?.length
+    ? await deps.getRetypedByRule(user, rule.id, rule.output_activity_type, window)
+    : []
+  if (dryRun) {
+    const peopled = await linkPeople(user, rule, retypedEarlier, deps, true)
+    return nothingAffected(toRetype.length + peopled.length)
+  }
 
   const retypedIds: string[] = []
   for (const activity of toRetype) {
@@ -501,8 +516,14 @@ const retype = async (
     })
     if (ok) retypedIds.push(activity.id)
   }
-  await linkPeople(user, rule, retypedIds, deps, false)
-  return allAffected(retypedIds)
+  const peopledIds = await linkPeople(
+    user,
+    rule,
+    [...new Set([...retypedIds, ...retypedEarlier])],
+    deps,
+    false,
+  )
+  return allAffected([...new Set([...retypedIds, ...peopledIds])])
 }
 
 const countEnrichable = async (
@@ -619,6 +640,14 @@ const enrich = async (
 }
 
 /**
+ * A categorising rule removes its category from the window, and a retype rule with people reaches
+ * what it retyped earlier, which no longer matches its activity condition.
+ */
+const runsWithoutMatch = (rule: DeductionRule): boolean =>
+  (rule.mode === 'enrich' && Boolean(rule.output_category)) ||
+  (rule.mode === 'retype' && Boolean(rule.output_people?.length))
+
+/**
  * When dryRun is true, returns the count of activities that would be affected without making changes.
  */
 export const evaluateRule = async (
@@ -630,9 +659,7 @@ export const evaluateRule = async (
 ): Promise<EvaluateRuleResult> => {
   const deps = withMemoizedMediaPlays(baseDeps)
   const result = await resolveConditions(user, rule, window, deps)
-  // A categorising rule still runs on an empty match: it removes its category from the window.
-  const categorising = rule.mode === 'enrich' && Boolean(rule.output_category)
-  if (result.length === 0 && !categorising) return nothingAffected(0)
+  if (result.length === 0 && !runsWithoutMatch(rule)) return nothingAffected(0)
 
   if (rule.mode === 'retype') return retype(user, rule, result, window, deps, dryRun)
 

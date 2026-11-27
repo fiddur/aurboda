@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { SelectorPicker } from '../../components/SelectorPicker'
 import {
+  apiErrorMessage,
   fetchContinuousCorrelation,
   fetchCorrelationSelectors,
   fetchGenericCorrelation,
@@ -56,7 +57,7 @@ const periodStart = signal(initial.start)
 const periodEnd = signal(initial.end)
 const periodDays = signal(initial.days)
 // Event mode, time with people: "at least N minutes" a day (blank: any time).
-const peopleMinMinutes = signal('')
+const peopleMinMinutes = signal(initial.minMinutes)
 // Bumped on each Run to trigger the query.
 const runToken = signal(0)
 
@@ -102,6 +103,7 @@ export const exploreState = (): ExploreState => ({
   gap: collapseGapDays.value,
   lagDays: lagDaysInput.value,
   lags: lagWindowsInput.value,
+  minMinutes: peopleMinMinutes.value,
   mode: mode.value,
   nutrition: nutritionCompleteness.value,
   outcome: outcomeSelector.value,
@@ -120,6 +122,7 @@ export const applyExploreState = (state: ExploreState) => {
     eventOutcomeSource.value = state.outcomeSource
     eventOutcomeValue.value = state.outcomeValue
     lagWindowsInput.value = state.lags
+    peopleMinMinutes.value = state.minMinutes
     lagDaysInput.value = state.lagDays
     collapseGapDays.value = state.gap
     nutritionCompleteness.value = state.nutrition
@@ -804,7 +807,11 @@ export function ExploreTab() {
       </div>
 
       {resultQuery.isFetching && <div class="loading">Analyzing…</div>}
-      {resultQuery.isError && <div class="explore-error">Analysis failed. Check the inputs and retry.</div>}
+      {resultQuery.isError && (
+        <div class="explore-error">
+          {apiErrorMessage(resultQuery.error, 'Analysis failed. Check the inputs and retry.')}
+        </div>
+      )}
       {result?.kind === 'event' && (
         <EventOutcomeResults
           data={result.data}

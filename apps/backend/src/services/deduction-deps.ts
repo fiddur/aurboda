@@ -308,6 +308,27 @@ const getEnrichTargets = async (
   return [...ids]
 }
 
+const getRetypedByRule = async (
+  user: string,
+  ruleId: string,
+  activityType: string,
+  window: EvaluationWindow,
+): Promise<string[]> => {
+  const result = await query<{ id: string }>(
+    user,
+    `SELECT id FROM activities
+     WHERE activity_type = $1
+       AND data->>'_retyped_by' = $2
+       AND deleted_at IS NULL
+       AND superseded_by IS NULL
+       AND NOT EXISTS (SELECT 1 FROM activity_override_targets t WHERE t.target_id = activities.id)
+       AND ${overlapsSql('$3', '$4')}
+     ORDER BY start_time`,
+    [activityType, ruleId, window.start, window.end],
+  )
+  return result.rows.map((row) => row.id)
+}
+
 /**
  * A pair (activity, person) is decided once per rule and recorded in `rule_activity_people`, so a
  * person taken off by hand stays off. A group with a link no rule added (`added`) has its people
@@ -639,6 +660,7 @@ export const createDefaultEngineDeps = (
   getEarliestActivityTime,
   getEnrichTargets,
   getLocationVisits,
+  getRetypedByRule,
   getMediaPlays,
   getScrobbles,
   getScreentime,

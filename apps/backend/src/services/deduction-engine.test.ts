@@ -34,6 +34,7 @@ const makeDeps = (): DeductionEngineDeps => ({
   getEnrichTargets: vi.fn().mockResolvedValue([]),
   getLocationVisits: vi.fn().mockResolvedValue([]),
   getMediaPlays: vi.fn().mockResolvedValue([]),
+  getRetypedByRule: vi.fn().mockResolvedValue([]),
   getScrobbles: vi.fn().mockResolvedValue([]),
   getScreentime: vi.fn().mockResolvedValue([]),
   insertActivity: vi.fn().mockResolvedValue({ changed: true, id: undefined }),
@@ -1531,6 +1532,74 @@ describe('output_people', () => {
     await evaluateRule(user, rule, window, deps)
 
     expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['r1'], [anna], false)
+  })
+
+  describe('a retype rule given people after it retyped', () => {
+    const rule: DeductionRule = {
+      ...baseRule,
+      conditions: [{ activity_type: 'other', kind: 'activity', title: 'fika' }],
+      mode: 'retype',
+    }
+
+    test('links them on the activities it retyped earlier, alongside those retyped now', async () => {
+      vi.mocked(deps.findActivities).mockResolvedValue([{ end: d(11), id: 'new', start: d(10) }])
+      vi.mocked(deps.getRetypedByRule).mockResolvedValue(['earlier'])
+      vi.mocked(deps.addActivityPeople).mockResolvedValue(['earlier'])
+
+      const result = await evaluateRule(user, rule, window, deps)
+
+      expect(deps.findActivities).toHaveBeenCalledWith(user, rule.conditions[0], window, 'fika')
+      expect(deps.getRetypedByRule).toHaveBeenCalledWith(user, 'rule-people', 'fika', window)
+      expect(deps.addActivityPeople).toHaveBeenCalledWith(
+        user,
+        'rule-people',
+        ['new', 'earlier'],
+        [anna],
+        false,
+      )
+      expect(result).toMatchObject({ activities_created: 2, affected_ids: ['new', 'earlier'] })
+    })
+
+    test('runs with no match left, since what it retyped matches its condition no more', async () => {
+      vi.mocked(deps.getRetypedByRule).mockResolvedValue(['earlier'])
+      vi.mocked(deps.addActivityPeople).mockResolvedValue(['earlier'])
+
+      const result = await evaluateRule(user, rule, window, deps)
+
+      expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['earlier'], [anna], false)
+      expect(result).toMatchObject({ activities_created: 1, affected_ids: ['earlier'] })
+    })
+
+    test('a run with nothing left to retype or add affects nothing', async () => {
+      vi.mocked(deps.getRetypedByRule).mockResolvedValue(['earlier'])
+
+      const result = await evaluateRule(user, rule, window, deps)
+
+      expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['earlier'], [anna], false)
+      expect(result).toMatchObject({ activities_created: 0, affected_ids: [] })
+    })
+
+    test('the dry run counts the earlier activities that would gain a person', async () => {
+      vi.mocked(deps.findActivities).mockResolvedValue([{ end: d(11), id: 'new', start: d(10) }])
+      vi.mocked(deps.getRetypedByRule).mockResolvedValue(['e1', 'e2'])
+      vi.mocked(deps.addActivityPeople).mockResolvedValue(['e2'])
+
+      const result = await evaluateRule(user, rule, window, deps, true)
+
+      expect(deps.addActivityPeople).toHaveBeenCalledWith(user, 'rule-people', ['e1', 'e2'], [anna], true)
+      expect(deps.retypeActivity).not.toHaveBeenCalled()
+      expect(result.would_affect).toBe(2)
+    })
+
+    test('a retype rule without people does not look for its earlier activities', async () => {
+      vi.mocked(deps.findActivities).mockResolvedValue([{ end: d(11), id: 'new', start: d(10) }])
+
+      await evaluateRule(user, { ...rule, output_people: undefined }, window, deps)
+      await evaluateRule(user, { ...rule, output_people: [] }, window, deps)
+
+      expect(deps.retypeActivity).toHaveBeenCalled()
+      expect(deps.getRetypedByRule).not.toHaveBeenCalled()
+    })
   })
 
   test('a rule without people never touches them', async () => {
