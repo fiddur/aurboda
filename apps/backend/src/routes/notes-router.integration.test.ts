@@ -176,9 +176,16 @@ describe('journal tags', () => {
       { count: 1, last_used: '2024-01-16T08:00:00.000Z', tag: 'travel' },
     ])
 
+    const preview = await request
+      .post('/notes/tags/merge')
+      .send({ dry_run: true, from: ['running'], into: 'run' })
+    expect(preview.status).toBe(200)
+    expect(preview.body.data).toEqual({ changed: 2, skipped: 0 })
+    expect((await request.get(`/notes/${byHashtag.body.data.id}`)).body.data.tags).toEqual(['running'])
+
     const merged = await request.post('/notes/tags/merge').send({ from: ['running'], into: 'run' })
     expect(merged.status).toBe(200)
-    expect(merged.body.data).toEqual({ changed: 2 })
+    expect(merged.body.data).toEqual({ changed: 2, skipped: 0 })
 
     const first = await request.get(`/notes/${byHashtag.body.data.id}`)
     expect(first.body.data.content).toBe('Went #run by the river')

@@ -2,9 +2,12 @@ import { describe, expect, test } from 'vitest'
 
 import {
   completeTyped,
+  entriesAndCommentsLabel,
   entriesLabel,
   lastTypedWord,
   lastUsedLabel,
+  mergeButtonLabel,
+  mergedLabel,
   mergeTargetTag,
   tagFilterHref,
   tagOptions,
@@ -121,5 +124,27 @@ describe('lastTypedWord and completeTyped', () => {
     expect(completeTyped('fam', 'family')).toBe('family')
     expect(completeTyped('run, #fam', 'family')).toBe('run, family')
     expect(completeTyped('run ', 'family')).toBe('run family')
+  })
+})
+
+describe('merge labels', () => {
+  test('entriesAndCommentsLabel', () => {
+    expect(entriesAndCommentsLabel(1)).toBe('1 entry or comment')
+    expect(entriesAndCommentsLabel(5)).toBe('5 entries and comments')
+  })
+
+  test('the button names what the dry run will change, once known', () => {
+    expect(mergeButtonLabel('running', 'run', 5)).toBe('Merge #running (5 entries and comments) into #run')
+    expect(mergeButtonLabel('running', 'run', undefined)).toBe('Merge #running into #run')
+  })
+
+  test('the result says what was skipped and that merging again picks it up', () => {
+    expect(mergedLabel({ changed: 5, skipped: 0 })).toBe('Merged: 5 entries and comments changed.')
+    expect(mergedLabel({ changed: 4, skipped: 1 })).toBe(
+      'Merged: 4 entries and comments changed. 1 entry or comment changed meanwhile and was skipped; merge again to include it.',
+    )
+    expect(mergedLabel({ changed: 3, skipped: 2 })).toBe(
+      'Merged: 3 entries and comments changed. 2 entries and comments changed meanwhile and were skipped; merge again to include them.',
+    )
   })
 })

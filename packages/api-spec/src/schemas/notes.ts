@@ -846,6 +846,9 @@ export const NOTE_TAGS_MERGE_INTO_ERROR = 'into must not be one of from'
 
 export const mergeNoteTagsBodySchema = z
   .object({
+    dry_run: z.boolean().default(false).meta({
+      description: 'true answers how many notes the merge would change and writes nothing',
+    }),
     from: z
       .array(noteTagInputSchema)
       .min(1)
@@ -871,9 +874,19 @@ export type MergeNoteTagsBody = z.infer<typeof mergeNoteTagsBodySchema>
 
 export const mergeNoteTagsResultSchema = z
   .object({
-    changed: z.number().int().min(0).meta({ description: 'How many notes were changed' }),
+    changed: z
+      .number()
+      .int()
+      .min(0)
+      .meta({ description: 'How many notes were changed, or with dry_run would be' }),
+    skipped: z.number().int().min(0).meta({
+      description:
+        'How many notes were not changed because they were edited while the merge ran; merging again picks them up. 0 with dry_run',
+    }),
   })
   .meta({ id: 'MergeNoteTagsResult' })
+
+export type MergeNoteTagsResult = z.infer<typeof mergeNoteTagsResultSchema>
 
 export const mergeNoteTagsResponseSchema = createDataResponseSchema(mergeNoteTagsResultSchema).meta({
   id: 'MergeNoteTagsResponse',

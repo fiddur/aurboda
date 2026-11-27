@@ -2074,7 +2074,7 @@ describe('mergeNoteTags', () => {
     )
 
     expect(await mergeNoteTags('user', { from: ['#Running'], into: 'run' })).toEqual({
-      data: { changed: 2 },
+      data: { changed: 2, skipped: 0 },
       success: true,
     })
     expect(db.getNotesWithAnyTag).toHaveBeenCalledWith('user', ['running'])
@@ -2083,7 +2083,7 @@ describe('mergeNoteTags', () => {
     expect(calls[0]![1]).toBe(byHashtag.id)
     expect(calls[0]![2]).toMatchObject({ content: 'A #run day', hashtags: ['run'], tags: [] })
     expect(calls[0]![3]).toMatchObject({
-      expected_updated_at: undefined,
+      expected_updated_at: byHashtag.updated_at,
       revisions: { limit: 50, min_interval_minutes: 0 },
     })
     expect(calls[1]![1]).toBe(byTag.id)
@@ -2095,9 +2095,90 @@ describe('mergeNoteTags', () => {
     vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([synced])
     vi.mocked(db.getNoteById).mockResolvedValue(synced)
     expect(await mergeNoteTags('user', { from: ['running'], into: 'run' })).toEqual({
-      data: { changed: 0 },
+      data: { changed: 0, skipped: 0 },
       success: true,
     })
+    expect(db.updateNoteGuarded).not.toHaveBeenCalled()
+  })
+
+  test('a note edited meanwhile is read again and merged on its current text', async () => {
+    const read = makeNote({ content: 'A #running day', hashtags: ['running'], tags: [] })
+    const edited = { ...read, content: 'A long #running day', updated_at: new Date('2024-01-15T11:00:00Z') }
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([read])
+    vi.mocked(db.getNoteById)
+      .mockResolvedValueOnce(read)
+      .mockResolvedValueOnce(edited)
+      .mockResolvedValue(edited)
+    vi.mocked(db.updateNoteGuarded)
+      .mockResolvedValueOnce({ note: edited, status: 'conflict' })
+      .mockImplementationOnce(async () => updated(edited))
+
+    expect(await mergeNoteTags('user', { from: ['running'], into: 'run' })).toEqual({
+      data: { changed: 1, skipped: 0 },
+      success: true,
+    })
+    const calls = vi.mocked(db.updateNoteGuarded).mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[0]![3]).toMatchObject({ expected_updated_at: read.updated_at })
+    expect(calls[1]![2]).toMatchObject({ content: 'A long #run day' })
+    expect(calls[1]![3]).toMatchObject({ expected_updated_at: edited.updated_at })
+  })
+
+  test('a note that conflicts again, or is gone when read again, is skipped', async () => {
+    const busy = makeNote({ content: 'A #running day', hashtags: ['running'], tags: [] })
+    const gone = makeNote({ content: 'Another #running day', hashtags: ['running'], tags: [] })
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([busy, gone])
+    vi.mocked(db.getNoteById).mockImplementation(async (_user, id) => {
+      if (id === busy.id) return busy
+      return vi.mocked(db.getNoteById).mock.calls.filter((call) => call[1] === id).length === 1 ? gone : null
+    })
+    vi.mocked(db.updateNoteGuarded).mockImplementation(async (_user, id) => ({
+      note: id === busy.id ? busy : gone,
+      status: 'conflict',
+    }))
+
+    expect(await mergeNoteTags('user', { from: ['running'], into: 'run' })).toEqual({
+      data: { changed: 0, skipped: 2 },
+      success: true,
+    })
+    expect(vi.mocked(db.updateNoteGuarded).mock.calls.map((call) => call[1])).toEqual([
+      busy.id,
+      busy.id,
+      gone.id,
+    ])
+  })
+
+  test('a note read again without the tag counts as neither changed nor skipped', async () => {
+    const read = makeNote({ content: 'A #running day', hashtags: ['running'], tags: [] })
+    const edited = {
+      ...read,
+      content: 'A rest day',
+      hashtags: [],
+      updated_at: new Date('2024-01-15T11:00:00Z'),
+    }
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([read])
+    vi.mocked(db.getNoteById).mockResolvedValueOnce(read).mockResolvedValue(edited)
+    vi.mocked(db.updateNoteGuarded).mockResolvedValue({ note: edited, status: 'conflict' })
+
+    expect(await mergeNoteTags('user', { from: ['running'], into: 'run' })).toEqual({
+      data: { changed: 0, skipped: 0 },
+      success: true,
+    })
+    expect(db.updateNoteGuarded).toHaveBeenCalledTimes(1)
+  })
+
+  test('dry_run counts the notes it would change and writes nothing', async () => {
+    const byHashtag = makeNote({ content: 'A #running day', hashtags: ['running'], tags: [] })
+    const byTag = makeNote({ content: 'Plain', hashtags: [], tags: ['running'] })
+    const stale = makeNote({ content: 'No tag here', hashtags: ['running'], tags: [] })
+    const synced = makeNote({ content: 'A #running day', hashtags: ['running'], source: 'oura', tags: [] })
+    vi.mocked(db.getNotesWithAnyTag).mockResolvedValue([byHashtag, byTag, stale, synced])
+
+    expect(await mergeNoteTags('user', { dry_run: true, from: ['running'], into: 'run' })).toEqual({
+      data: { changed: 2, skipped: 0 },
+      success: true,
+    })
+    expect(db.getNoteById).not.toHaveBeenCalled()
     expect(db.updateNoteGuarded).not.toHaveBeenCalled()
   })
 

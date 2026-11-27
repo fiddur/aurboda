@@ -293,7 +293,13 @@ and replies alike -- `into` instead: explicit tags are replaced, and each `#runn
 or `#jog` in the text is rewritten to `#run` (not inside code or a URL). A rewritten
 text keeps its previous version as a revision. Renaming is a merge with one `from`.
 It answers how many notes `changed`; `into` among `from` is a `400`. A synced
-comment (from Oura and the like) is left alone.
+comment (from Oura and the like) is left alone. Each note is written only if it is
+unchanged since the merge read it: one edited meanwhile is read again and merged on
+its new text, and if it changes once more before that lands it is left alone and
+counted in `skipped` -- merging again picks it up. `"dry_run": true` answers the
+`changed` the merge would make, writing nothing; the Tags page's merge button shows
+that count ("Merge #running (5 entries and comments) into #run") before merging,
+and says afterwards how many were skipped.
 
 The Timeline's range read (`GET /notes?from=&to=`, MCP `query_notes`) returns the
 `day` entries of the window's dates alongside the timed ones; the daily summary

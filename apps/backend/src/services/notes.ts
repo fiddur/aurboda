@@ -1020,16 +1020,55 @@ export const mergeTagsInNote = (
 }
 
 export type MergeNoteTagsResult =
-  | { success: true; data: { changed: number } }
+  | { success: true; data: { changed: number; skipped: number } }
   | { success: false; error: string; errorCode: 'invalid' }
+
+type MergeOutcome = 'changed' | 'skipped' | 'unchanged'
+
+/**
+ * Rewrite one note for a tag merge, refusing it when it was edited since it was read. On such a
+ * conflict it is read again and merged once more; a second conflict, or a note gone meanwhile,
+ * leaves it `skipped`.
+ */
+const mergeTagsIntoNote = async (
+  user: string,
+  note: DbNote,
+  from: readonly string[],
+  into: string,
+  retry: boolean,
+): Promise<MergeOutcome> => {
+  const merged = mergeTagsInNote({ content: note.content, tags: note.tags ?? [] }, from, into)
+  if (merged === null) return 'unchanged'
+  const result = await updateNote(
+    user,
+    note.id,
+    {
+      content: merged.content === note.content ? undefined : merged.content,
+      expected_updated_at: note.updated_at.toISOString(),
+      tags: merged.tags,
+    },
+    { always_keep_revision: true },
+  )
+  if (result.success) return 'changed'
+  if (result.errorCode !== 'conflict') return 'unchanged'
+  if (!retry) return 'skipped'
+  const current = await dbGetNoteById(user, note.id)
+  return current === null ? 'skipped' : mergeTagsIntoNote(user, current, from, into, false)
+}
+
+/** Whether a tag merge would rewrite the note: a synced one is left to its source. */
+const mergeWouldChange = (note: DbNote, from: readonly string[], into: string): boolean =>
+  !note.source && mergeTagsInNote({ content: note.content, tags: note.tags ?? [] }, from, into) !== null
 
 /**
  * Merge tags across every live note: each one carrying a tag in `from` gets `into` instead, through
- * {@link updateNote}, so its hashtags are recomputed and a rewritten text keeps a revision.
+ * {@link updateNote}, so its hashtags are recomputed and a rewritten text keeps a revision. A note
+ * edited while the merge runs is not overwritten (see {@link mergeTagsIntoNote}); `skipped` counts
+ * those left alone. With `dry_run` it only counts the notes it would change.
  */
 export async function mergeNoteTags(
   user: string,
-  input: { from: string[]; into: string },
+  input: { from: string[]; into: string; dry_run?: boolean },
 ): Promise<MergeNoteTagsResult> {
   const from = normalizeNoteTags(input.from)
   const [into] = normalizeNoteTags([input.into]) ?? []
@@ -1042,20 +1081,19 @@ export async function mergeNoteTags(
   }
   if (from.includes(into)) return { error: NOTE_TAGS_MERGE_INTO_ERROR, errorCode: 'invalid', success: false }
 
-  let changed = 0
-  for (const note of await dbGetNotesWithAnyTag(user, from)) {
-    const merged = mergeTagsInNote({ content: note.content, tags: note.tags ?? [] }, from, into)
-    if (merged === null) continue
-    const result = await updateNote(
-      user,
-      note.id,
-      {
-        content: merged.content === note.content ? undefined : merged.content,
-        tags: merged.tags,
-      },
-      { always_keep_revision: true },
-    )
-    if (result.success) changed++
+  const notes = await dbGetNotesWithAnyTag(user, from)
+  if (input.dry_run) {
+    return {
+      data: { changed: notes.filter((note) => mergeWouldChange(note, from, into)).length, skipped: 0 },
+      success: true,
+    }
   }
-  return { data: { changed }, success: true }
+  let changed = 0
+  let skipped = 0
+  for (const note of notes) {
+    const outcome = await mergeTagsIntoNote(user, note, from, into, true)
+    if (outcome === 'changed') changed++
+    if (outcome === 'skipped') skipped++
+  }
+  return { data: { changed, skipped }, success: true }
 }
