@@ -126,6 +126,10 @@ const Signup = lazyPage(() => import('./pages/Signup/index.jsx'), 'Signup')
 const Sleep = lazyPage(() => import('./pages/Sleep/index.jsx'), 'Sleep')
 const StrengthLog = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthLog')
 const StrengthSession = lazyPage(() => import('./pages/Strength/Session.jsx'), 'StrengthSession')
+const StrengthSessionSummary = lazyPage(
+  () => import('./pages/Strength/SessionSummary.jsx'),
+  'StrengthSessionSummary',
+)
 const StrengthPlanEditor = lazyPage(() => import('./pages/Strength/PlanEditor.jsx'), 'StrengthPlanEditor')
 const StrengthProgress = lazyPage(() => import('./pages/Strength/Progress.jsx'), 'StrengthProgress')
 const StrengthExercises = lazyPage(() => import('./pages/Strength/Exercises.jsx'), 'StrengthExercises')
@@ -205,6 +209,7 @@ function AppShell() {
             <Route path="/activity-type/:name/strength-score/:field" component={StrengthScore} />
             <Route path="/activity-type/:name" component={ActivityTypeMeta} />
             <Route path="/metric/:metricName" component={MetricMeta} />
+            <Route path="/strength/session/:id/summary" component={StrengthSessionSummary} />
             <Route path="/strength/session/:id" component={StrengthSession} />
             <Route path="/strength/live" component={StrengthSession} />
             <Route path="/strength/log" component={StrengthLog} />

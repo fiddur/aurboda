@@ -35,6 +35,7 @@ import {
 import { PlannedToday } from './PlannedWorkouts'
 import { useOpenStrengthPlans, useUnfinishedSession } from './queries'
 import { StrengthHeader } from './StrengthHeader'
+import { UnfinishedLine } from './UnfinishedCard'
 import '../../components/muscleRecovery/muscleRecovery.css'
 import '../ActivityTypeItem/style.css'
 import '../StrengthScore/style.css'
@@ -204,7 +205,11 @@ export function StrengthMuscles() {
   return (
     <div class="page page--wide strength-page strength-page-wide strength-page-muscles">
       <StrengthHeader />
-      {!unfinished && <PlannedToday plans={plans.data} recovery={recovery.data} />}
+      {unfinished ? (
+        <UnfinishedLine draft={unfinished} />
+      ) : (
+        <PlannedToday plans={plans.data} recovery={recovery.data} />
+      )}
       {score.data && <ScoreCard history={history.data} score={score.data} />}
       {status && <p class="strength-muted">{status}</p>}
       {(groups.isLoading || chart.isLoading) && <p class="loading">Loading...</p>}

@@ -7,6 +7,8 @@ export const exerciseItemUrl = (exercise: string): string => itemPageHref(STRENG
 
 export const sessionUrl = (id: string): string => `/strength/session/${encodeURIComponent(id)}`
 
+export const summaryUrl = (id: string): string => `${sessionUrl(id)}/summary`
+
 export const detailUrl = (id: string): string => `/detail/activity/${encodeURIComponent(id)}`
 
 export const STRENGTH_QUERY_KEYS = [

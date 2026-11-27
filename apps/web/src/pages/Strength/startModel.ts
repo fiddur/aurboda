@@ -42,7 +42,7 @@ export const unfinishedDraft = (
   local: SessionDraft | undefined,
   server: StrengthActivity | undefined,
 ): SessionDraft | undefined => {
-  if (local && !local.id && loggedSetCount(local.blocks) > 0) return local
+  if (local && !local.id) return local
   if (!server?.id) return undefined
   if (local?.id === server.id) return local
   return liveDraftFromServer({
@@ -51,6 +51,22 @@ export const unfinishedDraft = (
     start_time: server.start_time.toISOString(),
   })
 }
+
+/** A started session stays resumable, unless it holds nothing and the address asks for a different start. */
+export const resumableDraft = (
+  local: SessionDraft | undefined,
+  start: { plan?: string; repeat?: string },
+): SessionDraft | undefined => {
+  if (!local) return undefined
+  const empty = !local.id && local.blocks.length === 0
+  return empty && (start.plan || start.repeat) ? undefined : local
+}
+
+export type UnfinishedAction = 'finish' | 'discard'
+
+/** A session with no logged set is never finished into an empty activity: it is discarded instead. */
+export const unfinishedAction = (draft: Pick<SessionDraft, 'blocks'>): UnfinishedAction =>
+  loggedSetCount(draft.blocks) > 0 ? 'finish' : 'discard'
 
 export const repeatCandidates = (activities: StrengthActivity[], excludeId?: string): RepeatCandidate[] =>
   newestFirst(activities)
