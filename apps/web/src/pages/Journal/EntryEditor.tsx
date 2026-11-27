@@ -35,7 +35,7 @@ import { ATTACHMENT_SCHEME } from '../../utils/attachment-ref'
 import { browserTimezone } from '../../utils/browserTimezone'
 import { renderMarkdown } from '../../utils/markdown'
 import { PictureThumb, PictureViewer, RecordingPlayer } from './Attachments'
-import { mergeAttachments } from './attachments-merge'
+import { type AttachmentChange, attachmentChangesSince, mergeAttachments } from './attachments-merge'
 import { type AutosaveStatus, autosaveLabel, createAutosaver, type SaveOutcome } from './autosave'
 import { type ConflictChoice, resolveConflict } from './conflict'
 import {
@@ -634,7 +634,8 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   const updatedAtRef = useRef<string | undefined>(undefined)
   const creating = useRef<Promise<string> | undefined>(undefined)
   const attachmentsRef = useRef<NoteAttachment[]>([])
-  const addedRef = useRef<string[]>([])
+  const changesRef = useRef<AttachmentChange[]>([])
+  const conflictChangesBeforeRef = useRef(0)
   const savedRelatedRef = useRef<RelatedLink[]>([])
 
   const [loaded, setLoaded] = useState(initialId === undefined)
@@ -674,16 +675,18 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
 
   const draftKey = () => idRef.current ?? NEW_ENTRY_KEY
 
+  const mergeSince = (server: NoteAttachment[], changesBefore: number) => {
+    const { addedSince, removedSince } = attachmentChangesSince(changesRef.current.slice(changesBefore))
+    setAttachments(sortByPosition(mergeAttachments(server, attachmentsRef.current, addedSince, removedSince)))
+  }
+
   const accept = useCallback(
-    (note: Note, sent: EntryForm, addedBefore: number) => {
+    (note: Note, sent: EntryForm, changesBefore: number) => {
       updatedAtRef.current = note.updated_at
       setSavedAt(note.updated_at)
       savedRelatedRef.current = note.related ?? sent.related
       setGoneLinks((current) => (current.size === 0 ? current : new Set()))
-      if (note.attachments) {
-        const addedSince = new Set(addedRef.current.slice(addedBefore))
-        setAttachments(sortByPosition(mergeAttachments(note.attachments, attachmentsRef.current, addedSince)))
-      }
+      if (note.attachments) mergeSince(note.attachments, changesBefore)
       setThreadRoot((current) => current ?? { ...note, replies: [] })
       clearDraftIfConfirmed(storage, draftKey(), sent)
       void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY })
@@ -696,13 +699,13 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       if (idRef.current) return idRef.current
       if (creating.current) return creating.current
       creating.current = (async () => {
-        const addedBefore = addedRef.current.length
+        const changesBefore = changesRef.current.length
         const note = await createJournalEntry(formToCreateBody(savable(sent)))
         const id = note.id!
         idRef.current = id
         moveDraft(storage, NEW_ENTRY_KEY, id)
         replaceUrl(`/journal/${encodeURIComponent(id)}`)
-        accept(note, sent, addedBefore)
+        accept(note, sent, changesBefore)
         return id
       })()
       try {
@@ -726,16 +729,17 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
           await createEntry(sent)
           return { kind: 'saved' }
         }
-        const addedBefore = addedRef.current.length
+        const changesBefore = changesRef.current.length
         const result = await updateJournalEntry(
           idRef.current,
           formToUpdateBody(sent, updatedAtRef.current, savedRelatedRef.current),
         )
         if (result.kind === 'conflict') {
+          conflictChangesBeforeRef.current = changesBefore
           setConflict(result.note)
           return { kind: 'conflict' }
         }
-        accept(result.note, sent, addedBefore)
+        accept(result.note, sent, changesBefore)
         return { kind: 'saved' }
       } catch (error) {
         const refused = refusedLinkKeys(apiErrorMessage(error, ''), sent.related)
@@ -821,7 +825,9 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     const opened = { deleted: deletedRef.current, savedEntry: initialId !== undefined }
     if (!discardOnLeave(opened, isEntryEmpty(formRef.current, attachmentsRef.current.length))) return
     removeDraft(storage, draftKey())
-    if (idRef.current) await deleteJournalEntry(idRef.current).catch(() => undefined)
+    if (!idRef.current) return
+    deletedRef.current = true
+    await deleteJournalEntry(idRef.current).catch(() => undefined)
   }, [initialId, storage])
 
   useEffect(() => {
@@ -849,7 +855,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     updatedAtRef.current = conflict.updated_at
     setSavedAt(conflict.updated_at)
     savedRelatedRef.current = conflict.related ?? []
-    if (conflict.attachments) setAttachments(sortByPosition(conflict.attachments))
+    if (conflict.attachments) mergeSince(conflict.attachments, conflictChangesBeforeRef.current)
     setConflict(undefined)
     formRef.current = resolved
     setForm(resolved)
@@ -878,7 +884,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
 
   const keepFile = async (id: string, file: Blob, name: string | undefined): Promise<NoteAttachment> => {
     const attachment = await uploadNoteAttachment(id, file, name)
-    addedRef.current.push(attachment.id)
+    changesRef.current.push({ id: attachment.id, kind: 'added' })
     setAttachments(sortByPosition([...attachmentsRef.current, attachment]))
     return attachment
   }
@@ -915,11 +921,13 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
 
   const removeAttachment = async (attachment: NoteAttachment) => {
     if (!idRef.current) return
+    changesRef.current.push({ id: attachment.id, kind: 'removed' })
     setAttachments(attachmentsRef.current.filter((a) => a.id !== attachment.id))
     setRemoved(attachment)
     try {
       await deleteNoteAttachment(idRef.current, attachment.id)
     } catch {
+      changesRef.current.push({ id: attachment.id, kind: 'added' })
       setAttachments(sortByPosition([...attachmentsRef.current, attachment]))
       setRemoved(undefined)
       setFileProblem('The file could not be removed. Please try again.')
@@ -938,7 +946,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
     setRemoved(undefined)
     try {
       const restored = await restoreNoteAttachment(idRef.current, back.id)
-      addedRef.current.push(restored.id)
+      changesRef.current.push({ id: restored.id, kind: 'added' })
       setAttachments(sortByPosition([...attachmentsRef.current, restored]))
     } catch {
       setFileProblem('The file could not be brought back.')

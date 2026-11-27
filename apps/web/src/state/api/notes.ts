@@ -208,10 +208,7 @@ export const fetchNoteTags = async (entityTypes?: readonly EntityType[]): Promis
   return response.data.data ?? []
 }
 
-/**
- * Every note carrying a tag in `from` gets `into` instead; answers how many notes changed and how
- * many were skipped for being edited meanwhile. With `dryRun` nothing is written.
- */
+/** With `dryRun` nothing is written; the answer says how many notes would change. */
 export const mergeNoteTags = async (
   from: readonly string[],
   into: string,

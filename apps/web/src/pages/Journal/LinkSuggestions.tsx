@@ -1,7 +1,7 @@
 import type { NoteLinkSuggestion } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 
 import { dismissNoteLinkSuggestion, fetchNoteLinkSuggestions } from '../../state/api'
 import { shownSuggestions, suggestionHint, suggestionLink } from './link-suggestions'
@@ -28,6 +28,7 @@ export const LinkSuggestions = ({
 }) => {
   const typeIcon = useTypeIcon()
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => setDismissed(new Set()), [savedAt])
   const suggestions = useQuery({
     enabled: noteId !== undefined,
     queryFn: () => fetchNoteLinkSuggestions(noteId!),
