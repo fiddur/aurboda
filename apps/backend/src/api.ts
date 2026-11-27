@@ -56,6 +56,7 @@ import {
   listUserNames,
   loginToUserDb,
   setUserPassword,
+  userExists,
   getWebAuthnCredentialsForUser,
   markChallengeResultPublished,
   markEnrichTransientFailure,
@@ -887,7 +888,7 @@ const main = async () => {
   const accountPlans = createAccountPlans({
     centralDb,
     invalidate: (username) => accountGate.invalidate(username),
-    userExists: async (username) => (await listUserNames(userDb)).includes(username),
+    userExists: (username) => userExists(userDb, username),
   })
 
   // Lazy retro-enrichment (#996): entries ingested before structured enrichment
@@ -1430,7 +1431,7 @@ const main = async () => {
   httpd.use(
     createActorHtmlRouter({
       origin: webHost,
-      userExists: async (username) => (await listUserNames(userDb)).includes(username),
+      userExists: (username) => userExists(userDb, username),
     }),
   )
 
@@ -1445,7 +1446,7 @@ const main = async () => {
       run: (user, url, buffer) =>
         runUpload(user, url, buffer, { apiBaseUrl, handlers: uploadHandlers, onProfileChanged, webHost }),
       spend: spendUploadUrl,
-      userExists: async (username) => (await listUserNames(userDb)).includes(username),
+      userExists: (username) => userExists(userDb, username),
     }),
   )
 
@@ -1471,7 +1472,7 @@ const main = async () => {
     userDb,
     startEmailVerification,
     unauthorized,
-    userExists: async (username) => (await listUserNames(userDb)).includes(username),
+    userExists: (username) => userExists(userDb, username),
   })
 
   mountSyncRouter({

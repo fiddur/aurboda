@@ -55,7 +55,7 @@ import {
   getLocations,
   getPublicSharedDashboardBySlug,
   getTimeSeries,
-  listUserNames,
+  userExists,
 } from '../db/index.ts'
 import { garminOAuthRedirectUri } from '../integrations/garmin/oauth-client.ts'
 import { garminDetailResync } from '../integrations/garmin/sync.ts'
@@ -511,7 +511,7 @@ export const mountRestRouters = ({
         garminPush: garminPushUrl,
         gravl: gravlRedirectUri(apiBaseUrl),
       },
-      async (username) => (await listUserNames(userDb)).includes(username),
+      (username) => userExists(userDb, username),
       ouraWebhookManager,
       accountDeleter,
       accountPlans,
