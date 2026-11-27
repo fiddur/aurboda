@@ -296,6 +296,12 @@ export const listUserNames = async (client: Client): Promise<string[]> => {
   return result.rows.map((row) => row.datname.slice(USER_DB_PREFIX.length))
 }
 
+/** Whether `user` is among {@link listUserNames}, by one lookup of its database instead of listing them all. */
+export const userExists = async (client: Client, user: string): Promise<boolean> => {
+  const result = await query(client, `SELECT 1 FROM pg_database WHERE datname = $1`, [userDbName(user)])
+  return result.rows.length > 0
+}
+
 /**
  * The user's pool, created once and shared by every caller. It connects as the
  * service role (PG* env) and applies `SET ROLE <user>` on each physical

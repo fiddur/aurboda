@@ -58,6 +58,7 @@ export {
   schemaInitialized,
   setUserPassword,
   userDbName,
+  userExists,
   withUserTransaction,
 } from './connection.ts'
 
