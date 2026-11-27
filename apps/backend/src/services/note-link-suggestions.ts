@@ -443,6 +443,7 @@ const toPageEntry = (
  * A page of journal entries, newest first, each with its suggestions; only those with one are
  * listed. With `unlinked_only` (the default) an entry already related to anything is left out.
  * The page is the search's page, so it may hold fewer entries than `limit` while there are more.
+ * One zone, `tz` or else the user's, reads the date range, each entry's day and the labels.
  */
 // eslint-disable-next-line complexity -- one check per query parameter
 export async function listNoteLinkSuggestionsPage(
@@ -462,7 +463,7 @@ export async function listNoteLinkSuggestionsPage(
     NOTE_LINK_SUGGESTIONS_PAGE_MAX_LIMIT,
   )
   const unlinkedOnly = input.unlinked_only !== false
-  const userTz = await getUserTimezone(user)
+  const tz = input.tz ?? (await getUserTimezone(user))
 
   const page = await dbSearchNotes(user, {
     cursor,
@@ -470,7 +471,7 @@ export async function listNoteLinkSuggestionsPage(
     from: input.from,
     limit,
     to: input.to,
-    tz: input.tz ?? userTz,
+    tz,
   })
   const nextCursor = page.next_cursor ? encodeNotesCursor(page.next_cursor) : undefined
   const entries = page.notes.filter(isJournalEntry)
@@ -480,7 +481,7 @@ export async function listNoteLinkSuggestionsPage(
   if (candidates.length === 0) return { data: { entries: [], next_cursor: nextCursor }, success: true }
 
   const dates = candidates
-    .map((n) => entryLocalDate(toSuggestionEntry(n), userTz))
+    .map((n) => entryLocalDate(toSuggestionEntry(n), tz))
     .filter((d): d is string => d !== undefined)
   const [dismissals, people, activities] = await Promise.all([
     getNoteLinkDismissalsForNoteIds(
@@ -488,7 +489,7 @@ export async function listNoteLinkSuggestionsPage(
       candidates.map((n) => n.id),
     ),
     loadPeople(user),
-    loadActivities(user, dates, userTz),
+    loadActivities(user, dates, tz),
   ])
 
   const listed = candidates.flatMap((note) => {
@@ -498,13 +499,13 @@ export async function listNoteLinkSuggestionsPage(
       dismissals: dismissals.get(note.id) ?? [],
       links: noteLinks,
       people,
-      tz: userTz,
+      tz,
     })
     if (suggestions.length === 0) return []
     return [
       toPageEntry(
         note,
-        noteLinks.map((link) => toRelated(link, userTz)),
+        noteLinks.map((link) => toRelated(link, tz)),
         suggestions,
       ),
     ]

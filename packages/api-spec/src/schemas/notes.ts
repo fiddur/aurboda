@@ -957,7 +957,8 @@ export const noteLinkSuggestionsPageQuerySchema = z
       }),
     to: dateOnlySchema.optional().meta({ description: 'Latest local date (YYYY-MM-DD, inclusive)' }),
     tz: ianaTimezoneSchema.optional().meta({
-      description: "IANA timezone the local dates are read in (default: the user's timezone)",
+      description:
+        "IANA timezone every date of the answer is read in: from/to, each entry's day (for the night's sleep and the same day's activities) and the labels (default: the user's timezone)",
     }),
     unlinked_only: queryBooleanSchema.optional().meta({
       description:

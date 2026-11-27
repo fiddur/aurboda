@@ -3,6 +3,7 @@ import type { MergeNoteTagsResult, NoteTagSummary } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
+import { useDebounced } from '../../components/useDebounced'
 import { fetchNoteTags, mergeNoteTags } from '../../state/api'
 import {
   entriesLabel,
@@ -14,6 +15,8 @@ import {
   tagOptions,
 } from './journal-tags'
 import { JOURNAL_KEY, JOURNAL_TAGS_KEY } from './JournalList'
+
+const MERGE_PREVIEW_DEBOUNCE_MS = 300
 
 const MergeForm = ({
   from,
@@ -27,6 +30,7 @@ const MergeForm = ({
   const queryClient = useQueryClient()
   const [typed, setTyped] = useState('')
   const into = mergeTargetTag(typed)
+  const previewed = useDebounced(into, MERGE_PREVIEW_DEBOUNCE_MS)
   const merge = useMutation({
     mutationFn: (target: string) => mergeNoteTags([from.tag], target),
     onSuccess: (result) => {
@@ -37,17 +41,19 @@ const MergeForm = ({
   const listId = `journal-merge-${from.tag}`
   const valid = into !== null && into !== from.tag
   const preview = useQuery({
-    enabled: valid,
-    queryFn: () => mergeNoteTags([from.tag], into ?? '', true),
-    queryKey: [...JOURNAL_TAGS_KEY, 'merge-preview', from.tag, into],
+    enabled: valid && previewed === into,
+    gcTime: 0,
+    queryFn: () => mergeNoteTags([from.tag], previewed ?? '', true),
+    queryKey: [...JOURNAL_TAGS_KEY, 'merge-preview', from.tag, previewed],
     retry: false,
   })
+  const counting = previewed !== into || preview.isFetching
   return (
     <form
       class="journal-tag-merge"
       onSubmit={(e) => {
         e.preventDefault()
-        if (valid && !merge.isPending && !preview.isLoading) merge.mutate(into)
+        if (valid && !merge.isPending && !counting) merge.mutate(into)
       }}
     >
       <input
@@ -68,8 +74,8 @@ const MergeForm = ({
             <option key={t.tag} value={t.tag} />
           ))}
       </datalist>
-      <button type="submit" class="btn-primary" disabled={!valid || merge.isPending || preview.isLoading}>
-        {valid ? mergeButtonLabel(from.tag, into, preview.data?.changed) : 'Merge'}
+      <button type="submit" class="btn-primary" disabled={!valid || merge.isPending || counting}>
+        {valid ? mergeButtonLabel(from.tag, into, counting ? undefined : preview.data?.changed) : 'Merge'}
       </button>
       {typed.trim() && into === null && <p class="journal-error">Not a tag: letters, digits and _.</p>}
       {merge.isError && (

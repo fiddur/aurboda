@@ -20,17 +20,14 @@ export const tagOptions = (
 
 export const entriesLabel = (count: number): string => (count === 1 ? '1 entry' : `${count} entries`)
 
-/** A merge's count: it rewrites comments and replies as well as entries. */
 export const entriesAndCommentsLabel = (count: number): string =>
   count === 1 ? '1 entry or comment' : `${count} entries and comments`
 
-/** The merge button, with what a dry run says will change once it is known. */
 export const mergeButtonLabel = (from: string, into: string, willChange: number | undefined): string =>
   willChange === undefined
     ? `Merge #${from} into #${into}`
     : `Merge #${from} (${entriesAndCommentsLabel(willChange)}) into #${into}`
 
-/** What a merge did, and how to pick up the notes it left alone because they changed meanwhile. */
 export const mergedLabel = (result: { changed: number; skipped: number }): string =>
   `Merged: ${entriesAndCommentsLabel(result.changed)} changed.` +
   (result.skipped === 0

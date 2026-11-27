@@ -374,4 +374,28 @@ describe('journal link suggestions', () => {
       .query({ from: '2026-11-20', to: '2026-11-19' })
     expect(backwards.status).toBe(400)
   })
+
+  test("read the range, the entry's day and the labels in the caller's tz", async () => {
+    const user = getTestUser()
+    const sleep = await insertActivity(user, 'sleep', '2026-11-20T14:00:00Z', '2026-11-20T22:00:00Z')
+    const walk = await insertActivity(user, 'walking', '2026-11-21T01:00:00Z', '2026-11-21T02:00:00Z', 'Walk')
+    await insertActivity(user, 'walking', '2026-11-20T10:00:00Z', '2026-11-20T11:00:00Z', 'UTC day walk')
+    const request = supertest(buildApp(user))
+    const added = await request
+      .post('/notes')
+      .send({ content: 'Morning', entity_type: 'time', start_time: '2026-11-20T23:30:00Z' })
+    const id = added.body.data.id as string
+
+    const inUtc = await request.get('/notes/link-suggestions').query({ from: '2026-11-21' })
+    expect(inUtc.body.data.entries).toEqual([])
+
+    const res = await request.get('/notes/link-suggestions').query({ from: '2026-11-21', tz: 'Asia/Tokyo' })
+    expect(res.status).toBe(200)
+    const entries = res.body.data.entries as { id: string; suggestions: SuggestionBody[] }[]
+    expect(entries.map((e) => e.id)).toEqual([id])
+    expect(entries[0]!.suggestions.map((s) => [s.entity_id, s.reason, s.label])).toEqual([
+      [sleep, 'night_sleep', 'Sleep, 2026-11-21'],
+      [walk, 'same_day', 'Walk, 2026-11-21'],
+    ])
+  })
 })
