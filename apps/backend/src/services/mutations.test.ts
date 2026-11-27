@@ -816,6 +816,25 @@ describe('bulkAddMetrics with the metric catalogue', () => {
     ])
   })
 
+  test('takes grade as a percent slope, flat and downhill included', async () => {
+    const result = await bulkAddMetrics('testuser', [
+      { metric: 'grade', time: new Date('2024-01-15T08:00:00Z'), value: 4.8 },
+      { metric: 'grade', time: new Date('2024-01-15T08:00:01Z'), unit: 'percent', value: 0 },
+      { metric: 'grade', time: new Date('2024-01-15T08:00:02Z'), unit: '%', value: -2.5 },
+      { metric: 'grade', time: new Date('2024-01-15T08:00:03Z'), unit: 'deg', value: 3 },
+    ])
+
+    expect(result.inserted).toBe(3)
+    expect(result.errors).toEqual([
+      { error: 'Unit "deg" does not match "grade", which is stored in %.', index: 3 },
+    ])
+    expect(db.insertTimeSeries).toHaveBeenCalledWith(TX, [
+      expect.objectContaining({ metric: 'grade', unit: '%', value: 4.8 }),
+      expect.objectContaining({ metric: 'grade', unit: '%', value: 0 }),
+      expect.objectContaining({ metric: 'grade', unit: '%', value: -2.5 }),
+    ])
+  })
+
   test('refuses every item when a catalogue metric was created meanwhile in another unit', async () => {
     vi.mocked(db.adoptCatalogMetric).mockResolvedValueOnce('mm')
 
