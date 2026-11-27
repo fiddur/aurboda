@@ -9,10 +9,27 @@ export const uploadPlaceholder = (name: string): string => `${PLACEHOLDER_PREFIX
 
 export const stillUploading = (value: string): boolean => value.includes(PLACEHOLDER_PREFIX)
 
-const PLACEHOLDER_LINE = /!\[Uploading\u2060 [^\n]*?…\]\(\)\n?/g
+const PLACEHOLDER = /!\[Uploading\u2060 [^\n]*?…\]\(\)/
 
-/** The text without the placeholders of pictures still on their way: what is worth saving meanwhile. */
-export const withoutUploadPlaceholders = (value: string): string => value.replace(PLACEHOLDER_LINE, '')
+const mayHaveLead = (before: string): boolean => /[^\n]\n$/.test(before)
+
+const mayHaveTrail = (after: string): boolean => after.startsWith('\n') && after[1] !== '\n'
+
+/**
+ * The text without the placeholders of pictures still on their way: what is worth saving meanwhile.
+ * Undoes `insertOnOwnLine`, taking back only line breaks it may have added, so a blank line next to
+ * a placeholder stays. `a\nP\nb` keeps one break: it comes from `a\nb` with the cursor at either end
+ * of a line, which no other reading can tell apart.
+ */
+export const withoutUploadPlaceholders = (value: string): string => {
+  const match = PLACEHOLDER.exec(value)
+  if (!match) return value
+  const before = value.slice(0, match.index)
+  const after = value.slice(match.index + match[0].length)
+  const trail = mayHaveTrail(after)
+  const lead = mayHaveLead(before) && (after === '\n' || !trail)
+  return withoutUploadPlaceholders(`${lead ? before.slice(0, -1) : before}${trail ? after.slice(1) : after}`)
+}
 
 export const freePlaceholder = (value: string, name: string): string => {
   let candidate = uploadPlaceholder(name)

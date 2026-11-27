@@ -127,6 +127,30 @@ describe('withoutUploadPlaceholders', () => {
     expect(withoutUploadPlaceholders(text)).toBe('Morning\nafter')
   })
 
+  test.each([
+    ['empty text', '', 0],
+    ['the start of the text', 'yoga\nrunning', 0],
+    ['the start of a line', 'yoga\nrunning', 5],
+    ['the end of a line followed by another', 'yoga\nrunning', 4],
+    ['the end of the text', 'meditation', 10],
+    ['the end of the text after a blank line', 'meditation\n\n', 12],
+    ['the end of the first of two paragraphs', 'yoga\n\nrunning', 4],
+    ['the start of the second of two paragraphs', 'yoga\n\nrunning', 6],
+    ['the end of a line before a blank line and more', 'yoga\n\n\nrunning', 4],
+  ])('taking a placeholder put at %s back out restores the text', (_, text, at) => {
+    const placeholder = uploadPlaceholder('coffee.jpg')
+    const first = insertOnOwnLine(text, at, placeholder)
+    expect(withoutUploadPlaceholders(first.value)).toBe(text)
+    const second = insertOnOwnLine(first.value, first.end, uploadPlaceholder('yoga.png'))
+    expect(withoutUploadPlaceholders(second.value)).toBe(text)
+  })
+
+  test('keeps a blank line typed around the placeholder', () => {
+    const p = uploadPlaceholder('coffee.jpg')
+    expect(withoutUploadPlaceholders(`yoga\n\n${p}\n\nrunning`)).toBe('yoga\n\n\n\nrunning')
+    expect(withoutUploadPlaceholders(`yoga\n\n${p}\n`)).toBe('yoga\n\n')
+  })
+
   test('leaves text with no placeholder as it is', () => {
     const text = 'Morning\n![Uploading coffee.jpg…]()\n![](attachment:x)'
     expect(withoutUploadPlaceholders(text)).toBe(text)
