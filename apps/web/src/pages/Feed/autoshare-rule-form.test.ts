@@ -291,8 +291,28 @@ describe('exercise trend in the bodies', () => {
     })
     const original = rule()
     expect(
-      formStateToUpdateBody({ ...ruleToFormState(original), includeExerciseTrends: true }, original),
+      formStateToUpdateBody(
+        { ...ruleToFormState(original), includeExerciseTrends: true, includeExercises: true },
+        original,
+      ),
     ).toMatchObject({ include_exercise_trends: true })
+  })
+
+  it('never sends the trend choice without the exercises it belongs to', () => {
+    const state = {
+      ...emptyRuleFormState(),
+      includeExerciseTrends: true,
+      includeExercises: false,
+      name: 'Lifts',
+    }
+    expect(formStateToAddBody(state)).toMatchObject({
+      include_exercise_trends: false,
+      include_exercises: false,
+    })
+    const original = rule({ include_exercise_trends: true })
+    expect(formStateToUpdateBody(ruleToFormState(original), original)).toMatchObject({
+      include_exercise_trends: false,
+    })
   })
 })
 
