@@ -462,13 +462,12 @@ describe('following a post', () => {
   const replyBy = (actor: string, hidden = false) =>
     entry({ actor_uri: actor, hidden_at: hidden ? new Date() : null, root_entry_id: 't1' })
 
-  test('followsPost: an explicit choice wins, else the root author and those who replied visibly', () => {
-    expect(followsPost(undefined, CAROL, root, [])).toBe(true)
-    expect(followsPost(undefined, DAN, root, [replyBy(DAN)])).toBe(true)
-    expect(followsPost(undefined, DAN, root, [replyBy(DAN, true)])).toBe(false)
-    expect(followsPost(undefined, DAN, root, [])).toBe(false)
-    expect(followsPost(true, DAN, root, [])).toBe(true)
-    expect(followsPost(false, CAROL, root, [replyBy(CAROL)])).toBe(false)
+  test('followsPost: an explicit choice wins, else the root author and those who replied', () => {
+    expect(followsPost(undefined, CAROL, root, false)).toBe(true)
+    expect(followsPost(undefined, DAN, root, true)).toBe(true)
+    expect(followsPost(undefined, DAN, root, false)).toBe(false)
+    expect(followsPost(true, DAN, root, false)).toBe(true)
+    expect(followsPost(false, CAROL, root, true)).toBe(false)
   })
 
   const members = [
@@ -504,13 +503,13 @@ describe('following a post', () => {
     expect(challengeCommentNotifications(WEB, 'alice', challenge(), members, theReply)).toEqual([])
   })
 
-  test('withFollowing marks each top-level entry from its own replies and the explicit choices', () => {
+  test('withFollowing marks each top-level entry from where the viewer replied and the explicit choices', () => {
     const other = entry({ actor_uri: CAROL, id: 't2', object_uri: `${WEB}/users/carol/feed/t2` })
     const entries = assembleThread([root, other], [replyBy(DAN)], () => null)
     const marked = withFollowing(
       entries,
       [root, other],
-      [replyBy(DAN)],
+      new Set(['t1']),
       DAN,
       new Map([[other.object_uri, true]]),
     )
@@ -518,7 +517,7 @@ describe('following a post', () => {
       ['t1', true],
       ['t2', true],
     ])
-    expect(withFollowing(entries, [root, other], [], DAN, new Map()).map((e) => e.following)).toEqual([
+    expect(withFollowing(entries, [root, other], new Set(), DAN, new Map()).map((e) => e.following)).toEqual([
       false,
       false,
     ])
@@ -614,9 +613,27 @@ describe('addChallengeComment', () => {
         over.existing ?? over.byId?.find((e) => e.object_uri === uri) ?? null,
       getOwnPost: async () => null,
       listMembers: async () => over.members ?? MEMBERS,
-      listReplies: async (_host, _ids, visibility, perRoot) => {
+      listRepliers: async (_host, rootIds, actorUris) => [
+        ...new Map(
+          (over.replies ?? [])
+            .filter(
+              (reply) =>
+                reply.root_entry_id != null &&
+                rootIds.includes(reply.root_entry_id) &&
+                actorUris.includes(reply.actor_uri) &&
+                reply.hidden_at == null,
+            )
+            .map((reply) => [
+              `${reply.root_entry_id} ${reply.actor_uri}`,
+              { actor_uri: reply.actor_uri, root_entry_id: reply.root_entry_id! },
+            ]),
+        ).values(),
+      ],
+      listReplies: async (_host, ids, visibility, perRoot) => {
         asked.push({ include_hidden: visibility.include_hidden, perRoot })
-        return over.replies ?? []
+        return ids.flatMap((id) =>
+          (over.replies ?? []).filter((reply) => reply.root_entry_id === id).slice(0, perRoot),
+        )
       },
       listTopLevel: async (_host, _id, visibility, limit) =>
         (over.tops ?? [])
@@ -1062,6 +1079,38 @@ describe('addChallengeComment', () => {
       expect(await following('dan')).toEqual([[true, [false]]])
       expect(await following('bob')).toEqual([[false, [false]]])
       expect(await following('zed')).toEqual([[undefined, [false]]])
+    })
+
+    test('past the replies a page shows, the bell and the notification both see a reply of the host', async () => {
+      const ALICE = `${WEB}/users/alice`
+      const chain = Array.from({ length: MAX_REPLIES_PER_ENTRY }, (_, i) =>
+        entry({
+          actor_uri: DAN,
+          id: `chain-${i}`,
+          in_reply_to_uri: root.object_uri,
+          object_uri: `${WEB}/users/dan/feed/chain-${i}`,
+          published_at: new Date(Date.UTC(2026, 9, 6, 0, 0, i)),
+          root_entry_id: root.id,
+        }),
+      )
+      const hostsReply = entry({
+        actor_uri: ALICE,
+        id: 'alice-late',
+        in_reply_to_uri: root.object_uri,
+        object_uri: `${ALICE}/feed/late`,
+        published_at: new Date(Date.UTC(2026, 9, 7)),
+        root_entry_id: root.id,
+      })
+      const replies = [...chain, hostsReply]
+      const { deps, notified } = fakeDeps({ byId: [root, ...replies], members, replies, tops: [root] })
+
+      const read = await readChallengeThread(deps, 'alice', URL)
+      expect(read.ok && read.entries[0]?.replies).toHaveLength(MAX_REPLIES_PER_ENTRY)
+      expect(read.ok && read.entries[0]?.replies.some((r) => r.id === hostsReply.id)).toBe(false)
+      expect(read.ok && read.entries[0]?.following).toBe(true)
+
+      await addChallengeComment(deps, 'bob', replyBody)
+      expect(notified).toContain('alice')
     })
   })
 })

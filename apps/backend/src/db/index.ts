@@ -450,6 +450,7 @@ export {
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
   listChallengeThreadDocumentEntries,
+  listChallengeThreadRepliers,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
   setChallengeThreadEntryHidden,

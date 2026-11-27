@@ -7,6 +7,7 @@ import type { ChallengeThreadAudience } from '@aurboda/api-spec'
 import type { Note } from '@fedify/fedify/vocab'
 
 import type {
+  ChallengeMemberRecord,
   ChallengeRecord,
   ChallengeThreadEntryRecord,
   FeedPostRecord,
@@ -38,6 +39,7 @@ import {
   type ThreadAuthor,
   type ThreadCandidate,
   type ThreadSignal,
+  threadNotifies,
   verifiedRemoteActors,
 } from './challenge-thread.ts'
 import { buildActorUrl, buildChallengeObjectUrl } from './share-urls.ts'
@@ -180,6 +182,8 @@ export interface InboundThreadAdmission {
   challenge_id: string
   /** The thread notifies `me` of this entry (or, for a reply under a post they do not follow, deliberately not): the timeline must not notify again. */
   quiet: boolean
+  /** Quiet, but the thread does not notify `me` of it: a mention of them is still the timeline's to raise. */
+  notify_mention: boolean
 }
 
 const hostOf = (uri: string): string | null => {
@@ -238,6 +242,21 @@ const closedToOutsider = (
   return !(existing?.actor_uri === actorUri && existing.audience === 'participants')
 }
 
+const notifiedByThread = async (
+  deps: InboundThreadDeps,
+  host: string,
+  members: readonly ChallengeMemberRecord[],
+  entry: ChallengeThreadEntryRecord,
+  me: string,
+): Promise<boolean> => {
+  try {
+    return await threadNotifies(deps, host, members, entry, me)
+  } catch (error) {
+    console.warn(`⚠️ challenge thread follow check failed for ${entry.object_uri}:`, error)
+    return true
+  }
+}
+
 const admitIntoThread = async (
   deps: InboundThreadDeps,
   input: InboundThreadNote,
@@ -251,12 +270,14 @@ const admitIntoThread = async (
     deps.listMembers(host, challenge.id),
     deps.getEntryByObjectUri(host, noteId.href),
   ])
-  const admission: InboundThreadAdmission = {
+  const quiet = challengeThreadRole(host, members, me) !== 'visitor' && buildActorUrl(origin, me) !== actorUri
+  const admission = async (entry: ChallengeThreadEntryRecord): Promise<InboundThreadAdmission> => ({
     challenge_id: challenge.id,
     host,
-    quiet: challengeThreadRole(host, members, me) !== 'visitor' && buildActorUrl(origin, me) !== actorUri,
-  }
-  if (existing != null && noteId.href.startsWith(`${trimSlashes(origin)}/users/`)) return admission
+    notify_mention: quiet && !(await notifiedByThread(deps, host, members, entry, me)),
+    quiet,
+  })
+  if (existing != null && noteId.href.startsWith(`${trimSlashes(origin)}/users/`)) return admission(existing)
 
   const audience = inboundAudience(note, buildChallengeObjectUrl(origin, host, challenge.slug))
   if (audience == null) return null
@@ -282,7 +303,7 @@ const admitIntoThread = async (
   if (admitted.created && !verifiedRemoteActors(members).includes(actorUri)) {
     signalVerifiedMembers(deps, thread, members, 'add', admitted.entry.object_uri)
   }
-  return admission
+  return admission(admitted.entry)
 }
 
 /**

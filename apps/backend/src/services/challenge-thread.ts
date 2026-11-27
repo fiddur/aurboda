@@ -49,6 +49,7 @@ import {
   getUserSettings,
   isMissingDatabase,
   listChallengeMembers,
+  listChallengeThreadRepliers,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
   setChallengePostFollow,
@@ -358,17 +359,14 @@ export const threadRecipients = (
 
 /**
  * Whether someone follows a top-level post: their own choice when they made one, else whether they
- * wrote it or a visible reply under it. Pure.
+ * wrote it or (`repliedUnder`) a reply under it that is not hidden. Pure.
  */
 export const followsPost = (
   explicit: boolean | undefined,
   actorUri: string,
   root: { actor_uri: string },
-  replies: readonly { actor_uri: string; hidden_at?: Date | null }[],
-): boolean =>
-  explicit ??
-  (root.actor_uri === actorUri ||
-    replies.some((reply) => reply.hidden_at == null && reply.actor_uri === actorUri))
+  repliedUnder: boolean,
+): boolean => explicit ?? (root.actor_uri === actorUri || repliedUnder)
 
 /** Whose post a reply answers, as its notification's title words it for one recipient. */
 export type RootOwner = { mine: true } | { mine: false; label: string | null }
@@ -428,10 +426,15 @@ export const challengeCommentNotifications = (
     }))
 }
 
+/** Who of some actors has a reply that is not hidden under which of some root posts, among all entries. */
+export type ListRepliers = (
+  host: string,
+  rootIds: readonly string[],
+  actorUris: readonly string[],
+) => Promise<{ root_entry_id: string; actor_uri: string }[]>
+
 /** A user's explicit follow choices among some root posts, from their own data. */
 export type FollowChoices = (user: string, rootObjectUris: readonly string[]) => Promise<Map<string, boolean>>
-
-const READ_ALL: ThreadVisibility = { audiences: ['public', 'participants'], include_hidden: false }
 
 const followChoiceOf = async (
   followChoices: FollowChoices,
@@ -446,9 +449,27 @@ const followChoiceOf = async (
   }
 }
 
+type FollowDeps = Pick<AdmitDeps, 'followChoices' | 'getEntryById' | 'listRepliers' | 'webHost'>
+
+/** Which of `users` follow `root`, from all of its entries. */
+const followersOf = async (
+  deps: FollowDeps,
+  host: string,
+  root: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'id' | 'object_uri'>,
+  users: readonly string[],
+): Promise<Set<string>> => {
+  const actors = users.map((user) => buildActorUrl(deps.webHost, user))
+  const [repliers, choices] = await Promise.all([
+    deps.listRepliers(host, [root.id], actors),
+    Promise.all(users.map((user) => followChoiceOf(deps.followChoices, user, root.object_uri))),
+  ])
+  const replied = new Set(repliers.map((row) => row.actor_uri))
+  return new Set(users.filter((_, i) => followsPost(choices[i], actors[i]!, root, replied.has(actors[i]!))))
+}
+
 /** The root of a new reply and which of the recipients follow it; null when the root is gone. */
 const replyAudience = async (
-  deps: Pick<AdmitDeps, 'followChoices' | 'getEntryById' | 'listReplies' | 'webHost'>,
+  deps: FollowDeps,
   host: string,
   members: readonly ChallengeMemberRecord[],
   entry: ChallengeThreadEntryRecord,
@@ -457,14 +478,26 @@ const replyAudience = async (
   const root = await deps.getEntryById(host, entry.root_entry_id)
   if (root == null) return null
   const recipients = threadRecipients(deps.webHost, host, members, entry.actor_uri)
-  const [replies, choices] = await Promise.all([
-    deps.listReplies(host, [root.id], READ_ALL, MAX_THREAD_ENTRIES),
-    Promise.all(recipients.map((user) => followChoiceOf(deps.followChoices, user, root.object_uri))),
-  ])
-  const followers = new Set(
-    recipients.filter((user, i) => followsPost(choices[i], buildActorUrl(deps.webHost, user), root, replies)),
-  )
-  return { followers, root }
+  return { followers: await followersOf(deps, host, root, recipients), root }
+}
+
+/**
+ * Whether the thread's own notifications speak for `entry` to `user`: a visible comment, top-level
+ * or under a post they follow, while they are the host or an active member and not its author. A
+ * hidden entry or another kind counts as spoken for, so nothing else notifies of it either.
+ */
+export const threadNotifies = async (
+  deps: FollowDeps,
+  host: string,
+  members: readonly ChallengeMemberRecord[],
+  entry: Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'hidden_at' | 'kind' | 'root_entry_id'>,
+  user: string,
+): Promise<boolean> => {
+  if (entry.kind !== 'comment' || entry.hidden_at != null) return true
+  if (!threadRecipients(deps.webHost, host, members, entry.actor_uri).includes(user)) return false
+  if (entry.root_entry_id == null) return true
+  const root = await deps.getEntryById(host, entry.root_entry_id)
+  return root != null && (await followersOf(deps, host, root, [user])).has(user)
 }
 
 export interface AdmitDeps {
@@ -477,12 +510,7 @@ export interface AdmitDeps {
     input: ChallengeThreadEntryInput,
   ) => Promise<{ entry: ChallengeThreadEntryRecord; inserted: boolean } | null>
   getEntryById: (host: string, id: string) => Promise<ChallengeThreadEntryRecord | null>
-  listReplies: (
-    host: string,
-    rootIds: readonly string[],
-    visibility: ThreadVisibility,
-    perRoot: number,
-  ) => Promise<ChallengeThreadEntryRecord[]>
+  listRepliers: ListRepliers
   followChoices: FollowChoices
   notify?: (user: string, input: RaiseNotificationInput) => Promise<void>
   signal?: ThreadSignal
@@ -646,13 +674,13 @@ export const assembleThread = (
   })
 
 /**
- * Each top-level entry with whether the viewer follows it, by `followsPost` over the replies grouped
- * under it. Pure.
+ * Each top-level entry with whether the viewer follows it, by `followsPost` with `repliedUnder` the
+ * ids of the tops the viewer has a reply under. Pure.
  */
 export const withFollowing = (
   entries: readonly ChallengeThreadEntry[],
   tops: readonly Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'id' | 'object_uri'>[],
-  replies: readonly Pick<ChallengeThreadEntryRecord, 'actor_uri' | 'hidden_at' | 'root_entry_id'>[],
+  repliedUnder: ReadonlySet<string>,
   viewerActorUri: string,
   choices: ReadonlyMap<string, boolean>,
 ): ChallengeThreadEntry[] => {
@@ -660,8 +688,10 @@ export const withFollowing = (
   return entries.map((entry) => {
     const top = topById.get(entry.id)
     if (top == null) return entry
-    const group = replies.filter((reply) => reply.root_entry_id === top.id)
-    return { ...entry, following: followsPost(choices.get(top.object_uri), viewerActorUri, top, group) }
+    return {
+      ...entry,
+      following: followsPost(choices.get(top.object_uri), viewerActorUri, top, repliedUnder.has(top.id)),
+    }
   })
 }
 
@@ -681,6 +711,7 @@ export interface ThreadReadDeps {
     visibility: ThreadVisibility,
     perRoot: number,
   ) => Promise<ChallengeThreadEntryRecord[]>
+  listRepliers: ListRepliers
   countVisible: (host: string, challengeId: string, visibility: ThreadVisibility) => Promise<number>
   getOwnPost: (user: string, postId: string) => Promise<FeedPostRecord | null>
   followChoices: FollowChoices
@@ -718,6 +749,29 @@ const loadOwn = async (
     }),
   )
   return own
+}
+
+const followingOf = async (
+  deps: Pick<ThreadReadDeps, 'followChoices' | 'listRepliers' | 'webHost'>,
+  host: string,
+  viewer: string,
+  page: readonly ChallengeThreadEntryRecord[],
+  entries: readonly ChallengeThreadEntry[],
+): Promise<ChallengeThreadEntry[]> => {
+  const viewerActorUri = buildActorUrl(deps.webHost, viewer)
+  const [repliers, choices] = await Promise.all([
+    deps.listRepliers(
+      host,
+      page.map((top) => top.id),
+      [viewerActorUri],
+    ),
+    deps.followChoices(
+      viewer,
+      page.map((top) => top.object_uri),
+    ),
+  ])
+  const repliedUnder = new Set(repliers.map((row) => row.root_entry_id))
+  return withFollowing(entries, page, repliedUnder, viewerActorUri, choices)
 }
 
 /** One page of a thread as `viewer` (null: signed out) may see it; an admin sees hidden entries as the host does. */
@@ -760,18 +814,7 @@ export const getChallengeThread = async (
   const entries = assembleThread(page, replies, (record) => own.get(record.id) ?? null, seesHidden)
   return {
     entries:
-      role === 'visitor' || viewer == null
-        ? entries
-        : withFollowing(
-            entries,
-            page,
-            replies,
-            buildActorUrl(deps.webHost, viewer),
-            await deps.followChoices(
-              viewer,
-              page.map((top) => top.object_uri),
-            ),
-          ),
+      role === 'visitor' || viewer == null ? entries : await followingOf(deps, host, viewer, page, entries),
     next_cursor: hasMore && last ? encodeKeysetCursor(last.cursor_ts, last.id) : null,
     total,
     viewer: viewerInfo,
@@ -913,6 +956,7 @@ export const createChallengeThreadDeps = (opts: ChallengeThreadDepsOptions): Cha
   getEntryByObjectUri: getChallengeThreadEntryByObjectUri,
   getOwnPost: getFeedPostById,
   listMembers: listChallengeMembers,
+  listRepliers: listChallengeThreadRepliers,
   listReplies: listChallengeThreadReplies,
   listTopLevel: listChallengeThreadTopLevel,
   loadChallenge: loadHostedChallenge,

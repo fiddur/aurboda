@@ -480,6 +480,12 @@ export const setNotificationTypePreference = async (
   patch: NotificationPreferencePatch,
 ): Promise<NotificationTypeSetting | null> => {
   if (!canConfigureNotificationType(type, isAdmin)) return null
-  const stored = await store.upsertPreference(user, type, patch)
+  const current = listNotificationTypeSettings(isAdmin, await store.listPreferences(user)).find(
+    (setting) => setting.type === type,
+  )
+  const stored = await store.upsertPreference(user, type, {
+    in_app: patch.in_app ?? current?.in_app ?? true,
+    push: patch.push ?? current?.push ?? true,
+  })
   return listNotificationTypeSettings(isAdmin, [stored]).find((setting) => setting.type === type) ?? null
 }
