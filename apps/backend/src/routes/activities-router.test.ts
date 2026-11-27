@@ -277,6 +277,20 @@ describe('GET /activities/:id', () => {
     expect(db.activityHasTrack).toHaveBeenCalledWith('tester', [ACTIVITY_ID, TARGET_ID])
   })
 
+  test('says has_track false for a deleted activity, whose track read answers 404', async () => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(db.getActivityById).mockResolvedValue(
+      activityRow({ deleted_at: new Date('2026-11-01T00:00:00Z'), override_target_ids: [TARGET_ID] }),
+    )
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.has_track).toBe(false)
+    expect(db.activityHasTrack).not.toHaveBeenCalled()
+  })
+
   test('returns an empty comments array when the activity has no notes', async () => {
     vi.mocked(queries.getCommentsMap).mockResolvedValue(
       new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,

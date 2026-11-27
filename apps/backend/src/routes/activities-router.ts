@@ -40,7 +40,6 @@ import { singleUpload } from '../api/upload.ts'
 import {
   blendGroupData,
   getActivityById,
-  activityHasTrack,
   getAllActivityTypeNames,
   getDeductionRule,
   getNearbyActivities,
@@ -80,7 +79,12 @@ import {
 } from '../services/queries/index.ts'
 import { activitySegmentEfforts } from '../services/segments.ts'
 import { getUserTimezone } from '../services/settings.ts'
-import { findActivityTrack, serializeActivityTrack, trackOwnerIds } from '../services/tracks.ts'
+import {
+  activityShowsTrack,
+  findActivityTrack,
+  serializeActivityTrack,
+  trackOwnerIds,
+} from '../services/tracks.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -564,7 +568,7 @@ export const createActivitiesRouter = (
     const ownerIds = trackOwnerIds(realId, activity)
     const [activityMetrics, hasTrack] = await Promise.all([
       computeActivityDetailMetrics(user, activity),
-      activityHasTrack(user, ownerIds),
+      activityShowsTrack(user, realId, activity),
     ])
 
     if (isMerged && !activity.deleted_at) {
@@ -643,7 +647,7 @@ export const createActivitiesRouter = (
           activitySegmentEfforts(user, ownerIds),
           activityPeopleOf(user, ownerIds),
           listJournalEntryRefs(user, 'activity', ownerIds),
-          activityHasTrack(user, ownerIds),
+          activityShowsTrack(user, id, activity),
         ])
 
       res.json({

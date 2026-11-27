@@ -2,7 +2,7 @@ import type { ActivityTrack } from '@aurboda/api-spec'
 
 import type { ActivityTrackRecord } from '../db/tracks.ts'
 
-import { getActivityById, getActivityTrack } from '../db/index.ts'
+import { activityHasTrack, getActivityById, getActivityTrack } from '../db/index.ts'
 
 export interface TrackPoint {
   lat: number
@@ -113,6 +113,13 @@ export const trackOwnerIds = (id: string, activity: { override_target_ids?: stri
   id,
   ...(activity.override_target_ids ?? []),
 ]
+
+/** Whether `findActivityTrack` answers a track: never for a deleted activity, which it does not load. */
+export const activityShowsTrack = async (
+  user: string,
+  id: string,
+  activity: { deleted_at?: Date | null; override_target_ids?: string[] },
+): Promise<boolean> => (activity.deleted_at ? false : activityHasTrack(user, trackOwnerIds(id, activity)))
 
 /** The track an activity shows, its own or that of a row it overrides; null for no live activity. */
 export const findActivityTrack = async (user: string, id: string): Promise<ActivityTrackRecord | null> => {

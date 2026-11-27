@@ -28,13 +28,7 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
-import {
-  getActivityById,
-  activityHasTrack,
-  getAllActivityTypeNames,
-  getMediaPlayById,
-  getMediaPlays,
-} from '../db/index.ts'
+import { getActivityById, getAllActivityTypeNames, getMediaPlayById, getMediaPlays } from '../db/index.ts'
 import { isHttpError } from '../http-error.ts'
 import { firstActivityFeatures } from '../services/activity-features.ts'
 import { activityPeopleOf } from '../services/activity-people.ts'
@@ -72,7 +66,12 @@ import {
 } from '../services/queries/index.ts'
 import { activitySegmentEfforts } from '../services/segments.ts'
 import { getSleepDebt } from '../services/sleep-debt.ts'
-import { findActivityTrack, serializeActivityTrack, trackOwnerIds } from '../services/tracks.ts'
+import {
+  activityShowsTrack,
+  findActivityTrack,
+  serializeActivityTrack,
+  trackOwnerIds,
+} from '../services/tracks.ts'
 import {
   errorResponse,
   jsonResponse,
@@ -399,7 +398,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
           activitySegmentEfforts(user, ownerIds),
           activityPeopleOf(user, ownerIds),
           listJournalEntryRefs(user, 'activity', ownerIds),
-          activityHasTrack(user, ownerIds),
+          activityShowsTrack(user, id, activity),
         ])
 
       return tzJsonResponse(

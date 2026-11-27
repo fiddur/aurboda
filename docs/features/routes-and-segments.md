@@ -80,9 +80,11 @@ per user in the `track-backfill` queue at startup, and on demand through
 
 - `GET /activities/:id/track` and `get_activity_track`: `{ source, points: [{lat, lon,
 alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
-  activity's start. An activity without a stored track answers 404 (`No track for activity`).
+  activity's start. An activity that overrides others answers its own track when it has
+  one, otherwise the track of a row it overrides, and `activity_id` is then that row's. An
+  activity without a stored track, or a deleted one, answers 404 (`No track for activity`).
 - `GET /activities/:id`, `/activities/:id/full` and `get_activity_detail` carry `has_track`,
-  true exactly when the track read above answers a track for that id; the web activity map asks
+  true exactly when the track read above answers a track for it; the web activity map asks
   for the track only then, and otherwise goes straight to the raw locations.
 - `/activities/:id/full` (and `get_activity_detail`) use a full-resolution track for
   `gps`; otherwise the `locations` in the time window, whose real timestamps suit the
