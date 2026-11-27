@@ -185,7 +185,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'merge_note_tags',
-    'Merge journal tags: every live note carrying a tag in from gets into instead — explicit tags are replaced and #from hashtags in the text are rewritten to #into (each rewritten text keeps a revision, see list_note_revisions). Renaming is a merge with one from. Answers how many notes changed.',
+    'Merge journal tags: every live note carrying a tag in from gets into instead — explicit tags are replaced and #from hashtags in the text are rewritten to #into (each rewritten text keeps a revision, see list_note_revisions). Renaming is a merge with one from. Answers how many notes changed, and how many were skipped because they were edited while it ran (merging again picks them up). dry_run: true answers how many notes would change and writes nothing — use it to tell the user before merging.',
     { ...mergeNoteTagsBodySchema.shape },
     async (params) => {
       const result = await mergeNoteTags(user, params)

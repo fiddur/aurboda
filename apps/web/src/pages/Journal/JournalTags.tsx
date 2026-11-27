@@ -1,10 +1,18 @@
-import type { NoteTagSummary } from '@aurboda/api-spec'
+import type { MergeNoteTagsResult, NoteTagSummary } from '@aurboda/api-spec'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
 import { fetchNoteTags, mergeNoteTags } from '../../state/api'
-import { entriesLabel, lastUsedLabel, mergeTargetTag, tagFilterHref, tagOptions } from './journal-tags'
+import {
+  entriesLabel,
+  lastUsedLabel,
+  mergeButtonLabel,
+  mergedLabel,
+  mergeTargetTag,
+  tagFilterHref,
+  tagOptions,
+} from './journal-tags'
 import { JOURNAL_KEY, JOURNAL_TAGS_KEY } from './JournalList'
 
 const MergeForm = ({
@@ -14,26 +22,32 @@ const MergeForm = ({
 }: {
   from: NoteTagSummary
   tags: readonly NoteTagSummary[]
-  onMerged: (changed: number) => void
+  onMerged: (result: MergeNoteTagsResult) => void
 }) => {
   const queryClient = useQueryClient()
   const [typed, setTyped] = useState('')
   const into = mergeTargetTag(typed)
   const merge = useMutation({
     mutationFn: (target: string) => mergeNoteTags([from.tag], target),
-    onSuccess: (changed) => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: JOURNAL_KEY })
-      onMerged(changed)
+      onMerged(result)
     },
   })
   const listId = `journal-merge-${from.tag}`
   const valid = into !== null && into !== from.tag
+  const preview = useQuery({
+    enabled: valid,
+    queryFn: () => mergeNoteTags([from.tag], into ?? '', true),
+    queryKey: [...JOURNAL_TAGS_KEY, 'merge-preview', from.tag, into],
+    retry: false,
+  })
   return (
     <form
       class="journal-tag-merge"
       onSubmit={(e) => {
         e.preventDefault()
-        if (valid && !merge.isPending) merge.mutate(into)
+        if (valid && !merge.isPending && !preview.isLoading) merge.mutate(into)
       }}
     >
       <input
@@ -54,8 +68,8 @@ const MergeForm = ({
             <option key={t.tag} value={t.tag} />
           ))}
       </datalist>
-      <button type="submit" class="btn-primary" disabled={!valid || merge.isPending}>
-        {valid ? `Merge #${from.tag} (${entriesLabel(from.count)}) into #${into}` : 'Merge'}
+      <button type="submit" class="btn-primary" disabled={!valid || merge.isPending || preview.isLoading}>
+        {valid ? mergeButtonLabel(from.tag, into, preview.data?.changed) : 'Merge'}
       </button>
       {typed.trim() && into === null && <p class="journal-error">Not a tag: letters, digits and _.</p>}
       {merge.isError && (
@@ -78,7 +92,7 @@ const TagRow = ({
   tags: readonly NoteTagSummary[]
   merging: boolean
   onMergeToggle: () => void
-  onMerged: (changed: number) => void
+  onMerged: (result: MergeNoteTagsResult) => void
 }) => (
   <li>
     <div class="journal-tag-row">
@@ -100,7 +114,7 @@ const TagRow = ({
 export const JournalTags = () => {
   const [search, setSearch] = useState('')
   const [merging, setMerging] = useState<string>()
-  const [merged, setMerged] = useState<number>()
+  const [merged, setMerged] = useState<MergeNoteTagsResult>()
   const tags = useQuery({ queryFn: () => fetchNoteTags(), queryKey: JOURNAL_TAGS_KEY })
   const all = tags.data ?? []
   const shown = tagOptions(all, search)
@@ -122,7 +136,7 @@ export const JournalTags = () => {
       />
       {merged !== undefined && (
         <p class="journal-muted" role="status">
-          Merged: {entriesLabel(merged)} changed.
+          {mergedLabel(merged)}
         </p>
       )}
       {tags.isLoading && <p class="journal-muted">Loading…</p>}
@@ -143,9 +157,9 @@ export const JournalTags = () => {
               setMerged(undefined)
               setMerging(merging === tag.tag ? undefined : tag.tag)
             }}
-            onMerged={(changed) => {
+            onMerged={(result) => {
               setMerging(undefined)
-              setMerged(changed)
+              setMerged(result)
             }}
           />
         ))}

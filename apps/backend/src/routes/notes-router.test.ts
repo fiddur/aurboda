@@ -359,16 +359,36 @@ describe('POST /notes/tags/merge', () => {
     vi.clearAllMocks()
   })
 
-  test('answers how many notes changed', async () => {
-    vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 3 }, success: true })
+  test('answers how many notes changed and were skipped', async () => {
+    vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 3, skipped: 1 }, success: true })
 
     const res = await supertest(buildApp())
       .post('/tags/merge')
       .send({ from: ['running', 'jog'], into: 'run' })
 
     expect(res.status).toBe(200)
-    expect(res.body).toEqual({ data: { changed: 3 }, success: true })
-    expect(mutations.mergeNoteTags).toHaveBeenCalledWith('tester', { from: ['running', 'jog'], into: 'run' })
+    expect(res.body).toEqual({ data: { changed: 3, skipped: 1 }, success: true })
+    expect(mutations.mergeNoteTags).toHaveBeenCalledWith('tester', {
+      dry_run: false,
+      from: ['running', 'jog'],
+      into: 'run',
+    })
+  })
+
+  test('passes dry_run on', async () => {
+    vi.mocked(mutations.mergeNoteTags).mockResolvedValue({ data: { changed: 5, skipped: 0 }, success: true })
+
+    const res = await supertest(buildApp())
+      .post('/tags/merge')
+      .send({ dry_run: true, from: ['running'], into: 'run' })
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { changed: 5, skipped: 0 }, success: true })
+    expect(mutations.mergeNoteTags).toHaveBeenCalledWith('tester', {
+      dry_run: true,
+      from: ['running'],
+      into: 'run',
+    })
   })
 
   test('400 when into is one of from, a tag is invalid or from is empty', async () => {

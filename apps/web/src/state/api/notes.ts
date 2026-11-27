@@ -8,6 +8,7 @@ import type {
   JournalContext,
   JournalContextResponse,
   MergeNoteTagsResponse,
+  MergeNoteTagsResult,
   Note,
   NoteAttachment,
   NoteAttachmentResponse,
@@ -207,14 +208,21 @@ export const fetchNoteTags = async (entityTypes?: readonly EntityType[]): Promis
   return response.data.data ?? []
 }
 
-/** Every note carrying a tag in `from` gets `into` instead; answers how many notes changed. */
-export const mergeNoteTags = async (from: readonly string[], into: string): Promise<number> => {
+/**
+ * Every note carrying a tag in `from` gets `into` instead; answers how many notes changed and how
+ * many were skipped for being edited meanwhile. With `dryRun` nothing is written.
+ */
+export const mergeNoteTags = async (
+  from: readonly string[],
+  into: string,
+  dryRun = false,
+): Promise<MergeNoteTagsResult> => {
   const response = await axios.post<MergeNoteTagsResponse>(
     `${API_URL}/notes/tags/merge`,
-    { from, into },
+    { dry_run: dryRun, from, into },
     { headers: authHeaders() },
   )
-  return response.data.data?.changed ?? 0
+  return response.data.data ?? { changed: 0, skipped: 0 }
 }
 
 export const createJournalEntry = async (body: AddNoteBody): Promise<Note> => {
