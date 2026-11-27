@@ -304,6 +304,7 @@ export const createMetricsRouter = (
       const measurementTime = time ? new Date(time) : new Date()
 
       const result = await addMetric(user, { metric, time: measurementTime, unit, value })
+      if (!result.success) return res.status(400).json(result)
       res.json(result)
     },
   )

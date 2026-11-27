@@ -7,7 +7,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useCallback, useState } from 'preact/hooks'
 
-import { addMetric, deleteMetricPoint } from '../../state/api'
+import { addMetric, apiErrorMessage, deleteMetricPoint } from '../../state/api'
 import { EntityActions } from './EntityActions'
 import { formatDateTimeLocal } from './format-utils'
 import { MetricDetail, type MetricDraft, parseMetricEntityId } from './MetricDetail'
@@ -82,6 +82,11 @@ export const MetricContent = ({ entityId }: { entityId: string }) => {
           onSave={() => saveMutation.mutate()}
           isSaving={saveMutation.isPending}
         />
+      )}
+      {saveMutation.isError && (
+        <p class="error" role="alert">
+          {apiErrorMessage(saveMutation.error, saveMutation.error.message)}
+        </p>
       )}
       <MetricDetail
         entityId={entityId}
