@@ -6,6 +6,9 @@ import type {
   DataSourcesOverview,
 } from '@aurboda/api-spec'
 
+export const sourceLinkProps = (path: string): { href: string; rel?: string; target?: string } =>
+  path.startsWith('/') ? { href: path } : { href: path, rel: 'noopener noreferrer', target: '_blank' }
+
 export const joinNames = (names: string[]): string =>
   names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
 

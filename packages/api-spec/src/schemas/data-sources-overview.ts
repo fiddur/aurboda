@@ -64,6 +64,7 @@ export const dataSourceIds = [
   'activitywatch_android',
   'rescuetime',
   'lastfm',
+  'mpris',
   'owntracks',
   'home_assistant',
   'calendars',
@@ -170,6 +171,13 @@ export const connectableSources: readonly ConnectableSource[] = [
   },
   { group: 'music', id: 'lastfm', kinds: ['music'], name: 'Last.fm', path: '/data-sources/lastfm' },
   {
+    group: 'music',
+    id: 'mpris',
+    kinds: ['music'],
+    name: 'Media players (MPRIS)',
+    path: 'https://github.com/fiddur/aurboda/blob/develop/docs/media.md',
+  },
+  {
     group: 'location',
     id: 'owntracks',
     kinds: ['location'],
@@ -210,7 +218,10 @@ export const dataSourceOverviewItemSchema = z
     id: dataSourceIdSchema,
     kinds: z.array(dataKindIdSchema).meta({ description: 'The kinds of data this source brings in' }),
     name: z.string().meta({ example: 'OwnTracks' }),
-    path: z.string().meta({ description: "The web path of the source's setup page" }),
+    path: z.string().meta({
+      description:
+        "The web path of the source's setup page, or the URL of its documentation when it has none",
+    }),
     status: dataSourceStatusSchema,
   })
   .meta({ description: 'One connectable data source and whether it is set up', id: 'DataSourceOverviewItem' })

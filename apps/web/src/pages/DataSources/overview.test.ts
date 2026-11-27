@@ -2,7 +2,14 @@ import type { DataKindOverview, DataSourceOverviewItem, DataSourcesOverview } fr
 
 import { describe, expect, it } from 'vitest'
 
-import { joinNames, otherSourcesCovering, overlapMessage, overlapNoteText, sourcesByGroup } from './overview'
+import {
+  joinNames,
+  otherSourcesCovering,
+  overlapMessage,
+  overlapNoteText,
+  sourceLinkProps,
+  sourcesByGroup,
+} from './overview'
 
 const item = (
   id: DataSourceOverviewItem['id'],
@@ -124,5 +131,19 @@ describe('sourcesByGroup', () => {
       ['health', ['oura', 'garmin']],
       ['location', ['owntracks', 'home_assistant']],
     ])
+  })
+})
+
+describe('sourceLinkProps', () => {
+  it('links a source page in the app', () => {
+    expect(sourceLinkProps('/data-sources/lastfm')).toEqual({ href: '/data-sources/lastfm' })
+  })
+
+  it('opens a documentation URL in a new tab', () => {
+    expect(sourceLinkProps('https://github.com/fiddur/aurboda/blob/develop/docs/media.md')).toEqual({
+      href: 'https://github.com/fiddur/aurboda/blob/develop/docs/media.md',
+      rel: 'noopener noreferrer',
+      target: '_blank',
+    })
   })
 })

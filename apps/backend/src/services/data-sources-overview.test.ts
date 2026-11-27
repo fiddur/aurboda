@@ -30,7 +30,12 @@ const noSettings: SourceSettings = {
   strava_connected: false,
 }
 
-const noActivity: RecentSourceActivity = { health_connect: false, location_sources: [], productivity: [] }
+const noActivity: RecentSourceActivity = {
+  health_connect: false,
+  location_sources: [],
+  media_plays: false,
+  productivity: [],
+}
 
 const signals = (
   settings: Partial<SourceSettings> = {},
@@ -171,6 +176,41 @@ describe('buildDataSourcesOverview', () => {
     expect(
       source(buildDataSourcesOverview(signals({}, { health_connect: true })), 'android_app').status,
     ).toBe('active')
+  })
+
+  test('media plays in the last 7 days make the media players a music source', () => {
+    const overview = buildDataSourcesOverview(signals({}, { media_plays: true }))
+
+    expect(source(overview, 'mpris')).toMatchObject({
+      detail: 'Data received in the last 7 days',
+      group: 'music',
+      kinds: ['music'],
+      status: 'active',
+    })
+    expect(kind(overview, 'music')).toMatchObject({
+      active_sources: ['mpris'],
+      available_sources: ['lastfm', 'mpris'],
+    })
+  })
+
+  test('without recent media plays the media players are not set up', () => {
+    const overview = buildDataSourcesOverview(signals())
+
+    expect(source(overview, 'mpris')).toMatchObject({
+      detail: 'No data in the last 7 days',
+      status: 'not_set_up',
+    })
+    expect(kind(overview, 'music').active_sources).toEqual([])
+  })
+
+  test('Last.fm and media players both feed music without an overlap warning', () => {
+    const overview = buildDataSourcesOverview(signals({ lastfm_username: 'me' }, { media_plays: true }))
+
+    expect(kind(overview, 'music')).toMatchObject({
+      active_sources: ['lastfm', 'mpris'],
+      one_source_enough: false,
+      overlap: false,
+    })
   })
 
   test('nothing connected leaves only Aurboda active', () => {

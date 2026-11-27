@@ -79,6 +79,8 @@ const sourceStates: Record<DataSourceId, (signals: DataSourceSignals) => SourceS
         !!settings.home_assistant_entity_id,
     ),
   lastfm: ({ settings }) => activeIf(!!settings.lastfm_username, 'Connected', 'Not configured'),
+  mpris: ({ activity }) =>
+    activeIf(activity.media_plays, 'Data received in the last 7 days', 'No data in the last 7 days'),
   oura: ({ settings }) => connected(settings.oura_connected),
   owntracks: ({ activity }) =>
     activeIf(

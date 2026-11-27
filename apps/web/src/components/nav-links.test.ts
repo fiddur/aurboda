@@ -234,8 +234,8 @@ describe('pageTitleForPath', () => {
 })
 
 describe('DATA_SOURCE_LINKS', () => {
-  test('lists every card on the Data Sources overview, in the same order', () => {
-    const cardPaths = connectableSources.map((source) => source.path)
+  test('lists every card on the Data Sources overview that has its own page, in the same order', () => {
+    const cardPaths = connectableSources.map((source) => source.path).filter((p) => p.startsWith('/'))
     const linkPaths = DATA_SOURCE_LINKS.map((l) => l.path).filter((p) => p !== '/data-sources')
 
     expect(cardPaths.length).toBeGreaterThan(0)

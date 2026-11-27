@@ -4,6 +4,7 @@ export interface RecentSourceActivity {
   location_sources: string[]
   productivity: { source: string; is_mobile: boolean }[]
   health_connect: boolean
+  media_plays: boolean
 }
 
 export const getRecentSourceActivity = async (
@@ -25,13 +26,17 @@ export const getRecentSourceActivity = async (
        ) AS productivity,
        EXISTS (
          SELECT 1 FROM raw_records WHERE source = 'health_connect' AND recorded_at >= $2
-       ) AS health_connect`,
+       ) AS health_connect,
+       EXISTS (
+         SELECT 1 FROM raw_records WHERE source = 'mpris' AND record_type = 'media_play' AND recorded_at >= $1
+       ) AS media_plays`,
     [since7d, since30d],
   )
   const row = result.rows[0]
   return {
     health_connect: row?.health_connect ?? false,
     location_sources: row?.location_sources ?? [],
+    media_plays: row?.media_plays ?? false,
     productivity: row?.productivity ?? [],
   }
 }

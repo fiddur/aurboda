@@ -102,6 +102,8 @@ Computed at read time, never sent or stored:
 - Web: the Data page's **Media** rows list the same plays, with played time, ratio and player for MPRIS plays.
   Clicking a row opens the play's detail page (`/detail/media/:id`): its fields, the source URL as an external
   link, the activities that overlap it (e.g. the yoga activity a rule enriched), and the places visited meanwhile.
+- Web: the [Data sources page](data-sources.md#data-sources-page) lists **Media players (MPRIS)** as a music source,
+  active when a play arrived in the last 7 days (any play counts, since MPRIS plays have no kind).
 
 ## Rules
 

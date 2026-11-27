@@ -38,6 +38,7 @@ describe('getRecentSourceActivity', () => {
     expect(await getRecentSourceActivity(getTestUser(), { since30d, since7d })).toEqual({
       health_connect: false,
       location_sources: [],
+      media_plays: false,
       productivity: [],
     })
   })
@@ -108,5 +109,35 @@ describe('getRecentSourceActivity', () => {
     })
 
     expect((await getRecentSourceActivity(user, { since30d, since7d })).health_connect).toBe(true)
+  })
+
+  test('counts a media play within the last 7 days only', async () => {
+    const user = getTestUser()
+    await insertRawRecord(user, {
+      data: {},
+      external_id: 'old-play',
+      record_type: 'media_play',
+      recorded_at: new Date('2026-11-10T10:00:00Z'),
+      source: 'mpris',
+    })
+    await insertRawRecord(user, {
+      data: {},
+      external_id: 'scrobble-1',
+      record_type: 'scrobble',
+      recorded_at: new Date('2026-11-20T10:00:00Z'),
+      source: 'lastfm',
+    })
+
+    expect((await getRecentSourceActivity(user, { since30d, since7d })).media_plays).toBe(false)
+
+    await insertRawRecord(user, {
+      data: {},
+      external_id: 'recent-play',
+      record_type: 'media_play',
+      recorded_at: new Date('2026-11-20T10:00:00Z'),
+      source: 'mpris',
+    })
+
+    expect((await getRecentSourceActivity(user, { since30d, since7d })).media_plays).toBe(true)
   })
 })
