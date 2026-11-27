@@ -5,8 +5,9 @@ import { format } from 'date-fns'
 import { useLocation } from 'preact-iso'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
+import { setLeaveGuard } from '../../leaveGuard'
 import { formatMeasure } from '../../utils/measures'
-import { detailUrl, sessionUrl } from './constants'
+import { sessionUrl, summaryUrl } from './constants'
 import {
   clearLiveDraft,
   readNumberPref,
@@ -38,7 +39,13 @@ import {
   restState,
   skipRest,
 } from './restTimer'
-import { createSaveQueue, finishLiveSession, type SaveStatus, saveLiveSession } from './saveQueue'
+import {
+  createSaveQueue,
+  discardLiveSession,
+  finishLiveSession,
+  type SaveStatus,
+  saveLiveSession,
+} from './saveQueue'
 import {
   addBlock,
   blockSummary,
@@ -68,6 +75,15 @@ const STATUS_TEXT: Record<SaveStatus, string> = {
 }
 
 const VIBRATE_MS = 300
+
+const LEAVE_MESSAGE = 'Leave the session? It stays open, and you can continue it from Strength.'
+const DISCARD_MESSAGE = 'Discard this session? Its sets are deleted.'
+const DISCARD_EMPTY_MESSAGE = 'No set is logged. Discard the session?'
+
+const isLivePath = (path: string): boolean =>
+  path.startsWith('/strength/session/') || path === '/strength/live'
+
+type Closing = 'finishing' | 'discarding'
 
 const useNow = (ms: number): number => {
   const [now, setNow] = useState(() => Date.now())
@@ -210,9 +226,10 @@ export const LiveSession = ({
   const draftRef = useRef(initial)
   const [status, setStatus] = useState<SaveStatus>(initial.id && !isDirty(initial) ? 'saved' : 'idle')
   const [picking, setPicking] = useState(false)
-  const [finishing, setFinishing] = useState(false)
-  const [finishError, setFinishError] = useState<string | undefined>()
+  const [closing, setClosing] = useState<Closing | undefined>()
+  const [closeError, setCloseError] = useState<string | undefined>()
   const finishingRef = useRef(false)
+  const finishing = closing !== undefined
   const [weightStep, setWeightStep] = useState(() =>
     readNumberPref(WEIGHT_STEP_KEY, DEFAULT_WEIGHT_STEP, WEIGHT_STEPS),
   )
@@ -270,9 +287,7 @@ export const LiveSession = ({
     }
     window.addEventListener('online', retry)
     document.addEventListener('visibilitychange', onVisible)
-    if (isDirty(draftRef.current) && (draftRef.current.id || loggedSetCount(draftRef.current.blocks) > 0)) {
-      void queue.request()
-    }
+    if (!draftRef.current.id || isDirty(draftRef.current)) void queue.request()
     return () => {
       window.removeEventListener('online', retry)
       document.removeEventListener('visibilitychange', onVisible)
@@ -284,7 +299,7 @@ export const LiveSession = ({
     (fn: (d: SessionDraft) => SessionDraft, saves = true) => {
       const next = fn(draftRef.current)
       store(saves ? { ...next, rev: next.rev + 1 } : next)
-      if (saves && (next.id || loggedSetCount(next.blocks) > 0)) void queue.request()
+      if (saves) void queue.request()
     },
     [store, queue],
   )
@@ -306,23 +321,59 @@ export const LiveSession = ({
     wasResting.current = resting
   }, [resting, restAdjust, draft.last_set_at, finishing])
 
-  const finish = async () => {
-    setFinishing(true)
-    setFinishError(undefined)
+  const statusRef = useRef(status)
+  statusRef.current = status
+  useEffect(() => {
+    if (finishing) return
+    setLeaveGuard({ allow: isLivePath, message: LEAVE_MESSAGE, unsaved: () => statusRef.current !== 'saved' })
+    return () => setLeaveGuard(undefined)
+  }, [finishing])
+
+  const close = async (kind: Closing, run: () => Promise<string>, failure: string) => {
+    setClosing(kind)
+    setCloseError(undefined)
     finishingRef.current = true
     try {
       await queue.whenIdle()
-      const id = await finishLiveSession(draftRef.current, liveApi, new Date().toISOString())
+      const target = await run()
       queue.dispose()
       clearLiveDraft()
+      setLeaveGuard(undefined)
       await invalidateStrengthQueries(queryClient)
-      route(id ? detailUrl(id) : '/strength/workouts')
+      route(target, true)
     } catch {
       finishingRef.current = false
-      setFinishing(false)
-      setFinishError('The session could not be finished. Your sets are kept on this device; try again.')
+      setClosing(undefined)
+      setCloseError(failure)
       if (isDirty(draftRef.current)) void queue.request()
     }
+  }
+
+  const discard = (message: string) => {
+    if (!window.confirm(message)) return
+    void close(
+      'discarding',
+      async () => {
+        await discardLiveSession(draftRef.current, liveApi)
+        return '/strength/workouts'
+      },
+      'The session could not be discarded. Try again.',
+    )
+  }
+
+  const finish = () => {
+    if (loggedSetCount(draftRef.current.blocks) === 0) {
+      discard(DISCARD_EMPTY_MESSAGE)
+      return
+    }
+    void close(
+      'finishing',
+      async () => {
+        const id = await finishLiveSession(draftRef.current, liveApi, new Date().toISOString())
+        return id ? summaryUrl(id) : '/strength/workouts'
+      },
+      'The session could not be finished. Your sets are kept on this device; try again.',
+    )
   }
 
   const currentId = draft.blocks.some((b) => b.id === draft.current_block_id)
@@ -330,11 +381,8 @@ export const LiveSession = ({
     : draft.blocks.at(-1)?.id
   const supersets = supersetBlockIds(draft.blocks)
   const started = new Date(draft.start_time)
-  const statusText = finishing
-    ? 'finishing…'
-    : loggedSetCount(draft.blocks) === 0 && !draft.id
-      ? 'no set logged yet'
-      : STATUS_TEXT[status]
+  const statusText =
+    closing === 'finishing' ? 'finishing…' : closing === 'discarding' ? 'discarding…' : STATUS_TEXT[status]
 
   return (
     <div class="page page--narrow strength-page">
@@ -346,11 +394,21 @@ export const LiveSession = ({
             {statusText}
           </p>
         </div>
-        <button type="button" class="btn-primary" onClick={() => void finish()} disabled={finishing}>
-          Finish
-        </button>
+        <div class="strength-row-actions">
+          <button
+            type="button"
+            class="btn-secondary"
+            onClick={() => discard(DISCARD_MESSAGE)}
+            disabled={finishing}
+          >
+            Discard
+          </button>
+          <button type="button" class="btn-primary" onClick={finish} disabled={finishing}>
+            Finish
+          </button>
+        </div>
       </header>
-      {finishError && <p class="strength-error">{finishError}</p>}
+      {closeError && <p class="strength-error">{closeError}</p>}
       <SessionIntro notice={notice} planId={draft.plan_id} />
       {rest && lastSetAt && (
         <RestBar

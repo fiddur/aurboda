@@ -26,7 +26,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +62,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.aurboda.ui.screens.LocalWebLeaveGuard
+import net.aurboda.ui.screens.WebLeaveGuard
 import net.aurboda.ui.screens.embeddedPageUrl
 import net.aurboda.ui.theme.AurbodaAppTheme
 import net.aurboda.update.SelfUpdate
@@ -228,6 +232,9 @@ class MainActivity : ComponentActivity() {
 /** A deep link that arrived at a running activity; [seq] makes every arrival distinct. */
 data class DeepLinkEvent(val seq: Long, val link: DeepLink)
 
+/** Native navigation held back until the user confirms leaving a guarded web page. */
+data class PendingLeave(val message: String, val proceed: () -> Unit)
+
 /**
  * The themed surface every screen is drawn on, sized to keep [content] above the
  * soft keyboard.
@@ -271,6 +278,12 @@ fun AurbodaApp(
   val lifecycleOwner = LocalLifecycleOwner.current
   val scope = rememberCoroutineScope()
   val ktorHttpClient = remember { syncHttpClient(onTokenRefused = { forgetRefusedToken(context, it) }) }
+  var pendingLeave by remember { mutableStateOf<PendingLeave?>(null) }
+  val leaveGuard = remember {
+    WebLeaveGuard().apply { confirm = { message, proceed -> pendingLeave = PendingLeave(message, proceed) } }
+  }
+
+  fun guarded(action: () -> Unit) = leaveGuard.confirmThen(action)
 
   val sessionRefused by remember(context) { sessionRefusedFlow(context) }.collectAsState()
   LaunchedEffect(sessionRefused) {
@@ -312,85 +325,115 @@ fun AurbodaApp(
     AppScreen.Main -> {
       val credentials = appState.credentials
       if (credentials != null) {
-        net.aurboda.ui.screens.MainScreen(
-          currentTab = appState.currentTab,
-          onTabSelected = { tab ->
-            appState.selectTab(tab)
-            if (tab == MainTab.More) {
-              scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
-              scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
-            }
-          },
-          unreadNotifications = appState.unreadNotifications,
-          hiddenPages = appState.hiddenPages,
-          homeContent = { modifier ->
-            key(appState.tabReselections) {
-              net.aurboda.ui.screens.EmbeddedWebScreen(
-                url = embeddedPageUrl(credentials.serverUrl, "/"),
-                baseUrl = credentials.serverUrl,
-                username = credentials.username,
+        CompositionLocalProvider(LocalWebLeaveGuard provides leaveGuard) {
+          net.aurboda.ui.screens.MainScreen(
+            currentTab = appState.currentTab,
+            onTabSelected = { tab ->
+              guarded {
+                appState.selectTab(tab)
+                if (tab == MainTab.More) {
+                  scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+                  scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
+                }
+              }
+            },
+            unreadNotifications = appState.unreadNotifications,
+            hiddenPages = appState.hiddenPages,
+            homeContent = { modifier ->
+              key(appState.tabReselections) {
+                net.aurboda.ui.screens.EmbeddedWebScreen(
+                  url = embeddedPageUrl(credentials.serverUrl, "/"),
+                  baseUrl = credentials.serverUrl,
+                  username = credentials.username,
+                  authToken = credentials.authToken,
+                  modifier = modifier,
+                )
+              }
+            },
+            syncContent = { modifier ->
+              HealthConnectScreen(
+                apiUrl = credentials.apiUrl,
                 authToken = credentials.authToken,
                 modifier = modifier,
               )
-            }
-          },
-          syncContent = { modifier ->
-            HealthConnectScreen(
-              apiUrl = credentials.apiUrl,
-              authToken = credentials.authToken,
-              modifier = modifier,
-            )
-          },
-          addContent = { modifier ->
-            net.aurboda.ui.screens.AddDataScreen(
-              apiUrl = credentials.apiUrl,
-              authToken = credentials.authToken,
-              modifier = modifier,
-              onOpenWebPage = { path ->
-                appState.selectTab(MainTab.More)
-                appState.openMoreDestination(MoreDestination.Web(path))
-              },
-            )
-          },
-          feedContent = { modifier ->
-            key(appState.tabReselections) {
-              net.aurboda.ui.screens.EmbeddedWebScreen(
-                url = embeddedPageUrl(credentials.serverUrl, "/feed"),
-                baseUrl = credentials.serverUrl,
-                username = credentials.username,
+            },
+            addContent = { modifier ->
+              net.aurboda.ui.screens.AddDataScreen(
+                apiUrl = credentials.apiUrl,
                 authToken = credentials.authToken,
                 modifier = modifier,
+                onOpenWebPage = { path ->
+                  guarded {
+                    appState.selectTab(MainTab.More)
+                    appState.openMoreDestination(MoreDestination.Web(path))
+                  }
+                },
               )
-            }
-          },
-          moreContent = { modifier ->
-            net.aurboda.ui.screens.MoreScreen(
-              credentials = credentials,
-              destination = appState.moreDestination,
-              onSelect = { destination -> appState.openMoreDestination(destination) },
-              onBack = {
-                appState.closeMoreDestination()
-                scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
-                scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
-              },
-              onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
-              onOpenTab = { tab -> appState.selectTab(tab) },
-              openSections = appState.openMenuSections,
-              onToggleSection = { id -> appState.toggleMenuSection(id) },
-              unreadNotifications = appState.unreadNotifications,
-              hiddenPages = appState.hiddenPages,
-              webPageLinks = appState.morePageLinks,
-              onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
-              onLogout = { appState.logout() },
-              modifier = modifier,
-            )
-          },
-        )
+            },
+            feedContent = { modifier ->
+              key(appState.tabReselections) {
+                net.aurboda.ui.screens.EmbeddedWebScreen(
+                  url = embeddedPageUrl(credentials.serverUrl, "/feed"),
+                  baseUrl = credentials.serverUrl,
+                  username = credentials.username,
+                  authToken = credentials.authToken,
+                  modifier = modifier,
+                )
+              }
+            },
+            moreContent = { modifier ->
+              net.aurboda.ui.screens.MoreScreen(
+                credentials = credentials,
+                destination = appState.moreDestination,
+                onSelect = { destination -> appState.openMoreDestination(destination) },
+                onBack = {
+                  guarded {
+                    appState.closeMoreDestination()
+                    scope.launch { appState.refreshUnreadNotifications(ktorHttpClient) }
+                    scope.launch { appState.refreshHiddenPages(ktorHttpClient) }
+                  }
+                },
+                onOpenWebPage = { path -> appState.openMoreDestination(MoreDestination.Web(path)) },
+                onOpenTab = { tab -> guarded { appState.selectTab(tab) } },
+                openSections = appState.openMenuSections,
+                onToggleSection = { id -> appState.toggleMenuSection(id) },
+                unreadNotifications = appState.unreadNotifications,
+                hiddenPages = appState.hiddenPages,
+                webPageLinks = appState.morePageLinks,
+                onServerUrlChange = { newUrl -> appState.changeServerUrl(newUrl) },
+                onLogout = { appState.logout() },
+                modifier = modifier,
+              )
+            },
+          )
+        }
       } else {
         // Should not happen, but handle gracefully
         appState.logout()
       }
     }
+  }
+
+  pendingLeave?.let { leave ->
+    AlertDialog(
+      onDismissRequest = { pendingLeave = null },
+      text = { Text(leave.message) },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            pendingLeave = null
+            leave.proceed()
+          },
+        ) {
+          Text("Leave")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { pendingLeave = null }) {
+          Text("Stay")
+        }
+      },
+    )
   }
 }
 

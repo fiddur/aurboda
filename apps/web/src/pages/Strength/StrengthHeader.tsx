@@ -1,9 +1,9 @@
 import { useLocation } from 'preact-iso'
 
-import { sessionUrl } from './constants'
 import { useUnfinishedSession } from './queries'
 import { StrengthTabs } from './StrengthTabs'
 import { strengthTabForPath } from './tabsModel'
+import { continueUrl } from './UnfinishedCard'
 
 const SessionAction = () => {
   const { unfinished } = useUnfinishedSession()
@@ -15,10 +15,7 @@ const SessionAction = () => {
     )
   }
   return (
-    <a
-      class="btn-primary strength-header-action"
-      href={unfinished.id ? sessionUrl(unfinished.id) : '/strength/live'}
-    >
+    <a class="btn-primary strength-header-action" href={continueUrl(unfinished)}>
       Continue session
     </a>
   )

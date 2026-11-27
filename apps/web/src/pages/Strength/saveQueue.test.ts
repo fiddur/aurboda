@@ -4,6 +4,7 @@ import type { SessionDraft } from './sessionModel'
 
 import {
   createSaveQueue,
+  discardLiveSession,
   finishLiveSession,
   type LiveApi,
   saveLiveSession,
@@ -151,6 +152,9 @@ const recordingApi = (open?: string) => {
       calls.push(['findOpen', start])
       return open
     },
+    remove: async (id) => {
+      calls.push(['remove', id])
+    },
     update: async (id, body) => {
       calls.push(['update', id, body])
     },
@@ -243,5 +247,31 @@ describe('finishLiveSession', () => {
       await finishLiveSession(draft({ blocks: [] }), empty.api, '2026-11-10T18:00:00.000Z'),
     ).toBeUndefined()
     expect(empty.calls).toEqual([])
+  })
+})
+
+describe('discardLiveSession', () => {
+  it('deletes the saved session', async () => {
+    const { api, calls } = recordingApi()
+    await discardLiveSession(draft({ id: 'act1' }), api)
+    expect(calls).toEqual([['remove', 'act1']])
+  })
+
+  it('looks for the session a create of unknown outcome made and deletes it', async () => {
+    const { api, calls } = recordingApi('made-before')
+    await discardLiveSession(draft({ create_attempted: true }), api)
+    expect(calls).toEqual([
+      ['findOpen', '2026-11-10T17:02:00.000Z'],
+      ['remove', 'made-before'],
+    ])
+  })
+
+  it('sends nothing when nothing is on the server', async () => {
+    const { api, calls } = recordingApi()
+    await discardLiveSession(draft(), api)
+    expect(calls).toEqual([])
+    const attempted = recordingApi(undefined)
+    await discardLiveSession(draft({ create_attempted: true }), attempted.api)
+    expect(attempted.calls).toEqual([['findOpen', '2026-11-10T17:02:00.000Z']])
   })
 })

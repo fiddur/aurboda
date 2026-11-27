@@ -3,55 +3,23 @@ import { useLocation } from 'preact-iso'
 import { useState } from 'preact/hooks'
 
 import { useMuscleRecovery } from '../../components/muscleRecovery/useMuscleRecovery'
-import { SETS_PATH, sessionUrl, STRENGTH_TYPE } from './constants'
+import { SETS_PATH, STRENGTH_TYPE, summaryUrl } from './constants'
 import { clearLiveDraft } from './draftStorage'
 import { NoPlans, PlannedWorkouts } from './PlannedWorkouts'
 import { invalidateStrengthQueries, liveApi, useOpenStrengthPlans, useUnfinishedSession } from './queries'
 import { RecentSessions } from './RecentSessions'
-import { finishLiveSession } from './saveQueue'
-import { type SessionDraft, sessionSummary } from './sessionModel'
-import { lastSetLabel, repeatCandidates, startedLabel } from './startModel'
+import { discardLiveSession, finishLiveSession } from './saveQueue'
+import { repeatCandidates, type UnfinishedAction, unfinishedAction } from './startModel'
 import { StrengthHeader } from './StrengthHeader'
+import { UnfinishedCard } from './UnfinishedCard'
 import './style.css'
-
-const UnfinishedCard = ({
-  draft,
-  finishing,
-  error,
-  onFinish,
-}: {
-  draft: SessionDraft
-  finishing: boolean
-  error?: string
-  onFinish: () => void
-}) => {
-  const now = new Date()
-  return (
-    <section class="strength-card strength-unfinished">
-      <h2>Unfinished session</h2>
-      <p>{startedLabel(new Date(draft.start_time), now)}</p>
-      <p class="strength-muted">
-        {sessionSummary(draft.blocks)}. {lastSetLabel(draft.last_set_at, now) ?? ''}
-      </p>
-      {error && <p class="strength-error">{error}</p>}
-      <div class="strength-row-actions">
-        <a class="btn-primary" href={draft.id ? sessionUrl(draft.id) : '/strength/live'}>
-          Continue
-        </a>
-        <button type="button" class="btn-secondary" onClick={onFinish} disabled={finishing}>
-          {finishing ? 'Finishing…' : 'Finish it'}
-        </button>
-      </div>
-    </section>
-  )
-}
 
 export function StrengthWorkouts() {
   const queryClient = useQueryClient()
   const { route } = useLocation()
   const { local, sessions, setLocal, unfinished } = useUnfinishedSession()
-  const [finishing, setFinishing] = useState(false)
-  const [finishError, setFinishError] = useState<string | undefined>()
+  const [busy, setBusy] = useState<UnfinishedAction | undefined>()
+  const [closeError, setCloseError] = useState<string | undefined>()
   const [confirmTarget, setConfirmTarget] = useState<string | undefined>()
 
   const plans = useOpenStrengthPlans()
@@ -59,23 +27,38 @@ export function StrengthWorkouts() {
   const openPlans = plans.data ?? []
   const candidates = repeatCandidates(sessions.data ?? [], unfinished?.id)
 
-  const finish = async (): Promise<boolean> => {
-    if (!unfinished) return true
-    setFinishing(true)
-    setFinishError(undefined)
+  const close = async (action: UnfinishedAction): Promise<{ id?: string } | undefined> => {
+    if (!unfinished) return {}
+    setBusy(action)
+    setCloseError(undefined)
     try {
-      await finishLiveSession(unfinished, liveApi, unfinished.last_set_at ?? unfinished.start_time)
+      let id: string | undefined
+      if (action === 'finish') {
+        id = await finishLiveSession(unfinished, liveApi, unfinished.last_set_at ?? unfinished.start_time)
+      } else {
+        await discardLiveSession(unfinished, liveApi)
+      }
       if (!local?.id || local.id === unfinished.id) clearLiveDraft()
       setLocal(undefined)
       await invalidateStrengthQueries(queryClient)
-      return true
+      return { id }
     } catch {
-      setFinishError('The session could not be finished. Try again.')
-      return false
+      setCloseError(
+        action === 'finish'
+          ? 'The session could not be finished. Try again.'
+          : 'The session could not be discarded. Try again.',
+      )
+      return undefined
     } finally {
-      setFinishing(false)
+      setBusy(undefined)
     }
   }
+
+  const discard = () => {
+    if (window.confirm('Discard this session? Its sets are deleted.')) void close('discard')
+  }
+
+  const startAction = unfinished ? unfinishedAction(unfinished) : 'finish'
 
   const start = (url: string) => {
     if (unfinished) setConfirmTarget(url)
@@ -88,24 +71,32 @@ export function StrengthWorkouts() {
       {unfinished && (
         <UnfinishedCard
           draft={unfinished}
-          finishing={finishing}
-          error={finishError}
-          onFinish={() => void finish()}
+          busy={busy}
+          error={closeError}
+          onFinish={async () => {
+            const id = (await close('finish'))?.id
+            if (id) route(summaryUrl(id))
+          }}
+          onDiscard={discard}
         />
       )}
       {confirmTarget && unfinished ? (
         <div class="strength-card strength-confirm" role="alert">
-          <p>Finish the unfinished session before starting a new one?</p>
+          <p>
+            {startAction === 'finish'
+              ? 'Finish the unfinished session before starting a new one?'
+              : 'The unfinished session has no logged set. Discard it before starting a new one?'}
+          </p>
           <div class="strength-row-actions">
             <button
               type="button"
               class="btn-primary"
-              disabled={finishing}
+              disabled={busy !== undefined}
               onClick={async () => {
-                if (await finish()) route(confirmTarget)
+                if (await close(startAction)) route(confirmTarget)
               }}
             >
-              Finish it and start
+              {startAction === 'finish' ? 'Finish it and start' : 'Discard it and start'}
             </button>
             <button type="button" class="btn-secondary" onClick={() => setConfirmTarget(undefined)}>
               Cancel
