@@ -1,5 +1,6 @@
 import type { EntryForm } from './entry-form'
 
+import { withoutUploadPlaceholders } from '../../components/MarkdownEditor/image-upload'
 import { sameEntry } from './entry-form'
 import { isRelatedLink } from './related'
 
@@ -18,6 +19,12 @@ export interface EntryDraft {
 }
 
 const storageKey = (key: string) => `aurboda.journal.draft.${key}`
+
+/** A picture still on its way is gone once the page is: its placeholder would never resolve. */
+const settled = (form: EntryForm): EntryForm => ({
+  ...form,
+  content: withoutUploadPlaceholders(form.content),
+})
 
 const isForm = (value: unknown): value is EntryForm => {
   if (typeof value !== 'object' || value === null) return false
@@ -49,11 +56,18 @@ export const loadDraft = (storage: DraftStorage | undefined, key: string): Entry
     if (!raw) return undefined
     const parsed = JSON.parse(raw) as Partial<EntryDraft>
     if (parsed.key !== key || typeof parsed.edited_at !== 'number' || !isForm(parsed.form)) return undefined
-    return { edited_at: parsed.edited_at, form: { ...parsed.form, related: parsed.form.related ?? [] }, key }
+    return {
+      edited_at: parsed.edited_at,
+      form: settled({ ...parsed.form, related: parsed.form.related ?? [] }),
+      key,
+    }
   }, undefined)
 
 export const saveDraft = (storage: DraftStorage | undefined, draft: EntryDraft): void =>
-  attempt(() => storage?.setItem(storageKey(draft.key), JSON.stringify(draft)), undefined)
+  attempt(
+    () => storage?.setItem(storageKey(draft.key), JSON.stringify({ ...draft, form: settled(draft.form) })),
+    undefined,
+  )
 
 export const removeDraft = (storage: DraftStorage | undefined, key: string): void =>
   attempt(() => storage?.removeItem(storageKey(key)), undefined)

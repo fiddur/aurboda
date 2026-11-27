@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { DraftStorage } from './draft-store'
 
+import { uploadPlaceholder } from '../../components/MarkdownEditor/image-upload'
 import {
   draftStorageFor,
   clearDraftIfConfirmed,
@@ -66,6 +67,34 @@ describe('the draft store', () => {
     expect(loadDraft(storage, 'abc')).toBeDefined()
     clearDraftIfConfirmed(storage, 'abc', { ...form, content: 'Walked to the lake and back' })
     expect(loadDraft(storage, 'abc')).toBeUndefined()
+  })
+
+  test('keeps no picture still on its way, since its upload ends with the page', () => {
+    const storage = memory()
+    const uploading = { ...form, content: `Walked to the lake\n${uploadPlaceholder('lake.jpg')}\n` }
+    saveDraft(storage, { edited_at: 5, form: uploading, key: 'abc' })
+    expect(loadDraft(storage, 'abc')?.form).toEqual(form)
+    expect(storage.map.get('aurboda.journal.draft.abc')).not.toContain('Uploading')
+  })
+
+  test('a draft stored with a placeholder before drafts dropped them comes back without it', () => {
+    const storage = memory()
+    const uploading = { ...form, content: `Walked to the lake\n${uploadPlaceholder('lake.jpg')}\n` }
+    storage.setItem(
+      'aurboda.journal.draft.abc',
+      JSON.stringify({ edited_at: 5, form: uploading, key: 'abc' }),
+    )
+    expect(loadDraft(storage, 'abc')?.form).toEqual(form)
+  })
+
+  test('a new entry holding nothing but a picture on its way is not offered', () => {
+    const storage = memory()
+    const uploading = { ...form, content: `${uploadPlaceholder('lake.jpg')}\n` }
+    storage.setItem(
+      'aurboda.journal.draft.new',
+      JSON.stringify({ edited_at: 5, form: uploading, key: NEW_ENTRY_KEY }),
+    )
+    expect(draftToOffer(loadDraft(storage, NEW_ENTRY_KEY), undefined)).toBeUndefined()
   })
 
   test('follows a new entry to its id', () => {
