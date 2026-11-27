@@ -55,7 +55,9 @@ const deps = (activities: MergedActivity[] = []): RecentActivitiesDeps => ({
   expandActivityTypes: vi.fn(async (_user: string, types: string[]) =>
     [...new Set(types.flatMap((t) => descendants[t] ?? [t]))].sort(),
   ),
-  getActivities: vi.fn().mockResolvedValue(activities),
+  getActivities: vi.fn(async (_user: string, _types: string | string[], start: Date, end: Date) =>
+    activities.filter((a) => a.start_time >= start && a.start_time <= end),
+  ),
   listActivityTypeDefinitions: vi.fn().mockResolvedValue(definitions),
 })
 
@@ -64,10 +66,9 @@ const tz = 'Europe/Stockholm'
 
 const queriedTypes = (d: RecentActivitiesDeps) =>
   [...(vi.mocked(d.getActivities).mock.calls[0]?.[1] ?? [])].sort()
-const queriedRange = (d: RecentActivitiesDeps) => {
-  const call = vi.mocked(d.getActivities).mock.calls[0]
-  return { end: call?.[3], start: call?.[2] }
-}
+const readRanges = (d: RecentActivitiesDeps) =>
+  vi.mocked(d.getActivities).mock.calls.map((call) => ({ end: call[3], start: call[2] }))
+const queriedRange = (d: RecentActivitiesDeps) => readRanges(d).at(-1)
 
 describe('getRecentActivities: type selection', () => {
   test('by default lists the activity-lane types shown on the timeline, without sleep', async () => {
@@ -148,7 +149,7 @@ describe('getRecentActivities: range', () => {
 
     await getRecentActivities('u', {}, { now: new Date('2026-11-21T23:30:00Z'), tz }, d)
 
-    expect(queriedRange(d).start).toEqual(new Date('2026-11-20T23:00:00Z'))
+    expect(queriedRange(d)?.start).toEqual(new Date('2026-11-20T23:00:00Z'))
   })
 
   test('today lists what overlaps the local day, sorted by start', async () => {
@@ -174,7 +175,7 @@ describe('getRecentActivities: range', () => {
 
     await getRecentActivities('u', { lookback_days: 1, window: 'latest' }, { now, tz }, d)
 
-    expect(queriedRange(d).start).toEqual(new Date('2026-11-20T15:00:00Z'))
+    expect(queriedRange(d)?.start).toEqual(new Date('2026-11-20T15:00:00Z'))
   })
 
   test('latest looks back 30 days by default', async () => {
@@ -418,5 +419,49 @@ describe('getRecentActivities: rows', () => {
     const [row] = (await getRecentActivities('u', { types: ['cold_plunge'] }, { now, tz }, d)).activities
 
     expect(row?.type_name).toBe('Cold Plunge')
+  })
+})
+
+describe('getRecentActivities: newest first in growing slices', () => {
+  const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000).toISOString()
+
+  test('a newest slice that fills the limit is the only read', async () => {
+    const d = deps(Array.from({ length: 6 }, (_, i) => activity(hoursAgo(1 + i), { id: `a${i}` })))
+
+    const result = await getRecentActivities('u', { limit: 5, window: 'latest' }, { now, tz }, d)
+
+    expect(readRanges(d)).toEqual([{ end: now, start: new Date('2026-11-19T15:00:00Z') }])
+    expect(result.activities.map((a) => a.id)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4'])
+  })
+
+  test('a sparse history widens the slice up to the look-back and lists the same rows', async () => {
+    const d = deps([
+      activity(hoursAgo(5), { id: 'recent' }),
+      activity(hoursAgo(24 * 6), { id: 'last-week' }),
+      activity(hoursAgo(24 * 20), { id: 'weeks-ago' }),
+      activity(hoursAgo(24 * 40), { id: 'too-old' }),
+    ])
+
+    const result = await getRecentActivities('u', { window: 'latest' }, { now, tz }, d)
+
+    expect(readRanges(d)).toEqual([
+      { end: now, start: new Date('2026-11-19T15:00:00Z') },
+      { end: now, start: new Date('2026-11-13T15:00:00Z') },
+      { end: now, start: new Date('2026-10-22T15:00:00Z') },
+    ])
+    expect(result.activities.map((a) => a.id)).toEqual(['recent', 'last-week', 'weeks-ago'])
+  })
+
+  test('widens when the last kept row starts within a day of the slice start', async () => {
+    const d = deps([
+      activity(hoursAgo(1), { id: 'a' }),
+      activity(hoursAgo(30), { id: 'b' }),
+      activity(hoursAgo(24 * 3), { id: 'c' }),
+    ])
+
+    const result = await getRecentActivities('u', { limit: 2, window: 'latest' }, { now, tz }, d)
+
+    expect(readRanges(d)).toHaveLength(2)
+    expect(result.activities.map((a) => a.id)).toEqual(['a', 'b'])
   })
 })

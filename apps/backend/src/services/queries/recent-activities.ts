@@ -72,6 +72,14 @@ const rangeOf = (filter: RecentActivitiesFilter, options: RecentActivitiesOption
  */
 const OVERLAP_LOOK_BACK_MS = DAY_MS
 
+/**
+ * The newest slice is read first and widened until it holds `limit` rows. A slice counts as
+ * filled only when its last kept row starts a day after the slice does, so no kept row could
+ * have merged with one from before the slice.
+ */
+const FIRST_SLICE_MS = 2 * DAY_MS
+const SLICE_GROWTH = 4
+
 const overlapsFrom = (a: MergedActivity, start: Date): boolean =>
   a.start_time >= start || (a.end_time !== undefined && a.end_time > start)
 
@@ -186,15 +194,29 @@ export const getRecentActivities = async (
   const { end, overlap, start } = rangeOf(filter, options)
   const readStart = overlap ? new Date(start.getTime() - OVERLAP_LOOK_BACK_MS) : start
   const categoryMap = new Map(definitions.map((d) => [d.name, d.display_category]))
-  const activities = await deps.getActivities(user, types, readStart, end, undefined, undefined, categoryMap)
-  const byName = new Map(definitions.map((d) => [d.name, d]))
-  return {
-    activities: activities
+  const limit = filter.limit ?? 5
+  const listed = (activities: MergedActivity[]): MergedActivity[] =>
+    activities
       .filter((a) => overlapsFrom(a, start))
       .filter((a) => !filter.manual_only || isManual(a))
       .toSorted((a, b) => b.start_time.getTime() - a.start_time.getTime())
-      .slice(0, filter.limit ?? 5)
-      .map((a) => toRow(a, byName.get(a.activity_type))),
+      .slice(0, limit)
+
+  const readFrom = async (span: number): Promise<MergedActivity[]> => {
+    const sliceStart = new Date(Math.max(readStart.getTime(), end.getTime() - span))
+    const rows = listed(
+      await deps.getActivities(user, types, sliceStart, end, undefined, undefined, categoryMap),
+    )
+    if (sliceStart.getTime() <= readStart.getTime()) return rows
+    const last = rows[limit - 1]
+    const filled =
+      last !== undefined && last.start_time.getTime() - sliceStart.getTime() >= OVERLAP_LOOK_BACK_MS
+    return filled ? rows : readFrom(span * SLICE_GROWTH)
+  }
+
+  const byName = new Map(definitions.map((d) => [d.name, d]))
+  return {
+    activities: (await readFrom(FIRST_SLICE_MS)).map((a) => toRow(a, byName.get(a.activity_type))),
     tz,
   }
 }

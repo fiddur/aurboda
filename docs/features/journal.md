@@ -52,7 +52,7 @@ optional end time, or **No time of day** with a date. It opens on "now".
 - **Conflicts**: if the entry changed elsewhere since you opened it (another tab or
   device), the save answers `409` and nothing is overwritten. The editor shows both
   texts and offers **Keep mine**, **Keep theirs** or **Keep both** (theirs, a `---`
-  rule, then yours).
+  rule, then yours). Whichever you choose, the links of both versions are kept.
 - **History** lists the earlier versions of the text (see revisions below), each
   with **Restore this version**, which makes it the current text through an
   ordinary save.
