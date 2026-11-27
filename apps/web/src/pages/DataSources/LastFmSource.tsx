@@ -11,6 +11,7 @@ import {
   StatusBanner,
   SyncIntervalField,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 
 const DATA_TYPES = ['Music scrobbles']
@@ -41,7 +42,7 @@ export function LastFmSource() {
       setStatus({ status: 'saving' })
       try {
         const result = await updateUserSettings(params)
-        queryClient.setQueryData(['userSettings'], result)
+        await invalidateSourceQueries(queryClient, result)
         setStatus({ status: 'saved' })
       } catch (err) {
         setStatus({

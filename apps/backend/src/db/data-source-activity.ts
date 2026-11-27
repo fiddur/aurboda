@@ -6,7 +6,6 @@ export interface RecentSourceActivity {
   health_connect: boolean
 }
 
-/** One round trip: which sources delivered locations and screen time since `since7d`, and Health Connect records since `since30d`. */
 export const getRecentSourceActivity = async (
   user: string,
   { since7d, since30d }: { since7d: Date; since30d: Date },

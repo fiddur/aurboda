@@ -25,6 +25,7 @@ import {
   SyncIntervalField,
   SyncStatusBar,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 import { refetchWhileSyncing } from './syncPolling'
 
@@ -71,7 +72,7 @@ function HomeAssistantConnectionSection({
   const saveSettings = useCallback(
     async (update: Parameters<typeof updateUserSettings>[0]) => {
       const result = await updateUserSettings(update)
-      queryClient.setQueryData(['userSettings'], result)
+      await invalidateSourceQueries(queryClient, result)
       await queryClient.invalidateQueries({ queryKey: ['homeAssistantEntities'] })
     },
     [queryClient],
@@ -212,7 +213,7 @@ function HomeAssistantEntitySection({
     setSaveStatus({ status: 'saving' })
     try {
       const result = await updateUserSettings({ home_assistant_entity_id: value || null })
-      queryClient.setQueryData(['userSettings'], result)
+      await invalidateSourceQueries(queryClient, result)
       setSaveStatus({ status: 'saved' })
     } catch (err) {
       lastSent.current = storedEntity ?? ''

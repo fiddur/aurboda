@@ -18,6 +18,7 @@ import {
   StatusBanner,
   SyncIntervalField,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 
 const DATA_TYPES = ['App usage', 'Website usage', 'Productivity scores', 'Time spent per category']
@@ -59,7 +60,7 @@ export function RescueTimeSource() {
       setStatus({ status: 'saving' })
       try {
         const result = await updateUserSettings(params)
-        queryClient.setQueryData(['userSettings'], result)
+        await invalidateSourceQueries(queryClient, result)
         setStatus({ status: 'saved' })
       } catch (err) {
         setStatus({

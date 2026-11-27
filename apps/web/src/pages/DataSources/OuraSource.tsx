@@ -22,6 +22,7 @@ import {
   SyncIntervalField,
   SyncStatusBar,
 } from './shared'
+import { invalidateSourceQueries } from './sourceQueries'
 import './style.css'
 
 const DATA_TYPES: DataTypeItem[] = [
@@ -58,7 +59,7 @@ function OuraConnection({
   const [connectError, setConnectError] = useState<string | null>(() => callbackErrorText('Oura'))
 
   const refreshConnection = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+    await invalidateSourceQueries(queryClient)
     await queryClient.invalidateQueries({ queryKey: ['ouraSyncStatus'] })
   }, [queryClient])
 
@@ -105,7 +106,7 @@ function OuraConnection({
     setDisconnecting(true)
     try {
       await disconnectOura()
-      await queryClient.invalidateQueries({ queryKey: ['userSettings'] })
+      await invalidateSourceQueries(queryClient)
       await queryClient.invalidateQueries({ queryKey: ['ouraSyncStatus'] })
     } catch (err) {
       setOuraSyncStatus('error')

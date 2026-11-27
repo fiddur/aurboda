@@ -23,7 +23,6 @@ export interface OtherSourcesCovering {
   others: DataSourceOverviewItem[]
 }
 
-/** For each kind of the source where one source is enough, the other active sources that already bring it. */
 export const otherSourcesCovering = (
   overview: DataSourcesOverview,
   sourceId: DataSourceId,
