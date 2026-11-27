@@ -183,6 +183,19 @@ native dialogs (back or an outside tap counts as Cancel) and backs file inputs,
 including `multiple`, with the system picker. Embedded pages can therefore keep
 using the browser's own dialogs and file inputs.
 
+### Leaving a page that asks first
+
+Native navigation destroys the WebView without a `beforeunload`, so a page that
+must not be left by accident says so through `window.aurbodaLeaveGuard`: while it
+is a function returning a non-empty message, the app asks before leaving, with that
+message and **Leave** / **Stay** (`AurbodaApp` in `MainActivity.kt`; the reading and
+decoding are in `ui/screens/WebLeaveGuard.kt`). A bottom-bar tab tap, back from an
+embedded page to the More hub, a tab opened from the More hub, a web page opened
+from the Add tab, and the back gesture walking the WebView history all ask; a deep
+link (widget, notification) and logout do not. Only a page on the signed-in
+server's origin is asked. The live strength session uses it, so a tab tap does not
+lose an unsaved session.
+
 ### Camera and microphone (barcode scanning, voice notes)
 
 The food pages can read a product barcode with the camera (see

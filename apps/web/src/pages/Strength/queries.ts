@@ -16,6 +16,7 @@ import {
   fetchItemValueIdentity,
   fetchStrengthPlan,
   fetchStrengthPlans,
+  softDeleteActivity,
   updateActivity,
 } from '../../state/api'
 import { muscleTiers } from '../ActivityTypeItem/catalogEntryView'
@@ -52,6 +53,7 @@ export const liveApi: LiveApi = {
     return id
   },
   findOpen,
+  remove: softDeleteActivity,
   update: async (id, body) => {
     await updateActivity(id, body)
   },

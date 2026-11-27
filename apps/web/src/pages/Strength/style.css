@@ -1074,3 +1074,53 @@ button.strength-set-row:hover {
     display: none;
   }
 }
+
+.strength-summary-highlights {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.strength-summary-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.75rem;
+}
+
+.strength-summary-stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.strength-summary-exercises {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.strength-summary-exercises h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.strength-summary-records {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.strength-unfinished-line {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.strength-unfinished-line p {
+  margin: 0;
+}

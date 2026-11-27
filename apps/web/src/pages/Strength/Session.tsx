@@ -26,6 +26,7 @@ import {
   setLabel,
   setsOfData,
 } from './sessionModel'
+import { resumableDraft } from './startModel'
 import './style.css'
 
 interface LiveState {
@@ -176,7 +177,7 @@ const NewSession = ({
   const { route } = useLocation()
   const [startedAt] = useState(() => new Date().toISOString())
   const [local] = useState(() => readLiveDraft())
-  const resumable = local && (local.id || loggedSetCount(local.blocks) > 0) ? local : undefined
+  const resumable = resumableDraft(local, { plan, repeat })
   const source = useQuery({
     enabled: !resumable && Boolean(repeat),
     queryFn: () => fetchActivityById(repeat ?? ''),

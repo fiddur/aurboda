@@ -7,8 +7,10 @@ import {
   lastSetLabel,
   recentSessionSets,
   repeatCandidates,
+  resumableDraft,
   sessionDateLabel,
   startedLabel,
+  unfinishedAction,
   unfinishedDraft,
   unfinishedOnServer,
 } from './startModel'
@@ -46,9 +48,10 @@ describe('unfinishedDraft', () => {
     expect(unfinishedDraft(local, server)).toBe(local)
   })
 
-  it('ignores a local draft without an id and without sets', () => {
-    expect(unfinishedDraft(draft({ blocks: [] }), undefined)).toBeUndefined()
-    expect(unfinishedDraft(draft({ blocks: [] }), server)?.id).toBe('srv')
+  it('counts a local draft without an id even without sets', () => {
+    const empty = draft({ blocks: [] })
+    expect(unfinishedDraft(empty, undefined)).toBe(empty)
+    expect(unfinishedDraft(empty, server)).toBe(empty)
   })
 
   it('keeps the local copy of the server session', () => {
@@ -65,6 +68,47 @@ describe('unfinishedDraft', () => {
 
   it('is undefined with neither', () => {
     expect(unfinishedDraft(undefined, undefined)).toBeUndefined()
+  })
+})
+
+describe('resumableDraft', () => {
+  const local = (extra: Partial<SessionDraft> = {}): SessionDraft => ({
+    blocks: [],
+    rev: 0,
+    saved_rev: 0,
+    start_time: at(14, 17).toISOString(),
+    ...extra,
+  })
+  const block = { exercise: 'Squat', id: 'b1', planned: [{ reps: 5 }], sets: [] }
+
+  it('resumes any local draft when the address asks for no particular start', () => {
+    const empty = local()
+    expect(resumableDraft(empty, {})).toBe(empty)
+    expect(resumableDraft(undefined, {})).toBeUndefined()
+  })
+
+  it('lets a plan or a repeat replace an empty draft that was never saved', () => {
+    expect(resumableDraft(local(), { plan: 'p1' })).toBeUndefined()
+    expect(resumableDraft(local(), { repeat: 'a1' })).toBeUndefined()
+  })
+
+  it('keeps a draft that is saved or holds exercises whatever the address asks', () => {
+    const saved = local({ id: 'act1' })
+    const withBlocks = local({ blocks: [block] })
+    expect(resumableDraft(saved, { plan: 'p1' })).toBe(saved)
+    expect(resumableDraft(withBlocks, { repeat: 'a1' })).toBe(withBlocks)
+  })
+})
+
+describe('unfinishedAction', () => {
+  it('finishes a session with a logged set and discards one without', () => {
+    expect(
+      unfinishedAction({ blocks: [{ exercise: 'Squat', id: 'b1', planned: [], sets: [{ reps: 5 }] }] }),
+    ).toBe('finish')
+    expect(
+      unfinishedAction({ blocks: [{ exercise: 'Squat', id: 'b1', planned: [{ reps: 5 }], sets: [] }] }),
+    ).toBe('discard')
+    expect(unfinishedAction({ blocks: [] })).toBe('discard')
   })
 })
 

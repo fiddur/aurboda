@@ -26,7 +26,8 @@ and plan pages below have no tab bar.
 
 - **Planned today**: above the score card, one card per open plan for today (local day) with its
   name, one line "{summary}. {readiness line}." (see [the Workouts tab](#the-workouts-tab)) and a
-  **Start** button to the live session. Not shown while a session is unfinished.
+  **Start** button to the live session. While a session is unfinished it gives way to one compact
+  card, "Unfinished session — Started today at 17:02 · 2 exercises, 6 sets", with **Continue**.
 - **Score card**, a link to Progress: the [strength score](strength-score.md), its change over 30
   days, a sparkline of the year and the strongest and weakest group. Without sex or a bodyweight it
   is the notice saying what to add; with no score at all it says "No strength score yet".
@@ -99,7 +100,13 @@ filtered on the page:
 Top to bottom: the unfinished session card, if any, then the [planned and saved
 workouts](strength-plans.md#in-the-web-app), then the sessions without a plan, then **Recent
 sessions** and a link to all strength sessions. Every Start and Repeat asks to finish an unfinished
-session first.
+session first (**Finish it and start**), or, when it has no logged set, to discard it (**Discard it
+and start**).
+
+- **The unfinished session card**: when it started, its exercises and sets and the time since the
+  last set, with **Continue**, **Finish it** (ends it at its last set and opens its
+  [summary](#the-summary-page); not offered while no set is logged) and **Discard** (asks first, then
+  deletes it).
 
 - **With an open plan**: "Planned" lists the plans with a day, "Saved workouts" the plans without
   one (each with "Last done …" or "Not done yet"), and "Without a plan" offers **Start an empty
@@ -117,11 +124,12 @@ session first.
   **Save as a workout** (to `/strength/plan/new?from=<id>`) and **Repeat**. A session started from
   a saved workout that is still open shows "Saved as {name}" instead of Save as a workout.
 
-| Page                   | What it is                                                                        |
-| ---------------------- | --------------------------------------------------------------------------------- |
-| `/strength/live`       | A live session that has no logged set yet (nothing is saved)                      |
-| `/strength/log`        | A past session being entered, not saved yet                                       |
-| `/strength/session/ID` | A saved session: live while in progress, edit form otherwise, read-only if synced |
+| Page                           | What it is                                                                        |
+| ------------------------------ | --------------------------------------------------------------------------------- |
+| `/strength/live`               | A live session just started, until its first save gives it an id                  |
+| `/strength/log`                | A past session being entered, not saved yet                                       |
+| `/strength/session/ID`         | A saved session: live while in progress, edit form otherwise, read-only if synced |
+| `/strength/session/ID/summary` | The summary of a finished session (see [the summary page](#the-summary-page))     |
 
 Entry points: **Log a session** on the strength training type page, a line above the sets table on
 the Add page, **Continue** on the detail page of a session in progress and **Edit sets** on a
@@ -154,17 +162,30 @@ with the block's sets until one save has carried it, which maps the name to the 
 
 ## Live sessions
 
-A live session is an **open activity**: the first logged set creates it with the time **Start a
-session now** was pressed as `start_time`, no `end_time`, and
+A live session is an **open activity**, created as soon as the session starts (before any set is
+logged), with the time it was started as `start_time`, no `end_time`, and
 
 ```json
-{ "sets": [...], "in_progress": true, "last_set_at": "2026-11-10T17:34:00.000Z" }
+{ "sets": [], "in_progress": true }
 ```
 
-Every later change sends the whole `sets` list and `last_set_at` (the time of the newest logged
-set) with a `PATCH`; **Finish** sets `end_time` to now and `in_progress: false`. A session left
-unfinished shows on the start page for seven days, where **Finish it** ends it at `last_set_at`.
+(plus `plan_id` when it was started from a plan). Every later change sends the whole `sets` list and
+`last_set_at` (the time of the newest logged set) with a `PATCH`; **Finish** sets `end_time` to now
+and `in_progress: false` and opens the session's [summary](#the-summary-page). A started session
+stays started until it is finished or discarded: leaving the page, reloading or closing the app
+keeps it, and it is continued from the Strength pages or the session's detail page. A session left
+unfinished shows on the Workouts tab for seven days, where **Finish it** ends it at `last_set_at`.
 `in_progress` and `last_set_at` are undeclared data keys, not part of the type's `data_schema`.
+
+**Discard**, next to **Finish**, asks "Discard this session? Its sets are deleted." and then deletes
+the activity. A session with no logged set is never finished into an empty activity: **Finish**
+then asks "No set is logged. Discard the session?" and discards it on OK.
+
+Leaving the live page by a link to any other page asks "Leave the session? It stays open, and you
+can continue it from Strength." first; the session pages themselves are not guarded. A reload or a
+closed tab asks only while a change is not saved yet. In the Android app, the app asks the same
+question natively before its own navigation (a bottom tab, the back button); the page tells it by setting `window.aurbodaLeaveGuard`, a function returning the message, while the
+guard is on.
 
 While a session is open:
 
@@ -191,6 +212,24 @@ reload, and vibrates at zero where the browser can; the page asks to keep the sc
 sets, greyed and not saved, which disappear one by one as sets are logged. Their notes are not
 carried over.
 
+### The summary page
+
+`/strength/session/ID/summary` follows **Finish** (and **Finish it** on the Workouts tab), and works
+for any finished strength session; one still in progress leads to its live page. It is built from
+the session, its item history, the [strength score](strength-score.md) one second before the start
+and at the end, and the active calories of the session's time range:
+
+- **The headline** is the best news: the strength score rising ("Stronger: strength score up 2
+  points", or a muscle group's when only a group rose), else a first score ("First strength score:
+  88"), else new records ("3 new records"), else "Session done: 52 minutes of movement added".
+- **Highlights**: the overall and per-group scores that rose ("Chest 91 → 96 (+5)") or appeared
+  ("First chest score: 88"), and the number of new records. Drops are not shown, nor is any score
+  line while sex or a bodyweight is missing.
+- **Stats**: duration, exercises, working sets (warmups counted apart), volume (or total reps
+  without weights) and active calories when the heart-rate data has already synced.
+- **The exercises** in order, each with its sets and the records it set (for exercises done before).
+- **Back to Strength** and **Open the session**.
+
 ## What is stored on the device
 
 | Key                            | What                                                            |
@@ -201,7 +240,9 @@ carried over.
 | `aurboda_strength_rest_s`      | The rest length                                                 |
 
 The live page's state is the source of truth and is mirrored to the device after every change; each
-change saves the whole list. One save runs at a time and a change during a save queues one more
+change saves the whole list. The live draft is kept until the session is finished or discarded, so a
+started session is resumed from the device even before its first save has landed; only an empty one
+(no id, no exercise) gives way when a plan or a repeat is started. One save runs at a time and a change during a save queues one more
 with the newest state. A failed save is retried when the device comes back online, when the page
 becomes visible again, and every 15 seconds, and the header says `saved`, `saving…` or `not saved
 yet, will retry`. A repeated create lands on the same row (the server upserts on type and start
@@ -218,6 +259,8 @@ a synced session's sets are changed with the generic edit form.
 ## Limits
 
 - One live draft per device; two devices editing one live session at once is last write wins.
+- The browser's back and forward buttons are not guarded on the web (the Android app's back button
+  is): they leave the live page without asking, and the session stays open to be continued.
 - Weights are in kg.
 - Supersets are shown, not created; there are no programmes, and the rest default
   is per device, not a user setting.

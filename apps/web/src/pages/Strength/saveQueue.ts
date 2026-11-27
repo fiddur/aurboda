@@ -107,6 +107,7 @@ export interface LiveApi {
   create: (body: AddActivityBody) => Promise<string>
   update: (id: string, body: UpdateActivityBody) => Promise<void>
   findOpen: (startTime: string) => Promise<string | undefined>
+  remove: (id: string) => Promise<void>
 }
 
 const liveData = (draft: SessionDraft): Record<string, unknown> => ({
@@ -159,4 +160,9 @@ export const finishLiveSession = async (
     return id
   }
   return api.create({ activity_type: STRENGTH_TYPE, data, end_time, start_time: draft.start_time })
+}
+
+export const discardLiveSession = async (draft: SessionDraft, api: LiveApi): Promise<void> => {
+  const id = await existingId(draft, api)
+  if (id) await api.remove(id)
 }
