@@ -11,6 +11,9 @@ import {
   mergeNoteTagsBodySchema,
   type MergeNoteTagsResponse,
   type NoteConflictResponse,
+  type NoteDetailResponse,
+  type NoteGetQuery,
+  noteGetQuerySchema,
   type NoteLinkSuggestionsPageQuery,
   noteLinkSuggestionsPageQuerySchema,
   type NoteLinkSuggestionsPageResponse,
@@ -35,6 +38,7 @@ import {
   updateNoteBodySchema,
 } from '@aurboda/api-spec'
 
+import { withJournalContext } from '../services/journal-context.ts'
 import {
   addNote,
   deleteNoteById,
@@ -55,6 +59,7 @@ import {
   getNoteLinkSuggestions,
   listNoteLinkSuggestionsPage,
 } from '../services/note-link-suggestions.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery, validateQueryOneOf } from '../validation.ts'
 
@@ -209,11 +214,18 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     res.json({ data: result.data, success: true })
   })
 
-  router.get<{ id: string }, NoteResponse>('/:id', authMiddleware, async (req, res) => {
-    const result = await getNoteForUser(req.user!, req.params.id)
-    if (!result.success) return res.status(404).json({ error: result.error, success: false })
-    res.json({ data: result.data, success: true })
-  })
+  router.get<{ id: string }, NoteDetailResponse, unknown, NoteGetQuery>(
+    '/:id',
+    authMiddleware,
+    validateQuery(noteGetQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const result = await getNoteForUser(user, req.params.id)
+      if (!result.success) return res.status(404).json({ error: result.error, success: false })
+      const tz = req.query.tz ?? (await getUserTimezone(user))
+      res.json({ data: result.data && (await withJournalContext(user, result.data, tz)), success: true })
+    },
+  )
 
   router.get<{ id: string }, NoteRevisionsResponse>('/:id/revisions', authMiddleware, async (req, res) => {
     const result = await getNoteRevisionsById(req.user!, req.params.id)

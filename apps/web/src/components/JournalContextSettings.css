@@ -1,0 +1,41 @@
+.journal-context-item {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.journal-context-item-head,
+.journal-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.journal-context-label {
+  width: 7rem;
+}
+
+.journal-context-decimals {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.journal-context-decimals input {
+  width: 3.5rem;
+}
+
+.journal-context-item-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.journal-context-item-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

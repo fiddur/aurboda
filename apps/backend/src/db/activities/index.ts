@@ -60,6 +60,7 @@ export {
   fetchCategoryMap,
   getAllActivityTypeNames,
   getBucketStarts,
+  getDaysSinceActivity,
   getEarliestActivityStart,
   getEffectiveActivitiesInRange,
   getNearbyActivities,

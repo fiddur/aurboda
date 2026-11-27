@@ -20,7 +20,15 @@ vi.mock('../services/mutations.ts', () => ({
   updateNote: vi.fn(),
 }))
 
+vi.mock('../services/journal-context.ts', () => ({ withJournalContext: vi.fn() }))
+
+vi.mock('../services/settings.ts', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getUserTimezone: vi.fn(async () => 'Europe/Stockholm'),
+}))
+
 const mutations = await import('../services/mutations.ts')
+const journalContext = await import('../services/journal-context.ts')
 
 const NOTE_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
 const ENTITY_ID = '2d0124e7-d161-4855-a54f-fa8bdb45c4f3'
@@ -217,14 +225,32 @@ describe('GET /notes/:id', () => {
     vi.clearAllMocks()
   })
 
-  test('answers the comment', async () => {
+  test('answers the comment with its context line, for the day in the user’s timezone', async () => {
+    const context = { date: '2024-01-15', items: [] }
     vi.mocked(mutations.getNoteForUser).mockResolvedValue({ data: noteData, success: true })
+    vi.mocked(journalContext.withJournalContext).mockImplementation(async (_user, note) => ({
+      ...note,
+      context,
+    }))
 
     const res = await supertest(buildApp()).get(`/${NOTE_ID}`)
 
     expect(res.status).toBe(200)
-    expect(res.body.data).toEqual(noteData)
+    expect(res.body.data).toEqual({ ...noteData, context })
     expect(mutations.getNoteForUser).toHaveBeenCalledWith('tester', NOTE_ID)
+    expect(journalContext.withJournalContext).toHaveBeenCalledWith('tester', noteData, 'Europe/Stockholm')
+  })
+
+  test('reads the day in the tz asked for, and refuses an unknown one', async () => {
+    vi.mocked(mutations.getNoteForUser).mockResolvedValue({ data: noteData, success: true })
+    vi.mocked(journalContext.withJournalContext).mockImplementation(async (_user, note) => note)
+
+    const res = await supertest(buildApp()).get(`/${NOTE_ID}`).query({ tz: 'America/New_York' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual(noteData)
+    expect(journalContext.withJournalContext).toHaveBeenCalledWith('tester', noteData, 'America/New_York')
+    expect((await supertest(buildApp()).get(`/${NOTE_ID}`).query({ tz: 'Nowhere/Else' })).status).toBe(400)
   })
 
   test('404s on an unknown comment', async () => {

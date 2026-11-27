@@ -212,6 +212,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   home_assistant_entity_id: true,
   home_assistant_url: true,
   item_icons: true,
+  journal_context: true,
   journal_strip_metadata: true,
   lastfm_username: true,
   maf_hr: true,

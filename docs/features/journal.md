@@ -464,6 +464,48 @@ single-use URL good for 15 minutes; the client sends the raw bytes there
 (`curl -T page.jpg '<upload_url>'`) and gets back the attachment, up to 20 MB. See
 [Uploading files](../mcp-server.md#uploading-files).
 
+## Context line
+
+Under an entry's title the editor shows a short line of figures for the entry's
+day, for example `ŌR85, ŌS85, HA5.7, E0, SR68, W96.6, 🌘15%`. You choose the items
+in **Settings → Journal → Context line**: add, remove and reorder them, and give
+each a short label (up to 12 characters, an emoji works) and the number of
+decimals (0–3). Hovering an item shows its full name. A preview for today shows
+under the list. The line is computed when the entry is read, never stored on it,
+and an item without a value for the day is left out.
+
+The day is a `day` entry's date, or the calendar day a `time` entry starts on in
+your timezone. There are four kinds of item:
+
+- **Metric**: the day's value of a metric, built-in or custom -- the day's total
+  for summed metrics such as steps, else the day's average. Optionally from one
+  data source only. With **Show the latest earlier value** (`missing:
+"carry_forward"`) a day without a value shows the latest day before it that has
+  one, e.g. for a weight you log weekly.
+- **Trend**: the [trend](./trends.md) (EMA) of an activity type, a tag or a metric
+  as of the end of the day, with a half-life and display period like a dashboard
+  trend chart.
+- **Time since** (`days_since`): the time since the last activity or tag of a type
+  that started on or before the day (0 when it was that day), or since a fixed
+  date (`source_type: "date"`, e.g. a birth date for an age). In whole days, in
+  weeks (days / 7) or in years (whole years plus the fraction of the current one,
+  so a birth date with one decimal gives `45.3`). The value is truncated to the
+  item's decimals, as an age: 46.53 years is `46` at 0 decimals, not 47. A fixed
+  date after the day is left out.
+- **Moon**: the moon's illumination (%), age as a % of the cycle, or age in days;
+  the label gets the phase's emoji (🌑🌒🌓🌔🌕🌖🌗🌘).
+
+The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
+ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,
+`decimals` and the kind's fields; `null` resets it to none.
+
+`GET /journal-context?date=YYYY-MM-DD&tz=` (MCP `get_journal_context`) answers the
+line for a day (today in `tz` by default; `tz` defaults to your timezone):
+`{ date, items }`, each item with its `id`, `kind`, `label`, full `name`, unrounded
+`value`, `decimals`, `suffix` (`%`, `d` or empty) and a ready `text`. `GET
+/notes/:id` (`?tz=`) and MCP `get_note` carry it as `context` on a journal entry
+when you have configured items; lists, searches, replies and exports do not.
+
 ## Templates
 
 A template is a `name` (1 to 120 characters, trimmed) and markdown `content` (1 to
@@ -485,6 +527,7 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/deleted`                                | `list_deleted_notes`            |
 | `GET`    | `/notes/:id/revisions`                          | `list_note_revisions`           |
 | `GET`    | `/notes/:id/neighbors`                          | `get_note_neighbors`            |
+| `GET`    | `/journal-context`                              | `get_journal_context`           |
 | `GET`    | `/notes/:id/link-suggestions`                   | `get_note_link_suggestions`     |
 | `POST`   | `/notes/:id/link-suggestions/dismissals`        | `dismiss_note_link_suggestion`  |
 | `GET`    | `/notes/link-suggestions`                       | `list_note_link_suggestions`    |
