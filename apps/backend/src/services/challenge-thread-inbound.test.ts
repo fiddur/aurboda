@@ -149,10 +149,16 @@ const fakeDeps = (world: World = {}) => {
     getTimelineEntry: async (user, objectUri) =>
       (world.timeline?.[`${user}:${objectUri}`] as TimelineEntryRecord | undefined) ?? null,
     listMembers: async () => world.members ?? [member({ local_user: 'bob' })],
-    listReplies: async (host, rootIds) =>
+    listRepliers: async (host, rootIds, actorUris) =>
       [...entries.entries()]
-        .filter(([key, e]) => key.startsWith(`${host}:`) && rootIds.includes(e.root_entry_id ?? ''))
-        .map(([, e]) => e),
+        .filter(
+          ([key, e]) =>
+            key.startsWith(`${host}:`) &&
+            rootIds.includes(e.root_entry_id ?? '') &&
+            actorUris.includes(e.actor_uri) &&
+            e.hidden_at == null,
+        )
+        .map(([, e]) => ({ actor_uri: e.actor_uri, root_entry_id: e.root_entry_id! })),
     loadChallenge: async (host, slug) => challenges[`${host}/${slug}`] ?? null,
     notify: async (user, input) => {
       notified.push({ input, user })
@@ -310,7 +316,7 @@ describe('admitInboundThreadNote', () => {
   test('admits a public reply to the challenge, sanitised, and notifies the host and members', async () => {
     const fake = fakeDeps()
     const result = await admit(fake, note())
-    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', quiet: true })
+    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', notify_mention: false, quiet: true })
     const entry = fake.entries.get(`alice:${CAROL_NOTE}`)
     expect(entry).toMatchObject({
       actor_uri: CAROL,
@@ -394,7 +400,7 @@ describe('admitInboundThreadNote', () => {
     const result = await admit(fake, note({ actor: BOB, content: '<p>@alice hi</p>', id: BOB_POST }), {
       actor: BOB,
     })
-    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', quiet: true })
+    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', notify_mention: false, quiet: true })
     expect(fake.entries.get(`alice:${BOB_POST}`)).toBe(original)
     expect(fake.presentedCount()).toBe(0)
   })
@@ -402,7 +408,7 @@ describe('admitInboundThreadNote', () => {
   test('a Note of this instance not yet in the thread is admitted', async () => {
     const fake = fakeDeps()
     const result = await admit(fake, note({ actor: BOB, id: BOB_POST }), { actor: BOB })
-    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', quiet: true })
+    expect(result).toEqual({ challenge_id: 'c1', host: 'alice', notify_mention: false, quiet: true })
     expect(fake.entries.get(`alice:${BOB_POST}`)?.actor_uri).toBe(BOB)
   })
 
@@ -512,6 +518,28 @@ describe('admitInboundThreadNote', () => {
       },
     })
     expect(await admit(refused, note())).toBeNull()
+  })
+
+  test('a reply under a post the host does not follow leaves a mention to the timeline', async () => {
+    const root = 'https://remote.example/notes/0'
+    const world = () => ({ entries: { [`alice:${root}`]: storedEntry(entryInput(root, CAROL), 'e1') } })
+    const unfollowed = fakeDeps(world())
+    expect(await admit(unfollowed, note({ target: root }))).toMatchObject({
+      notify_mention: true,
+      quiet: true,
+    })
+    expect(unfollowed.notified).toEqual([])
+
+    const followed = fakeDeps(world())
+    followed.deps.followChoices = async (_user, uris) => new Map(uris.map((uri) => [uri, true]))
+    expect(await admit(followed, note({ target: root }))).toMatchObject({
+      notify_mention: false,
+      quiet: true,
+    })
+    expect(followed.notified.map((n) => [n.user, n.input.type])).toEqual([
+      ['alice', 'challenge_reply'],
+      ['bob', 'challenge_reply'],
+    ])
   })
 
   test('quiet for the host and a member, not for a visitor or the author', async () => {

@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from 'vitest'
 
 import type {
   NotificationInsert,
+  NotificationPreferencePatch,
+  NotificationPreferenceRecord,
   NotificationRecord,
   NotificationRevisionPatch,
   NotificationTarget,
@@ -17,6 +19,7 @@ import {
   notifyAdminsOfUnfinishedSignup,
   type RaiseNotificationInput,
   serializeNotification,
+  setNotificationTypePreference,
   pingWhenMarkedRead,
   withNotificationPing,
 } from './notifications.ts'
@@ -601,6 +604,56 @@ describe('listNotificationTypeSettings for a type split off from another', () =>
         { in_app: true, push: true, type: 'challenge_reply' },
       ]),
     ).toMatchObject({ in_app: true, push: true })
+  })
+})
+
+describe('setNotificationTypePreference', () => {
+  const storeWith = (preferences: NotificationPreferenceRecord[]) => {
+    const upserts: [string, NotificationPreferencePatch][] = []
+    const store: NotificationStore = {
+      countUnread: async () => 0,
+      get: async () => null,
+      list: async () => [],
+      listPreferences: async () => preferences,
+      markAllRead: async () => 0,
+      markRead: async () => null,
+      revise: async () => null,
+      upsertPreference: async (_user, type, patch) => {
+        upserts.push([type, patch])
+        return { in_app: patch.in_app ?? true, push: patch.push ?? true, type, updated_at: NOW }
+      },
+    }
+    return { store, upserts }
+  }
+
+  test("a new type's first switch keeps the other at what it followed from the older type", async () => {
+    const { store, upserts } = storeWith([
+      { in_app: true, push: false, type: 'challenge_comment', updated_at: NOW },
+    ])
+    const setting = await setNotificationTypePreference(store, 'ola', 'challenge_reply', false, {
+      in_app: false,
+    })
+    expect(upserts).toEqual([['challenge_reply', { in_app: false, push: false }]])
+    expect(setting).toMatchObject({ in_app: false, push: false, type: 'challenge_reply' })
+  })
+
+  test("a type's own row wins over the older type's, and defaults fill a type with neither", async () => {
+    const own = storeWith([
+      { in_app: true, push: false, type: 'challenge_comment', updated_at: NOW },
+      { in_app: true, push: true, type: 'challenge_reply', updated_at: NOW },
+    ])
+    await setNotificationTypePreference(own.store, 'ola', 'challenge_reply', false, { in_app: false })
+    expect(own.upserts).toEqual([['challenge_reply', { in_app: false, push: true }]])
+
+    const none = storeWith([])
+    await setNotificationTypePreference(none.store, 'ola', 'feed_mention', false, { push: false })
+    expect(none.upserts).toEqual([['feed_mention', { in_app: true, push: false }]])
+  })
+
+  test('an unknown type stores nothing', async () => {
+    const { store, upserts } = storeWith([])
+    expect(await setNotificationTypePreference(store, 'ola', 'nope', false, { push: false })).toBeNull()
+    expect(upserts).toEqual([])
   })
 })
 

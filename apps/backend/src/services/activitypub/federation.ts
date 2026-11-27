@@ -97,7 +97,7 @@ import {
   type PushedThreadDeps,
 } from '../challenge-thread-remote.ts'
 import { resolveFeedActivity } from '../feed.ts'
-import { notifier } from '../notifications.ts'
+import { notifier, type RaiseNotificationInput } from '../notifications.ts'
 import { buildProfileUrl } from '../share-urls.ts'
 import {
   followAcceptedNotification,
@@ -268,11 +268,18 @@ export interface IngestNoteOptions {
   /**
    * Set on the live inbox path only: a new row raises its central notification. `source` is the
    * accepted followee the delivery is owed to (the booster for a boost card), null for a stranger.
+   * `mention_only` raises it only when it is a `feed_mention`.
    */
-  notify?: { source: Pick<FeedFollowingRecord, 'notify_on_post' | 'tag'> | null }
+  notify?: { source: Pick<FeedFollowingRecord, 'notify_on_post' | 'tag'> | null; mention_only?: boolean }
   /** The Note's `quant:structuredUrl`, read off the received document (see `inboundStructuredUrl`). */
   structuredUrl?: string
 }
+
+const allowedNotification = (
+  notify: NonNullable<IngestNoteOptions['notify']>,
+  notification: RaiseNotificationInput | null,
+): RaiseNotificationInput | null =>
+  notify.mention_only === true && notification?.type !== 'feed_mention' ? null : notification
 
 /**
  * Ingest one `Note` from an accepted followee into `user`'s home timeline: map it
@@ -326,13 +333,16 @@ export const ingestNoteForRecipient = async (
   const visible = await isVisibleToReader(user, id, origin)
   if (visible) onNewEntry?.(user)
   if (notify != null) {
-    const notification = timelineEntryNotification({
-      entry: { ...input, mentions_me: mentionsMe },
-      me: user,
-      own_object_prefix: ownObjectPrefix(origin, user),
-      source: notify.source,
-      visible,
-    })
+    const notification = allowedNotification(
+      notify,
+      timelineEntryNotification({
+        entry: { ...input, mentions_me: mentionsMe },
+        me: user,
+        own_object_prefix: ownObjectPrefix(origin, user),
+        source: notify.source,
+        visible,
+      }),
+    )
     if (notification != null) await notifier.raiseBestEffort(user, notification)
   }
   return true
@@ -853,12 +863,21 @@ export const handleInboundUndo = async (ctx: InboxContext<void>, undo: Undo): Pr
   }
 }
 
+/** What the timeline still notifies of a Note: as usual, only a `feed_mention`, or nothing. */
+type TimelineNotify = 'all' | 'mention' | 'none'
+
+const notifyOption = (
+  mode: TimelineNotify,
+  source: Pick<FeedFollowingRecord, 'notify_on_post' | 'tag'> | null,
+): Pick<IngestNoteOptions, 'notify'> =>
+  mode === 'none' ? {} : { notify: { source, ...(mode === 'mention' ? { mention_only: true } : {}) } }
+
 interface StrangerIngestOptions {
   enrich: (objectUri: string, token?: string) => Promise<FeedStructuredPost | null>
   onNewEntry?: (user: string) => void
   structuredUrl?: string
-  /** The Note is a challenge thread entry, which notifies `me` through the thread (or, for an unfollowed post's reply, not at all): store it without a notification. */
-  quiet?: boolean
+  /** How a challenge thread entry, which notifies `me` through the thread, still notifies here. */
+  timelineNotify?: TimelineNotify
 }
 
 /**
@@ -873,7 +892,7 @@ const ingestStrangerInvolvement = async (
   object: Note,
   me: string,
   origin: string,
-  { enrich, onNewEntry, quiet = false, structuredUrl }: StrangerIngestOptions,
+  { enrich, onNewEntry, structuredUrl, timelineNotify = 'all' }: StrangerIngestOptions,
 ): Promise<boolean> => {
   if (activity.actorId == null) return false
   const target = object.replyTargetIds[0]?.href
@@ -902,14 +921,14 @@ const ingestStrangerInvolvement = async (
     { ...presentation, actor_uri: activity.actorId.href },
     enrich,
     origin,
-    { ...(quiet ? {} : { notify: { source: null } }), onNewEntry, structuredUrl },
+    { ...notifyOption(timelineNotify, null), onNewEntry, structuredUrl },
   )
 }
 
 /**
- * Admit the Note into a challenge thread hosted here when it answers one; true when the thread
- * notifies `me` of it (`challenge_comment`, or `challenge_reply` when `me` follows the post), so the
- * timeline must not notify again.
+ * Admit the Note into a challenge thread hosted here when it answers one, and say what the timeline
+ * still notifies `me` of: nothing when the thread does (`challenge_comment`, or `challenge_reply`
+ * when `me` follows the post), only a mention under a post `me` does not follow, else as usual.
  */
 const admitToChallengeThread = async (
   ctx: InboxContext<void>,
@@ -920,7 +939,7 @@ const admitToChallengeThread = async (
   actorId: URL,
   note: Note,
   follow: FeedFollowingRecord | null,
-): Promise<boolean> => {
+): Promise<TimelineNotify> => {
   const input = {
     actor_uri: actorId.href,
     me,
@@ -934,7 +953,8 @@ const admitToChallengeThread = async (
   const thread =
     (await admitInboundThreadNote(deps, input)) ??
     (await admitPushedThreadNote(pushedDeps ?? createPushedThreadDeps(), input))
-  return thread?.quiet === true
+  if (thread?.quiet !== true) return 'all'
+  return thread.notify_mention ? 'mention' : 'none'
 }
 
 const ingestFeedActivity = async (
@@ -962,7 +982,7 @@ const ingestFeedActivity = async (
     const object = await activity.getObject({ suppressError: true })
     if (!(object instanceof Note)) return
     const structuredUrl = object.id == null ? undefined : inboundStructuredUrl(received, object.id.href)
-    const quiet = await admitToChallengeThread(
+    const timelineNotify = await admitToChallengeThread(
       ctx,
       threadDeps,
       pushedDeps,
@@ -974,7 +994,7 @@ const ingestFeedActivity = async (
     )
     if (follow != null && follow.accepted) {
       await ingestNoteForRecipient(me, object, follow, enrich, origin, {
-        ...(quiet ? {} : { notify: { source: follow } }),
+        ...notifyOption(timelineNotify, follow),
         onNewEntry,
         structuredUrl,
       })
@@ -982,8 +1002,8 @@ const ingestFeedActivity = async (
       const admitted = await ingestStrangerInvolvement(ctx, activity, object, me, origin, {
         enrich,
         onNewEntry,
-        quiet,
         structuredUrl,
+        timelineNotify,
       })
       if (!admitted && activity instanceof Update) {
         await applyEditToBoostCards(me, activity, object, enrich, structuredUrl)

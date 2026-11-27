@@ -12,6 +12,7 @@ import {
   getChallengeThreadEntryById,
   getChallengeThreadEntryByObjectUri,
   listChallengeThreadDocumentEntries,
+  listChallengeThreadRepliers,
   listChallengeThreadReplies,
   listChallengeThreadTopLevel,
   setChallengeThreadEntryHidden,
@@ -155,6 +156,46 @@ describe('challenge thread entries (integration)', () => {
     const publicOnly = await listChallengeThreadReplies(user, [root.id], PUBLIC_VISIBLE, 10)
     expect(publicOnly.map((e) => e.content)).toEqual(['<p>2</p>', '<p>3</p>', '<p>4</p>'])
     expect(await listChallengeThreadReplies(user, [], ALL, 10)).toEqual([])
+  })
+
+  test('repliers: who has a reply that is not hidden under which root, past any per-root cap', async () => {
+    const user = getTestUser()
+    const challenge = await newChallenge(user)
+    const root = (await upsertChallengeThreadEntry(user, input(challenge.id, 1)))!.entry
+    const other = (await upsertChallengeThreadEntry(user, input(challenge.id, 2)))!.entry
+    for (let n = 3; n <= 8; n++) {
+      await upsertChallengeThreadEntry(
+        user,
+        input(challenge.id, n, { in_reply_to_uri: root.object_uri, root_entry_id: root.id }),
+      )
+    }
+    await upsertChallengeThreadEntry(
+      user,
+      input(challenge.id, 9, { actor_uri: ALICE, in_reply_to_uri: root.object_uri, root_entry_id: root.id }),
+    )
+    const hiddenReply = (await upsertChallengeThreadEntry(
+      user,
+      input(challenge.id, 10, {
+        actor_uri: ALICE,
+        in_reply_to_uri: other.object_uri,
+        root_entry_id: other.id,
+      }),
+    ))!.entry
+    await setChallengeThreadEntryHidden(user, challenge.id, hiddenReply.id, true)
+
+    const repliers = await listChallengeThreadRepliers(user, [root.id, other.id], [ALICE, BOB])
+    expect(repliers.map((r) => [r.root_entry_id, r.actor_uri]).sort()).toEqual(
+      [
+        [root.id, ALICE],
+        [root.id, BOB],
+      ].sort(),
+    )
+    expect(await listChallengeThreadRepliers(user, [root.id], [ALICE])).toEqual([
+      { actor_uri: ALICE, root_entry_id: root.id },
+    ])
+    expect(await listChallengeThreadRepliers(user, [other.id], [ALICE])).toEqual([])
+    expect(await listChallengeThreadRepliers(user, [], [ALICE])).toEqual([])
+    expect(await listChallengeThreadRepliers(user, [root.id], [])).toEqual([])
   })
 
   test('counts every entry for the cap, and the visible ones for a viewer', async () => {

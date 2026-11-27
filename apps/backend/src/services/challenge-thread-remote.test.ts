@@ -928,7 +928,7 @@ describe('admitPushedThreadNote', () => {
 
   test("the host's comment enters the copy and notifies once", async () => {
     const fake = pushedDeps()
-    expect(await admit(fake, pushed())).toEqual({ quiet: true })
+    expect(await admit(fake, pushed())).toEqual({ notify_mention: false, quiet: true })
     expect(fake.copy()[0]).toMatchObject({
       actor_uri: HOST_ACTOR,
       audience: 'participants',
@@ -989,13 +989,13 @@ describe('admitPushedThreadNote', () => {
 
     test('a post I neither wrote nor replied under: nothing, unless I follow it', async () => {
       const quiet = pushedDeps(participation(), { copy: [hostPost] })
-      await admit(quiet, replyUnder(hostPost), ZED)
+      expect(await admit(quiet, replyUnder(hostPost), ZED)).toEqual({ notify_mention: true, quiet: true })
       expect(quiet.notified).toEqual([])
       const followed = pushedDeps(participation(), {
         copy: [hostPost],
         follows: { [hostPost.object_uri]: true },
       })
-      await admit(followed, replyUnder(hostPost), ZED)
+      expect(await admit(followed, replyUnder(hostPost), ZED)).toEqual({ notify_mention: false, quiet: true })
       expect(followed.notified.map((n) => n.type)).toEqual(['challenge_reply'])
     })
 

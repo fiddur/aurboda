@@ -158,6 +158,50 @@ describe('Inbound challenge thread comments', () => {
     expect(await notificationTypes(host)).toEqual(['challenge_comment'])
   })
 
+  describe('a reply under a post the host does not follow', () => {
+    const DAVE_NOTE = 'https://third.example/notes/dave-1'
+    const davesReply = async (host: string, mentioned: string) =>
+      handleInboundCreate(
+        inboxCtx(host),
+        new Create({
+          actor: new URL(DAVE),
+          id: new URL(`${DAVE_NOTE}#create`),
+          object: new Note({
+            attribution: new URL(DAVE),
+            ccs: [new URL(mentioned)],
+            content: '<p>Agreed</p>',
+            id: new URL(DAVE_NOTE),
+            published: dateToTemporalInstant(new Date('2026-11-10T12:00:00Z')),
+            replyTarget: new URL(CAROL_NOTE),
+            tags: [new Mention({ href: new URL(mentioned), name: '@someone@example' })],
+            tos: [new URL(AS_PUBLIC)],
+          }),
+        }),
+        ORIGIN,
+      )
+
+    test('mentioning the host raises one feed_mention', async () => {
+      const { host, hostActor } = await hostedThread()
+      await davesReply(host, hostActor)
+      expect(await getChallengeThreadEntryByObjectUri(host, DAVE_NOTE)).not.toBeNull()
+      expect((await notificationTypes(host)).sort()).toEqual(['challenge_comment', 'feed_mention'])
+    })
+
+    test('mentioning someone else raises nothing for the host', async () => {
+      const { host } = await hostedThread()
+      await davesReply(host, CAROL)
+      expect(await getChallengeThreadEntryByObjectUri(host, DAVE_NOTE)).not.toBeNull()
+      expect(await notificationTypes(host)).toEqual(['challenge_comment'])
+    })
+
+    test('once the host follows the post, a mention of them is one challenge_reply', async () => {
+      const { host, hostActor } = await hostedThread()
+      await setChallengePostFollow(host, CAROL_NOTE, true)
+      await davesReply(host, hostActor)
+      expect((await notificationTypes(host)).sort()).toEqual(['challenge_comment', 'challenge_reply'])
+    })
+  })
+
   test('a Delete from the author removes the entry', async () => {
     const { host } = await hostedThread()
     await handleInboundDelete(inboxCtx(host), deleteBy(CAROL), ORIGIN)
@@ -241,7 +285,7 @@ describe('Inbound challenge thread comments', () => {
       getFeedPost: oneDb(real.getFeedPost),
       getTimelineEntry: oneDb(real.getTimelineEntry),
       listMembers: oneDb(real.listMembers),
-      listReplies: oneDb(real.listReplies),
+      listRepliers: oneDb(real.listRepliers),
       loadChallenge: oneDb(real.loadChallenge),
       notify: async (user, input) => {
         notified.push({ input, user })
@@ -354,8 +398,9 @@ describe('Host signals for a challenge joined on another server', () => {
   describe('a reply pushed into the copy notifies only when I follow its post', () => {
     const MINE = 'https://aurboda.example/users/{user}/feed/11111111-1111-4111-8111-111111111111'
     let n = 10
-    const pushReply = async (user: string, target: string) => {
+    const pushReply = async (user: string, target: string, mentionMe = false) => {
       n++
+      const me = new URL(`${ORIGIN}/users/${user}`)
       const note = new Note({
         attribution: new URL(CAROL),
         content: `<p>Reply ${n}</p>`,
@@ -363,7 +408,8 @@ describe('Host signals for a challenge joined on another server', () => {
         id: new URL(`https://third.example/notes/${n}`),
         published: dateToTemporalInstant(new Date('2026-11-11T10:00:00Z')),
         replyTarget: new URL(target),
-        tos: [new URL(`${ORIGIN}/users/${user}`)],
+        ...(mentionMe ? { tags: [new Mention({ href: me, name: `@${user}@aurboda.example` })] } : {}),
+        tos: [me],
       })
       await handleInboundCreate(
         inboxCtx(user),
@@ -404,6 +450,27 @@ describe('Host signals for a challenge joined on another server', () => {
       await setChallengePostFollow(user, CAROL_NOTE, true)
       await pushReply(user, CAROL_NOTE)
       expect(await notificationTypes(user)).toEqual(['challenge_reply'])
+    })
+
+    test('a mention of me under a post I do not follow raises one feed_mention', async () => {
+      const { user } = await joined()
+      await pushReply(user, CAROL_NOTE, true)
+      expect(await notificationTypes(user)).toEqual(['feed_mention'])
+    })
+
+    test('a mention of me under a post I follow is one challenge_reply', async () => {
+      const { user } = await joined()
+      await setChallengePostFollow(user, CAROL_NOTE, true)
+      await pushReply(user, CAROL_NOTE, true)
+      expect(await notificationTypes(user)).toEqual(['challenge_reply'])
+    })
+
+    test('a reply to my own post I unfollowed is a reply, not a mention: nothing', async () => {
+      const { participation, user } = await joined()
+      const mine = await ownTop(user, participation.id)
+      await setChallengePostFollow(user, mine, false)
+      await pushReply(user, mine, true)
+      expect(await notificationTypes(user)).toEqual([])
     })
 
     test('with the root missing from the copy, the direct parent decides', async () => {

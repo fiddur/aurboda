@@ -40,6 +40,7 @@ const db = vi.hoisted(() => ({
   upsertThreadCopyEntry: vi.fn(),
   isMissingDatabase: () => false,
   listChallengeMembers: vi.fn(async () => []),
+  listChallengeThreadRepliers: vi.fn(async () => []),
   listChallengeThreadReplies: vi.fn(async () => []),
   listChallengeThreadTopLevel: vi.fn(async () => []),
   listChallengeParticipations: vi.fn<(user: string) => Promise<ChallengeParticipationRecord[]>>(),

@@ -198,6 +198,22 @@ export const listChallengeThreadReplies = async (
   return result.rows.map(mapEntry)
 }
 
+/** Who of `actorUris` has a reply that is not hidden under which of `rootIds`, among all of its entries. */
+export const listChallengeThreadRepliers = async (
+  user: string,
+  rootIds: readonly string[],
+  actorUris: readonly string[],
+): Promise<{ root_entry_id: string; actor_uri: string }[]> => {
+  if (rootIds.length === 0 || actorUris.length === 0) return []
+  const result = await query<{ root_entry_id: string; actor_uri: string }>(
+    user,
+    `SELECT DISTINCT root_entry_id, actor_uri FROM challenge_thread_entries
+      WHERE root_entry_id = ANY($1::uuid[]) AND actor_uri = ANY($2::text[]) AND hidden_at IS NULL`,
+    [rootIds, actorUris],
+  )
+  return result.rows
+}
+
 /** Every entry of a challenge's thread, hidden or not: what the cap counts. */
 export const countChallengeThreadEntries = async (user: string, challengeId: string): Promise<number> => {
   const result = await query<{ count: number }>(

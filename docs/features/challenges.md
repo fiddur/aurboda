@@ -462,8 +462,9 @@ takes nothing from a non-member), and someone who is not a participant adds at m
 entries a day to one thread. An `Update` of the Note rewrites the entry and a `Delete` from
 its author removes it. The same Note may also become a timeline card for the recipient; it
 then raises no second notification beside the thread's (`challenge_comment`, or
-`challenge_reply` for a follower of the post; a participant who does not follow the post
-gets nothing for a reply under it). A reply to a commenter on
+`challenge_reply` for a follower of the post). A participant who does not follow the post
+gets no reply notification for a reply under it, but a Note that mentions them (and does
+not answer a post of their own, which is a reply) still raises one `feed_mention`. A reply to a commenter on
 another server only reaches the thread when it is delivered to the host's inbox (Mastodon
 does so when the reply keeps the host's mention).
 
@@ -499,7 +500,8 @@ host.
     member's page for the challenge. A reply raises `challenge_reply` only when the member
     follows its top-level post, judged from the copy: the post the reply's chain leads to,
     or, when that post is not in the copy, the reply's direct parent (followed when the
-    member wrote it or chose to follow it).
+    member wrote it or chose to follow it). A reply under a post the member does not follow
+    that mentions them raises one `feed_mention` instead, as for a hosted thread.
 - **What is not pushed.** A fediverse reply or a share (or the result) the host took in is
   not pushed itself: the host sends its verified members an `Add` of the entry, which marks
   the copy for a fresh pull, so it arrives with the next read. A fediverse reply's `Update`
@@ -529,7 +531,10 @@ The choice is kept on your own server (`challenge_post_follows`, keyed by the po
 id, which is the same on the host's server and in a member's copy) and never federates. It
 is the host's or a member's only (`403` for anyone else); only a top-level entry can be
 followed (`400` for a reply). The author of a reply is never notified of it. A reply under
-a post you stopped following notifies you of nothing, not even through the timeline.
+a post you do not follow raises no reply notification, not even through the timeline; only a
+mention of you in it raises one `feed_mention`. "Replied under" counts every reply of yours
+under the post that is not hidden, not only the ones a page shows, so the bell and the
+notifications agree on a long chain.
 
 A page lists 20 top-level entries newest first, each with up to 200 replies oldest first
 (of those the viewer sees: hidden replies do not count),

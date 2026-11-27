@@ -67,7 +67,9 @@ row:
 
 A type split off from an older one starts from the older type's switches until it is given its own:
 `challenge_reply` follows `challenge_comment`, so someone who turned challenge posts off before replies
-became a type of their own is not notified of replies either.
+became a type of their own is not notified of replies either. Setting one switch of such a type
+stores the other as it was being followed, so turning `challenge_reply`'s in-app switch off keeps its
+push switch off when `challenge_comment`'s was.
 
 Changing a switch affects notifications raised from then on, not the ones already stored.
 **Mark all read** stamps every unread row, push-only ones included: a device poller asks for

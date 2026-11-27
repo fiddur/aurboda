@@ -219,7 +219,7 @@ describe('PUT /notifications/types/:type', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.type_setting).toMatchObject({ in_app: true, push: false, type: 'admin_signup' })
-    expect(upserts).toEqual([['admin_signup', { push: false }]])
+    expect(upserts).toEqual([['admin_signup', { in_app: true, push: false }]])
   })
 
   test('404s for an unknown type and for an admin-only type for a non-admin', async () => {

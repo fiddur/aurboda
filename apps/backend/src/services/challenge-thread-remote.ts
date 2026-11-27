@@ -447,6 +447,8 @@ export interface CopyPage {
   tops: ThreadCopyEntryRecord[]
   /** Each top-level entry's replies, oldest first. */
   replies: Map<string, ThreadCopyEntryRecord[]>
+  /** The authors of every reply under each top-level entry of the page, not only those shown. */
+  repliers: Map<string, Set<string>>
   /** The entry each reply answers, within its group. */
   parentOf: Map<string, string>
   next_cursor: string | null
@@ -502,7 +504,9 @@ export const pageThreadCopy = (
   const last = page[page.length - 1]
   const replies = new Map<string, ThreadCopyEntryRecord[]>()
   const parentOf = new Map<string, string>()
+  const repliers = new Map<string, Set<string>>()
   for (const top of page) {
+    repliers.set(top.id, new Set((groups.get(top.id) ?? []).map((row) => row.actor_uri)))
     const group = [...(groups.get(top.id) ?? [])]
       .sort((a, b) => -newestFirst(a, b))
       .slice(0, MAX_REPLIES_PER_ENTRY)
@@ -521,6 +525,7 @@ export const pageThreadCopy = (
         ? encodeKeysetCursor(last.published_at.toISOString(), last.id)
         : null,
     parentOf,
+    repliers,
     replies,
     tops: page,
   }
@@ -568,7 +573,12 @@ export const readRemoteThread = async (
     const replies = page.replies.get(top.id) ?? []
     return {
       ...serializeCopyRow(top, null, own.get(top.id) ?? null),
-      following: followsPost(choices.get(top.object_uri), actor, top, replies),
+      following: followsPost(
+        choices.get(top.object_uri),
+        actor,
+        top,
+        page.repliers.get(top.id)?.has(actor) === true,
+      ),
       replies: replies.map((reply) =>
         serializeCopyRow(reply, page.parentOf.get(reply.id) ?? top.id, own.get(reply.id) ?? null),
       ),
@@ -1092,7 +1102,12 @@ export const followsCopyTarget = (
   if (target.kind === 'root') {
     const mine = target.root.actor_uri === meActor
     return {
-      follows: followsPost(explicit, meActor, target.root, target.under),
+      follows: followsPost(
+        explicit,
+        meActor,
+        target.root,
+        target.under.some((row) => row.actor_uri === meActor),
+      ),
       owner: mine ? { mine: true } : { label: actorLabel(target.root), mine: false },
     }
   }
@@ -1126,14 +1141,15 @@ const pushedReplyFollow = async (
 /**
  * A comment the host or an attendee pushed into the thread of a challenge `me` joined on another
  * server: stored in the copy, and `challenge_comment` raised once for a top-level post, or
- * `challenge_reply` for a reply under a post `me` follows. An unknown sender is not stored but
+ * `challenge_reply` for a reply under a post `me` follows; under one they do not, `notify_mention`
+ * leaves a mention of them to the timeline. An unknown sender is not stored but
  * marks the copy stale, so the next read pulls the host's current attendees. Null when the Note is
  * for no such thread.
  */
 export const admitPushedThreadNote = async (
   deps: PushedThreadDeps,
   input: InboundThreadNote,
-): Promise<{ quiet: true } | null> => {
+): Promise<{ quiet: true; notify_mention: boolean } | null> => {
   const participation = await pushTarget(deps, input)
   const { note } = input
   if (participation == null || note.id == null || note.published == null) return null
@@ -1147,20 +1163,18 @@ export const admitPushedThreadNote = async (
     deps.now(),
   )
   const { entry, inserted } = await deps.upsertCopy(input.me, participation.id, row)
-  if (inserted && deps.notify != null) {
-    if (!isReplyIn(participation, entry)) {
-      await deps.notify(input.me, pushedCommentNotification(participation, entry))
-    } else {
-      const follow = await pushedReplyFollow(deps, input, participation, entry).catch((error: unknown) => {
-        console.warn(`⚠️ challenge reply follow check failed for ${entry.object_uri}:`, error)
-        return null
-      })
-      if (follow?.follows === true) {
-        await deps.notify(input.me, pushedCommentNotification(participation, entry, follow.owner))
-      }
-    }
+  if (!isReplyIn(participation, entry)) {
+    if (inserted) await deps.notify?.(input.me, pushedCommentNotification(participation, entry))
+    return { notify_mention: false, quiet: true }
   }
-  return { quiet: true }
+  const follow = await pushedReplyFollow(deps, input, participation, entry).catch((error: unknown) => {
+    console.warn(`⚠️ challenge reply follow check failed for ${entry.object_uri}:`, error)
+    return null
+  })
+  if (inserted && follow?.follows === true) {
+    await deps.notify?.(input.me, pushedCommentNotification(participation, entry, follow.owner))
+  }
+  return { notify_mention: follow?.follows !== true, quiet: true }
 }
 
 export interface HostThreadSignal {
