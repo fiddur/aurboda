@@ -189,7 +189,7 @@ export type PersonDate = z.infer<typeof personDateSchema>
 export const personActivityTypeCountSchema = z
   .object({
     activity_type: z.string(),
-    count: z.number().int().meta({ description: 'Activities of the type with the person' }),
+    count: z.number().int().meta({ description: 'Activities of the type or its subtypes with the person' }),
     type_name: z.string().meta({ description: 'Display name of the type' }),
   })
   .meta({ id: 'PersonActivityTypeCount' })
@@ -202,7 +202,8 @@ export const personDetailSchema = personSchema
       description: 'How many activities the person was with, merged activities counted once',
     }),
     activity_types: z.array(personActivityTypeCountSchema).meta({
-      description: 'The types of those activities with their counts, most frequent first',
+      description:
+        "The types of those activities with their counts, most frequent first; a type's count includes its subtypes",
     }),
     dates: z.array(personDateSchema).meta({ description: "The person's dates, by month and day" }),
     journal_entries: journalEntryRefsSchema.optional(),

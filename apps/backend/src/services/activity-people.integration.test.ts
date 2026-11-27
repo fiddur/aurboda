@@ -152,6 +152,31 @@ describe('who an activity was with (integration)', () => {
     expect(listed.map((a) => a.id)).toEqual([withAnna.id])
   })
 
+  test('person_id keeps an override in the period whose linked synced row starts before it', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const garminId = await insertActivity(user, {
+      ...walk('2026-11-01T09:55:00Z'),
+      external_id: 'garmin-moved',
+      source: 'garmin',
+    })
+    await updateActivity(user, garminId!, { people: [anna.id] })
+    const moved = await updateActivity(user, garminId!, { start_time: new Date('2026-11-01T10:05:00Z') })
+    expect(moved.success).toBe(true)
+    const override = await getOverrideForActivity(user, garminId!)
+    expect(override?.start_time.toISOString()).toBe('2026-11-01T10:05:00.000Z')
+    expect(await activityPeopleOf(user, [override!.id])).toBeUndefined()
+
+    const listed = await withPerson(
+      user,
+      new Date('2026-11-01T10:00:00Z'),
+      new Date('2026-11-02T00:00:00Z'),
+      ['walking'],
+      anna.id,
+    )
+    expect(listed).toHaveLength(1)
+  })
+
   test('person_id names an unknown or deleted person in a 400', async () => {
     const user = getTestUser()
     const gone = await insertPerson(user, { name: 'Gone' })

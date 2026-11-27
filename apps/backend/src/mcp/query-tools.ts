@@ -31,7 +31,6 @@ import { z } from 'zod'
 import {
   getActivityById,
   activityHasTrack,
-  getActivityTrack,
   getAllActivityTypeNames,
   getMediaPlayById,
   getMediaPlays,
@@ -73,7 +72,7 @@ import {
 } from '../services/queries/index.ts'
 import { activitySegmentEfforts } from '../services/segments.ts'
 import { getSleepDebt } from '../services/sleep-debt.ts'
-import { serializeActivityTrack } from '../services/tracks.ts'
+import { findActivityTrack, serializeActivityTrack, trackOwnerIds } from '../services/tracks.ts'
 import {
   errorResponse,
   jsonResponse,
@@ -384,7 +383,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
       if (!activity) return errorResponse('Activity not found')
 
       const window = await resolveActivityWindow(user, activity, isMerged)
-      const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
+      const ownerIds = trackOwnerIds(id, activity)
       const [summary, fullDetail, features, segmentEfforts, people, journalEntries, hasTrack] =
         await Promise.all([
           computeActivityDetailMetrics(user, window),
@@ -396,11 +395,11 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
               metrics: parseMetricsParam(metrics),
             },
           ),
-          firstActivityFeatures(user, trackOwnerIds),
-          activitySegmentEfforts(user, trackOwnerIds),
-          activityPeopleOf(user, trackOwnerIds),
-          listJournalEntryRefs(user, 'activity', trackOwnerIds),
-          activityHasTrack(user, id),
+          firstActivityFeatures(user, ownerIds),
+          activitySegmentEfforts(user, ownerIds),
+          activityPeopleOf(user, ownerIds),
+          listJournalEntryRefs(user, 'activity', ownerIds),
+          activityHasTrack(user, ownerIds),
         ])
 
       return tzJsonResponse(
@@ -434,7 +433,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
     { id: z.string().describe('Activity ID (a "merged:" prefix is accepted and stripped).') },
     async ({ id: rawId }) => {
       const { id } = parseActivityId(rawId)
-      const track = await getActivityTrack(user, id)
+      const track = await findActivityTrack(user, id)
       if (!track) return errorResponse('No track for activity')
       return jsonResponse(serializeActivityTrack(track))
     },

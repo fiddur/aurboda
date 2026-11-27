@@ -49,15 +49,20 @@ export const upsertActivityTrack = async (user: string, input: ActivityTrackInpu
   )
 }
 
+const uuidsOf = (activityIds: string | string[]): string[] =>
+  (Array.isArray(activityIds) ? activityIds : [activityIds]).filter((id) => UUID_RE.test(id))
+
 /**
- * The activity's track; when several sources have one, prefer full_resolution,
+ * The track of the first of `activityIds` that has one (non-uuids skipped), keeping the
+ * `activity_id` of the row that owns it; when several sources have one, prefer full_resolution,
  * then the longest point_count. ST_AsGeoJSON drops M, so points are dumped.
  */
 export const getActivityTrack = async (
   user: string,
-  activityId: string,
+  activityIds: string | string[],
 ): Promise<ActivityTrackRecord | null> => {
-  if (!UUID_RE.test(activityId)) return null
+  const ids = uuidsOf(activityIds)
+  if (ids.length === 0) return null
   const result = await query(
     user,
     `SELECT t.activity_id, a.start_time, t.source, t.length_m, t.point_count, t.full_resolution,
@@ -65,10 +70,10 @@ export const getActivityTrack = async (
                FROM ST_DumpPoints(t.geom) d) AS coords
      FROM activity_tracks t
      JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
-     WHERE t.activity_id = $1
-     ORDER BY t.full_resolution DESC, t.point_count DESC, t.source
+     WHERE t.activity_id = ANY($1::uuid[])
+     ORDER BY array_position($1::uuid[], t.activity_id), t.full_resolution DESC, t.point_count DESC, t.source
      LIMIT 1`,
-    [activityId],
+    [ids],
   )
   const row = result.rows[0]
   if (!row) return null
@@ -84,16 +89,17 @@ export const getActivityTrack = async (
   }
 }
 
-/** Whether `getActivityTrack` would answer a track for this id. */
-export const activityHasTrack = async (user: string, activityId: string): Promise<boolean> => {
-  if (!UUID_RE.test(activityId)) return false
+/** Whether `getActivityTrack` would answer a track for these ids. */
+export const activityHasTrack = async (user: string, activityIds: string | string[]): Promise<boolean> => {
+  const ids = uuidsOf(activityIds)
+  if (ids.length === 0) return false
   const result = await query(
     user,
     `SELECT 1 FROM activity_tracks t
      JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
-     WHERE t.activity_id = $1
+     WHERE t.activity_id = ANY($1::uuid[])
      LIMIT 1`,
-    [activityId],
+    [ids],
   )
   return result.rows.length > 0
 }

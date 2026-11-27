@@ -2,6 +2,8 @@ import type { ActivityTrack } from '@aurboda/api-spec'
 
 import type { ActivityTrackRecord } from '../db/tracks.ts'
 
+import { getActivityById, getActivityTrack } from '../db/index.ts'
+
 export interface TrackPoint {
   lat: number
   lon: number
@@ -104,6 +106,18 @@ export const polylineToTrackPoints = (
     lon,
     time: new Date(start.getTime() + (i * elapsedSeconds * 1000) / last),
   }))
+}
+
+/** The rows whose track an activity shows: its own, then those of the rows it overrides. */
+export const trackOwnerIds = (id: string, activity: { override_target_ids?: string[] }): string[] => [
+  id,
+  ...(activity.override_target_ids ?? []),
+]
+
+/** The track an activity shows, its own or that of a row it overrides; null for no live activity. */
+export const findActivityTrack = async (user: string, id: string): Promise<ActivityTrackRecord | null> => {
+  const activity = await getActivityById(user, id)
+  return activity ? getActivityTrack(user, trackOwnerIds(id, activity)) : null
 }
 
 export const serializeActivityTrack = (record: ActivityTrackRecord): ActivityTrack => ({

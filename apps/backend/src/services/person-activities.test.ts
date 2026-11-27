@@ -2,7 +2,14 @@ import { describe, expect, test } from 'vitest'
 
 import type { Activity } from '../db/types.ts'
 
-import { collapseGroup, decodeCursor, encodeCursor, serializePersonActivity } from './person-activities.ts'
+import {
+  collapseGroup,
+  decodeCursor,
+  encodeCursor,
+  type PersonActivitiesDeps,
+  personActivitySummary,
+  serializePersonActivity,
+} from './person-activities.ts'
 
 const ID_A = '00000000-0000-4000-8000-00000000000a'
 const ID_B = '00000000-0000-4000-8000-00000000000b'
@@ -45,5 +52,35 @@ describe('collapseGroup', () => {
 
   test('a group whose own row is gone gives nothing', () => {
     expect(collapseGroup(ID_B, [row({ id: ID_A, superseded_by: ID_B })], new Map())).toBeUndefined()
+  })
+})
+
+describe('personActivitySummary', () => {
+  const unused = async () => {
+    throw new Error('not used')
+  }
+  const deps: PersonActivitiesDeps = {
+    categoryMap: unused,
+    countByType: async () => [
+      { activity_type: 'trail_running', count: 3 },
+      { activity_type: 'running', count: 2 },
+      { activity_type: 'walking', count: 4 },
+    ],
+    countGroups: unused,
+    expandTypes: async (_user, [type]) => (type === 'running' ? ['running', 'trail_running'] : [type!]),
+    listGroups: unused,
+    members: unused,
+    typeNames: async () => new Map([['running', 'Running']]),
+  }
+
+  test("a type's count includes its subtypes; the total counts each activity once", async () => {
+    expect(await personActivitySummary('user', ID_A, deps)).toEqual({
+      activity_count: 9,
+      activity_types: [
+        { activity_type: 'running', count: 5, type_name: 'Running' },
+        { activity_type: 'walking', count: 4, type_name: 'Walking' },
+        { activity_type: 'trail_running', count: 3, type_name: 'Trail Running' },
+      ],
+    })
   })
 })

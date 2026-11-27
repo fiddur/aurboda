@@ -64,6 +64,7 @@ const notes = await import('../services/notes.ts')
 const settings = await import('../services/settings.ts')
 
 const ACTIVITY_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
+const TARGET_ID = '5b7e2c1a-3f4d-4e8a-9b2c-1d0e6f7a8b9c'
 
 type ResyncDetail = Parameters<typeof createActivitiesRouter>[3]
 
@@ -260,7 +261,20 @@ describe('GET /activities/:id', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data.has_track).toBe(hasTrack)
-    expect(db.activityHasTrack).toHaveBeenCalledWith('tester', ACTIVITY_ID)
+    expect(db.activityHasTrack).toHaveBeenCalledWith('tester', [ACTIVITY_ID])
+  })
+
+  test('asks for a track over the rows an override wraps', async () => {
+    vi.mocked(queries.getCommentsMap).mockResolvedValue(
+      new Map() as Awaited<ReturnType<typeof queries.getCommentsMap>>,
+    )
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ override_target_ids: [TARGET_ID] }))
+    vi.mocked(db.activityHasTrack).mockResolvedValueOnce(true)
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}`)
+
+    expect(res.body.data.has_track).toBe(true)
+    expect(db.activityHasTrack).toHaveBeenCalledWith('tester', [ACTIVITY_ID, TARGET_ID])
   })
 
   test('returns an empty comments array when the activity has no notes', async () => {
@@ -560,9 +574,10 @@ describe('GET /activities/:id/track', () => {
     }))
   })
 
-  test('returns the track without its internal start time, for a merged id too', async () => {
+  test('returns the track of a row the override wraps, without its internal start time, for a merged id too', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ override_target_ids: [TARGET_ID] }))
     vi.mocked(db.getActivityTrack).mockResolvedValue({
-      activity_id: ACTIVITY_ID,
+      activity_id: TARGET_ID,
       full_resolution: true,
       length_m: 1112,
       point_count: 2,
@@ -577,10 +592,10 @@ describe('GET /activities/:id/track', () => {
     const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}/track`)
 
     expect(res.status).toBe(200)
-    expect(db.getActivityTrack).toHaveBeenCalledWith('tester', ACTIVITY_ID)
+    expect(db.getActivityTrack).toHaveBeenCalledWith('tester', [ACTIVITY_ID, TARGET_ID])
     expect(res.body).toEqual({
       data: {
-        activity_id: ACTIVITY_ID,
+        activity_id: TARGET_ID,
         full_resolution: true,
         length_m: 1112,
         point_count: 2,
@@ -595,12 +610,22 @@ describe('GET /activities/:id/track', () => {
   })
 
   test('404s when the activity has no track', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(activityRow())
     vi.mocked(db.getActivityTrack).mockResolvedValue(null)
 
     const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/track`)
 
     expect(res.status).toBe(404)
     expect(res.body).toEqual({ error: 'No track for activity', success: false })
+  })
+
+  test('404s when there is no live activity', async () => {
+    vi.mocked(db.getActivityById).mockResolvedValue(null)
+
+    const res = await supertest(buildApp()).get(`/activities/${ACTIVITY_ID}/track`)
+
+    expect(res.status).toBe(404)
+    expect(db.getActivityTrack).not.toHaveBeenCalled()
   })
 })
 

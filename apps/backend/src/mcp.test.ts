@@ -87,6 +87,7 @@ vi.mock('./db', () => ({
   getActivityTypeDefinitions: vi.fn().mockResolvedValue([]),
   getActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
   getAllActivityTypeNames: vi.fn().mockResolvedValue(['sleep', 'exercise', 'meditation', 'nap', 'rest']),
+  getActivityById: vi.fn().mockResolvedValue(null),
   getActivityTrack: vi.fn().mockResolvedValue(null),
   getAllSyncStates: vi.fn(),
   getDeductionRule: vi.fn().mockResolvedValue(null),
@@ -1430,11 +1431,20 @@ describe('MCP Server', () => {
       expect(missing.text).toBe('Activity not found')
     })
 
-    test('get_activity_track returns the track without its start time, or an error without one', async () => {
+    test('get_activity_track returns the track of a row the override wraps, without its start time, or an error without one', async () => {
+      const OVERRIDE_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
+      const SYNCED_ID = '5b7e2c1a-3f4d-4e8a-9b2c-1d0e6f7a8b9c'
       const app = createTestApp()
       const token = auth.createToken('testuser')
+      vi.mocked(db.getActivityById).mockResolvedValue({
+        activity_type: 'running',
+        id: OVERRIDE_ID,
+        override_target_ids: [SYNCED_ID],
+        source: 'aurboda',
+        start_time: new Date('2024-01-14T07:00:00Z'),
+      })
       vi.mocked(db.getActivityTrack).mockResolvedValueOnce({
-        activity_id: 'act-1',
+        activity_id: SYNCED_ID,
         full_resolution: true,
         length_m: 1112,
         point_count: 2,
@@ -1446,9 +1456,9 @@ describe('MCP Server', () => {
         start_time: new Date('2024-01-14T07:00:00Z'),
       })
 
-      const found = await callTool(app, token, 'get_activity_track', { id: 'merged:act-1' })
+      const found = await callTool(app, token, 'get_activity_track', { id: `merged:${OVERRIDE_ID}` })
       expect(JSON.parse(found.text)).toEqual({
-        activity_id: 'act-1',
+        activity_id: SYNCED_ID,
         full_resolution: true,
         length_m: 1112,
         point_count: 2,
@@ -1458,10 +1468,14 @@ describe('MCP Server', () => {
         ],
         source: 'garmin',
       })
-      expect(db.getActivityTrack).toHaveBeenCalledWith('testuser', 'act-1')
+      expect(db.getActivityTrack).toHaveBeenCalledWith('testuser', [OVERRIDE_ID, SYNCED_ID])
 
-      const missing = await callTool(app, token, 'get_activity_track', { id: 'act-2' })
+      const missing = await callTool(app, token, 'get_activity_track', { id: OVERRIDE_ID })
       expect(missing.text).toBe('No track for activity')
+
+      vi.mocked(db.getActivityById).mockResolvedValue(null)
+      const gone = await callTool(app, token, 'get_activity_track', { id: OVERRIDE_ID })
+      expect(gone.text).toBe('No track for activity')
     })
 
     test('list_activity_field_values returns the values of the field', async () => {

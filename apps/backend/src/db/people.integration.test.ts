@@ -387,9 +387,10 @@ describe('People Integration Tests', () => {
       ])
       expect(await countPersonActivityGroups(user, anna.id, {})).toBe(1)
       expect(await listActivityGroupMembers(user, [gone])).toEqual([])
-      expect(
-        await listLinkedActivityIds(user, anna.id, new Date('2026-10-01'), new Date('2026-12-01')),
-      ).toEqual([live])
+      const unlinked = await insertActivity(user, '2026-11-03T10:00:00Z')
+      expect((await listLinkedActivityIds(user, anna.id, [live, gone, unlinked])).toSorted()).toEqual([live])
+      expect(await listLinkedActivityIds(user, anna.id, [unlinked])).toEqual([])
+      expect(await listLinkedActivityIds(user, anna.id, [])).toEqual([])
     })
   })
 

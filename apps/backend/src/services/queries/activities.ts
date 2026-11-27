@@ -1,4 +1,4 @@
-import { isExerciseActivityType } from '@aurboda/api-spec'
+import { isExerciseActivityType, UUID_RE } from '@aurboda/api-spec'
 
 import type { ActivityType } from '../../schema.ts'
 import type { ActivityResult, CommentSummary, SyncProvider } from './types.ts'
@@ -139,11 +139,14 @@ const withPerson = async <T extends { id?: string; source_ids?: string[]; overri
   user: string,
   activities: T[],
   personId: string | undefined,
-  start: Date,
-  end: Date,
 ): Promise<T[]> => {
   if (personId === undefined) return activities
-  const linked = new Set(await listLinkedActivityIds(user, personId, start, end))
+  const rowIds = [
+    ...new Set(
+      activities.flatMap(activityRowIds).filter((id): id is string => id !== undefined && UUID_RE.test(id)),
+    ),
+  ]
+  const linked = new Set(await listLinkedActivityIds(user, personId, rowIds))
   return activities.filter((a) => activityRowIds(a).some((id) => id !== undefined && linked.has(id)))
 }
 
@@ -190,8 +193,6 @@ export async function queryActivities(
       category,
     ),
     options.person_id,
-    start,
-    end,
   )
 
   // Determine which time-series we'll need based on the activity types present.
