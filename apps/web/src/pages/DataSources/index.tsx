@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchDataSourcesOverview } from '../../state/api'
 import { auth } from '../../state/auth'
-import { overlapMessage, sourcesByGroup } from './overview'
+import { overlapMessage, sourceLinkProps, sourcesByGroup } from './overview'
 import { SyncIntervalField } from './shared'
 import './style.css'
 
@@ -14,7 +14,7 @@ const kindLabel = (overview: DataSourcesOverview, id: DataKindOverview['id']): s
 function SourceCard({ source, overview }: { source: DataSourceOverviewItem; overview: DataSourcesOverview }) {
   const state = source.status === 'active' ? 'connected' : 'not-connected'
   return (
-    <a href={source.path} class={`source-card ${state}`}>
+    <a {...sourceLinkProps(source.path)} class={`source-card ${state}`}>
       <div class="source-card-header">
         <span class={`status-dot ${state}`} />
         <h3>{source.name}</h3>
@@ -33,7 +33,7 @@ function SourceCard({ source, overview }: { source: DataSourceOverviewItem; over
 
 function SourceChip({ source, available }: { source: DataSourceOverviewItem; available?: boolean }) {
   return (
-    <a href={source.path} class={`collect-source-chip${available ? ' available' : ''}`}>
+    <a {...sourceLinkProps(source.path)} class={`collect-source-chip${available ? ' available' : ''}`}>
       {source.name}
     </a>
   )
