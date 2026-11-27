@@ -1134,3 +1134,26 @@ a.journal-related-add {
   font-size: 0.85rem;
   color: var(--color-text-muted);
 }
+
+.journal-context-token {
+  white-space: nowrap;
+}
+
+.journal-context-hint {
+  font-style: italic;
+}
+
+.journal-context-configure {
+  background: none;
+  border: none;
+  padding: 0 0.2rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.journal-context-configure:hover,
+.journal-context-configure:focus-visible {
+  opacity: 1;
+}

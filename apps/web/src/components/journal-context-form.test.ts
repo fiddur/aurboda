@@ -5,13 +5,17 @@ import { describe, expect, test } from 'vitest'
 
 import {
   addItem,
+  autosaveStep,
   type ContextKind,
+  type IconSources,
   itemProblem,
   moveItem,
   nextItemId,
   removeItem,
+  suggestedLabel,
   withDaysSinceSource,
   withKind,
+  withSuggestedLabel,
 } from './journal-context-form'
 
 const moon = (id: string): JournalContextItem => ({
@@ -58,6 +62,7 @@ describe('journal context form', () => {
     days_since: (item) => ({ ...item, pattern: 'run' }) as JournalContextItem,
     metric: (item) => ({ ...item, metric: 'weight' }) as JournalContextItem,
     moon: (item) => item,
+    training_load: (item) => ({ ...item, value: 'tsb' }) as JournalContextItem,
     trend: (item) => ({ ...item, pattern: 'run' }) as JournalContextItem,
   }
 
@@ -104,5 +109,77 @@ describe('journal context form', () => {
     }
     expect(itemProblem(date)).toBe('Choose a date')
     expect(itemProblem({ ...date, date: '1980-05-17' })).toBeUndefined()
+  })
+
+  describe('autosaveStep', () => {
+    const saved = [moon('a')]
+    const incomplete = withKind({ decimals: 0, id: 'b', label: '' }, 'metric')
+
+    test('does nothing when the items are what the server has', () => {
+      expect(autosaveStep([moon('a')], JSON.stringify(saved), false)).toEqual({ action: 'none' })
+    })
+
+    test('saves changed, complete items', () => {
+      const items = [moon('a'), moon('b')]
+      expect(autosaveStep(items, JSON.stringify(saved), false)).toEqual({ action: 'save', items })
+    })
+
+    test('holds on an incomplete item and names it', () => {
+      expect(autosaveStep([moon('a'), incomplete], JSON.stringify(saved), false)).toEqual({
+        action: 'blocked',
+        problem: 'Choose a metric',
+      })
+    })
+
+    test('waits for the save in flight, so the follow-up sends the latest items', () => {
+      const items = [moon('b')]
+      expect(autosaveStep(items, JSON.stringify(saved), true)).toEqual({ action: 'wait' })
+      expect(autosaveStep(items, JSON.stringify(saved), false)).toEqual({ action: 'save', items })
+    })
+  })
+
+  describe('label suggestion', () => {
+    const icons: IconSources = {
+      itemIcons: { meditation: '🧘‍♂️', sauna: '/api/icons/abc' },
+      typeIcons: new Map([
+        ['running', '🏃'],
+        ['sauna', '🔥'],
+      ]),
+    }
+    const since = (pattern: string, label = ''): JournalContextItem => ({
+      decimals: 0,
+      id: 'a',
+      kind: 'days_since',
+      label,
+      pattern,
+      source_type: 'activity_type',
+      unit: 'days',
+    })
+
+    test("suggests the user's icon, else the type's, else the built-in emoji", () => {
+      expect(suggestedLabel(since('meditation'), icons)).toBe('🧘‍♂️')
+      expect(suggestedLabel(since('running'), icons)).toBe('🏃')
+      expect(suggestedLabel(since('sauna'), icons)).toBe('🔥')
+      expect(suggestedLabel(since('coffee'), icons)).toBe('☕')
+      expect(suggestedLabel(since('zzz_unknown'), icons)).toBeUndefined()
+      expect(
+        suggestedLabel({ ...withKind(moon('m'), 'metric'), metric: 'weight' } as JournalContextItem, icons),
+      ).toBe('⚖️')
+      expect(suggestedLabel(moon('m'), icons)).toBeUndefined()
+    })
+
+    test('fills an empty label', () => {
+      expect(withSuggestedLabel(since(''), since('running'), icons).label).toBe('🏃')
+    })
+
+    test('keeps a label the user typed', () => {
+      expect(withSuggestedLabel(since('', 'R'), since('running', 'R'), icons).label).toBe('R')
+      expect(withSuggestedLabel(since('running', '🏃'), since('running', 'Run'), icons).label).toBe('Run')
+    })
+
+    test('replaces the earlier suggestion with the new one, or clears it when there is none', () => {
+      expect(withSuggestedLabel(since('running', '🏃'), since('coffee', '🏃'), icons).label).toBe('☕')
+      expect(withSuggestedLabel(since('running', '🏃'), since('zzz_unknown', '🏃'), icons).label).toBe('')
+    })
   })
 })

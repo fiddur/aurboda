@@ -81,6 +81,86 @@ describe('journal context (integration)', () => {
     })
   })
 
+  describe('derived dashboard metrics', () => {
+    const at = (day: string, hour = 6) => new Date(`${day}T${String(hour).padStart(2, '0')}:00:00Z`)
+
+    test('rhr_7day / rhr_30day are the mean of the daily values over the days ending on the day', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'resting_heart_rate', source: 'oura', time: at('2024-03-03'), value: 40 },
+        { metric: 'resting_heart_rate', source: 'oura', time: at('2024-03-04'), value: 60 },
+        { metric: 'resting_heart_rate', source: 'garmin', time: at('2024-03-05'), value: 70 },
+        { metric: 'resting_heart_rate', source: 'oura', time: at('2024-03-10'), value: 50 },
+        { metric: 'resting_heart_rate', source: 'oura', time: at('2024-03-11'), value: 100 },
+      ])
+      const value = (raw: Record<string, unknown>, day = '2024-03-10') =>
+        defaultJournalContextDeps.metricValue({ ...scope(user), day }, metricItem(raw))
+
+      expect(await value({ metric: 'rhr_7day' })).toBe(60)
+      expect(await value({ metric: 'rhr_30day' })).toBe(55)
+      expect(await value({ metric: 'rhr_7day', source: 'garmin' })).toBe(70)
+      expect(await value({ metric: 'rhr_7day' }, '2024-02-01')).toBeUndefined()
+    })
+
+    test('hrv_7day prefers the sleep HRV samples, as the dashboard card does', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'sleep',
+        end_time: new Date('2024-03-09T06:00:00Z'),
+        source: 'oura',
+        start_time: new Date('2024-03-08T22:00:00Z'),
+      })
+      await insertTimeSeries(user, [
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2024-03-09T02:00:00Z'), value: 60 },
+        { metric: 'hrv_rmssd', source: 'oura', time: new Date('2024-03-09T03:00:00Z'), value: 70 },
+        { metric: 'hrv_rmssd', source: 'garmin', time: at('2024-03-09', 14), value: 20 },
+      ])
+      const value = (raw: Record<string, unknown>) =>
+        defaultJournalContextDeps.metricValue(scope(user), metricItem(raw))
+
+      expect(await value({ metric: 'hrv_7day' })).toBe(65)
+      expect(await value({ metric: 'hrv_7day', source: 'garmin' })).toBe(20)
+      expect(
+        await defaultJournalContextDeps.metricValue(
+          { ...scope(user), day: '2024-03-09' },
+          metricItem({ metric: 'hrv_sleep' }),
+        ),
+      ).toBe(65)
+    })
+
+    test('zone2_weekly is the zone-2 minutes over the 7 days ending on the day', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-03'), value: 3000 },
+        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-05'), value: 600 },
+        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-10'), value: 1200 },
+        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-11'), value: 6000 },
+      ])
+      expect(
+        await defaultJournalContextDeps.metricValue(scope(user), metricItem({ metric: 'zone2_weekly' })),
+      ).toBe(30)
+    })
+  })
+
+  describe('training load', () => {
+    test('is the load at the end of the day, and absent before any training', async () => {
+      const user = getTestUser()
+      await insertActivity(user, {
+        activity_type: 'running',
+        end_time: new Date('2024-03-08T19:00:00Z'),
+        source: 'manual',
+        start_time: new Date('2024-03-08T18:00:00Z'),
+      })
+      const load = (day: string) => defaultJournalContextDeps.trainingLoadValue({ ...scope(user), day })
+
+      const after = await load('2024-03-10')
+      expect(after?.ctl).toBeGreaterThan(0)
+      expect(after?.atl).toBeGreaterThan(after?.ctl ?? Infinity)
+      expect(after?.tsb).toBeCloseTo((after?.ctl ?? 0) - (after?.atl ?? 0), 6)
+      expect(await load('2024-03-01')).toBeUndefined()
+    })
+  })
+
   test('getJournalContext reads the setting and computes every kind for the day', async () => {
     const user = getTestUser()
     await upsertUserSettings(user, {

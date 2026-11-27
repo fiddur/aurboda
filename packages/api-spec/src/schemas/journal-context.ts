@@ -36,7 +36,7 @@ export const journalContextMetricItemSchema = z
   })
   .meta({
     description:
-      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average)",
+      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average). The dashboard's derived metrics are computed as of the day: rhr_7day / rhr_30day / hrv_7day / hrv_30day are the mean of the daily values over the 7 / 30 days ending on the day, zone2_weekly the zone-2 minutes over the 7 days ending on the day",
     id: 'JournalContextMetricItem',
   })
 
@@ -96,12 +96,28 @@ export const journalContextMoonItemSchema = z
     id: 'JournalContextMoonItem',
   })
 
+export const journalContextTrainingLoadItemSchema = z
+  .object({
+    ...itemBaseShape,
+    kind: z.literal('training_load'),
+    value: z.enum(['ctl', 'atl', 'tsb']).default('ctl').meta({
+      description:
+        "What is shown: 'ctl' (fitness, Chronic Training Load), 'atl' (fatigue, Acute Training Load) or 'tsb' (form, Training Stress Balance = CTL - ATL, may be negative)",
+    }),
+  })
+  .meta({
+    description:
+      'The training load (Banister model) at the end of the day; left out when there is no training load data',
+    id: 'JournalContextTrainingLoadItem',
+  })
+
 export const journalContextItemSchema = z
   .discriminatedUnion('kind', [
     journalContextMetricItemSchema,
     journalContextTrendItemSchema,
     journalContextDaysSinceItemSchema,
     journalContextMoonItemSchema,
+    journalContextTrainingLoadItemSchema,
   ])
   .meta({ description: 'One item of the journal context line', id: 'JournalContextItem' })
 
@@ -123,7 +139,9 @@ export const journalContextValueSchema = z
   .object({
     decimals: z.number().int().meta({ description: 'Decimals the value is shown with' }),
     id: z.string().meta({ description: 'The configured item id' }),
-    kind: z.enum(['metric', 'trend', 'days_since', 'moon']).meta({ description: 'The item kind' }),
+    kind: z
+      .enum(['metric', 'trend', 'days_since', 'moon', 'training_load'])
+      .meta({ description: 'The item kind' }),
     label: z.string().meta({ description: 'The label (for the moon followed by the phase emoji)' }),
     name: z.string().meta({ description: 'A full name of the item, e.g. for a tooltip' }),
     suffix: z.string().meta({ description: 'Unit suffix after the value ("%", "d" or empty)' }),

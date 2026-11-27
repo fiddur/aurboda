@@ -23,6 +23,7 @@ const deps = (overrides: Partial<JournalContextDeps> = {}): JournalContextDeps =
   getCustomMetrics: async () => [],
   getItems: async () => [],
   metricValue: async () => undefined,
+  trainingLoadValue: async () => undefined,
   trendValue: async () => undefined,
   ...overrides,
 })
@@ -121,6 +122,14 @@ describe('formatContextValue', () => {
       text: 'W96.6',
       value: 96.62,
     })
+  })
+
+  test('names a derived dashboard metric readably', () => {
+    const metric = (raw: Record<string, unknown>) =>
+      formatContextValue(item({ id: 'r', kind: 'metric', label: 'R', ...raw }), 50).name
+    expect(metric({ metric: 'rhr_7day' })).toBe('Resting HR (7-day)')
+    expect(metric({ metric: 'zone2_weekly', source: 'garmin' })).toBe('Zone 2 (Weekly) (garmin)')
+    expect(metric({ metric: 'resting_heart_rate' })).toBe('resting_heart_rate')
   })
 
   test('never prints -0', () => {
@@ -277,6 +286,57 @@ describe('contextForItems', () => {
     expect(loads).toBe(1)
     await contextForItems('u', [item({ id: 'm', kind: 'moon', label: '' })], day, 'UTC', counting)
     expect(loads).toBe(1)
+  })
+})
+
+describe('contextForItems with training load', () => {
+  const day = '2024-03-10'
+  const load = (id: string, value?: string) =>
+    item({ decimals: 1, id, kind: 'training_load', label: id.toUpperCase(), ...(value ? { value } : {}) })
+
+  test('defaults to CTL', () => {
+    expect(load('c')).toMatchObject({ value: 'ctl' })
+  })
+
+  test('fetches the load once for every item and shows each value with its name', async () => {
+    let loads = 0
+    const context = await contextForItems('u', [load('c'), load('a', 'atl'), load('t', 'tsb')], day, 'UTC', {
+      ...deps(),
+      trainingLoadValue: async (scope) => {
+        loads++
+        expect(scope).toMatchObject({ day, tz: 'UTC', user: 'u' })
+        return { atl: 61.24, ctl: 48.06, tsb: -13.18 }
+      },
+    })
+    expect(loads).toBe(1)
+    expect(context.items.map((v) => [v.kind, v.name, v.text, v.suffix])).toEqual([
+      ['training_load', 'Fitness (CTL)', 'C48.1', ''],
+      ['training_load', 'Fatigue (ATL)', 'A61.2', ''],
+      ['training_load', 'Form (TSB)', 'T-13.2', ''],
+    ])
+  })
+
+  test('leaves the items out when there is no training load', async () => {
+    const context = await contextForItems(
+      'u',
+      [load('c'), item({ id: 'm', kind: 'moon', label: '' })],
+      day,
+      'UTC',
+      deps(),
+    )
+    expect(context.items.map((v) => v.id)).toEqual(['m'])
+  })
+
+  test('does not fetch the load without a training_load item', async () => {
+    let loads = 0
+    await contextForItems('u', [item({ id: 'm', kind: 'moon', label: '' })], day, 'UTC', {
+      ...deps(),
+      trainingLoadValue: async () => {
+        loads++
+        return undefined
+      },
+    })
+    expect(loads).toBe(0)
   })
 })
 

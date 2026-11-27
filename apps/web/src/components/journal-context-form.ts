@@ -1,11 +1,14 @@
 import type { JournalContextItem } from '@aurboda/api-spec'
 
+import { isEmoji, resolveItemIcon, suggestEmoji } from '../utils/emojiLookup'
+
 export type ContextKind = JournalContextItem['kind']
 
 export const contextKindLabels: Record<ContextKind, string> = {
   days_since: 'Time since',
   metric: 'Metric',
   moon: 'Moon',
+  training_load: 'Training load',
   trend: 'Trend',
 }
 
@@ -32,6 +35,8 @@ export const withKind = (
       return { ...base, kind, source_type: 'activity_type', unit: 'days' }
     case 'moon':
       return { ...base, kind, value: 'illumination' }
+    case 'training_load':
+      return { ...base, kind, value: 'ctl' }
   }
 }
 
@@ -86,6 +91,74 @@ export const itemProblem = (item: JournalContextItem): string | undefined => {
       if (item.source_type === 'date') return item.date ? undefined : 'Choose a date'
       return item.pattern ? undefined : 'Choose an activity type or tag'
     case 'moon':
+    case 'training_load':
       return undefined
   }
+}
+
+export type AutosaveStep =
+  | { action: 'none' }
+  | { action: 'blocked'; problem: string }
+  | { action: 'wait' }
+  | { action: 'save'; items: JournalContextItem[] }
+
+/**
+ * What the autosave does with `items` now: nothing when they are what the server has (`saved`, as JSON), hold
+ * on an incomplete item, wait for the save in flight (a follow-up runs when it is done), else save them.
+ */
+export const autosaveStep = (items: JournalContextItem[], saved: string, saving: boolean): AutosaveStep => {
+  if (JSON.stringify(items) === saved) return { action: 'none' }
+  const problem = items.map(itemProblem).find((p) => p !== undefined)
+  if (problem !== undefined) return { action: 'blocked', problem }
+  if (saving) return { action: 'wait' }
+  return { action: 'save', items }
+}
+
+export interface IconSources {
+  /** The user's `item_icons` setting. */
+  itemIcons: Record<string, string>
+  /** Activity type name → the icon of its definition. */
+  typeIcons: ReadonlyMap<string, string | undefined>
+}
+
+const emojiOnly = (icon: string | undefined): string | undefined =>
+  icon !== undefined && isEmoji(icon) ? icon.trim() : undefined
+
+/** The emoji the app shows for an activity type or tag, as the timeline picks it. */
+const patternIcon = (pattern: string, { itemIcons, typeIcons }: IconSources): string | undefined =>
+  emojiOnly(resolveItemIcon(pattern, itemIcons)) ??
+  emojiOnly(resolveItemIcon(`activity:${pattern}`, itemIcons)) ??
+  emojiOnly(typeIcons.get(pattern)) ??
+  suggestEmoji(pattern)
+
+/** The label suggested for the data `item` shows, when there is an emoji for it. */
+export const suggestedLabel = (item: JournalContextItem, icons: IconSources): string | undefined => {
+  switch (item.kind) {
+    case 'metric':
+      return item.metric ? suggestEmoji(item.metric) : undefined
+    case 'trend':
+      if (!item.pattern) return undefined
+      return item.source_type === 'metric' ? suggestEmoji(item.pattern) : patternIcon(item.pattern, icons)
+    case 'days_since':
+      return item.source_type === 'date' || !item.pattern ? undefined : patternIcon(item.pattern, icons)
+    case 'moon':
+    case 'training_load':
+      return undefined
+  }
+}
+
+/**
+ * `next` with its label suggested from its data, unless the user typed one: a label that is empty, or still the
+ * suggestion for `previous`, follows the suggestion for `next` (empty when there is none).
+ */
+export const withSuggestedLabel = (
+  previous: JournalContextItem,
+  next: JournalContextItem,
+  icons: IconSources,
+): JournalContextItem => {
+  if (next.label !== previous.label) return next
+  const before = suggestedLabel(previous, icons)
+  if (next.label !== '' && next.label !== before) return next
+  const label = suggestedLabel(next, icons) ?? ''
+  return label === next.label ? next : { ...next, label }
 }

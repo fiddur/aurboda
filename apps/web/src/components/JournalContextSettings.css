@@ -6,6 +6,7 @@
 }
 
 .journal-context-item-head,
+.journal-context-item-look,
 .journal-context-actions {
   display: flex;
   flex-wrap: wrap;
@@ -38,4 +39,12 @@
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.journal-context-item-look {
+  margin-top: 0.5rem;
+}
+
+.dashboard-editor-modal.journal-context-dialog {
+  max-width: 720px;
 }

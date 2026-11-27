@@ -1,9 +1,12 @@
 import {
   type CustomMetricDefinition,
   getMetricAggregation,
+  isContextualHrvMetric,
   type JournalContext,
   type JournalContextItem,
   type JournalContextValue,
+  metricLabels,
+  type MetricType,
 } from '@aurboda/api-spec'
 
 import {
@@ -14,16 +17,24 @@ import {
 } from '../db/index.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
+import { type DerivedMetric, derivedMetric } from './derived-metrics.ts'
 import { moonPhase } from './moon.ts'
+import { queryMetrics } from './queries/index.ts'
+import { computeTrainingLoad, createTrainingLoadDeps, type TrainingLoadDeps } from './training-load/index.ts'
 import { getTrend } from './trends.ts'
 
 type ItemOf<K extends JournalContextItem['kind']> = Extract<JournalContextItem, { kind: K }>
 type ElapsedUnit = ItemOf<'days_since'>['unit']
+type TrainingLoadKey = ItemOf<'training_load'>['value']
+
+export type TrainingLoadValues = Record<TrainingLoadKey, number>
 
 /** What every item of one context computation shares. */
 export interface ContextScope {
   customMetrics: CustomMetricDefinition[]
   day: string
+  /** The day's training load, fetched once for every training_load item of the context. */
+  trainingLoad?: Promise<TrainingLoadValues | undefined>
   tz: string
   user: string
 }
@@ -33,6 +44,8 @@ export interface JournalContextDeps {
   getItems: (user: string) => Promise<JournalContextItem[]>
   metricValue: (scope: ContextScope, item: ItemOf<'metric'>) => Promise<number | undefined>
   trendValue: (scope: ContextScope, item: ItemOf<'trend'>) => Promise<number | undefined>
+  /** CTL, ATL and TSB at the end of the day; undefined when there is no training load data. */
+  trainingLoadValue: (scope: ContextScope) => Promise<TrainingLoadValues | undefined>
   /** Whole days from the latest occurrence of `pattern` on or before `day` to `day`. */
   daysSinceActivity: (user: string, pattern: string, day: string, tz: string) => Promise<number | undefined>
 }
@@ -67,16 +80,27 @@ const moonSuffixes: Record<ItemOf<'moon'>['value'], string> = {
   illumination: '%',
 }
 
+const trainingLoadNames: Record<TrainingLoadKey, string> = {
+  atl: 'Fatigue (ATL)',
+  ctl: 'Fitness (CTL)',
+  tsb: 'Form (TSB)',
+}
+
+const metricName = (metric: string): string =>
+  derivedMetric(metric) ? (metricLabels[metric] ?? metric) : metric
+
 export const itemName = (item: JournalContextItem): string => {
   switch (item.kind) {
     case 'metric':
-      return item.source ? `${item.metric} (${item.source})` : item.metric
+      return item.source ? `${metricName(item.metric)} (${item.source})` : metricName(item.metric)
     case 'trend':
       return `Trend: ${item.pattern} (${item.half_life_days ?? 15} d half-life, ${item.display_period ?? 'monthly'})`
     case 'days_since':
       return `${unitWords[item.unit]} since ${item.source_type === 'date' ? item.date : item.pattern}`
     case 'moon':
       return moonNames[item.value]
+    case 'training_load':
+      return trainingLoadNames[item.value]
   }
 }
 
@@ -154,6 +178,10 @@ export const computeContextValue = async (
       const value = await daysSinceValue(scope, item, deps)
       return value === undefined ? undefined : formatContextValue(item, value)
     }
+    case 'training_load': {
+      const load = await (scope.trainingLoad ?? deps.trainingLoadValue(scope))
+      return load === undefined ? undefined : formatContextValue(item, load[item.value])
+    }
   }
 }
 
@@ -167,7 +195,10 @@ export const contextForItems = async (
 ): Promise<JournalContext> => {
   const needsMetrics = items.some((item) => item.kind === 'metric' || item.kind === 'trend')
   const customMetrics = needsMetrics ? await deps.getCustomMetrics(user) : []
-  const scope: ContextScope = { customMetrics, day, tz, user }
+  const base: ContextScope = { customMetrics, day, tz, user }
+  const scope: ContextScope = items.some((item) => item.kind === 'training_load')
+    ? { ...base, trainingLoad: deps.trainingLoadValue(base) }
+    : base
   const values = await Promise.all(
     items.map((item) =>
       computeContextValue(scope, item, deps).catch((error: unknown) => {
@@ -179,12 +210,42 @@ export const contextForItems = async (
   return { date: day, items: values.filter((value) => value !== undefined) }
 }
 
+const mean = (values: readonly number[]): number | undefined =>
+  values.length === 0 ? undefined : values.reduce((sum, value) => sum + value, 0) / values.length
+
+const sampleMean = async (user: string, metric: string, start: Date, end: Date) =>
+  mean((await queryMetrics(user, metric, start, end)).data.map((point) => point.value))
+
+/** `definition` over the days ending on `day` (inclusive), in tz; undefined when the window has no data. */
+const derivedValue = async (
+  { tz, user }: ContextScope,
+  definition: DerivedMetric,
+  day: string,
+  source: string | undefined,
+): Promise<number | undefined> => {
+  const start = dayStartInTz(shiftDayKey(day, 1 - definition.days), tz)
+  const end = dayEndInTz(day, tz)
+  if (definition.prefer !== undefined && source === undefined) {
+    const preferred = await sampleMean(user, definition.prefer, start, end)
+    if (preferred !== undefined) return preferred
+  }
+  const rows = await getDailyAggregates(user, [definition.metric], start, end, tz, source)
+  if (rows.length === 0) return undefined
+  if (definition.reduce === 'mean') return mean(rows.map((row) => row.avg))
+  return rows.reduce((sum, row) => sum + row.sum, 0) * definition.scale
+}
+
 const metricDayValue = async (
   { customMetrics, tz, user }: ContextScope,
   metric: string,
   day: string,
   source: string | undefined,
 ): Promise<number | undefined> => {
+  if (isContextualHrvMetric(metric as MetricType)) {
+    return source === undefined
+      ? sampleMean(user, metric, dayStartInTz(day, tz), dayEndInTz(day, tz))
+      : undefined
+  }
   const rows = await getDailyAggregates(
     user,
     [metric],
@@ -198,12 +259,30 @@ const metricDayValue = async (
   return getMetricAggregation(metric, customMetrics) === 'sum' ? row.sum : row.avg
 }
 
+/** The last hourly point of `day`; computeTrainingLoad warms its model up from before the range it is asked for. */
+export const trainingLoadAt = async (
+  deps: TrainingLoadDeps,
+  user: string,
+  day: string,
+  tz: string,
+): Promise<TrainingLoadValues | undefined> => {
+  const result = await computeTrainingLoad(deps, user, dayStartInTz(day, tz), dayEndInTz(day, tz), '1h', tz)
+  const last = result.points.at(-1)
+  if (last === undefined || (last.ctl === 0 && last.atl === 0)) return undefined
+  return { atl: last.atl, ctl: last.ctl, tsb: last.tsb }
+}
+
+let sharedTrainingLoadDeps: TrainingLoadDeps | undefined
+const trainingLoadDeps = (): TrainingLoadDeps => (sharedTrainingLoadDeps ??= createTrainingLoadDeps())
+
 export const defaultJournalContextDeps: JournalContextDeps = {
   daysSinceActivity: (user, pattern, day, tz) => getDaysSinceActivity(user, pattern, day, tz),
   getCustomMetrics: (user) => getCustomMetrics(user),
   getItems: async (user) => (await getUserSettings(user))?.journal_context ?? [],
   metricValue: async (scope, item) => {
     const { day, tz, user } = scope
+    const definition = derivedMetric(item.metric)
+    if (definition) return derivedValue(scope, definition, day, item.source)
     const value = await metricDayValue(scope, item.metric, day, item.source)
     if (value !== undefined || item.missing !== 'carry_forward') return value
     const latest = await getLatestMetricSampleTimeBefore(
@@ -231,6 +310,7 @@ export const defaultJournalContextDeps: JournalContextDeps = {
     })
     return result.history.length === 0 ? undefined : result.current_value
   },
+  trainingLoadValue: ({ day, tz, user }) => trainingLoadAt(trainingLoadDeps(), user, day, tz),
 }
 
 /** The journal context line for `date` (today in `tz` when omitted); undefined when the user configured no items. */

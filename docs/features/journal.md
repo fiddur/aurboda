@@ -467,21 +467,39 @@ single-use URL good for 15 minutes; the client sends the raw bytes there
 ## Context line
 
 Under an entry's title the editor shows a short line of figures for the entry's
-day, for example `ŌR85, ŌS85, HA5.7, E0, SR68, W96.6, 🌘15%`. You choose the items
-in **Settings → Journal → Context line**: add, remove and reorder them, and give
-each a short label (up to 12 characters, an emoji works) and the number of
-decimals (0–3). Hovering an item shows its full name. A preview for today shows
-under the list. The line is computed when the entry is read, never stored on it,
-and an item without a value for the day is left out.
+day, for example `👶50 😴82 🌔89% 💦104 💪91`. The figures are a space apart, and
+the line wraps between figures, never inside one. You configure it from the
+journal itself: the ⚙️ button next to the line (with the hint "Add a context
+line" while none is configured) opens the editor, on new and existing entries
+alike. There you add, remove and reorder items; for each you pick its kind and
+data first, then a short label (up to 12 characters, an emoji works) and the
+number of decimals (0–3). Changes save by themselves a moment after you make
+them, once every item is complete; an incomplete item is named and holds the
+save until it is filled in. After a save the entry's line refreshes, and a
+preview for the entry's day shows under the list. Hovering an item shows its
+full name. The line is computed when the entry is read, never stored on it, and
+an item without a value for the day is left out.
+
+When you pick an item's data while its label is empty, the label is filled with
+an emoji for it if there is one: for an activity type or tag, the icon you gave
+it, else its type's icon, else a built-in emoji for the word; for a metric, the
+built-in emoji. A label you typed is never replaced; a suggested one follows
+when you pick other data.
 
 The day is a `day` entry's date, or the calendar day a `time` entry starts on in
-your timezone. There are four kinds of item:
+your timezone. There are five kinds of item:
 
 - **Metric**: the day's value of a metric, built-in or custom -- the day's total
   for summed metrics such as steps, else the day's average. Optionally from one
   data source only. With **Show the latest earlier value** (`missing:
 "carry_forward"`) a day without a value shows the latest day before it that has
-  one, e.g. for a weight you log weekly.
+  one, e.g. for a weight you log weekly. The dashboard's derived metrics are
+  computed as of the day: `rhr_7day` / `rhr_30day` and `hrv_7day` / `hrv_30day`
+  are the mean of the daily resting heart rate / HRV over the 7 / 30 days ending
+  on the day (HRV from the sleep HRV samples when there are any and no source is
+  chosen, as on the dashboard card), and `zone2_weekly` is the minutes in heart
+  rate zone 2 over the 7 days ending on the day. **Show the latest earlier
+  value** does not apply to them.
 - **Trend**: the [trend](./trends.md) (EMA) of an activity type, a tag or a metric
   as of the end of the day, with a half-life and display period like a dashboard
   trend chart.
@@ -494,6 +512,9 @@ your timezone. There are four kinds of item:
   date after the day is left out.
 - **Moon**: the moon's illumination (%), age as a % of the cycle, or age in days;
   the label gets the phase's emoji (🌑🌒🌓🌔🌕🌖🌗🌘).
+- **Training load** (`training_load`): the [training load](./training-load.md)
+  at the end of the day -- fitness (`ctl`, the default), fatigue (`atl`) or form
+  (`tsb`, which can be negative). Left out when there is no training load data.
 
 The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
 ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,
