@@ -55,6 +55,7 @@ import { humanizeName } from './correlations/utils.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { type DashboardViewer, isResolvedFor } from './dashboard-config.ts'
 import { dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
+import { derivedMetric } from './derived-metrics.ts'
 import { getGoalsProgress } from './goals.ts'
 import { getLatestSleep } from './latest-sleep.ts'
 import {
@@ -85,15 +86,8 @@ import { getTrend } from './trends.ts'
 /** Widget metric names that map to a different stored metric name. */
 const metricToApiMetric: Record<string, string> = { zone2_weekly: 'hr_zone_2_sec' }
 
-const baselineMetrics = new Set(['hrv_7day', 'hrv_30day', 'rhr_7day', 'rhr_30day'])
-
-/** In a window, a baseline card is the window average of the metric it is a baseline of. */
-const baselineWindowMetric: Record<string, string> = {
-  hrv_30day: 'hrv_rmssd',
-  hrv_7day: 'hrv_rmssd',
-  rhr_30day: 'resting_heart_rate',
-  rhr_7day: 'resting_heart_rate',
-}
+/** A baseline card; in a window, it is the window average of the metric it is a baseline of. */
+const isBaselineMetric = (metric: string): boolean => derivedMetric(metric)?.reduce === 'mean'
 
 /** A calendar window; `end` is exclusive. */
 export interface ResolveWindow {
@@ -206,7 +200,7 @@ const resolveMetricCard = async (
 ): Promise<WidgetData> => {
   const { metric } = config
   if (options.window) {
-    const apiMetric = baselineWindowMetric[metric] ?? metricToApiMetric[metric] ?? metric
+    const apiMetric = derivedMetric(metric)?.metric ?? metric
     const [current, previous] = await Promise.all([
       summaryFigures(user, apiMetric, inclusiveRange(options.window)),
       previousFigures(user, apiMetric, options.previous),
@@ -223,7 +217,7 @@ const resolveMetricCard = async (
       type: 'metric_card',
     }
   }
-  if (baselineMetrics.has(metric)) {
+  if (isBaselineMetric(metric)) {
     const baseline = await getBaseline(user)
     const pick =
       metric === 'hrv_7day'
