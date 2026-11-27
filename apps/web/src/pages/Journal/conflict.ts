@@ -16,15 +16,17 @@ export const keepBothText = (theirs: string, mine: string): string => {
 
 /**
  * The form to save after a 409. Every choice is saved on top of their version (its `updated_at`),
- * so it is the newest; "theirs" keeps their text as it is.
+ * so it is the newest; text, title and tags follow the choice, and the links of both versions are
+ * kept whichever it is.
  */
 export const resolveConflict = (choice: ConflictChoice, mine: EntryForm, theirs: EntryForm): EntryForm => {
-  if (choice === 'theirs') return theirs
-  if (choice === 'mine') return mine
+  const related = unionLinks(theirs.related, mine.related)
+  if (choice === 'theirs') return { ...theirs, related }
+  if (choice === 'mine') return { ...mine, related }
   return {
     ...theirs,
     content: keepBothText(theirs.content, mine.content),
-    related: unionLinks(theirs.related, mine.related),
+    related,
     tags: [...new Set([...theirs.tags, ...mine.tags])],
     title: theirs.title.trim() || mine.title,
   }

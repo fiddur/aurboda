@@ -69,4 +69,28 @@ describe('stepsFromRecords', () => {
     const records = [record('10:30:00', '10:30:00', 25), record('09:30:00', '09:30:00', 40)]
     expect(stepsFromRecords(records, start, end)).toBe(25)
   })
+
+  test('two partially overlapping records count the overlap once', () => {
+    const records = [record('10:00:00', '10:10:00', 100), record('10:05:00', '10:15:00', 100)]
+    expect(stepsFromRecords(records, start, end)).toBe(150)
+  })
+
+  test('an hourly record beside the minute records inside it adds only its uncovered part', () => {
+    const records = [
+      record('10:00:00', '11:00:00', 600),
+      record('10:10:00', '10:11:00', 120),
+      record('10:11:00', '10:12:00', 130),
+    ]
+    expect(stepsFromRecords(records, start, end)).toBe(120 + 130 + 580)
+  })
+
+  test('a zero-length record inside another record adds nothing', () => {
+    const records = [record('10:10:00', '10:20:00', 200), record('10:15:00', '10:15:00', 25)]
+    expect(stepsFromRecords(records, start, end)).toBe(200)
+  })
+
+  test('a coarser record outside the activity still covers what it shares with a finer one', () => {
+    const records = [record('09:00:00', '11:00:00', 1200), record('10:30:00', '10:31:00', 50)]
+    expect(stepsFromRecords(records, start, end)).toBe(50 + 590)
+  })
 })
