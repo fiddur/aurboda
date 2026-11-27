@@ -17,7 +17,7 @@ describe('fetchActivityTrack', () => {
     vi.mocked(axios.get).mockReset()
   })
 
-  it('times each point from the activity start', async () => {
+  it("times each point from the track's own start, a moved override's target's", async () => {
     vi.mocked(axios.get).mockResolvedValue({
       data: {
         data: {
@@ -30,20 +30,21 @@ describe('fetchActivityTrack', () => {
             { alt: 0, lat: 59.01, lon: 18, t: 1.5 },
           ],
           source: 'garmin',
+          start_time: '2026-06-08T09:55:00.000Z',
         },
         success: true,
       },
     })
 
-    const points = await fetchActivityTrack('merged:a1', start)
+    const points = await fetchActivityTrack('merged:a1')
 
     expect(vi.mocked(axios.get).mock.calls[0]?.[0]).toBe('http://api.test/activities/merged%3Aa1/track')
     expect(points).toEqual({
       full_resolution: true,
       offsets_s: [0, 1.5],
       points: [
-        { lat: 59, lon: 18, time: new Date('2026-06-08T10:00:00.000Z') },
-        { lat: 59.01, lon: 18, time: new Date('2026-06-08T10:00:01.500Z') },
+        { lat: 59, lon: 18, time: new Date('2026-06-08T09:55:00.000Z') },
+        { lat: 59.01, lon: 18, time: new Date('2026-06-08T09:55:01.500Z') },
       ],
     })
   })
@@ -58,7 +59,7 @@ describe('fetchActivityTrack', () => {
       } as never),
     )
 
-    expect(await fetchActivityTrack('a1', start)).toBeNull()
+    expect(await fetchActivityTrack('a1')).toBeNull()
   })
 })
 

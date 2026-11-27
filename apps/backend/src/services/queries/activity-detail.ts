@@ -26,7 +26,7 @@ import {
   pickOverrideWinner,
 } from '../../db/index.ts'
 import { computeHrZoneSecs, getEffectiveHrZones } from '../settings.ts'
-import { trackToGps } from '../tracks.ts'
+import { trackOwnerIds, trackToGps } from '../tracks.ts'
 import { stepsFromRecords } from './activity-steps.ts'
 import { computeActivitySummaryMetrics, SUMMARY_METRICS } from './activity-summary-metrics.ts'
 
@@ -117,7 +117,7 @@ export interface ActivityFullDetailOptions {
  */
 export const getActivityFullDetail = async (
   user: string,
-  activity: { id?: string; start_time: Date; end_time?: Date },
+  activity: { id?: string; start_time: Date; end_time?: Date; override_target_ids?: string[] },
   options: ActivityFullDetailOptions,
 ): Promise<Pick<ActivityFullDetail, 'gps' | 'metric_series'>> => {
   const end = activity.end_time
@@ -127,7 +127,7 @@ export const getActivityFullDetail = async (
   const result: Pick<ActivityFullDetail, 'gps' | 'metric_series'> = {}
 
   if (includeGps) {
-    const track = activity.id ? await getActivityTrack(user, activity.id) : null
+    const track = activity.id ? await getActivityTrack(user, trackOwnerIds(activity.id, activity)) : null
     if (track?.full_resolution) {
       result.gps = trackToGps(track)
     } else {

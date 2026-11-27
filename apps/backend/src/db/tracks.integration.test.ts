@@ -8,6 +8,7 @@ import { query } from './connection.ts'
 import { insertRawRecord } from './raw-records.ts'
 import {
   activityHasTrack,
+  findTrackOwnerId,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
@@ -169,6 +170,40 @@ describe('Activity tracks integration', () => {
     test('returns null when there is no track', async () => {
       const id = await addActivity('garmin', 'garmin-1', {})
       expect(await getActivityTrack(getTestUser(), id)).toBeNull()
+    })
+  })
+
+  describe('over several ids', () => {
+    test('the first id with a track wins over a better track later, skipping non-uuids', async () => {
+      const user = getTestUser()
+      const bare = await addActivity('aurboda', 'override-1', {})
+      const first = await addActivity('garmin', 'garmin-1', {})
+      const second = await addActivity('strava', 'strava-1', {}, new Date('2026-07-01T08:01:00Z'))
+      await upsertActivityTrack(user, {
+        activity_id: first,
+        ewkt: 'SRID=4326;LINESTRING ZM(18 59 0 0, 18 59.01 0 30, 18 59.02 0 60)',
+        full_resolution: false,
+        source: 'strava',
+      })
+      await upsertActivityTrack(user, {
+        activity_id: second,
+        ewkt: twoPoint,
+        full_resolution: true,
+        source: 'garmin',
+      })
+
+      expect(await getActivityTrack(user, ['null', bare, first, second])).toMatchObject({
+        activity_id: first,
+        source: 'strava',
+      })
+      expect((await getActivityTrack(user, [bare, second, first]))?.activity_id).toBe(second)
+      expect(await activityHasTrack(user, [bare, first])).toBe(true)
+      expect(await activityHasTrack(user, [bare, 'null'])).toBe(false)
+      expect(await getActivityTrack(user, [])).toBeNull()
+      expect(await activityHasTrack(user, [])).toBe(false)
+      expect(await findTrackOwnerId(user, ['null', bare, second, first])).toBe(second)
+      expect(await findTrackOwnerId(user, [bare])).toBeNull()
+      expect(await findTrackOwnerId(user, [])).toBeNull()
     })
   })
 

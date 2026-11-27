@@ -1983,7 +1983,7 @@ const openApiDocument = createDocument({
     '/activities/{id}/track': {
       get: {
         description:
-          "Get an activity's full-resolution GPS track: points with altitude and seconds since the activity start.",
+          "Get an activity's full-resolution GPS track: points with altitude and seconds since the track's start_time, the start of the row that owns it (for an override, possibly a row it overrides).",
         requestParams: {
           path: z.object({
             id: z.string().meta({ description: 'Activity ID (a merged:<id> prefix is accepted)' }),
@@ -3349,7 +3349,7 @@ const openApiDocument = createDocument({
       },
       post: {
         description:
-          'Create a segment from part of an activity track (seconds since its start) or of a route (km), then time every tracked activity of its type on it. Refused when shorter than 100 m, outside the track or route, for an activity without a track or a deleted route.',
+          "Create a segment from part of an activity track (seconds since the track's start_time) or of a route (km), then time every tracked activity of its type on it. Refused when shorter than 100 m, outside the track or route, for an activity without a track or a deleted route.",
         requestBody: {
           content: { 'application/json': { schema: createSegmentBodySchema } },
         },

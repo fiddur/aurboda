@@ -124,7 +124,8 @@ export const createSegmentBodySchema = z
       .optional()
       .meta({ description: 'Where the segment ends on the route, km' }),
     end_offset_s: z.number().nonnegative().optional().meta({
-      description: "Where the segment ends on the track: seconds since the activity's start (the track's t)",
+      description:
+        "Where the segment ends on the track: seconds since the track's start_time (the track's t)",
     }),
     name: z.string().trim().min(1).max(255).optional().meta({
       description: 'Segment name; defaults to a nearby named place and the length',
@@ -139,7 +140,7 @@ export const createSegmentBodySchema = z
       .meta({ description: 'Where the segment starts on the route, km' }),
     start_offset_s: z.number().nonnegative().optional().meta({
       description:
-        "Where the segment starts on the track: seconds since the activity's start (the track's t)",
+        "Where the segment starts on the track: seconds since the track's start_time (the track's t)",
     }),
   })
   .superRefine((body, ctx) => {

@@ -7,10 +7,10 @@ export const activityTrackPointSchema = z
     alt: z.number().meta({ description: 'Altitude in metres (0 when the source has none)' }),
     lat: latSchema,
     lon: lonSchema,
-    t: z.number().meta({ description: 'Seconds since the activity start' }),
+    t: z.number().meta({ description: "Seconds since the track's start_time" }),
   })
   .meta({
-    description: 'One fix of an activity GPS track; t = seconds since the activity start',
+    description: "One fix of an activity GPS track; t = seconds since the track's start_time",
     id: 'ActivityTrackPoint',
   })
 
@@ -26,6 +26,10 @@ export const activityTrackSchema = z
     point_count: z.number().int().meta({ description: 'Number of points in the track' }),
     points: z.array(activityTrackPointSchema),
     source: z.string().meta({ description: 'Source that recorded the track (garmin, strava)' }),
+    start_time: z.string().meta({
+      description:
+        'The instant `t` counts from: the start of the activity row that owns the track, `activity_id`',
+    }),
   })
   .meta({
     description:

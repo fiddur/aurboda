@@ -12,7 +12,6 @@ vi.mock('../../state/api', () => ({
 
 const window = {
   activityId: 'a1',
-  activityStart: new Date('2026-06-08T10:00:00Z'),
   end: new Date('2026-06-08T11:00:00Z'),
   start: new Date('2026-06-08T10:00:00Z'),
 }
@@ -38,12 +37,12 @@ describe('loadActivityPoints', () => {
   })
 
   it('asks for the stored track when has_track is true', async () => {
-    const points = [{ lat: 59, lon: 18, time: window.activityStart }]
+    const points = [{ lat: 59, lon: 18, time: window.start }]
     vi.mocked(fetchActivityTrack).mockResolvedValue({ full_resolution: true, offsets_s: [0], points })
 
     const result = await loadActivityPoints({ ...window, hasTrack: true })
 
-    expect(fetchActivityTrack).toHaveBeenCalledWith('a1', window.activityStart)
+    expect(fetchActivityTrack).toHaveBeenCalledWith('a1')
     expect(result).toEqual({ points, track_offsets_s: [0] })
   })
 })

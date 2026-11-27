@@ -971,6 +971,7 @@ export {
 
 export {
   activityHasTrack,
+  findTrackOwnerId,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,

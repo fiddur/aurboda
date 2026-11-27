@@ -2,6 +2,8 @@ import type { ActivityTrack } from '@aurboda/api-spec'
 
 import type { ActivityTrackRecord } from '../db/tracks.ts'
 
+import { activityHasTrack, findTrackOwnerId, getActivityById, getActivityTrack } from '../db/index.ts'
+
 export interface TrackPoint {
   lat: number
   lon: number
@@ -106,6 +108,34 @@ export const polylineToTrackPoints = (
   }))
 }
 
+/** The rows whose track an activity shows: its own, then those of the rows it overrides. */
+export const trackOwnerIds = (id: string, activity: { override_target_ids?: string[] }): string[] => [
+  id,
+  ...(activity.override_target_ids ?? []),
+]
+
+/** Whether `findActivityTrack` answers a track: never for a deleted activity, which it does not load. */
+export const activityShowsTrack = async (
+  user: string,
+  id: string,
+  activity: { deleted_at?: Date | null; override_target_ids?: string[] },
+): Promise<boolean> => (activity.deleted_at ? false : activityHasTrack(user, trackOwnerIds(id, activity)))
+
+/** The track an activity shows, its own or that of a row it overrides; null for no live activity. */
+export const findActivityTrack = async (user: string, id: string): Promise<ActivityTrackRecord | null> => {
+  const activity = await getActivityById(user, id)
+  return activity ? getActivityTrack(user, trackOwnerIds(id, activity)) : null
+}
+
+/**
+ * The row whose track the live activity `id` shows (the first of its track owner ids with one), so
+ * cuts and efforts name the row whose track they were measured on; null without one.
+ */
+export const findTrackOwner = async (user: string, id: string): Promise<string | null> => {
+  const activity = await getActivityById(user, id)
+  return activity ? findTrackOwnerId(user, trackOwnerIds(id, activity)) : null
+}
+
 export const serializeActivityTrack = (record: ActivityTrackRecord): ActivityTrack => ({
   activity_id: record.activity_id,
   full_resolution: record.full_resolution,
@@ -113,6 +143,7 @@ export const serializeActivityTrack = (record: ActivityTrackRecord): ActivityTra
   point_count: record.point_count,
   points: record.points,
   source: record.source,
+  start_time: record.start_time.toISOString(),
 })
 
 /** Track points as timestamped fixes, the shape the `gps` field of the full activity detail uses. */

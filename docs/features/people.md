@@ -171,7 +171,9 @@ resolved when read (a renamed person shows their new name), and leave it out whe
 merged view is with everyone its sources were with. Merging activities gives the merged one the
 union of the links; a soft-deleted activity keeps its links and gets them back when restored.
 `GET /people/{id}` lists the 20 latest live activities the person was with, with `activity_count`
-and `activity_types` (`{ activity_type, type_name, count }`, most frequent first).
+and `activity_types` (`{ activity_type, type_name, count }`, most frequent first; a type's `count`
+includes its subtypes, matching what `types=<type>` lists, so the counts can sum to more than
+`activity_count`).
 `GET /people/{id}/activities` (MCP `list_person_activities`) lists all of them, newest first, a page
 at a time: `limit` (default 50, at most 200), `before` (the previous page's `next_cursor`; a
 malformed one is a `400`), `types` (comma separated, with subtypes), `start` and `end`. The answer

@@ -674,18 +674,18 @@ export const listActivityGroupMembers = async (user: string, groupIds: string[])
   return result.rows.map(mapActivityRow)
 }
 
-/** The live activity rows linked to the person that start in [start, end]. */
+/** Those of `activityIds` that are live activity rows linked to the person. */
 export const listLinkedActivityIds = async (
   user: string,
   personId: string,
-  start: Date,
-  end: Date,
+  activityIds: string[],
 ): Promise<string[]> => {
+  if (activityIds.length === 0) return []
   const result = await query<{ id: string }>(
     user,
     `SELECT a.id FROM activity_people ap JOIN activities a ON a.id = ap.activity_id
-      WHERE ap.person_id = $1 AND a.deleted_at IS NULL AND a.start_time >= $2 AND a.start_time <= $3`,
-    [personId, start, end],
+      WHERE ap.person_id = $1 AND a.deleted_at IS NULL AND ap.activity_id = ANY($2::uuid[])`,
+    [personId, activityIds],
   )
   return result.rows.map((row) => row.id)
 }

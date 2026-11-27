@@ -40,8 +40,6 @@ import { singleUpload } from '../api/upload.ts'
 import {
   blendGroupData,
   getActivityById,
-  activityHasTrack,
-  getActivityTrack,
   getAllActivityTypeNames,
   getDeductionRule,
   getNearbyActivities,
@@ -81,7 +79,12 @@ import {
 } from '../services/queries/index.ts'
 import { activitySegmentEfforts } from '../services/segments.ts'
 import { getUserTimezone } from '../services/settings.ts'
-import { serializeActivityTrack } from '../services/tracks.ts'
+import {
+  activityShowsTrack,
+  findActivityTrack,
+  serializeActivityTrack,
+  trackOwnerIds,
+} from '../services/tracks.ts'
 import { type AnyMiddleware, type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody, validateQuery } from '../validation.ts'
 
@@ -562,9 +565,10 @@ export const createActivitiesRouter = (
       return res.status(404).json({ error: 'Activity not found', success: false })
     }
 
+    const ownerIds = trackOwnerIds(realId, activity)
     const [activityMetrics, hasTrack] = await Promise.all([
       computeActivityDetailMetrics(user, activity),
-      activityHasTrack(user, realId),
+      activityShowsTrack(user, realId, activity),
     ])
 
     if (isMerged && !activity.deleted_at) {
@@ -580,12 +584,11 @@ export const createActivitiesRouter = (
     // notes textarea reflect the real note (#794).
     const commentsMap = await getCommentsMap(user, 'activity', [realId])
     const route = activity.deleted_at ? undefined : await routeSummary(user, [realId])
-    const trackOwnerIds = [realId, ...(activity.override_target_ids ?? [])]
-    const features = activity.deleted_at ? undefined : await firstActivityFeatures(user, trackOwnerIds)
-    const segmentEfforts = activity.deleted_at ? undefined : await activitySegmentEfforts(user, trackOwnerIds)
+    const features = activity.deleted_at ? undefined : await firstActivityFeatures(user, ownerIds)
+    const segmentEfforts = activity.deleted_at ? undefined : await activitySegmentEfforts(user, ownerIds)
     const [people, journalEntries] = await Promise.all([
-      activityPeopleOf(user, trackOwnerIds),
-      listJournalEntryRefs(user, 'activity', trackOwnerIds),
+      activityPeopleOf(user, ownerIds),
+      listJournalEntryRefs(user, 'activity', ownerIds),
     ])
 
     res.json({
@@ -628,23 +631,23 @@ export const createActivitiesRouter = (
       }
 
       const window = await resolveActivityWindow(user, activity, isMerged)
-      const trackOwnerIds = [id, ...(activity.override_target_ids ?? [])]
+      const ownerIds = trackOwnerIds(id, activity)
       const [activityMetrics, fullDetail, features, segmentEfforts, people, journalEntries, hasTrack] =
         await Promise.all([
           computeActivityDetailMetrics(user, window),
           getActivityFullDetail(
             user,
-            { ...window, id },
+            { ...window, id, override_target_ids: activity.override_target_ids },
             {
               includeGps: include_gps,
               metrics: parseMetricsParam(metrics),
             },
           ),
-          firstActivityFeatures(user, trackOwnerIds),
-          activitySegmentEfforts(user, trackOwnerIds),
-          activityPeopleOf(user, trackOwnerIds),
-          listJournalEntryRefs(user, 'activity', trackOwnerIds),
-          activityHasTrack(user, id),
+          firstActivityFeatures(user, ownerIds),
+          activitySegmentEfforts(user, ownerIds),
+          activityPeopleOf(user, ownerIds),
+          listJournalEntryRefs(user, 'activity', ownerIds),
+          activityShowsTrack(user, id, activity),
         ])
 
       res.json({
@@ -676,7 +679,7 @@ export const createActivitiesRouter = (
     authMiddleware,
     async (req, res) => {
       const { id } = parseActivityId(req.params.id)
-      const track = await getActivityTrack(req.user!, id)
+      const track = await findActivityTrack(req.user!, id)
       if (!track) {
         return res.status(404).json({ error: 'No track for activity', success: false })
       }

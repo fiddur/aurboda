@@ -540,7 +540,6 @@ const ActivityDetailContent = ({
           <ActivityMapWithSegmentCreator
             activityId={activity.id}
             hasTrack={activity.has_track === true}
-            activityStart={activity.start_time}
             start={displayStart}
             end={displayEnd}
             hoverTime={hoverTime}

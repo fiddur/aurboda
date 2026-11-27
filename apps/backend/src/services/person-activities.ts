@@ -152,19 +152,31 @@ export const listPersonActivityPage = async (
   }
 }
 
-/** How many activities the person was with, in all and by type, most frequent first. */
+/**
+ * How many activities the person was with, in all and by type, most frequent first. A type's count
+ * includes its subtypes, as the `types` filter does; `activity_count` counts each activity once.
+ */
 export const personActivitySummary = async (
   user: string,
   personId: string,
   deps: PersonActivitiesDeps = personActivitiesDeps,
 ): Promise<PersonActivitySummary> => {
   const [counts, names] = await Promise.all([deps.countByType(user, personId), deps.typeNames(user)])
+  const exact = new Map(counts.map((c) => [c.activity_type, c.count]))
+  const widened = await Promise.all(
+    counts.map(async (c) => {
+      const types = await deps.expandTypes(user, [c.activity_type])
+      return {
+        activity_type: c.activity_type,
+        count: types.reduce((sum, t) => sum + (exact.get(t) ?? 0), 0),
+        type_name: names.get(c.activity_type) ?? humanizeName(c.activity_type),
+      }
+    }),
+  )
   return {
     activity_count: counts.reduce((sum, c) => sum + c.count, 0),
-    activity_types: counts.map((c) => ({
-      activity_type: c.activity_type,
-      count: c.count,
-      type_name: names.get(c.activity_type) ?? humanizeName(c.activity_type),
-    })),
+    activity_types: widened.toSorted(
+      (a, b) => b.count - a.count || a.activity_type.localeCompare(b.activity_type),
+    ),
   }
 }
