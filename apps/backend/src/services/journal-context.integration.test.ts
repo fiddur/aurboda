@@ -7,6 +7,8 @@ import { defaultJournalContextDeps, getJournalContext } from './journal-context.
 
 const CONTAINER_TIMEOUT = 120_000
 
+const scope = (user: string) => ({ customMetrics: [], day: '2024-03-10', tz: 'UTC', user })
+
 const metricItem = (raw: Record<string, unknown>) =>
   journalContextItemSchema.parse({ id: 'x', kind: 'metric', label: 'X', ...raw }) as Extract<
     JournalContextItem,
@@ -34,7 +36,7 @@ describe('journal context (integration)', () => {
         { metric: 'readiness_score', source: 'garmin', time: new Date('2024-03-10T07:00:00Z'), value: 65 },
       ])
       const value = (raw: Record<string, unknown>) =>
-        defaultJournalContextDeps.metricValue(user, metricItem(raw), '2024-03-10', 'UTC')
+        defaultJournalContextDeps.metricValue(scope(user), metricItem(raw))
 
       expect(await value({ metric: 'readiness_score' })).toBe(75)
       expect(await value({ metric: 'readiness_score', source: 'oura' })).toBe(85)
@@ -57,14 +59,9 @@ describe('journal context (integration)', () => {
           value: 3000,
         },
       ])
-      expect(
-        await defaultJournalContextDeps.metricValue(
-          user,
-          metricItem({ metric: 'steps' }),
-          '2024-03-10',
-          'UTC',
-        ),
-      ).toBe(7000)
+      expect(await defaultJournalContextDeps.metricValue(scope(user), metricItem({ metric: 'steps' }))).toBe(
+        7000,
+      )
     })
 
     test('carries the latest earlier day forward only when asked', async () => {
@@ -76,12 +73,7 @@ describe('journal context (integration)', () => {
         { metric: 'weight', source: 'garmin', time: new Date('2024-03-12T07:00:00Z'), value: 95 },
       ])
       const value = (raw: Record<string, unknown>) =>
-        defaultJournalContextDeps.metricValue(
-          user,
-          metricItem({ metric: 'weight', ...raw }),
-          '2024-03-10',
-          'UTC',
-        )
+        defaultJournalContextDeps.metricValue(scope(user), metricItem({ metric: 'weight', ...raw }))
 
       expect(await value({})).toBeUndefined()
       expect(await value({ missing: 'carry_forward' })).toBe(99)

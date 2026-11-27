@@ -1,7 +1,7 @@
 import type { DataSource, JournalContextItem, UserSettingsResponse } from '@aurboda/api-spec'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { contextToken } from '../pages/Journal/context-line'
 import { apiErrorMessage, fetchJournalContext, updateUserSettings } from '../state/api'
@@ -15,6 +15,7 @@ import {
   moveItem,
   removeItem,
   replaceItem,
+  withDaysSinceSource,
   withKind,
 } from './journal-context-form'
 import { MetricPicker } from './MetricPicker'
@@ -104,6 +105,7 @@ const TrendFields = ({
         }
       >
         <option value="activity_type">Activity Type</option>
+        <option value="tag">Tag</option>
         <option value="metric">Metric</option>
       </select>
     </div>
@@ -153,7 +155,7 @@ const DaysSinceFields = ({
       <label>Since</label>
       <select
         value={item.source_type}
-        onChange={(e) => onChange({ ...item, source_type: inputValue(e) as typeof item.source_type })}
+        onChange={(e) => onChange(withDaysSinceSource(item, inputValue(e) as typeof item.source_type))}
       >
         <option value="activity_type">Last activity</option>
         <option value="tag">Last tag</option>
@@ -313,7 +315,7 @@ const PreviewLine = () => {
   if (!data) return null
   return (
     <p class="field-description">
-      Today:{' '}
+      Preview for today (saved items):{' '}
       {data.items.length === 0 ? (
         'nothing to show'
       ) : (
@@ -335,6 +337,8 @@ export function JournalContextSettings({ settings }: { settings: UserSettingsRes
   const queryClient = useQueryClient()
   const saved = settings?.journal_context
   const [items, setItems] = useState<JournalContextItem[]>(saved ?? [])
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   const [dirty, setDirty] = useState(false)
   const [status, setStatus] = useState<SaveStatus>({ status: 'idle' })
 
@@ -352,10 +356,11 @@ export function JournalContextSettings({ settings }: { settings: UserSettingsRes
 
   const save = async () => {
     setStatus({ status: 'saving' })
+    const sent = items
     try {
-      const result = await updateUserSettings({ journal_context: items })
+      const result = await updateUserSettings({ journal_context: sent })
       queryClient.setQueryData(['userSettings'], result)
-      setDirty(false)
+      setDirty(itemsRef.current !== sent)
       setStatus({ status: 'saved', time: new Date() })
       void queryClient.invalidateQueries({ queryKey: ['journal-context'] })
     } catch (err) {
@@ -401,7 +406,7 @@ export function JournalContextSettings({ settings }: { settings: UserSettingsRes
         <button
           type="button"
           class="btn-primary"
-          disabled={!dirty || problem !== undefined}
+          disabled={!dirty || problem !== undefined || status.status === 'saving'}
           onClick={() => void save()}
         >
           Save context line

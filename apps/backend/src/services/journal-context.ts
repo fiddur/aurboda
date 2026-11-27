@@ -1,4 +1,5 @@
 import {
+  type CustomMetricDefinition,
   getMetricAggregation,
   type JournalContext,
   type JournalContextItem,
@@ -19,10 +20,19 @@ import { getTrend } from './trends.ts'
 type ItemOf<K extends JournalContextItem['kind']> = Extract<JournalContextItem, { kind: K }>
 type ElapsedUnit = ItemOf<'days_since'>['unit']
 
+/** What every item of one context computation shares. */
+export interface ContextScope {
+  customMetrics: CustomMetricDefinition[]
+  day: string
+  tz: string
+  user: string
+}
+
 export interface JournalContextDeps {
+  getCustomMetrics: (user: string) => Promise<CustomMetricDefinition[]>
   getItems: (user: string) => Promise<JournalContextItem[]>
-  metricValue: (user: string, item: ItemOf<'metric'>, day: string, tz: string) => Promise<number | undefined>
-  trendValue: (user: string, item: ItemOf<'trend'>, day: string, tz: string) => Promise<number | undefined>
+  metricValue: (scope: ContextScope, item: ItemOf<'metric'>) => Promise<number | undefined>
+  trendValue: (scope: ContextScope, item: ItemOf<'trend'>) => Promise<number | undefined>
   /** Whole days from the latest occurrence of `pattern` on or before `day` to `day`. */
   daysSinceActivity: (user: string, pattern: string, day: string, tz: string) => Promise<number | undefined>
 }
@@ -70,6 +80,12 @@ export const itemName = (item: JournalContextItem): string => {
   }
 }
 
+/** `value` with `decimals`, never `-0`. */
+const fixed = (value: number, decimals: number): string => {
+  const text = value.toFixed(decimals)
+  return Number(text) === 0 ? (0).toFixed(decimals) : text
+}
+
 export const formatContextValue = (
   item: JournalContextItem,
   value: number,
@@ -81,15 +97,19 @@ export const formatContextValue = (
   label,
   name: itemName(item),
   suffix,
-  text: `${label}${value.toFixed(item.decimals)}${suffix}`,
+  text: `${label}${fixed(value, item.decimals)}${suffix}`,
   value,
 })
 
-const daysSinceValue = async (
-  user: string,
+/** `value` cut (not rounded) to `decimals`, as an age is: 46.53 years is 46 at 0 decimals. */
+export const truncateTo = (value: number, decimals: number): number => {
+  const scale = 10 ** decimals
+  return Math.floor(Number((value * scale).toPrecision(12))) / scale
+}
+
+const elapsedValue = async (
+  { day, tz, user }: ContextScope,
   item: ItemOf<'days_since'>,
-  day: string,
-  tz: string,
   deps: JournalContextDeps,
 ): Promise<number | undefined> => {
   if (item.source_type === 'date') {
@@ -100,31 +120,38 @@ const daysSinceValue = async (
   return days === undefined ? undefined : elapsedSince(shiftDayKey(day, -days), day, item.unit)
 }
 
+const daysSinceValue = async (
+  scope: ContextScope,
+  item: ItemOf<'days_since'>,
+  deps: JournalContextDeps,
+): Promise<number | undefined> => {
+  const value = await elapsedValue(scope, item, deps)
+  return value === undefined ? undefined : truncateTo(value, item.decimals)
+}
+
 export const computeContextValue = async (
-  user: string,
+  scope: ContextScope,
   item: JournalContextItem,
-  day: string,
-  tz: string,
   deps: JournalContextDeps,
 ): Promise<JournalContextValue | undefined> => {
   switch (item.kind) {
     case 'moon': {
-      const moon = moonPhase(day)
+      const moon = moonPhase(scope.day)
       return formatContextValue(item, moon[item.value], {
         label: `${item.label}${moon.emoji}`,
         suffix: moonSuffixes[item.value],
       })
     }
     case 'metric': {
-      const value = await deps.metricValue(user, item, day, tz)
+      const value = await deps.metricValue(scope, item)
       return value === undefined ? undefined : formatContextValue(item, value)
     }
     case 'trend': {
-      const value = await deps.trendValue(user, item, day, tz)
+      const value = await deps.trendValue(scope, item)
       return value === undefined ? undefined : formatContextValue(item, value)
     }
     case 'days_since': {
-      const value = await daysSinceValue(user, item, day, tz, deps)
+      const value = await daysSinceValue(scope, item, deps)
       return value === undefined ? undefined : formatContextValue(item, value)
     }
   }
@@ -138,9 +165,12 @@ export const contextForItems = async (
   tz: string,
   deps: JournalContextDeps,
 ): Promise<JournalContext> => {
+  const needsMetrics = items.some((item) => item.kind === 'metric' || item.kind === 'trend')
+  const customMetrics = needsMetrics ? await deps.getCustomMetrics(user) : []
+  const scope: ContextScope = { customMetrics, day, tz, user }
   const values = await Promise.all(
     items.map((item) =>
-      computeContextValue(user, item, day, tz, deps).catch((error: unknown) => {
+      computeContextValue(scope, item, deps).catch((error: unknown) => {
         console.warn(`Journal context item ${item.id} (${item.kind}) failed:`, error)
         return undefined
       }),
@@ -150,16 +180,19 @@ export const contextForItems = async (
 }
 
 const metricDayValue = async (
-  user: string,
+  { customMetrics, tz, user }: ContextScope,
   metric: string,
   day: string,
-  tz: string,
   source: string | undefined,
 ): Promise<number | undefined> => {
-  const [rows, customMetrics] = await Promise.all([
-    getDailyAggregates(user, [metric], dayStartInTz(day, tz), dayEndInTz(day, tz), tz, source),
-    getCustomMetrics(user),
-  ])
+  const rows = await getDailyAggregates(
+    user,
+    [metric],
+    dayStartInTz(day, tz),
+    dayEndInTz(day, tz),
+    tz,
+    source,
+  )
   const row = rows.find((r) => r.date === day)
   if (!row) return undefined
   return getMetricAggregation(metric, customMetrics) === 'sum' ? row.sum : row.avg
@@ -167,9 +200,11 @@ const metricDayValue = async (
 
 export const defaultJournalContextDeps: JournalContextDeps = {
   daysSinceActivity: (user, pattern, day, tz) => getDaysSinceActivity(user, pattern, day, tz),
+  getCustomMetrics: (user) => getCustomMetrics(user),
   getItems: async (user) => (await getUserSettings(user))?.journal_context ?? [],
-  metricValue: async (user, item, day, tz) => {
-    const value = await metricDayValue(user, item.metric, day, tz, item.source)
+  metricValue: async (scope, item) => {
+    const { day, tz, user } = scope
+    const value = await metricDayValue(scope, item.metric, day, item.source)
     if (value !== undefined || item.missing !== 'carry_forward') return value
     const latest = await getLatestMetricSampleTimeBefore(
       user,
@@ -179,12 +214,12 @@ export const defaultJournalContextDeps: JournalContextDeps = {
     )
     return latest === undefined
       ? undefined
-      : metricDayValue(user, item.metric, dayKey(latest, tz), tz, item.source)
+      : metricDayValue(scope, item.metric, dayKey(latest, tz), item.source)
   },
-  trendValue: async (user, item, day, tz) => {
+  trendValue: async ({ customMetrics, day, tz, user }, item) => {
     const result = await getTrend(user, {
       aggregation: item.aggregation,
-      custom_metrics: await getCustomMetrics(user),
+      custom_metrics: customMetrics,
       display_period: item.display_period,
       end: dayEndInTz(day, tz),
       exclude_flagged: true,

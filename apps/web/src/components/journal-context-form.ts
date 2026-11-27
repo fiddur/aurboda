@@ -29,10 +29,23 @@ export const withKind = (
     case 'trend':
       return { ...base, kind, pattern: '', source_type: 'activity_type' }
     case 'days_since':
-      return { ...base, kind, pattern: '', source_type: 'activity_type', unit: 'days' }
+      return { ...base, kind, source_type: 'activity_type', unit: 'days' }
     case 'moon':
       return { ...base, kind, value: 'illumination' }
   }
+}
+
+type DaysSinceItem = Extract<JournalContextItem, { kind: 'days_since' }>
+
+/** `item` counting from `source`, without the field the other sources use (`pattern` for a date, else `date`). */
+export const withDaysSinceSource = (
+  item: DaysSinceItem,
+  source: DaysSinceItem['source_type'],
+): DaysSinceItem => {
+  const { date, pattern, ...rest } = item
+  return source === 'date'
+    ? { ...rest, source_type: source, ...(date === undefined ? {} : { date }) }
+    : { ...rest, source_type: source, ...(pattern === undefined ? {} : { pattern }) }
 }
 
 export const addItem = (items: readonly JournalContextItem[], kind: ContextKind): JournalContextItem[] => [

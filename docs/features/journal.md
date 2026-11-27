@@ -489,8 +489,9 @@ your timezone. There are four kinds of item:
   that started on or before the day (0 when it was that day), or since a fixed
   date (`source_type: "date"`, e.g. a birth date for an age). In whole days, in
   weeks (days / 7) or in years (whole years plus the fraction of the current one,
-  so a birth date with one decimal gives `45.3`); a fixed date after the day is
-  left out.
+  so a birth date with one decimal gives `45.3`). The value is truncated to the
+  item's decimals, as an age: 46.53 years is `46` at 0 decimals, not 47. A fixed
+  date after the day is left out.
 - **Moon**: the moon's illumination (%), age as a % of the cycle, or age in days;
   the label gets the phase's emoji (🌑🌒🌓🌔🌕🌖🌗🌘).
 

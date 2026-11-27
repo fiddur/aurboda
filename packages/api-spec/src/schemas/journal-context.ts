@@ -70,7 +70,7 @@ export const journalContextDaysSinceItemSchema = z
     }),
     unit: z.enum(['days', 'weeks', 'years']).default('days').meta({
       description:
-        "Unit of the value: 'days' (whole calendar days), 'weeks' (days / 7) or 'years' (whole years plus the fraction of the current year, as an age)",
+        "Unit of the value: 'days' (whole calendar days), 'weeks' (days / 7) or 'years' (whole years plus the fraction of the current year). The value is truncated to the item's decimals, as an age: 46.53 years shows as 46 at 0 decimals",
     }),
   })
   .refine((item) => (item.source_type === 'date' ? item.date !== undefined : item.pattern !== undefined), {

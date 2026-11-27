@@ -12,6 +12,7 @@ import {
   formatContextValue,
   getJournalContext,
   type JournalContextDeps,
+  truncateTo,
 } from './journal-context.ts'
 import { moonPhase } from './moon.ts'
 
@@ -19,6 +20,7 @@ const item = (raw: Record<string, unknown>): JournalContextItem => journalContex
 
 const deps = (overrides: Partial<JournalContextDeps> = {}): JournalContextDeps => ({
   daysSinceActivity: async () => undefined,
+  getCustomMetrics: async () => [],
   getItems: async () => [],
   metricValue: async () => undefined,
   trendValue: async () => undefined,
@@ -90,9 +92,10 @@ describe('elapsedSince', () => {
     expect(elapsedSince('1980-05-17', '2025-09-15', 'years')).toBeCloseTo(45 + 121 / 365, 10)
   })
 
-  test('a leap-day birthday turns a year older on 1 March in a common year', () => {
+  test('a leap-day birthday turns a year older on 28 February in a common year', () => {
     expect(elapsedSince('2000-02-29', '2004-02-29', 'years')).toBe(4)
     expect(elapsedSince('2000-02-29', '2001-02-27', 'years')).toBeLessThan(1)
+    expect(elapsedSince('2000-02-29', '2001-02-28', 'years')).toBe(1)
     expect(elapsedSince('2000-02-29', '2001-03-01', 'years')).toBeCloseTo(1 + 1 / 365, 10)
   })
 
@@ -119,6 +122,22 @@ describe('formatContextValue', () => {
       value: 96.62,
     })
   })
+
+  test('never prints -0', () => {
+    const metric = item({ id: 't', kind: 'metric', label: 'T', metric: 'temperature' })
+    expect(formatContextValue(metric, -0.2).text).toBe('T0')
+    expect(formatContextValue({ ...metric, decimals: 1 }, -0.04).text).toBe('T0.0')
+    expect(formatContextValue(metric, -0.6).text).toBe('T-1')
+  })
+})
+
+describe('truncateTo', () => {
+  test('cuts instead of rounding, without floating-point slips', () => {
+    expect(truncateTo(46.53, 0)).toBe(46)
+    expect(truncateTo(46.59, 1)).toBe(46.5)
+    expect(truncateTo(46.5, 1)).toBe(46.5)
+    expect(truncateTo(2, 2)).toBe(2)
+  })
 })
 
 describe('contextForItems', () => {
@@ -144,7 +163,7 @@ describe('contextForItems', () => {
       contextForItems('u', items, day, 'UTC', {
         ...deps(),
         daysSinceActivity: async () => 3,
-        metricValue: async (_user, metricItem) => {
+        metricValue: async (_scope, metricItem) => {
           if (metricItem.metric === 'broken') throw new Error('boom')
           return metricItem.metric === 'readiness_score' ? 85 : undefined
         },
@@ -212,6 +231,52 @@ describe('contextForItems', () => {
     const context = await contextForItems('u', items, day, 'UTC', deps())
     expect(context.items).toHaveLength(1)
     expect(context.items[0]).toMatchObject({ name: 'Years since 1980-05-17', text: 'A43.8' })
+  })
+
+  test('truncates an age to its decimals, so value and text agree', async () => {
+    const age = (decimals: number) =>
+      item({
+        date: '1980-05-17',
+        decimals,
+        id: `a${decimals}`,
+        kind: 'days_since',
+        label: 'A',
+        source_type: 'date',
+        unit: 'years',
+      })
+    const context = await contextForItems('u', [age(0), age(1)], '2026-11-27', 'UTC', deps())
+    expect(context.items.map((v) => [v.value, v.text])).toEqual([
+      [46, 'A46'],
+      [46.5, 'A46.5'],
+    ])
+  })
+
+  test('loads custom metrics once, and only when a metric or trend item needs them', async () => {
+    let loads = 0
+    const counting = {
+      ...deps(),
+      getCustomMetrics: async () => {
+        loads++
+        return []
+      },
+      metricValue: async () => 1,
+      trendValue: async () => 2,
+    }
+    const metric = (id: string) => item({ id, kind: 'metric', label: '', metric: 'weight' })
+    await contextForItems(
+      'u',
+      [
+        metric('a'),
+        metric('b'),
+        item({ id: 'c', kind: 'trend', label: '', pattern: 'run', source_type: 'tag' }),
+      ],
+      day,
+      'UTC',
+      counting,
+    )
+    expect(loads).toBe(1)
+    await contextForItems('u', [item({ id: 'm', kind: 'moon', label: '' })], day, 'UTC', counting)
+    expect(loads).toBe(1)
   })
 })
 

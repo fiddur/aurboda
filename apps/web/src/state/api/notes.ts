@@ -47,7 +47,7 @@ export * from './journal-params'
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
 /** The API always returns the comment it wrote; a missing body is a real failure. */
-const requireNote = (note: Note | undefined): Note => {
+const requireNote = <T extends Note>(note: T | undefined): T => {
   if (!note) throw new Error('Comment request returned no data')
   return note
 }
@@ -153,9 +153,7 @@ export const fetchNote = async (id: string, tz?: string): Promise<NoteDetail> =>
     headers: authHeaders(),
     params: tz ? { tz } : {},
   })
-  const note = response.data.data
-  if (!note) throw new Error('Comment request returned no data')
-  return note
+  return requireNote(response.data.data)
 }
 
 /** The journal context line for a calendar day (YYYY-MM-DD) in `tz`. */

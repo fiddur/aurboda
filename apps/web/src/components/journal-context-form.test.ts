@@ -1,8 +1,18 @@
 import type { JournalContextItem } from '@aurboda/api-spec'
 
+import { journalContextItemSchema } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
-import { addItem, itemProblem, moveItem, nextItemId, removeItem, withKind } from './journal-context-form'
+import {
+  addItem,
+  type ContextKind,
+  itemProblem,
+  moveItem,
+  nextItemId,
+  removeItem,
+  withDaysSinceSource,
+  withKind,
+} from './journal-context-form'
 
 const moon = (id: string): JournalContextItem => ({
   decimals: 0,
@@ -28,10 +38,49 @@ describe('journal context form', () => {
       id: 'a',
       kind: 'days_since',
       label: 'E',
-      pattern: '',
       source_type: 'activity_type',
       unit: 'days',
     })
+  })
+
+  test('switching what time is counted from drops the field that no longer applies', () => {
+    const since = withKind({ decimals: 0, id: 'a', label: 'A' }, 'days_since')
+    if (since.kind !== 'days_since') throw new Error('not days_since')
+    const fromActivity = { ...since, pattern: 'run' }
+    const fromDate = withDaysSinceSource(fromActivity, 'date')
+    expect(fromDate).not.toHaveProperty('pattern')
+    expect(fromDate.source_type).toBe('date')
+    const dated = { ...fromDate, date: '1980-05-17' }
+    expect(withDaysSinceSource(dated, 'tag')).not.toHaveProperty('date')
+  })
+
+  const completions: Record<ContextKind, (item: JournalContextItem) => JournalContextItem> = {
+    days_since: (item) => ({ ...item, pattern: 'run' }) as JournalContextItem,
+    metric: (item) => ({ ...item, metric: 'weight' }) as JournalContextItem,
+    moon: (item) => item,
+    trend: (item) => ({ ...item, pattern: 'run' }) as JournalContextItem,
+  }
+
+  test.each(Object.keys(completions) as ContextKind[])(
+    'a completed %s item from withKind is one the server accepts',
+    (kind) => {
+      const completed = completions[kind](withKind({ decimals: 1, id: 'a', label: 'A' }, kind))
+      expect(itemProblem(completed)).toBeUndefined()
+      expect(journalContextItemSchema.safeParse(completed).success).toBe(true)
+    },
+  )
+
+  test('a completed fixed-date item is one the server accepts', () => {
+    const since = withKind({ decimals: 1, id: 'a', label: 'A' }, 'days_since')
+    if (since.kind !== 'days_since') throw new Error('not days_since')
+    const fromDate = {
+      ...withDaysSinceSource({ ...since, pattern: 'run' }, 'date'),
+      date: '1980-05-17',
+      unit: 'years' as const,
+    }
+    expect(itemProblem(fromDate)).toBeUndefined()
+    expect(journalContextItemSchema.safeParse(fromDate).success).toBe(true)
+    expect(journalContextItemSchema.safeParse(withDaysSinceSource(fromDate, 'tag')).success).toBe(false)
   })
 
   test('moves and removes items', () => {
