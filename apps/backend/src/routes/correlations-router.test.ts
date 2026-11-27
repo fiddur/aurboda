@@ -8,6 +8,10 @@ import { createCorrelationsRouter } from './correlations-router.ts'
 vi.mock('../services/correlations/activity-impact.ts', () => ({ getActivityImpact: vi.fn() }))
 vi.mock('../services/correlations/hrv-activities.ts', () => ({ getHrvActivitiesCorrelation: vi.fn() }))
 vi.mock('../services/correlations/impact-metrics.ts', () => ({ getImpactMetrics: vi.fn() }))
+vi.mock('../services/correlations/explore.ts', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getContinuousCorrelation: vi.fn(async () => ({})),
+}))
 vi.mock('../services/activity-people.ts', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   activityPeopleError: vi.fn(async (_user: string, ids?: string[]) =>
@@ -18,6 +22,7 @@ vi.mock('../services/activity-people.ts', async (importOriginal) => ({
 const { getActivityImpact } = await import('../services/correlations/activity-impact.ts')
 const { getHrvActivitiesCorrelation } = await import('../services/correlations/hrv-activities.ts')
 const { getImpactMetrics } = await import('../services/correlations/impact-metrics.ts')
+const { getContinuousCorrelation } = await import('../services/correlations/explore.ts')
 
 const buildApp = () => {
   const app = express()
@@ -269,5 +274,31 @@ describe('POST /correlations/generic with a people trigger', () => {
       .send({ outcome: { pattern: 'x', type: 'tag' }, triggers: [{ type: 'people' }] })
     expect(res.status).toBe(400)
     expect(res.body.error).toContain('"event" outcome')
+  })
+})
+
+describe('POST /correlations/continuous with a people selector', () => {
+  const GONE = '22222222-2222-4222-8222-222222222222'
+  const outcome = { kind: 'metric', metric: 'sleep_score' }
+
+  test('400 naming an unknown or deleted person, on either side', async () => {
+    const app = buildApp()
+    for (const body of [
+      { outcome, trigger: { kind: 'people', person_id: GONE } },
+      { outcome: { kind: 'people', person_id: GONE }, trigger: outcome },
+    ]) {
+      const res = await supertest(app).post('/correlations/continuous').send(body)
+      expect(res.status).toBe(400)
+      expect(res.body.error).toBe(`Unknown people: ${GONE}`)
+    }
+    expect(getContinuousCorrelation).not.toHaveBeenCalled()
+  })
+
+  test('the time with anyone is analysed', async () => {
+    const res = await supertest(buildApp())
+      .post('/correlations/continuous')
+      .send({ outcome, trigger: { kind: 'people' } })
+    expect(res.status).toBe(200)
+    expect(getContinuousCorrelation).toHaveBeenCalled()
   })
 })

@@ -18,6 +18,7 @@ import {
 } from '@aurboda/api-spec'
 
 import { IMPACT_METRICS, type ImpactMetric } from '../../components/charts/impactMetrics'
+import { parseMinMinutes } from './eventTrigger'
 
 export type AnalyzeTab = 'context' | 'explore'
 export type ExploreMode = 'event' | 'continuous'
@@ -39,6 +40,8 @@ export interface ExploreState {
   lags: string
   lagDays: number
   gap: number
+  /** Event mode, time with people: "at least N minutes" as typed ('' for any time). */
+  minMinutes: string
   nutrition: NutritionCompleteness
   denominator: Denominator
   start: string
@@ -79,6 +82,7 @@ export const DEFAULT_EXPLORE_STATE: ExploreState = {
   gap: 3,
   lagDays: 0,
   lags: '24h,48h,7d',
+  minMinutes: '',
   mode: 'event',
   nutrition: 'all',
   outcome: { kind: 'metric', metric: '' },
@@ -151,6 +155,12 @@ export const decodeSelector = (raw: string): CorrelationSelector | null => {
             : { kind, pattern: value }
   const parsed = selectorSchema.safeParse(candidate)
   return parsed.success ? parsed.data : null
+}
+
+/** The "at least N minutes" an Event-mode people trigger is given, as a valid count or ''. */
+const peopleMinMinutes = (mode: ExploreMode, trigger: CorrelationSelector, raw: string): string => {
+  const minutes = mode === 'event' && trigger.kind === 'people' ? parseMinMinutes(raw) : null
+  return minutes === null ? '' : String(minutes)
 }
 
 /** Whether a URL-given Explore form is complete enough to run on load. */
@@ -226,6 +236,8 @@ const parseExplore = (params: URLSearchParams): ExploreState => {
   const d = DEFAULT_EXPLORE_STATE
   const outcomeSource = parseOneOf(params.get('outcome_source'), ['metric', 'tag'] as const, d.outcomeSource)
   const date = (raw: string | null) => (raw !== null && DATE_RE.test(raw) ? raw : '')
+  const mode = parseOneOf(params.get('mode'), ['event', 'continuous'] as const, d.mode)
+  const trigger = decodeSelector(params.get('trigger') ?? '') ?? d.trigger
   return {
     days: parseInteger(params.get('explore_days'), d.days, 1),
     denominator: parseOneOf(
@@ -237,13 +249,14 @@ const parseExplore = (params: URLSearchParams): ExploreState => {
     gap: parseInteger(params.get('gap'), d.gap, 0),
     lagDays: parseInteger(params.get('lag_days'), d.lagDays, -Infinity),
     lags: params.get('lags') ?? d.lags,
-    mode: parseOneOf(params.get('mode'), ['event', 'continuous'] as const, d.mode),
+    minMinutes: peopleMinMinutes(mode, trigger, params.get('min_minutes') ?? ''),
+    mode,
     nutrition: parseOneOf(params.get('nutrition'), ['all', 'complete_only'] as const, d.nutrition),
     outcome: decodeSelector(params.get('outcome') ?? '') ?? d.outcome,
     outcomeSource,
     outcomeValue: params.get('outcome_value') ?? d.outcomeValue,
     start: date(params.get('start')),
-    trigger: decodeSelector(params.get('trigger') ?? '') ?? d.trigger,
+    trigger,
   }
 }
 
@@ -282,6 +295,7 @@ const paramValues = (state: AnalyzeState): [string, string, string][] => {
     ['breakdown_metric', state.breakdownMetric, d.breakdownMetric],
     ['mode', e.mode, de.mode],
     ['trigger', encodeSelector(e.trigger), encodeSelector(de.trigger)],
+    ['min_minutes', peopleMinMinutes(e.mode, e.trigger, e.minMinutes), de.minMinutes],
     ['outcome', encodeSelector(e.outcome), encodeSelector(de.outcome)],
     ['outcome_source', e.outcomeSource, de.outcomeSource],
     ['outcome_value', e.outcomeValue, de.outcomeValue],

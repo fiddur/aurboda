@@ -25,6 +25,7 @@ const FULL: AnalyzeState = {
     gap: 5,
     lagDays: 2,
     lags: '12h,24h',
+    minMinutes: '',
     mode: 'continuous',
     nutrition: 'complete_only',
     outcome: { kind: 'metric', metric: 'sleep_score' },
@@ -302,5 +303,41 @@ describe('isExploreRunnable', () => {
       trigger: { kind: 'people' as const },
     }
     expect(isExploreRunnable({ ...state, outcome: { kind: 'metric', metric: 'sleep_score' } })).toBe(true)
+  })
+})
+
+describe('the "at least N minutes" of a people trigger', () => {
+  const peopleState = (minMinutes: string, trigger: AnalyzeState['explore']['trigger']): AnalyzeState => ({
+    ...DEFAULT_ANALYZE_STATE,
+    explore: { ...DEFAULT_EXPLORE_STATE, minMinutes, trigger },
+    tab: 'explore',
+  })
+  const anna = { kind: 'people' as const, person_id: '11111111-1111-4111-8111-111111111111' }
+
+  test('round trips with one person and with anyone', () => {
+    for (const trigger of [anna, { kind: 'people' as const }]) {
+      const state = peopleState('60', trigger)
+      const path = withAnalyzeState(BASE, state)
+      expect(path).toContain('min_minutes=60')
+      expect(parseAnalyzeState(searchOf(path))).toEqual(state)
+    }
+  })
+
+  test('is left out of the URL for another trigger or in Continuous mode', () => {
+    expect(withAnalyzeState(BASE, peopleState('60', { kind: 'activity', pattern: 'run' }))).not.toContain(
+      'min_minutes',
+    )
+    const continuous = peopleState('60', anna)
+    continuous.explore = { ...continuous.explore, mode: 'continuous' }
+    expect(withAnalyzeState(BASE, continuous)).not.toContain('min_minutes')
+    expect(parseAnalyzeState('?trigger=activity:run&min_minutes=60').explore.minMinutes).toBe('')
+    expect(parseAnalyzeState('?mode=continuous&trigger=people:&min_minutes=60').explore.minMinutes).toBe('')
+  })
+
+  test('an invalid count is ignored, written or read', () => {
+    for (const raw of ['', '0', '-5', 'abc', '1.5']) {
+      expect(withAnalyzeState(BASE, peopleState(raw, anna))).not.toContain('min_minutes')
+      expect(parseAnalyzeState(`?trigger=people:&min_minutes=${raw}`).explore.minMinutes).toBe('')
+    }
   })
 })

@@ -1419,7 +1419,7 @@ export const selectorSchema = z
       kind: z.literal('people'),
       person_id: z.string().uuid().optional().meta({
         description:
-          'Person id (see list_correlation_selectors people); absent for the time with anyone. A deleted or unknown person reads as no time',
+          'Person id (see list_correlation_selectors people); absent for the time with anyone. An unknown or deleted person is refused',
       }),
       threshold: thresholdSpecSchema.optional(),
     }),

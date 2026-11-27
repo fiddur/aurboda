@@ -33,6 +33,7 @@ import {
 import type { SyncProvider } from '../services/queries/index.ts'
 
 import {
+  continuousSelectorsError,
   genericTriggersError,
   getActivityImpact,
   getBaseline,
@@ -240,6 +241,8 @@ export const createCorrelationsRouter = (
         nutrition_completeness,
       } = req.body
       const user = req.user!
+      const selectorsError = await continuousSelectorsError(user, [trigger, outcome])
+      if (selectorsError) return res.status(400).json({ error: selectorsError, success: false })
 
       const result = await getContinuousCorrelation(
         user,

@@ -41,8 +41,9 @@ minutes per UTC day of the live activities with an end that have at least one
 live person linked, or, with `person_id`, that person. Overlapping activities
 count their union of time once, an activity over midnight is split between its
 days, and an activity without an end counts nothing. Every day is known (a day
-with nobody is 0). A deleted or unknown `person_id` answers as no time on every
-day, like an unknown flag. The axis reads "Time with people (min)", or "Time
+with nobody is 0). A deleted or unknown `person_id` is a `400` naming it (an error
+from the MCP tool), as for a [people trigger](#people-triggers): an analysis of no
+time would read as no effect. The axis reads "Time with people (min)", or "Time
 with <name> (min)" with the name resolved when drawn. An article correlation
 block may use a `people` selector too: readers see the person's name (an archived
 person still reads by name, a deleted one as "a person"), and the article answers
@@ -126,8 +127,8 @@ into an event by `threshold` (default: more than 0 minutes), and needs an `event
 }
 ```
 
-An unknown or deleted `person_id` is a `400` naming it (unlike the Continuous-mode selector,
-which reads it as no time). `min_count` / `window_days` and flagged windows work as for the
+An unknown or deleted `person_id` is a `400` naming it, as for the Continuous-mode selector.
+`min_count` / `window_days` and flagged windows work as for the
 other types. `get_event_probability` takes no `TriggerCondition` (only an activity type or a
 tag pattern), so it has no people trigger. In the web Explore page, Event mode offers
 **time with people** as a trigger kind with the person select and an "At least … minutes"

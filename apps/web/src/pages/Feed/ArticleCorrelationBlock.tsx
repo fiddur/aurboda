@@ -14,6 +14,7 @@ import { selectorName } from '@aurboda/api-spec'
 import { useQuery } from '@tanstack/react-query'
 
 import {
+  apiErrorMessage,
   fetchContinuousCorrelation,
   fetchCorrelationSelectors,
   fetchPeople,
@@ -142,7 +143,7 @@ export const ArticleCorrelationBlock = ({
   end: string
   caption?: string
 }) => {
-  const { data, isLoading, isError } = useQuery({
+  const { data, error, isLoading, isError } = useQuery({
     queryFn: () =>
       fetchContinuousCorrelation({
         outcome,
@@ -174,7 +175,7 @@ export const ArticleCorrelationBlock = ({
       {isLoading ? (
         <p class="article-chart-note">Loading correlation…</p>
       ) : isError ? (
-        <p class="article-chart-note">Couldn't load this correlation.</p>
+        <p class="article-chart-note">{apiErrorMessage(error, "Couldn't load this correlation.")}</p>
       ) : !data || data.n < 3 ? (
         <p class="article-chart-note">Not enough overlapping data in this window.</p>
       ) : (

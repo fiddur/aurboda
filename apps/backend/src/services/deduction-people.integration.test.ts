@@ -285,6 +285,52 @@ describe('a rule adding people to activities (integration)', () => {
     expect(await namesOn(user, [edited])).toEqual(['Cleo'])
   })
 
+  test('people added to a retype rule later reach what it retyped, once, and a person taken off stays off', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    await ensureType(user, 'meeting')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const meeting = (start: string, end: string) =>
+      insertActivity(user, {
+        activity_type: 'meeting',
+        end_time: new Date(end),
+        source: 'aurboda',
+        start_time: new Date(start),
+        title: 'Fika',
+      })
+    const kept = await meeting('2026-11-01T10:00:00Z', '2026-11-01T10:30:00Z')
+    const emptied = await meeting('2026-11-01T14:00:00Z', '2026-11-01T14:30:00Z')
+    const rule = await insertDeductionRule(user, {
+      conditions: [{ activity_type: 'meeting', kind: 'activity', title: 'fika' }],
+      mode: 'retype',
+      name: 'Fika meetings',
+      output_activity_type: 'fika',
+    })
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect((await deps.getRetypedByRule(user, rule.id, 'fika', window)).toSorted()).toEqual(
+      [kept, emptied].toSorted(),
+    )
+    expect(await deps.getRetypedByRule(user, 'another-rule', 'fika', window)).toEqual([])
+
+    const withAnna = (await updateDeductionRule(user, rule.id, { output_people: [anna.id] }))!
+    expect((await evaluateRule(user, withAnna, window, deps, true)).would_affect).toBe(2)
+    expect((await evaluateAllRules(user, [withAnna], window, deps)).activities_created).toBe(2)
+    expect(await namesOn(user, [kept])).toEqual(['Anna'])
+    expect(await namesOn(user, [emptied])).toEqual(['Anna'])
+
+    expect((await evaluateRule(user, withAnna, window, deps, true)).would_affect).toBe(0)
+    expect((await evaluateAllRules(user, [withAnna], window, deps)).activities_created).toBe(0)
+
+    expect((await updateActivity(user, emptied, { people: [] })).success).toBe(true)
+    const withBo = (await updateDeductionRule(user, rule.id, { output_people: [anna.id, bo.id] }))!
+    expect((await evaluateRule(user, withBo, window, deps, true)).would_affect).toBe(2)
+    await evaluateAllRules(user, [withBo], window, deps)
+    expect(await namesOn(user, [kept])).toEqual(['Anna', 'Bo'])
+    expect(await namesOn(user, [emptied])).toEqual(['Bo'])
+  })
+
   test('an open-ended activity counts as one hour long for an enrich rule', async () => {
     const user = getTestUser()
     await ensureType(user, 'fika')
