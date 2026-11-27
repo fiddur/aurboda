@@ -18,6 +18,7 @@ import {
   getActivityFieldValues,
   getActivityById,
   getActivitiesNeedingDetail,
+  getDaysSinceActivity,
   getAllActivityTypeNames,
   getEarliestActivityStart,
   getGarminActivitiesNeedingSets,
@@ -2323,6 +2324,42 @@ describe('Activities Integration Tests', () => {
       expect(await setGarminActivityFitSets(user, id, [])).toBe(false)
 
       expect((await getActivityById(user, id))?.data).toEqual({ average_hr: 110, garmin_activity_id: 78 })
+    })
+  })
+
+  describe('getDaysSinceActivity', () => {
+    const add = (user: string, activity_type: string, start: string) =>
+      insertActivity(user, { activity_type, source: 'manual', start_time: new Date(start) })
+
+    test('counts calendar days to the latest occurrence on or before the day', async () => {
+      const user = getTestUser()
+      await add(user, 'meditation', '2024-03-01T18:00:00Z')
+      await add(user, 'meditation', '2024-03-05T18:00:00Z')
+      await add(user, 'meditation', '2024-03-12T18:00:00Z')
+      await add(user, 'yoga', '2024-03-09T18:00:00Z')
+
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-05', 'UTC')).toBe(0)
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-10', 'UTC')).toBe(5)
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-02-28', 'UTC')).toBeUndefined()
+      expect(await getDaysSinceActivity(user, 'walking', '2024-03-10', 'UTC')).toBeUndefined()
+    })
+
+    test('reads the day boundaries in tz', async () => {
+      const user = getTestUser()
+      await add(user, 'meditation', '2024-03-05T23:30:00Z')
+
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-05', 'UTC')).toBe(0)
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-05', 'Europe/Stockholm')).toBeUndefined()
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-06', 'Europe/Stockholm')).toBe(0)
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-08', 'Europe/Stockholm')).toBe(2)
+    })
+
+    test('ignores deleted activities', async () => {
+      const user = getTestUser()
+      const id = await add(user, 'meditation', '2024-03-05T18:00:00Z')
+      await deleteActivity(user, id)
+
+      expect(await getDaysSinceActivity(user, 'meditation', '2024-03-10', 'UTC')).toBeUndefined()
     })
   })
 })

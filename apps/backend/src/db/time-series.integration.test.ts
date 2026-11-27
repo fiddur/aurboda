@@ -9,6 +9,7 @@ import {
   getDailyAggregates,
   getDailySampleCounts,
   getDistinctMetrics,
+  getLatestMetricSampleTimeBefore,
   getLatestMetricValuesMulti,
   getMetricMeansForWindows,
   getRawDailySums,
@@ -322,6 +323,57 @@ describe('Time Series Integration Tests', () => {
         ['steps', '2024-01-11'],
         ['weight', '2024-01-11'],
       ])
+    })
+
+    test('with a source, counts only that source, also for a cumulative metric', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        {
+          metric: 'steps',
+          source: 'health_connect_aggregate',
+          time: new Date('2024-01-10T10:00:00Z'),
+          value: 500,
+        },
+        { metric: 'steps', source: 'garmin', time: new Date('2024-01-10T11:00:00Z'), value: 700 },
+        { metric: 'readiness_score', source: 'oura', time: new Date('2024-01-10T06:00:00Z'), value: 85 },
+        { metric: 'readiness_score', source: 'garmin', time: new Date('2024-01-10T07:00:00Z'), value: 60 },
+      ])
+      const start = new Date('2024-01-10T00:00:00Z')
+      const end = new Date('2024-01-10T23:59:59Z')
+      const values = (rows: { avg: number; metric: string; sum: number }[]) =>
+        rows.map((r) => [r.metric, r.avg, r.sum])
+
+      expect(
+        values(await getDailyAggregates(user, ['readiness_score', 'steps'], start, end, 'UTC', 'garmin')),
+      ).toEqual([
+        ['readiness_score', 60, 60],
+        ['steps', 700, 700],
+      ])
+      expect(values(await getDailyAggregates(user, ['steps'], start, end, 'UTC'))).toEqual([
+        ['steps', 500, 500],
+      ])
+    })
+  })
+
+  describe('getLatestMetricSampleTimeBefore', () => {
+    test('is the latest sample before the instant, from the source when given', async () => {
+      const user = getTestUser()
+      await insertTimeSeries(user, [
+        { metric: 'weight', source: 'garmin', time: new Date('2024-01-05T07:00:00Z'), value: 72 },
+        { metric: 'weight', source: 'manual', time: new Date('2024-01-07T07:00:00Z'), value: 73 },
+        { metric: 'weight', source: 'garmin', time: new Date('2024-01-12T07:00:00Z'), value: 74 },
+      ])
+      const before = new Date('2024-01-10T00:00:00Z')
+
+      expect(await getLatestMetricSampleTimeBefore(user, 'weight', before)).toEqual(
+        new Date('2024-01-07T07:00:00Z'),
+      )
+      expect(await getLatestMetricSampleTimeBefore(user, 'weight', before, 'garmin')).toEqual(
+        new Date('2024-01-05T07:00:00Z'),
+      )
+      expect(
+        await getLatestMetricSampleTimeBefore(user, 'weight', new Date('2024-01-01T00:00:00Z')),
+      ).toBeUndefined()
     })
   })
 

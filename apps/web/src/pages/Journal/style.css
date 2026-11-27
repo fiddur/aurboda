@@ -1128,3 +1128,9 @@ a.journal-related-add {
 .journal-related-chip .journal-suggestion-add:hover .journal-suggestion-label {
   text-decoration: underline;
 }
+
+.journal-context-line {
+  margin: -0.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}

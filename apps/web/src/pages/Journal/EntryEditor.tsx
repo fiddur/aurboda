@@ -1,4 +1,4 @@
-import type { Note, NoteAttachment, NoteRevision, NoteTemplate } from '@aurboda/api-spec'
+import type { JournalContext, Note, NoteAttachment, NoteRevision, NoteTemplate } from '@aurboda/api-spec'
 
 import { DELETED_NOTE_RETENTION_DAYS, NOTE_TITLE_MAX_LENGTH } from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -32,6 +32,7 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { ATTACHMENT_SCHEME } from '../../utils/attachment-ref'
+import { browserTimezone } from '../../utils/browserTimezone'
 import { renderMarkdown } from '../../utils/markdown'
 import { PictureThumb, PictureViewer, RecordingPlayer } from './Attachments'
 import { type AutosaveStatus, autosaveLabel, createAutosaver, type SaveOutcome } from './autosave'
@@ -63,6 +64,7 @@ import {
   tagChips,
 } from './entry-form'
 import { type EntryMode, initialEntryMode } from './entry-mode'
+import { EntryContextLine } from './EntryContextLine'
 import { EntryNeighbors } from './EntryNeighbors'
 import { EntryReadView } from './EntryReadView'
 import { attachmentImageMarkdown, pictureOrder, withoutInline } from './inline-pictures'
@@ -640,6 +642,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
   formRef.current = form
   const [attachments, setAttachmentsState] = useState<NoteAttachment[]>([])
   const [threadRoot, setThreadRoot] = useState<Note | undefined>(undefined)
+  const [noteContext, setNoteContext] = useState<JournalContext | undefined>(undefined)
   const [status, setStatus] = useState<AutosaveStatus>('saved')
   const [savedAt, setSavedAt] = useState<string | undefined>(undefined)
   const [saveProblem, setSaveProblem] = useState<string | undefined>(undefined)
@@ -766,10 +769,11 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
       return
     }
     let cancelled = false
-    fetchNote(initialId)
+    fetchNote(initialId, browserTimezone() ?? undefined)
       .then((note) => {
         if (cancelled) return
         const serverForm = formFromNote(note)
+        setNoteContext(note.context)
         updatedAtRef.current = note.updated_at
         setSavedAt(note.updated_at)
         savedRelatedRef.current = serverForm.related
@@ -1026,6 +1030,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
             onInput={(e) => patch({ title: e.currentTarget.value })}
             onBlur={flush}
           />
+          <EntryContextLine context={noteContext} date={entryDay(form)} />
           <EntryText
             mode={mode}
             onEdit={() => startEditing(true)}

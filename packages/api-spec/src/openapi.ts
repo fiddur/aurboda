@@ -202,6 +202,12 @@ import {
   unmappedItemValuesResponseSchema,
 } from './schemas/item-value-identities.ts'
 import {
+  journalContextQuerySchema,
+  journalContextResponseSchema,
+  noteDetailResponseSchema,
+  noteGetQuerySchema,
+} from './schemas/journal-context.ts'
+import {
   addNamedLocationBodySchema,
   addNamedLocationResponseSchema,
   detectedLocationsResponseSchema,
@@ -4388,6 +4394,22 @@ const openApiDocument = createDocument({
       },
     },
 
+    '/journal-context': {
+      get: {
+        description:
+          'The journal context line for a day: the figures configured in the `journal_context` setting, computed for that calendar day in tz. Items without a value for the day are left out; `items` is empty when none are configured.',
+        requestParams: { query: journalContextQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: journalContextResponseSchema } },
+            description: 'The context line',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the journal context line for a day',
+        tags: ['Notes'],
+      },
+    },
     '/notes': {
       post: {
         description:
@@ -4506,13 +4528,14 @@ const openApiDocument = createDocument({
     '/notes/{id}': {
       get: {
         description:
-          'One live comment: a thread root with its replies (oldest first) and, for a journal entry, its attachments; a reply on its own.',
+          "One live comment: a thread root with its replies (oldest first) and, for a journal entry, its attachments and, when the user configured one, its context line for the entry's day; a reply on its own.",
         requestParams: {
           path: z.object({ id: z.string().uuid().meta({ description: 'Note ID' }) }),
+          query: noteGetQuerySchema,
         },
         responses: {
           200: {
-            content: { 'application/json': { schema: noteResponseSchema } },
+            content: { 'application/json': { schema: noteDetailResponseSchema } },
             description: 'The comment',
           },
           404: {

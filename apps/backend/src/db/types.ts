@@ -8,6 +8,7 @@ import type {
   EntityType,
   GarminDataType,
   GeocodeStatus,
+  JournalContextItem,
   MetricType,
   NotificationAction,
   OnboardingStepId,
@@ -475,6 +476,7 @@ export interface UserSettings {
   feed_type_tag?: boolean // Whether a share also gets its activity type / exercise / `challenge` as a hashtag
   hidden_pages?: string[] // Menu paths left out of the menus
   hr_zone_start?: { 1: number; 2: number; 3: number; 4: number; 5: number }
+  journal_context?: JournalContextItem[] // The journal context line's items, in order
   journal_strip_metadata?: boolean // Remove the metadata of pictures added to the Journal
   lastfm_username?: string // Last.fm username for scrobble sync
   maf_hr?: number // Low-HR (MAF) ceiling in bpm; falls back to the zone-2 upper bound

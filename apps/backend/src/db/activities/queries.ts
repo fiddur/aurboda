@@ -495,6 +495,30 @@ export const getEarliestActivityStart = async (
 }
 
 /**
+ * Whole calendar days in `tz` from the start of the latest live activity of `activityType` that starts on or before
+ * calendar day `day` (YYYY-MM-DD) to that day: 0 when it starts that day, undefined when there is none.
+ */
+export const getDaysSinceActivity = async (
+  user: string,
+  activityType: string,
+  day: string,
+  tz: string,
+): Promise<number | undefined> => {
+  const result = await query<{ days: number | null }>(
+    user,
+    `SELECT ($2::date - (MAX(start_time) AT TIME ZONE $3::text)::date) AS days
+       FROM activities
+      WHERE activity_type = $1
+        AND deleted_at IS NULL
+        AND superseded_by IS NULL
+        AND start_time < (($2::date + 1)::timestamp AT TIME ZONE $3::text)`,
+    [activityType, day, tz],
+  )
+  const days = result.rows[0]?.days
+  return days === null || days === undefined ? undefined : Number(days)
+}
+
+/**
  * Unlike getActivityTypeNames (which reads from definitions), this reads actual data.
  * A recursive loose index scan over `idx_activities_not_deleted`: one index probe per
  * distinct type instead of the full scan a plain `SELECT DISTINCT` needs.
