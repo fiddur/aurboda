@@ -96,6 +96,43 @@ describe('POST /metrics/custom', () => {
   })
 })
 
+describe('POST /metrics', () => {
+  beforeAll(async () => {
+    await startTestDb()
+  }, CONTAINER_TIMEOUT)
+
+  afterAll(async () => {
+    await stopTestDb()
+  })
+
+  beforeEach(async () => {
+    await cleanTestDb()
+  })
+
+  test('answers 400 with the message when the write is refused', async () => {
+    const request = supertest(buildApp(getTestUser()))
+
+    const refused = await request
+      .post('/metrics')
+      .send({ metric: 'strength_score', time: '2026-01-15T08:00:00.000Z', value: 90 })
+    expect(refused.status).toBe(400)
+    expect(refused.body).toMatchObject({
+      error: '"strength_score" is calculated by Aurboda and cannot be written.',
+      success: false,
+    })
+  })
+
+  test('answers 200 when the write is accepted', async () => {
+    const request = supertest(buildApp(getTestUser()))
+
+    const accepted = await request
+      .post('/metrics')
+      .send({ metric: 'weight', time: '2026-01-15T08:00:00.000Z', value: 72 })
+    expect(accepted.status).toBe(200)
+    expect(accepted.body).toMatchObject({ metric: 'weight', success: true, value: 72 })
+  })
+})
+
 describe('GET /daily-summary', () => {
   beforeAll(async () => {
     await startTestDb()

@@ -16,6 +16,7 @@ import {
   addActivityTypeDefinition,
   addEntityComment,
   addMetric,
+  apiErrorMessage,
   fetchActivityTypeCatalog,
   fetchActivityTypeDefinitions,
   fetchCustomMetrics,
@@ -443,7 +444,6 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
         ...(unit ? { unit } : {}),
         value: parseFloat(value),
       })
-      if (!result.success) throw new Error(result.error ?? 'Failed to add metric')
       if (comment.trim() && result.entity_id) {
         try {
           await addEntityComment('metric', result.entity_id, comment.trim())
@@ -454,7 +454,7 @@ const AddMetricForm = ({ onCreated, initialTime }: FormProps) => {
       return result
     },
     onError: (err: Error) => {
-      setError(err.message)
+      setError(apiErrorMessage(err, err.message))
       setSuccess('')
     },
     onSuccess: (result) => {

@@ -156,7 +156,7 @@ goals, correlations, the Data page, the data export and the MCP metric tools.
   inputs have not changed since the last run is skipped after a few cheap reads. Only values that
   changed are rewritten.
 - **Read only.** They cannot be added, imported, logged by a check-in, deleted or merged into by
-  hand, through REST or MCP: such a write is refused with `"<metric>" is calculated by Aurboda and
+  hand, through REST or MCP: such a write is refused (REST answers 400) with `"<metric>" is calculated by Aurboda and
 cannot be written.` (or `… cannot be deleted.`). The Add data form does not offer them. They are
   never sent to Health Connect.
 
