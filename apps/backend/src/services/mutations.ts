@@ -27,6 +27,7 @@ import {
   getActivityTypeDefinition,
   getOverrideForActivity,
   getUserNotesJoined,
+  listActivityGroupRowIds,
   insertMergedActivity as dbInsertMergedActivity,
   insertOverride as dbInsertOverride,
   materializeSuperseded,
@@ -747,6 +748,17 @@ const mergedTargets = async (
   return { merged, missing: targetIds.filter((tid) => !covered.has(tid)) }
 }
 
+/** Writes `people` on `writeId` as the set of the whole group `memberId` is in, clearing the group's other rows. */
+const setGroupPeople = async (user: string, memberId: string, writeId: string, people: string[]) => {
+  const groupIds = await listActivityGroupRowIds(user, memberId)
+  await setActivityPeople(
+    user,
+    writeId,
+    people,
+    groupIds.filter((rowId) => rowId !== writeId),
+  )
+}
+
 /** A people-only edit links the people without writing the activity, so it never creates an override. */
 const changesOnlyPeople = (input: UpdateActivityInput): boolean =>
   input.activity_type === undefined &&
@@ -770,7 +782,7 @@ export async function updateActivity(
   input: UpdateActivityInput,
   onMutated?: ActivityNotifier,
 ): Promise<UpdateActivityResult> {
-  const target = await dbGetActivityById(user, id)
+  const target = await dbGetActivityById(user, id.replace(/^merged:/, ''))
   if (!target) {
     return {
       error: 'Activity not found',
@@ -789,13 +801,7 @@ export async function updateActivity(
   const peopleError = await activityPeopleError(user, input.people)
   if (peopleError) return { error: peopleError, id, success: false }
   if (input.people !== undefined && changesOnlyPeople(input)) {
-    const groupIds = [target.id!, ...(existingOverride?.override_target_ids ?? [])]
-    await setActivityPeople(
-      user,
-      editRow.id!,
-      input.people,
-      groupIds.filter((rowId) => rowId !== editRow.id),
-    )
+    await setGroupPeople(user, target.id!, editRow.id!, input.people)
     return {
       activity_type: editRow.activity_type,
       end_time: editRow.end_time?.toISOString(),
@@ -950,13 +956,7 @@ export async function updateActivity(
   }
   await storeItemValueMappings(user, keyed.data.mappings)
   if (input.people !== undefined) {
-    const groupIds = [target.id!, ...(updated.override_target_ids ?? [])]
-    await setActivityPeople(
-      user,
-      updated.id!,
-      input.people,
-      groupIds.filter((rowId) => rowId !== updated.id),
-    )
+    await setGroupPeople(user, target.id!, updated.id!, input.people)
   }
 
   // Route a body-level `notes` update into the notes table. Replace semantics:

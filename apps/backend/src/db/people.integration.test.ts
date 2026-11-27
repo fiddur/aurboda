@@ -18,6 +18,7 @@ import {
   insertPerson,
   insertPersonDate,
   listActivityGroupMembers,
+  listActivityGroupRowIds,
   listActivityIntervalsWithPeople,
   listActorPresentations,
   listDeletedPeople,
@@ -303,6 +304,29 @@ describe('People Integration Tests', () => {
     expect(people.get(winner)?.[0]).toEqual({ created_at: anna.created_at, id: anna.id, name: 'Anna' })
     expect(people.has(alone)).toBe(false)
     expect(await getPeopleForActivityGroups(user, [])).toEqual(new Map())
+  })
+
+  test('the rows of an activity group are the same from any of its live rows', async () => {
+    const user = getTestUser()
+    const synced = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'garmin' })
+    const override = (await insertOverride(user, [synced], {
+      activity_type: 'walking',
+      end_time: new Date('2026-11-01T11:00:00Z'),
+      start_time: new Date('2026-11-01T10:00:00Z'),
+    }))!.id!
+    const sibling = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'strava' })
+    const deletedSibling = await insertActivity(user, '2026-11-01T10:00:00Z', true, { source: 'oura' })
+    const alone = await insertActivity(user, '2026-11-02T10:00:00Z')
+    await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = ANY($2::uuid[])', [
+      override,
+      [sibling, deletedSibling],
+    ])
+    const group = [synced, override, sibling].toSorted()
+
+    for (const member of group) expect(await listActivityGroupRowIds(user, member)).toEqual(group)
+    expect(await listActivityGroupRowIds(user, alone)).toEqual([alone])
+    expect(await listActivityGroupRowIds(user, deletedSibling)).toEqual(group)
+    expect(await listActivityGroupRowIds(user, MISSING)).toEqual([])
   })
 
   describe("a person's activities as merge groups", () => {
