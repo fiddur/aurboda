@@ -104,7 +104,7 @@ const templateFields = (state: RuleFormState) => ({
   data_filters: state.conditions.map(rowToDataFilter),
   delay_minutes: state.delayMinutes.trim() === '' ? DEFAULT_DELAY_MINUTES : Number(state.delayMinutes),
   include_chart: state.series.has('heart_rate'),
-  include_exercise_trends: state.includeExerciseTrends,
+  include_exercise_trends: state.includeExercises && state.includeExerciseTrends,
   include_exercises: state.includeExercises,
   include_map: state.includeMap,
   included_metrics: orderedPick(

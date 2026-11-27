@@ -77,7 +77,6 @@ export interface FeedPostInput {
   include_chart: boolean
   /** Omitted stores false. */
   include_exercises?: boolean
-  /** Omitted stores false. */
   include_exercise_trends?: boolean
   /** The author's personal message; omitted/undefined stores NULL. */
   message?: string | null
