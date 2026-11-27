@@ -10,7 +10,7 @@ import {
   insertDeductionRule,
   updateDeductionRule,
 } from '../db/index.ts'
-import { insertPerson, softDeletePerson } from '../db/people.ts'
+import { getPeopleForActivityGroups, insertPerson, softDeletePerson } from '../db/people.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { activityPeopleOf } from './activity-people.ts'
 import { createDefaultEngineDeps } from './deduction-deps.ts'
@@ -244,6 +244,66 @@ describe('a rule adding people to activities (integration)', () => {
     expect(await deps.addActivityPeople(user, rule.id, [syncedId], [anna.id], true)).toEqual([])
     await evaluateAllRules(user, [rule], window, deps)
     expect(await namesOn(user, [syncedId, override!.id!])).toEqual(['Bo'])
+  })
+
+  test("a person taken off by the override's id leaves the synced row it overrides, and stays off", async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    await meditation(user)
+    const syncedId = await insertActivity(user, {
+      activity_type: 'fika',
+      end_time: new Date('2026-11-01T11:30:00Z'),
+      external_id: 'fika-overridden',
+      source: 'garmin',
+      start_time: new Date('2026-11-01T10:30:00Z'),
+    })
+    expect((await updateActivity(user, syncedId, { title: 'Fika at home' })).success).toBe(true)
+    const overrideId = (await getOverrideForActivity(user, syncedId))!.id!
+    const rule = await fikaRule(user, [anna.id])
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await namesOn(user, [syncedId])).toEqual(['Anna'])
+
+    expect((await updateActivity(user, overrideId, { people: [] })).success).toBe(true)
+    expect(await namesOn(user, [syncedId, overrideId])).toEqual([])
+    expect(await getPeopleForActivityGroups(user, [overrideId])).toEqual(new Map())
+
+    expect((await evaluateRule(user, rule, window, deps, true)).would_affect).toBe(0)
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await namesOn(user, [syncedId, overrideId])).toEqual([])
+  })
+
+  test.each([
+    ['its own id', (id: string) => id],
+    ['a merged: id', (id: string) => `merged:${id}`],
+  ])('a person taken off a merge winner by %s leaves its merged siblings, and stays off', async (_, idOf) => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await meditation(user)
+    const winner = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const sibling = await insertActivity(user, {
+      activity_type: 'fika',
+      end_time: new Date('2026-11-01T11:30:00Z'),
+      external_id: 'fika-sibling',
+      source: 'garmin',
+      start_time: new Date('2026-11-01T10:30:00Z'),
+    })
+    await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = $2', [winner, sibling])
+    const rule = await fikaRule(user, [anna.id, bo.id])
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await namesOn(user, [sibling])).toEqual(['Anna', 'Bo'])
+
+    expect((await updateActivity(user, idOf(winner), { people: [bo.id] })).success).toBe(true)
+    expect(await namesOn(user, [winner, sibling])).toEqual(['Bo'])
+    expect((await getPeopleForActivityGroups(user, [winner])).get(winner)?.map((p) => p.name)).toEqual(['Bo'])
+
+    expect((await evaluateRule(user, rule, window, deps, true)).would_affect).toBe(0)
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await namesOn(user, [winner, sibling])).toEqual(['Bo'])
   })
 
   test('two rules each add their person to the same activity', async () => {

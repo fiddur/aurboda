@@ -478,6 +478,17 @@ export const activityGroupRowsSql = (targets: string): string => `
     JOIN activities live ON live.id = m.row_id AND live.deleted_at IS NULL
   )`
 
+/** Every live row the user sees as one activity with `activityId` (see `activityGroupRowsSql`). */
+export const listActivityGroupRowIds = async (user: string, activityId: string): Promise<string[]> => {
+  const result = await query<{ row_id: string }>(
+    user,
+    `WITH targets AS (SELECT $1::uuid AS id), ${activityGroupRowsSql('targets')}
+     SELECT row_id FROM group_rows ORDER BY row_id`,
+    [activityId],
+  )
+  return result.rows.map((row) => row.row_id)
+}
+
 /** The live people of each of `activityIds` and of the live rows each supersedes. */
 export const getPeopleForActivityGroups = async (
   user: string,

@@ -80,7 +80,9 @@ export const registerActivityTools = (
     'update_activity',
     'Update an existing activity. Can modify activity_type, start_time, end_time, title, notes, data, and people (replaces who it was with; [] clears). Only provided fields will be updated. Validates that end_time is after start_time (considering both new and existing values).',
     {
-      id: z.string().uuid().describe('The ID of the activity to update'),
+      id: z
+        .string()
+        .describe('The ID of the activity to update (a "merged:" prefix is accepted and stripped)'),
       ...updateActivityBodySchema.shape,
       tz: tzSchema,
     },

@@ -164,6 +164,8 @@ the dedupe key is `important_date:<date id or birthday:<person id>>:<occurrence>
 `add_activity`, `update_activity`) says who an activity was with. On an update it replaces the set,
 `[]` clears it, and leaving it out leaves it. An unknown, deleted or malformed ID is a `400` naming
 it. A change of only `people` on a synced activity links them to it without creating an override.
+The set replaces the people of every row shown as that one activity (a synced row and its override,
+the members of a merge), whichever of their IDs the update names; a `merged:` ID is accepted.
 
 Activity reads (`GET /activities`, `GET /activities/{id}`, `GET /activities/{id}/full`,
 `query_activities`, `get_activity_detail`) carry `people: [{ id, name }]` of the live people,

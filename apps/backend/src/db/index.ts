@@ -1094,6 +1094,7 @@ export {
   insertPerson,
   insertPersonDate,
   listActivityGroupMembers,
+  listActivityGroupRowIds,
   listActivityIntervalsWithPeople,
   listActorPresentations,
   listDeletedPeople,
