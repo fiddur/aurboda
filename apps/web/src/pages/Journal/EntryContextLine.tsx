@@ -18,30 +18,32 @@ const ContextDialog = ({ date, onClose }: { date: string; onClose: () => void })
     staleTime: 5 * 60_000,
   })
   const closeRef = useRef<HTMLButtonElement>(null)
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  const downOnOverlay = useRef(false)
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      opener?.focus()
-    }
+    return () => opener?.focus()
   }, [])
 
   return (
-    <div class="dashboard-editor-overlay" onClick={onClose}>
+    <div
+      class="dashboard-editor-overlay"
+      onPointerDown={(e) => {
+        downOnOverlay.current = e.target === e.currentTarget
+      }}
+      onClick={(e) => {
+        if (downOnOverlay.current && e.target === e.currentTarget) onClose()
+      }}
+    >
       <div
         class="dashboard-editor-modal journal-context-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="journal-context-dialog-title"
-        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && !e.defaultPrevented) onClose()
+        }}
       >
         <div class="modal-header">
           <h3 id="journal-context-dialog-title">Context line</h3>
@@ -84,22 +86,24 @@ export const EntryContextLine = ({ context, date }: { context?: JournalContext; 
     queryKey: ['journal-context', date],
     staleTime: 60_000,
   })
-  const configured = (settings?.journal_context?.length ?? 0) > 0
+  const unconfigured = settings !== undefined && (settings.journal_context?.length ?? 0) === 0
 
   return (
-    <div class="journal-context-line">
-      {configured && data && <ContextTokens context={data} />}
-      {settings && !configured && <span class="journal-context-hint">Add a context line</span>}{' '}
-      <button
-        type="button"
-        class="journal-context-configure"
-        aria-label="Configure context line"
-        title="Configure context line"
-        onClick={() => setOpen(true)}
-      >
-        ⚙️
-      </button>
+    <>
+      <div class="journal-context-line">
+        {data && data.items.length > 0 && <ContextTokens context={data} />}
+        {unconfigured && <span class="journal-context-hint">Add a context line</span>}{' '}
+        <button
+          type="button"
+          class="journal-context-configure"
+          aria-label="Configure context line"
+          title="Configure context line"
+          onClick={() => setOpen(true)}
+        >
+          ⚙️
+        </button>
+      </div>
       {open && <ContextDialog date={date} onClose={() => setOpen(false)} />}
-    </div>
+    </>
   )
 }

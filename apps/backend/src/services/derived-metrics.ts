@@ -2,6 +2,8 @@
  * Dashboard metrics that are not stored series but follow from one over the days ending on a day: the mean of
  * its daily values, or its total scaled to the unit the dashboard card shows.
  */
+import { type JournalContextDerivedMetric, isJournalContextDerivedMetric } from '@aurboda/api-spec'
+
 export interface DerivedMetric {
   days: number
   metric: string
@@ -11,7 +13,7 @@ export interface DerivedMetric {
   scale: number
 }
 
-const derivedMetrics: Record<string, DerivedMetric> = {
+const derivedMetrics: Record<JournalContextDerivedMetric, DerivedMetric> = {
   hrv_7day: { days: 7, metric: 'hrv_rmssd', prefer: 'hrv_sleep', reduce: 'mean', scale: 1 },
   hrv_30day: { days: 30, metric: 'hrv_rmssd', prefer: 'hrv_sleep', reduce: 'mean', scale: 1 },
   rhr_7day: { days: 7, metric: 'resting_heart_rate', reduce: 'mean', scale: 1 },
@@ -20,4 +22,4 @@ const derivedMetrics: Record<string, DerivedMetric> = {
 }
 
 export const derivedMetric = (name: string): DerivedMetric | undefined =>
-  Object.hasOwn(derivedMetrics, name) ? derivedMetrics[name] : undefined
+  isJournalContextDerivedMetric(name) ? derivedMetrics[name] : undefined

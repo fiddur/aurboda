@@ -174,6 +174,10 @@ export function ActivityTypePicker({
         select(snakeInput)
       }
     } else if (e.key === 'Escape') {
+      if (isOpen) {
+        e.stopPropagation()
+        e.preventDefault()
+      }
       setIsOpen(false)
       setInputValue('')
       setUserEditing(false)

@@ -9,12 +9,16 @@ import {
   type ContextKind,
   type IconSources,
   itemProblem,
+  itemsToSaveOnClose,
+  metricCarriesForward,
+  metricHasSource,
   moveItem,
   nextItemId,
   removeItem,
   suggestedLabel,
   withDaysSinceSource,
   withKind,
+  withMetric,
   withSuggestedLabel,
 } from './journal-context-form'
 
@@ -131,6 +135,10 @@ describe('journal context form', () => {
       })
     })
 
+    test('on close saves the complete items and drops the incomplete ones', () => {
+      expect(itemsToSaveOnClose([moon('a'), incomplete, moon('c')]).map((i) => i.id)).toEqual(['a', 'c'])
+    })
+
     test('waits for the save in flight, so the follow-up sends the latest items', () => {
       const items = [moon('b')]
       expect(autosaveStep(items, JSON.stringify(saved), true)).toEqual({ action: 'wait' })
@@ -177,9 +185,44 @@ describe('journal context form', () => {
       expect(withSuggestedLabel(since('running', '🏃'), since('running', 'Run'), icons).label).toBe('Run')
     })
 
+    test('re-suggests only when the data changed', () => {
+      const blank = since('running', '')
+      expect(withSuggestedLabel(blank, { ...blank, decimals: 1 }, icons).label).toBe('')
+      expect(withSuggestedLabel(blank, { ...blank, unit: 'weeks' } as JournalContextItem, icons).label).toBe(
+        '',
+      )
+      expect(withSuggestedLabel(blank, since('coffee', ''), icons).label).toBe('☕')
+    })
+
     test('replaces the earlier suggestion with the new one, or clears it when there is none', () => {
       expect(withSuggestedLabel(since('running', '🏃'), since('coffee', '🏃'), icons).label).toBe('☕')
       expect(withSuggestedLabel(since('running', '🏃'), since('zzz_unknown', '🏃'), icons).label).toBe('')
+    })
+  })
+
+  describe('metric options', () => {
+    const metric = (raw: Partial<JournalContextItem>) =>
+      ({ ...withKind(moon('a'), 'metric'), ...raw }) as Extract<JournalContextItem, { kind: 'metric' }>
+
+    test('offers a source and a carry-forward only where the server reads them', () => {
+      expect(metricHasSource('weight')).toBe(true)
+      expect(metricHasSource('rhr_7day')).toBe(true)
+      expect(metricHasSource('zone2_weekly')).toBe(false)
+      expect(metricHasSource('hrv_sleep')).toBe(false)
+      expect(metricHasSource('hr_zone_2_sec')).toBe(false)
+      expect(metricCarriesForward('weight')).toBe(true)
+      expect(metricCarriesForward('rhr_30day')).toBe(false)
+      expect(metricCarriesForward('zone2_weekly')).toBe(false)
+      expect(metricCarriesForward('hrv_sleep')).toBe(false)
+    })
+
+    test('picking a metric drops the options it ignores', () => {
+      const weight = metric({ metric: 'weight', missing: 'carry_forward', source: 'garmin' })
+      expect(withMetric(weight, 'steps')).toMatchObject({ missing: 'carry_forward', source: 'garmin' })
+      const zone = withMetric(weight, 'zone2_weekly')
+      expect(zone).not.toHaveProperty('source')
+      expect(zone.missing).toBe('hide')
+      expect(withMetric(weight, 'rhr_7day')).toMatchObject({ missing: 'hide', source: 'garmin' })
     })
   })
 })

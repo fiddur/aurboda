@@ -20,6 +20,20 @@ const itemBaseShape = {
 
 const trendShape = trendChartConfigSchema.shape
 
+/** Dashboard metrics a metric item computes over the days ending on the entry's day. */
+export const journalContextDerivedMetrics = [
+  'hrv_7day',
+  'hrv_30day',
+  'rhr_7day',
+  'rhr_30day',
+  'zone2_weekly',
+] as const
+
+export type JournalContextDerivedMetric = (typeof journalContextDerivedMetrics)[number]
+
+export const isJournalContextDerivedMetric = (metric: string): metric is JournalContextDerivedMetric =>
+  (journalContextDerivedMetrics as readonly string[]).includes(metric)
+
 export const journalContextMetricItemSchema = z
   .object({
     ...itemBaseShape,
@@ -32,11 +46,14 @@ export const journalContextMetricItemSchema = z
       description:
         "What a day without a value shows: 'hide' leaves the item out, 'carry_forward' shows the latest value before the day",
     }),
-    source: dataSourceSchema.optional().meta({ description: 'Only count samples from this data source' }),
+    source: dataSourceSchema.optional().meta({
+      description:
+        'Only count samples from this data source; ignored for the heart rate zone metrics (zone2_weekly, hr_zone_N_sec) and the contextual HRV metrics (hrv_sleep, hrv_awake, hrv_activity), which are computed from all sources',
+    }),
   })
   .meta({
     description:
-      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average). The dashboard's derived metrics are computed as of the day: rhr_7day / rhr_30day / hrv_7day / hrv_30day are the mean of the daily values over the 7 / 30 days ending on the day, zone2_weekly the zone-2 minutes over the 7 days ending on the day",
+      "The day's value of a metric (the day's total for summed metrics such as steps, else the day's average). The dashboard's derived metrics are computed as of the day: rhr_7day / rhr_30day / hrv_7day / hrv_30day are the mean of the daily values over the 7 / 30 days ending on the day, zone2_weekly the minutes in heart rate zone 2 over the 7 days ending on the day (computed from heart_rate samples); 'carry_forward' does not apply to them",
     id: 'JournalContextMetricItem',
   })
 

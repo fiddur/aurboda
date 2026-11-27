@@ -3,7 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { insertActivity, insertTimeSeries, upsertUserSettings } from '../db/index.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { defaultJournalContextDeps, getJournalContext } from './journal-context.ts'
+import {
+  defaultJournalContextDeps,
+  getJournalContext,
+  journalTrainingLoadDeps,
+  trainingLoadAt,
+} from './journal-context.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -128,36 +133,85 @@ describe('journal context (integration)', () => {
       ).toBe(65)
     })
 
-    test('zone2_weekly is the zone-2 minutes over the 7 days ending on the day', async () => {
+    test('zone2_weekly is the zone-2 minutes over the 7 days ending on the day, from heart rate', async () => {
+      const user = getTestUser()
+      await upsertUserSettings(user, { hr_zone_start: { 1: 90, 2: 108, 3: 126, 4: 144, 5: 162 } })
+      const minuteSamples = (from: string, values: number[]) =>
+        values.map((value, i) => ({
+          metric: 'heart_rate',
+          source: 'garmin' as const,
+          time: new Date(new Date(from).getTime() + i * 60_000),
+          value,
+        }))
+      await insertTimeSeries(user, [
+        ...minuteSamples('2024-03-03T10:00:00Z', [110, 110, 110]),
+        ...minuteSamples('2024-03-05T10:00:00Z', [110, 110, 110]),
+        ...minuteSamples('2024-03-10T10:00:00Z', [115, 115, 115, 130]),
+        ...minuteSamples('2024-03-11T10:00:00Z', [110, 110, 110]),
+      ])
+      const value = (raw: Record<string, unknown>, day = '2024-03-10') =>
+        defaultJournalContextDeps.metricValue({ ...scope(user), day }, metricItem(raw))
+
+      expect(await value({ metric: 'zone2_weekly' })).toBe(6)
+      expect(await value({ metric: 'zone2_weekly', source: 'oura' })).toBe(6)
+      expect(await value({ metric: 'hr_zone_3_sec' })).toBe(60)
+      expect(await value({ metric: 'zone2_weekly' }, '2024-02-01')).toBeUndefined()
+    })
+
+    test('the window follows the day in tz, not in UTC', async () => {
       const user = getTestUser()
       await insertTimeSeries(user, [
-        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-03'), value: 3000 },
-        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-05'), value: 600 },
-        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-10'), value: 1200 },
-        { metric: 'hr_zone_2_sec', source: 'garmin', time: at('2024-03-11'), value: 6000 },
+        // 2024-03-03 23:00 in Auckland (UTC+13): the day before the window
+        { metric: 'resting_heart_rate', source: 'oura', time: new Date('2024-03-03T10:00:00Z'), value: 100 },
+        // 2024-03-04 01:00 in Auckland: the window's first day
+        { metric: 'resting_heart_rate', source: 'oura', time: new Date('2024-03-03T12:00:00Z'), value: 50 },
+        // 2024-03-10 23:00 in Auckland: the window's last day
+        { metric: 'resting_heart_rate', source: 'oura', time: new Date('2024-03-10T10:00:00Z'), value: 60 },
+        // 2024-03-11 01:00 in Auckland: after the day
+        { metric: 'resting_heart_rate', source: 'oura', time: new Date('2024-03-10T12:00:00Z'), value: 200 },
       ])
       expect(
-        await defaultJournalContextDeps.metricValue(scope(user), metricItem({ metric: 'zone2_weekly' })),
-      ).toBe(30)
+        await defaultJournalContextDeps.metricValue(
+          { ...scope(user), tz: 'Pacific/Auckland' },
+          metricItem({ metric: 'rhr_7day' }),
+        ),
+      ).toBe(55)
     })
   })
 
   describe('training load', () => {
-    test('is the load at the end of the day, and absent before any training', async () => {
-      const user = getTestUser()
-      await insertActivity(user, {
+    const run = (user: string) =>
+      insertActivity(user, {
         activity_type: 'running',
         end_time: new Date('2024-03-08T19:00:00Z'),
         source: 'manual',
         start_time: new Date('2024-03-08T18:00:00Z'),
       })
+
+    test('is absent at once while the impulses are recomputed, then the load at the end of the day', async () => {
+      const user = getTestUser()
+      await run(user)
       const load = (day: string) => defaultJournalContextDeps.trainingLoadValue({ ...scope(user), day })
+
+      const started = Date.now()
+      expect(await load('2024-03-10')).toBeUndefined()
+      expect(Date.now() - started).toBeLessThan(2000)
+      await journalTrainingLoadDeps.recomputing.get(user)
 
       const after = await load('2024-03-10')
       expect(after?.ctl).toBeGreaterThan(0)
       expect(after?.atl).toBeGreaterThan(after?.ctl ?? Infinity)
       expect(after?.tsb).toBeCloseTo((after?.ctl ?? 0) - (after?.atl ?? 0), 6)
       expect(await load('2024-03-01')).toBeUndefined()
+    })
+
+    test('is absent for a day in the future', async () => {
+      const user = getTestUser()
+      await run(user)
+      await trainingLoadAt(journalTrainingLoadDeps, user, '2024-03-10', 'UTC')
+      await journalTrainingLoadDeps.recomputing.get(user)
+      const future = Temporal.Now.plainDateISO('UTC').add({ days: 2 }).toString()
+      expect(await trainingLoadAt(journalTrainingLoadDeps, user, future, 'UTC')).toBeUndefined()
     })
   })
 

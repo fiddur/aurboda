@@ -18,11 +18,15 @@ import {
   type ContextKind,
   contextKindLabels,
   type IconSources,
+  itemsToSaveOnClose,
+  metricCarriesForward,
+  metricHasSource,
   moveItem,
   removeItem,
   replaceItem,
   withDaysSinceSource,
   withKind,
+  withMetric,
   withSuggestedLabel,
 } from './journal-context-form'
 import { MetricPicker } from './MetricPicker'
@@ -60,34 +64,38 @@ const MetricFields = ({
   <>
     <div class="form-group">
       <label>Metric</label>
-      <MetricPicker value={item.metric} onChange={(metric) => onChange({ ...item, metric })} />
+      <MetricPicker value={item.metric} onChange={(metric) => onChange(withMetric(item, metric))} />
     </div>
-    <div class="form-group">
-      <label>Source</label>
-      <select
-        value={item.source ?? ''}
-        onChange={(e) =>
-          onChange({ ...item, source: (inputValue(e) || undefined) as DataSource | undefined })
-        }
-      >
-        <option value="">Any</option>
-        {metricSources.map((source) => (
-          <option key={source} value={source}>
-            {source}
-          </option>
-        ))}
-      </select>
-    </div>
-    <div class="form-group">
-      <label>No value that day</label>
-      <select
-        value={item.missing}
-        onChange={(e) => onChange({ ...item, missing: inputValue(e) as typeof item.missing })}
-      >
-        <option value="hide">Leave it out</option>
-        <option value="carry_forward">Show the latest earlier value</option>
-      </select>
-    </div>
+    {metricHasSource(item.metric) && (
+      <div class="form-group">
+        <label>Source</label>
+        <select
+          value={item.source ?? ''}
+          onChange={(e) =>
+            onChange({ ...item, source: (inputValue(e) || undefined) as DataSource | undefined })
+          }
+        >
+          <option value="">Any</option>
+          {metricSources.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+    {metricCarriesForward(item.metric) && (
+      <div class="form-group">
+        <label>No value that day</label>
+        <select
+          value={item.missing}
+          onChange={(e) => onChange({ ...item, missing: inputValue(e) as typeof item.missing })}
+        >
+          <option value="hide">Leave it out</option>
+          <option value="carry_forward">Show the latest earlier value</option>
+        </select>
+      </div>
+    )}
   </>
 )
 
@@ -388,6 +396,7 @@ export function JournalContextSettings({
   const editedRef = useRef(false)
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
+  const closingRef = useRef(false)
   const [status, setStatus] = useState<SaveStatus>({ status: 'idle' })
   const icons = useIconSources(settings)
 
@@ -420,7 +429,8 @@ export function JournalContextSettings({
   }
 
   const runAutosave = () => {
-    const step = autosaveStep(itemsRef.current, savedRef.current, savingRef.current)
+    const current = closingRef.current ? itemsToSaveOnClose(itemsRef.current) : itemsRef.current
+    const step = autosaveStep(current, savedRef.current, savingRef.current)
     if (step.action === 'save') void save(step.items)
   }
   const runAutosaveRef = useRef(runAutosave)
@@ -435,6 +445,7 @@ export function JournalContextSettings({
   useEffect(
     () => () => {
       mountedRef.current = false
+      closingRef.current = true
       if (editedRef.current) runAutosaveRef.current()
     },
     [],
@@ -478,6 +489,11 @@ export function JournalContextSettings({
           ))}
         </select>
         <SaveStatusIndicator state={status} />
+        {status.status === 'error' && (
+          <button type="button" class="btn-secondary" onClick={() => runAutosave()}>
+            Retry
+          </button>
+        )}
       </div>
       {problem && <p class="field-description">{problem}</p>}
       <PreviewLine date={date} />

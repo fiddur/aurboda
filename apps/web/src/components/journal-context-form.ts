@@ -1,4 +1,10 @@
-import type { JournalContextItem } from '@aurboda/api-spec'
+import {
+  isContextualHrvMetric,
+  isHrZoneMetric,
+  isJournalContextDerivedMetric,
+  type JournalContextItem,
+  type MetricType,
+} from '@aurboda/api-spec'
 
 import { isEmoji, resolveItemIcon, suggestEmoji } from '../utils/emojiLookup'
 
@@ -96,6 +102,33 @@ export const itemProblem = (item: JournalContextItem): string | undefined => {
   }
 }
 
+type MetricItem = Extract<JournalContextItem, { kind: 'metric' }>
+
+/** Whether the server reads a metric item's `source`: not for metrics computed from every source. */
+export const metricHasSource = (metric: string): boolean =>
+  metric !== 'zone2_weekly' &&
+  !isHrZoneMetric(metric as MetricType) &&
+  !isContextualHrvMetric(metric as MetricType)
+
+/** Whether a metric item's `missing: carry_forward` means anything: not for a figure over a window. */
+export const metricCarriesForward = (metric: string): boolean =>
+  !isJournalContextDerivedMetric(metric) && !isContextualHrvMetric(metric as MetricType)
+
+/** `item` showing `metric`, without the options the server ignores for it. */
+export const withMetric = (item: MetricItem, metric: string): MetricItem => {
+  const { source, ...rest } = item
+  return {
+    ...rest,
+    metric,
+    missing: metricCarriesForward(metric) ? item.missing : 'hide',
+    ...(source !== undefined && metricHasSource(metric) ? { source } : {}),
+  }
+}
+
+/** What closing the editor saves: the complete items, leaving out any that are still incomplete. */
+export const itemsToSaveOnClose = (items: readonly JournalContextItem[]): JournalContextItem[] =>
+  items.filter((item) => itemProblem(item) === undefined)
+
 export type AutosaveStep =
   | { action: 'none' }
   | { action: 'blocked'; problem: string }
@@ -147,16 +180,26 @@ export const suggestedLabel = (item: JournalContextItem, icons: IconSources): st
   }
 }
 
+/** What an item shows, as far as its label suggestion goes. */
+const dataKey = (item: JournalContextItem): string =>
+  JSON.stringify([
+    item.kind,
+    'source_type' in item ? item.source_type : undefined,
+    'pattern' in item ? item.pattern : undefined,
+    'metric' in item ? item.metric : undefined,
+  ])
+
 /**
- * `next` with its label suggested from its data, unless the user typed one: a label that is empty, or still the
- * suggestion for `previous`, follows the suggestion for `next` (empty when there is none).
+ * `next` with its label suggested from its data when this edit changed the data and the user did not type the
+ * label: a label that is empty, or still the suggestion for `previous`, follows the suggestion for `next` (empty
+ * when there is none). Any other edit leaves the label as it is.
  */
 export const withSuggestedLabel = (
   previous: JournalContextItem,
   next: JournalContextItem,
   icons: IconSources,
 ): JournalContextItem => {
-  if (next.label !== previous.label) return next
+  if (next.label !== previous.label || dataKey(next) === dataKey(previous)) return next
   const before = suggestedLabel(previous, icons)
   if (next.label !== '' && next.label !== before) return next
   const label = suggestedLabel(next, icons) ?? ''

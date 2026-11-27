@@ -2,6 +2,7 @@ import {
   type CustomMetricDefinition,
   getMetricAggregation,
   isContextualHrvMetric,
+  isHrZoneMetric,
   type JournalContext,
   type JournalContextItem,
   type JournalContextValue,
@@ -11,6 +12,7 @@ import {
 
 import {
   getDailyAggregates,
+  getHrZoneSecs,
   getDaysSinceActivity,
   getLatestMetricSampleTimeBefore,
   getUserSettings,
@@ -20,6 +22,7 @@ import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { type DerivedMetric, derivedMetric } from './derived-metrics.ts'
 import { moonPhase } from './moon.ts'
 import { queryMetrics } from './queries/index.ts'
+import { getEffectiveHrZones } from './settings.ts'
 import { computeTrainingLoad, createTrainingLoadDeps, type TrainingLoadDeps } from './training-load/index.ts'
 import { getTrend } from './trends.ts'
 
@@ -216,6 +219,14 @@ const mean = (values: readonly number[]): number | undefined =>
 const sampleMean = async (user: string, metric: string, start: Date, end: Date) =>
   mean((await queryMetrics(user, metric, start, end)).data.map((point) => point.value))
 
+/** Seconds in the zone of `metric` (`hr_zone_N_sec`) in [start, end], from heart_rate; undefined without samples. */
+const hrZoneSeconds = async (user: string, metric: string, start: Date, end: Date) => {
+  const zone = Number(/^hr_zone_([0-5])_sec$/.exec(metric)?.[1]) as 0 | 1 | 2 | 3 | 4 | 5
+  const { zones } = await getEffectiveHrZones(user)
+  const [row] = await getHrZoneSecs(user, start, end, zones)
+  return row === undefined || row.sample_count === 0 ? undefined : row.secs[zone]
+}
+
 /** `definition` over the days ending on `day` (inclusive), in tz; undefined when the window has no data. */
 const derivedValue = async (
   { tz, user }: ContextScope,
@@ -225,6 +236,10 @@ const derivedValue = async (
 ): Promise<number | undefined> => {
   const start = dayStartInTz(shiftDayKey(day, 1 - definition.days), tz)
   const end = dayEndInTz(day, tz)
+  if (isHrZoneMetric(definition.metric as MetricType)) {
+    const seconds = await hrZoneSeconds(user, definition.metric, start, end)
+    return seconds === undefined ? undefined : seconds * definition.scale
+  }
   if (definition.prefer !== undefined && source === undefined) {
     const preferred = await sampleMean(user, definition.prefer, start, end)
     if (preferred !== undefined) return preferred
@@ -242,9 +257,10 @@ const metricDayValue = async (
   source: string | undefined,
 ): Promise<number | undefined> => {
   if (isContextualHrvMetric(metric as MetricType)) {
-    return source === undefined
-      ? sampleMean(user, metric, dayStartInTz(day, tz), dayEndInTz(day, tz))
-      : undefined
+    return sampleMean(user, metric, dayStartInTz(day, tz), dayEndInTz(day, tz))
+  }
+  if (isHrZoneMetric(metric as MetricType)) {
+    return hrZoneSeconds(user, metric, dayStartInTz(day, tz), dayEndInTz(day, tz))
   }
   const rows = await getDailyAggregates(
     user,
@@ -272,8 +288,11 @@ export const trainingLoadAt = async (
   return { atl: last.atl, ctl: last.ctl, tsb: last.tsb }
 }
 
-let sharedTrainingLoadDeps: TrainingLoadDeps | undefined
-const trainingLoadDeps = (): TrainingLoadDeps => (sharedTrainingLoadDeps ??= createTrainingLoadDeps())
+/**
+ * The process's training load deps without the wait for a recompute: a note read never waits for one, and the item is
+ * left out until the backfill is done. The recompute state is the process's own, shared with every other reader.
+ */
+export const journalTrainingLoadDeps: TrainingLoadDeps = { ...createTrainingLoadDeps(), recomputeWaitMs: 0 }
 
 export const defaultJournalContextDeps: JournalContextDeps = {
   daysSinceActivity: (user, pattern, day, tz) => getDaysSinceActivity(user, pattern, day, tz),
@@ -310,7 +329,7 @@ export const defaultJournalContextDeps: JournalContextDeps = {
     })
     return result.history.length === 0 ? undefined : result.current_value
   },
-  trainingLoadValue: ({ day, tz, user }) => trainingLoadAt(trainingLoadDeps(), user, day, tz),
+  trainingLoadValue: ({ day, tz, user }) => trainingLoadAt(journalTrainingLoadDeps, user, day, tz),
 }
 
 /** The journal context line for `date` (today in `tz` when omitted); undefined when the user configured no items. */

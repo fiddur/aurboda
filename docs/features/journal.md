@@ -475,7 +475,8 @@ alike. There you add, remove and reorder items; for each you pick its kind and
 data first, then a short label (up to 12 characters, an emoji works) and the
 number of decimals (0–3). Changes save by themselves a moment after you make
 them, once every item is complete; an incomplete item is named and holds the
-save until it is filled in. After a save the entry's line refreshes, and a
+save until it is filled in; closing the editor saves the complete items and
+drops an incomplete one. A failed save shows a **Retry** button. After a save the entry's line refreshes, and a
 preview for the entry's day shows under the list. Hovering an item shows its
 full name. The line is computed when the entry is read, never stored on it, and
 an item without a value for the day is left out.
@@ -498,8 +499,11 @@ your timezone. There are five kinds of item:
   are the mean of the daily resting heart rate / HRV over the 7 / 30 days ending
   on the day (HRV from the sleep HRV samples when there are any and no source is
   chosen, as on the dashboard card), and `zone2_weekly` is the minutes in heart
-  rate zone 2 over the 7 days ending on the day. **Show the latest earlier
-  value** does not apply to them.
+  rate zone 2 over the 7 days ending on the day, computed from your heart rate
+  samples and zones. **Show the latest earlier value** does not apply to them,
+  nor to the contextual HRV metrics such as `hrv_sleep`, and the source is
+  ignored (and not offered) for `zone2_weekly`, the `hr_zone_N_sec` metrics and
+  the contextual HRV metrics, which are computed from every source.
 - **Trend**: the [trend](./trends.md) (EMA) of an activity type, a tag or a metric
   as of the end of the day, with a half-life and display period like a dashboard
   trend chart.
@@ -514,7 +518,9 @@ your timezone. There are five kinds of item:
   the label gets the phase's emoji (🌑🌒🌓🌔🌕🌖🌗🌘).
 - **Training load** (`training_load`): the [training load](./training-load.md)
   at the end of the day -- fitness (`ctl`, the default), fatigue (`atl`) or form
-  (`tsb`, which can be negative). Left out when there is no training load data.
+  (`tsb`, which can be negative). Left out when there is no training load data,
+  and while the training load is being recomputed (after older data arrived);
+  reading an entry never waits for that.
 
 The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
 ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,
