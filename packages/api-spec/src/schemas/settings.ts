@@ -5,6 +5,7 @@ import { baseResponseSchema, dateOnlySchema, hrZoneSourceSchema, iso8601DateTime
 import { dashboardConfigSchema } from './dashboard.ts'
 import { hashtagInputSchema } from './feed.ts'
 import { goalsSchema } from './goals.ts'
+import { journalContextItemsSchema } from './journal-context.ts'
 import { displayNameInputSchema } from './profile.ts'
 import { reportImportMappingSchema } from './reports.ts'
 import { defaultSleepNeedMinutes, sleepNeedMinutesSchema } from './sleep.ts'
@@ -272,6 +273,10 @@ export const updateSettingsInputSchema = z
     meal_slots: mealSlotsSchema.nullable().optional().meta({
       description: 'Configured meal slots for quick-logging (set to null to clear)',
     }),
+    journal_context: journalContextItemsSchema.nullable().optional().meta({
+      description:
+        'The journal context line: the figures shown under a journal entry for its day, in order; the whole list is replaced (set to null to reset to the default, none)',
+    }),
     journal_strip_metadata: z.boolean().nullable().optional().meta({
       description:
         'Remove the metadata (such as when and where a picture was taken) from pictures added to the Journal from now on. Recordings are always stored as they are. Default false: pictures keep it (set to null to reset to the default).',
@@ -482,6 +487,9 @@ export const userSettingsResponseSchema = baseResponseSchema
     item_icons: itemIconsSchema.default({}).meta({
       description:
         'Unified icon mappings for all timeline items — tags, activities, exercise types (tag key or name -> emoji/URL)',
+    }),
+    journal_context: journalContextItemsSchema.default([]).meta({
+      description: 'The journal context line: the figures shown under a journal entry for its day, in order',
     }),
     journal_strip_metadata: z.boolean().default(false).meta({
       description:

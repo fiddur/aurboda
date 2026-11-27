@@ -11,6 +11,7 @@ import {
   aurbodaOnlySources,
   cumulativeMetrics,
   cumulativeSources,
+  isTimeWeightedMetric,
   type MetricType,
   metricUnits,
 } from '../schema.ts'
@@ -383,12 +384,32 @@ export const getTimeSeriesStats = async (
   return results.sort((a, b) => a.metric.localeCompare(b.metric))
 }
 
+/** One source's samples only, so the trusted-source restriction of cumulative metrics does not apply. */
+const dailyAggregatesFromSource = async (
+  user: string,
+  metrics: string[],
+  params: unknown[],
+  dailySql: (sourceFilter: string, timeWeighted?: boolean) => string,
+  mapRow: (row: { [key: string]: unknown }) => DailyMetricAggregate,
+): Promise<DailyMetricAggregate[]> => {
+  const timeWeighted = metrics.filter(isTimeWeightedMetric)
+  const plain = metrics.filter((m) => !timeWeighted.includes(m))
+  const sourceFilter = '\n         AND source = $5'
+  const groups = [
+    { list: timeWeighted, sql: dailySql(sourceFilter, true) },
+    { list: plain, sql: dailySql(sourceFilter) },
+  ].filter((g) => g.list.length > 0)
+  const results = await Promise.all(groups.map((g) => query(user, g.sql, [g.list, ...params])))
+  return results.flatMap((r) => r.rows.map(mapRow))
+}
+
 export const getDailyAggregates = async (
   user: string,
   metrics: string[],
   start: Date,
   end: Date,
   tz = 'UTC',
+  source?: string,
 ): Promise<DailyMetricAggregate[]> => {
   if (metrics.length === 0) return []
 
@@ -417,22 +438,46 @@ export const getDailyAggregates = async (
     sum: Number(row.sum),
   })
 
-  const results = await querySplitByCumulative<DailyMetricAggregate>({
-    cumulativeExtraParams: [cumulativeSources],
-    mapRow,
-    metrics,
-    params: [start, end, tz],
-    queryFn: (sql, params) => query(user, sql, params),
-    sqlCumulative: dailySql(`\n         AND source = ANY($5)`),
-    sqlNonCumulative: dailySql(''),
-    sqlTimeWeighted: dailySql('', true),
-  })
+  const results =
+    source === undefined
+      ? await querySplitByCumulative<DailyMetricAggregate>({
+          cumulativeExtraParams: [cumulativeSources],
+          mapRow,
+          metrics,
+          params: [start, end, tz],
+          queryFn: (sql, params) => query(user, sql, params),
+          sqlCumulative: dailySql(`\n         AND source = ANY($5)`),
+          sqlNonCumulative: dailySql(''),
+          sqlTimeWeighted: dailySql('', true),
+        })
+      : await dailyAggregatesFromSource(user, metrics, [start, end, tz, source], dailySql, mapRow)
 
   return results.sort((a, b) => {
     const metricCmp = a.metric.localeCompare(b.metric)
     if (metricCmp !== 0) return metricCmp
     return a.date.localeCompare(b.date)
   })
+}
+
+/**
+ * The time of the latest sample of `metric` before `before`: from `source` when given, else from the sources its
+ * daily figures are read from. Undefined when there is none.
+ */
+export const getLatestMetricSampleTimeBefore = async (
+  user: string,
+  metric: string,
+  before: Date,
+  source?: string,
+): Promise<Date | undefined> => {
+  const sources = source === undefined ? getSourceFilter(metric) : [source]
+  const result = await query<{ latest: Date | null }>(
+    user,
+    `SELECT MAX(time) AS latest
+       FROM time_series
+      WHERE metric = $1 AND time < $2 AND deleted_at IS NULL${sources ? ' AND source = ANY($3)' : ''}`,
+    sources ? [metric, before, sources] : [metric, before],
+  )
+  return result.rows[0]?.latest ?? undefined
 }
 
 /** Get the min and max time for a metric (across all sources). Returns null if no data exists. */

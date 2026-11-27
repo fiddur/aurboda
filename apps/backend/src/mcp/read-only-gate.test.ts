@@ -20,6 +20,7 @@ describe('isToolAllowedWhenReadOnly', () => {
     'send_test_push',
     'list_reminders',
     'get_note',
+    'get_journal_context',
     'get_note_neighbors',
     'search_notes',
     'list_deleted_notes',

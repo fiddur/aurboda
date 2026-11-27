@@ -3,6 +3,7 @@ import {
   DELETED_NOTE_RETENTION_DAYS,
   dismissNoteLinkSuggestionBodySchema,
   isKnownTimezone,
+  journalContextQuerySchema,
   mergeNoteTagsBodySchema,
   noteLinkSuggestionsPageQuerySchema,
   noteNeighborsQuerySchema,
@@ -15,6 +16,8 @@ import {
 } from '@aurboda/api-spec'
 import { z } from 'zod'
 
+import { dayKey } from '../services/day-keys.ts'
+import { getJournalContext, withJournalContext } from '../services/journal-context.ts'
 import {
   addNote,
   deleteNoteById,
@@ -35,6 +38,7 @@ import {
   getNoteLinkSuggestions,
   listNoteLinkSuggestionsPage,
 } from '../services/note-link-suggestions.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { errorResponse, jsonResponse, type McpServer, tzJsonResponse } from './helpers.ts'
 
 const noteIdSchema = (what: string) => z.string().uuid().describe(`The ID of the note to ${what}`)
@@ -75,13 +79,26 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_note',
-    'Get one comment or journal entry by its ID: a thread root comes with its replies (oldest first) and, for a journal entry, its pictures and recordings; a reply comes on its own.',
+    "Get one comment or journal entry by its ID: a thread root comes with its replies (oldest first) and, for a journal entry, its pictures and recordings and, when the user configured one, its context line for the entry's day (`context`, as get_journal_context); a reply comes on its own.",
     { id: noteIdSchema('get'), tz: tzSchema },
     async ({ id, tz }) => {
       if (!isKnownTimezone(tz)) return errorResponse(`Not an IANA timezone: ${tz}`)
       const result = await getNoteForUser(user, id)
       if (!result.success) return errorResponse(result.error ?? 'Note not found')
-      return tzJsonResponse(result, tz)
+      const data = result.data && (await withJournalContext(user, result.data, tz))
+      return tzJsonResponse({ ...result, data }, tz)
+    },
+  )
+
+  server.tool(
+    'get_journal_context',
+    'Get the journal context line for a day: the figures the user configured in the journal_context setting (metric values, trends, days since an activity or date, the moon), computed for that calendar day. Items without a value for the day are left out; items is empty when none are configured. Each item has a ready `text` (label + value + suffix) and a full `name`.',
+    { ...journalContextQuerySchema.shape },
+    async ({ date, tz: requestedTz }) => {
+      const tz = requestedTz ?? (await getUserTimezone(user))
+      const day = date ?? dayKey(new Date(), tz)
+      const context = await getJournalContext(user, day, tz)
+      return jsonResponse({ data: context ?? { date: day, items: [] }, success: true })
     },
   )
 

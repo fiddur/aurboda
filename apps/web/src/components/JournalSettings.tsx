@@ -3,6 +3,7 @@ import { useState } from 'preact/hooks'
 
 import { fetchUserSettings, updateUserSettings } from '../state/api'
 import { auth } from '../state/auth'
+import { JournalContextSettings } from './JournalContextSettings'
 import { type SaveStatus, SaveStatusIndicator } from './SaveStatusIndicator'
 import { SettingsSection } from './SettingsSection'
 
@@ -48,6 +49,7 @@ export function JournalSettings() {
           stored as they are.
         </p>
       </div>
+      <JournalContextSettings settings={settings} />
     </SettingsSection>
   )
 }

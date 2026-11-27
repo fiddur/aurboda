@@ -93,6 +93,7 @@ import { createFoodItemsRouter } from '../routes/food-items-router.ts'
 import { createHomeAssistantRouter } from '../routes/home-assistant-router.ts'
 import { createIconsRouter } from '../routes/icons-router.ts'
 import { createImportsRouter } from '../routes/imports-router.ts'
+import { createJournalContextRouter } from '../routes/journal-context-router.ts'
 import { createLocationsRouter } from '../routes/locations-router.ts'
 import { createMealsRouter } from '../routes/meals-router.ts'
 import { createMediaRouter } from '../routes/media-router.ts'
@@ -317,6 +318,7 @@ export const mountRestRouters = ({
   httpd.use(createAgentsRouter(apiBaseUrl))
   httpd.use('/icons', createIconsRouter(authMiddleware))
   httpd.use('/events', createEventsRouter(authMiddleware, liveHub))
+  httpd.use('/journal-context', createJournalContextRouter(authMiddleware))
   httpd.use('/notes', createNotesRouter(authMiddleware))
   httpd.use('/notes', createNoteAttachmentsRouter(authMiddleware))
   httpd.use('/note-templates', createNoteTemplatesRouter(authMiddleware))

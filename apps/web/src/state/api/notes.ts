@@ -5,10 +5,14 @@ import type {
   DeleteNoteResponse,
   DismissNoteLinkSuggestionBody,
   EntityType,
+  JournalContext,
+  JournalContextResponse,
   MergeNoteTagsResponse,
   Note,
   NoteAttachment,
   NoteAttachmentResponse,
+  NoteDetail,
+  NoteDetailResponse,
   NoteLinkSuggestion,
   NoteLinkSuggestionsResponse,
   NoteNeighbors,
@@ -43,7 +47,7 @@ export * from './journal-params'
 const authHeaders = () => ({ Authorization: `Bearer ${auth.value.token}` })
 
 /** The API always returns the comment it wrote; a missing body is a real failure. */
-const requireNote = (note: Note | undefined): Note => {
+const requireNote = <T extends Note>(note: T | undefined): T => {
   if (!note) throw new Error('Comment request returned no data')
   return note
 }
@@ -143,11 +147,22 @@ export const searchJournal = async (query: JournalQuery): Promise<NotesSearchRes
   return response.data
 }
 
-export const fetchNote = async (id: string): Promise<Note> => {
-  const response = await axios.get<NoteResponse>(`${API_URL}/notes/${encodeURIComponent(id)}`, {
+/** One comment; a journal entry comes with its context line, for its day in `tz` (the user's timezone when omitted). */
+export const fetchNote = async (id: string, tz?: string): Promise<NoteDetail> => {
+  const response = await axios.get<NoteDetailResponse>(`${API_URL}/notes/${encodeURIComponent(id)}`, {
     headers: authHeaders(),
+    params: tz ? { tz } : {},
   })
   return requireNote(response.data.data)
+}
+
+/** The journal context line for a calendar day (YYYY-MM-DD) in `tz`. */
+export const fetchJournalContext = async (date: string, tz?: string): Promise<JournalContext> => {
+  const response = await axios.get<JournalContextResponse>(`${API_URL}/journal-context`, {
+    headers: authHeaders(),
+    params: tz ? { date, tz } : { date },
+  })
+  return response.data.data ?? { date, items: [] }
 }
 
 /** The entries just before (older, `previous`) and after (newer, `next`) one, in the Journal's order. */
