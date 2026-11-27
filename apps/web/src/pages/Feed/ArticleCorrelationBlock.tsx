@@ -21,6 +21,7 @@ import {
   PEOPLE_KEY,
 } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { correlationErrorText } from '../Correlations/correlationError'
 import { describeSelectorAxis, linearRegression } from '../Correlations/exploreCharts'
 
 const W = 520
@@ -175,7 +176,9 @@ export const ArticleCorrelationBlock = ({
       {isLoading ? (
         <p class="article-chart-note">Loading correlation…</p>
       ) : isError ? (
-        <p class="article-chart-note">{apiErrorMessage(error, "Couldn't load this correlation.")}</p>
+        <p class="article-chart-note">
+          {correlationErrorText(apiErrorMessage(error, "Couldn't load this correlation."))}
+        </p>
       ) : !data || data.n < 3 ? (
         <p class="article-chart-note">Not enough overlapping data in this window.</p>
       ) : (

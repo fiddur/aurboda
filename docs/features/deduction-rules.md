@@ -266,7 +266,9 @@ rule, and links the person to every matching activity, old and new.
   match, synced or not); a link never creates an override, as with a manual people-only edit. Retype links them to
   the activities it retypes in that run and, on every run, to the activities of `output_activity_type` in the
   window that it retyped earlier (marked `_retyped_by` with the rule's id), which no longer match its activity
-  condition: a person added to a retype rule later reaches them too, even on a run with no match.
+  condition: a person added to a retype rule later reaches them too, even on a run with no match. Those earlier
+  activities are found by the mark _and_ the rule's current `output_activity_type`, so once the output type is
+  changed, the activities retyped under the old type no longer gain people added later.
 - Saving a rule with an unknown, deleted or malformed id is a `400` naming it. A person deleted after the rule was
   saved is skipped when it runs; the rule keeps the id, and the rule list shows it as "a removed person".
 - Re-running a rule on activities that already have its people changes nothing and counts nothing; the preview
