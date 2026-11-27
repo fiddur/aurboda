@@ -388,7 +388,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
           computeActivityDetailMetrics(user, window),
           getActivityFullDetail(
             user,
-            { ...window, id },
+            { ...window, id, override_target_ids: activity.override_target_ids },
             {
               includeGps: include_gps,
               metrics: parseMetricsParam(metrics),
@@ -428,7 +428,7 @@ Source-agnostic: works for any activity that has time-series and/or GPS populate
 
   server.tool(
     'get_activity_track',
-    'Full-resolution GPS track of one activity: points with lat, lon, altitude (alt, metres) and t (seconds since the activity start), plus length_m and point_count. full_resolution is false for a shape-only track (a Strava polyline backfill), whose times are spread evenly and unfit for timing.',
+    'Full-resolution GPS track of one activity: points with lat, lon, altitude (alt, metres) and t (seconds since start_time, the start of the row that owns the track, activity_id: for an override, possibly a row it overrides), plus length_m and point_count. full_resolution is false for a shape-only track (a Strava polyline backfill), whose times are spread evenly and unfit for timing.',
     { id: z.string().describe('Activity ID (a "merged:" prefix is accepted and stripped).') },
     async ({ id: rawId }) => {
       const { id } = parseActivityId(rawId)

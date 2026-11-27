@@ -59,6 +59,7 @@ const record: SegmentRecord = {
 
 const makeDeps = (overrides: Partial<SegmentDeps> = {}): SegmentDeps => ({
   findNearbyNamedLocation: vi.fn(async () => null),
+  findTrackOwner: vi.fn(async (_u: string, id: string) => id),
   findSegmentCandidatesForActivity: vi.fn(async () => []),
   findTrackCandidatesForSegment: vi.fn(async () => []),
   getMetricMeansForWindows: vi.fn(async (_u: string, _m: string, windows: unknown[]) =>
@@ -112,6 +113,24 @@ describe('createSegment', () => {
     }
   })
 
+  test('an override is cut from and credited to the row that owns its track', async () => {
+    const deps = makeDeps({ findTrackOwner: vi.fn(async () => 'synced') })
+
+    const result = await createSegment(
+      'alice',
+      { activity_id: 'override', end_offset_s: 175, start_offset_s: 50 },
+      deps,
+    )
+
+    expect(result.ok).toBe(true)
+    expect(deps.findTrackOwner).toHaveBeenCalledWith('alice', 'override')
+    expect(deps.segmentLineFromActivity).toHaveBeenCalledWith('alice', 'synced', 50, 175)
+    expect(deps.insertSegment).toHaveBeenCalledWith(
+      'alice',
+      expect.objectContaining({ created_from_activity_id: 'synced' }),
+    )
+  })
+
   test('refuses a near-closed loop: start and end under 50 m apart cannot be timed', async () => {
     const loop = { ...line, end: { lat: LAT0 + 40 / M_PER_DEG_LAT, lon: LON0 }, length_m: 900 }
     const deps = makeDeps({ segmentLineFromActivity: vi.fn(async () => ({ line: loop, ok: true as const })) })
@@ -160,6 +179,12 @@ describe('createSegment', () => {
     expect(
       await createSegment('alice', { activity_id: 'a1', end_offset_s: 20, start_offset_s: 0 }, noTrack),
     ).toMatchObject({ error: 'The activity has no GPS track', ok: false })
+
+    const noOwner = makeDeps({ findTrackOwner: vi.fn(async () => null) })
+    expect(
+      await createSegment('alice', { activity_id: 'a1', end_offset_s: 20, start_offset_s: 0 }, noOwner),
+    ).toMatchObject({ error: 'The activity has no GPS track', ok: false })
+    expect(noOwner.segmentLineFromActivity).not.toHaveBeenCalled()
 
     const outside = makeDeps({
       segmentLineFromRoute: vi.fn(async () => ({ ok: false as const, reason: 'out_of_range' as const })),

@@ -4,7 +4,8 @@ import { insertActivity, insertOverride } from '../db/activities/index.ts'
 import { query } from '../db/connection.ts'
 import { upsertActivityTrack } from '../db/tracks.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
-import { findActivityTrack } from './tracks.ts'
+import { createSegment, defaultSegmentDeps } from './segments.ts'
+import { findActivityTrack, findTrackOwner, serializeActivityTrack } from './tracks.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -55,5 +56,44 @@ describe('findActivityTrack (integration)', () => {
     await query(user, `UPDATE activities SET deleted_at = NOW() WHERE id = $1`, [override!.id])
     expect(await findActivityTrack(user, override!.id!)).toBeNull()
     expect(await findActivityTrack(user, 'merged:x')).toBeNull()
+  })
+
+  test("a moved override's track keeps the owning row's id and start, and a segment cut from it is that row's", async () => {
+    const user = getTestUser()
+    const synced = await insertActivity(user, {
+      activity_type: 'running',
+      end_time: end,
+      external_id: 'garmin-2',
+      source: 'garmin',
+      start_time: start,
+    })
+    await upsertActivityTrack(user, {
+      activity_id: synced,
+      ewkt: 'SRID=4326;LINESTRING ZM(18 59 10 0, 18 59.01 12.5 60)',
+      full_resolution: true,
+      source: 'garmin',
+    })
+    const override = await insertOverride(user, [synced], {
+      activity_type: 'running',
+      end_time: end,
+      start_time: new Date('2026-07-01T08:10:00Z'),
+      title: 'Moved run',
+    })
+    const overrideId = override!.id!
+
+    const track = await findActivityTrack(user, overrideId)
+    expect(serializeActivityTrack(track!)).toMatchObject({
+      activity_id: synced,
+      start_time: '2026-07-01T08:00:00.000Z',
+    })
+    expect(await findTrackOwner(user, overrideId)).toBe(synced)
+
+    const created = await createSegment(
+      user,
+      { activity_id: overrideId, end_offset_s: 60, start_offset_s: 0 },
+      defaultSegmentDeps,
+    )
+    if (!created.ok) throw new Error(created.error)
+    expect(created.segment.created_from_activity_id).toBe(synced)
   })
 })

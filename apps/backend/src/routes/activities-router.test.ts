@@ -588,7 +588,7 @@ describe('GET /activities/:id/track', () => {
     }))
   })
 
-  test('returns the track of a row the override wraps, without its internal start time, for a merged id too', async () => {
+  test("returns the track of a row a moved override wraps, with that row's id and start, for a merged id too", async () => {
     vi.mocked(db.getActivityById).mockResolvedValue(activityRow({ override_target_ids: [TARGET_ID] }))
     vi.mocked(db.getActivityTrack).mockResolvedValue({
       activity_id: TARGET_ID,
@@ -600,7 +600,7 @@ describe('GET /activities/:id/track', () => {
         { alt: 12, lat: 59.01, lon: 18, t: 60 },
       ],
       source: 'garmin',
-      start_time: new Date('2026-06-08T10:00:00Z'),
+      start_time: new Date('2026-06-08T09:55:00Z'),
     })
 
     const res = await supertest(buildApp()).get(`/activities/merged:${ACTIVITY_ID}/track`)
@@ -618,6 +618,7 @@ describe('GET /activities/:id/track', () => {
           { alt: 12, lat: 59.01, lon: 18, t: 60 },
         ],
         source: 'garmin',
+        start_time: '2026-06-08T09:55:00.000Z',
       },
       success: true,
     })

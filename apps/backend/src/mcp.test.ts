@@ -1431,7 +1431,7 @@ describe('MCP Server', () => {
       expect(missing.text).toBe('Activity not found')
     })
 
-    test('get_activity_track returns the track of a row the override wraps, without its start time, or an error without one', async () => {
+    test("get_activity_track returns the track of a row the override wraps, with that row's start, or an error without one", async () => {
       const OVERRIDE_ID = '9d0124e7-d161-4855-a54f-fa8bdb45c4f2'
       const SYNCED_ID = '5b7e2c1a-3f4d-4e8a-9b2c-1d0e6f7a8b9c'
       const app = createTestApp()
@@ -1467,6 +1467,7 @@ describe('MCP Server', () => {
           { alt: 0, lat: 59.01, lon: 18, t: 60 },
         ],
         source: 'garmin',
+        start_time: '2024-01-14T07:00:00.000Z',
       })
       expect(db.getActivityTrack).toHaveBeenCalledWith('testuser', [OVERRIDE_ID, SYNCED_ID])
 

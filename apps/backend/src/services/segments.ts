@@ -42,6 +42,7 @@ import { getMetricMeansForWindows } from '../db/time-series.ts'
 import { auditError } from './audit-log.ts'
 import { haversineDistance } from './locations.ts'
 import { findSegmentPasses } from './segment-timing.ts'
+import { findTrackOwner } from './tracks.ts'
 
 export const MIN_SEGMENT_LENGTH_M = 100
 /** Twice the buffer: closer ends put a point near the end onto the first edge, so no pass is ever timed. */
@@ -54,6 +55,8 @@ export const segmentName = (nearby: { name: string } | null, lengthM: number): s
   `${(nearby?.name ?? 'Segment').slice(0, MAX_PLACE_CHARS)} · ${(lengthM / 1000).toFixed(1)} km`
 
 export interface SegmentDeps {
+  /** The row whose track the activity shows; segments are cut from and credited to that row. */
+  findTrackOwner: (user: string, activityId: string) => Promise<string | null>
   segmentLineFromActivity: (
     user: string,
     activityId: string,
@@ -108,6 +111,7 @@ export interface SegmentDeps {
 
 export const defaultSegmentDeps: SegmentDeps = {
   findNearbyNamedLocation,
+  findTrackOwner,
   findSegmentCandidatesForActivity,
   findTrackCandidatesForSegment,
   getMetricMeansForWindows,
@@ -294,7 +298,10 @@ const LINE_ERRORS = {
   },
 } as const
 
-/** Cuts the line from an activity's track (seconds since its start) or a route (km) and creates the segment from it. */
+/**
+ * Cuts the line from the track an activity shows (seconds since the start of the row that owns it,
+ * which the segment is created from) or a route (km) and creates the segment from it.
+ */
 export const createSegment = async (
   user: string,
   body: CreateSegmentBody,
@@ -302,17 +309,16 @@ export const createSegment = async (
 ): Promise<CreateSegmentResult> => {
   const fromActivity = body.activity_id !== undefined
   let result: SegmentLineResult
+  let trackOwner: string | null = null
   if (
     body.activity_id !== undefined &&
     body.start_offset_s !== undefined &&
     body.end_offset_s !== undefined
   ) {
-    result = await deps.segmentLineFromActivity(
-      user,
-      body.activity_id,
-      body.start_offset_s,
-      body.end_offset_s,
-    )
+    trackOwner = await deps.findTrackOwner(user, body.activity_id)
+    result = trackOwner
+      ? await deps.segmentLineFromActivity(user, trackOwner, body.start_offset_s, body.end_offset_s)
+      : { ok: false, reason: 'not_found' }
   } else if (body.route_id !== undefined && body.start_km !== undefined && body.end_km !== undefined) {
     result = await deps.segmentLineFromRoute(user, body.route_id, body.start_km, body.end_km)
   } else {
@@ -328,7 +334,7 @@ export const createSegment = async (
     {
       name: body.name,
       ...(fromActivity
-        ? { created_from_activity_id: body.activity_id }
+        ? { created_from_activity_id: trackOwner ?? undefined }
         : { created_from_route_id: body.route_id }),
     },
     deps,

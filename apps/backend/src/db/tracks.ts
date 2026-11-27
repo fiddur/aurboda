@@ -104,6 +104,22 @@ export const activityHasTrack = async (user: string, activityIds: string | strin
   return result.rows.length > 0
 }
 
+/** The first of `activityIds` that is a live row with a track, in `getActivityTrack`'s order. */
+export const findTrackOwnerId = async (user: string, activityIds: string[]): Promise<string | null> => {
+  const ids = uuidsOf(activityIds)
+  if (ids.length === 0) return null
+  const result = await query<{ activity_id: string }>(
+    user,
+    `SELECT t.activity_id FROM activity_tracks t
+     JOIN activities a ON a.id = t.activity_id AND a.deleted_at IS NULL
+     WHERE t.activity_id = ANY($1::uuid[])
+     ORDER BY array_position($1::uuid[], t.activity_id)
+     LIMIT 1`,
+    [ids],
+  )
+  return result.rows[0]?.activity_id ?? null
+}
+
 export const hasActivityTrack = async (
   user: string,
   activityId: string,

@@ -2,7 +2,7 @@ import type { ActivityTrack } from '@aurboda/api-spec'
 
 import type { ActivityTrackRecord } from '../db/tracks.ts'
 
-import { activityHasTrack, getActivityById, getActivityTrack } from '../db/index.ts'
+import { activityHasTrack, findTrackOwnerId, getActivityById, getActivityTrack } from '../db/index.ts'
 
 export interface TrackPoint {
   lat: number
@@ -127,6 +127,15 @@ export const findActivityTrack = async (user: string, id: string): Promise<Activ
   return activity ? getActivityTrack(user, trackOwnerIds(id, activity)) : null
 }
 
+/**
+ * The row whose track the live activity `id` shows (the first of its track owner ids with one), so
+ * cuts and efforts name the row whose track they were measured on; null without one.
+ */
+export const findTrackOwner = async (user: string, id: string): Promise<string | null> => {
+  const activity = await getActivityById(user, id)
+  return activity ? findTrackOwnerId(user, trackOwnerIds(id, activity)) : null
+}
+
 export const serializeActivityTrack = (record: ActivityTrackRecord): ActivityTrack => ({
   activity_id: record.activity_id,
   full_resolution: record.full_resolution,
@@ -134,6 +143,7 @@ export const serializeActivityTrack = (record: ActivityTrackRecord): ActivityTra
   point_count: record.point_count,
   points: record.points,
   source: record.source,
+  start_time: record.start_time.toISOString(),
 })
 
 /** Track points as timestamped fixes, the shape the `gps` field of the full activity detail uses. */

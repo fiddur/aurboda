@@ -8,6 +8,7 @@ import { query } from './connection.ts'
 import { insertRawRecord } from './raw-records.ts'
 import {
   activityHasTrack,
+  findTrackOwnerId,
   getActivityTrack,
   getGarminTrackBackfillCandidates,
   getStravaTrackBackfillCandidates,
@@ -200,6 +201,9 @@ describe('Activity tracks integration', () => {
       expect(await activityHasTrack(user, [bare, 'null'])).toBe(false)
       expect(await getActivityTrack(user, [])).toBeNull()
       expect(await activityHasTrack(user, [])).toBe(false)
+      expect(await findTrackOwnerId(user, ['null', bare, second, first])).toBe(second)
+      expect(await findTrackOwnerId(user, [bare])).toBeNull()
+      expect(await findTrackOwnerId(user, [])).toBeNull()
     })
   })
 

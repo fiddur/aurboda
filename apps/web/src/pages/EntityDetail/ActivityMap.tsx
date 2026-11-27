@@ -22,8 +22,6 @@ export interface ActivityPointsWindow {
   activityId?: string
   /** The detail answer's `has_track`: only then is the stored track asked for, else raw GPS is used. */
   hasTrack?: boolean
-  /** The activity's own start_time: the origin of its stored track's times. */
-  activityStart: Date
   start: Date
   end: Date
 }
@@ -37,11 +35,10 @@ export interface ActivityMapPoints {
 export const loadActivityPoints = async ({
   activityId,
   hasTrack,
-  activityStart,
   start,
   end,
 }: ActivityPointsWindow): Promise<ActivityMapPoints> => {
-  const track = activityId && hasTrack === true ? await fetchActivityTrack(activityId, activityStart) : null
+  const track = activityId && hasTrack === true ? await fetchActivityTrack(activityId) : null
   const points = await pickActivityPoints(track, () => fetchRawLocations(start, end))
   return { points, track_offsets_s: track && points === track.points ? track.offsets_s : null }
 }

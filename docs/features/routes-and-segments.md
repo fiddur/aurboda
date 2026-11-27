@@ -78,10 +78,12 @@ per user in the `track-backfill` queue at startup, and on demand through
 
 ### Reads
 
-- `GET /activities/:id/track` and `get_activity_track`: `{ source, points: [{lat, lon,
-alt, t}], length_m, point_count, full_resolution }`, `t` in seconds since the
-  activity's start. An activity that overrides others answers its own track when it has
-  one, otherwise the track of a row it overrides, and `activity_id` is then that row's. An
+- `GET /activities/:id/track` and `get_activity_track`: `{ activity_id, source, start_time,
+points: [{lat, lon, alt, t}], length_m, point_count, full_resolution }`, `t` in seconds
+  since `start_time`, the start of the row that owns the track (`activity_id`). An activity
+  that overrides others answers its own track when it has one, otherwise the track of a row
+  it overrides, and `activity_id` and `start_time` are then that row's, so a moved override
+  still times its points right. An
   activity without a stored track, or a deleted one, answers 404 (`No track for activity`).
 - `GET /activities/:id`, `/activities/:id/full` and `get_activity_detail` carry `has_track`,
   true exactly when the track read above answers a track for it; the web activity map asks
@@ -301,10 +303,12 @@ hand from a track or a route, or added from a suggestion.
 `POST /segments` / `create_segment` takes one of two cuts:
 
 - **From an activity**: `activity_id`, `start_offset_s`, `end_offset_s`, seconds since the
-  activity's start (the `t` of `GET /activities/:id/track`). The line is the part of the
+  track's `start_time` (the `t` of `GET /activities/:id/track`). The line is the part of the
   activity's preferred track (the one the track read returns) between those M values
   (`ST_LocateBetween`), simplified at about 3 m. Where the M values leave the range and come
   back (a device clock that jumped back), the cut has several parts and the longest is kept.
+  A segment cut from an override is created from the row that owns the track: that row is
+  its `created_from_activity_id`, as efforts are matched per track-owning row.
 - **From a route**: `route_id`, `start_km`, `end_km`. The line is `ST_LineSubstring` of the
   route between those distances, with the fractions taken in Web Mercator so they are
   distances in metres, not degrees. An end up to 50 m past the route's length (a rounded

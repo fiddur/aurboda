@@ -56,6 +56,7 @@ const segmentLine = (overrides: Partial<SegmentLine> = {}): SegmentLine => ({
 
 const segmentDeps = (): SegmentDeps => ({
   findNearbyNamedLocation: vi.fn(async () => null),
+  findTrackOwner: vi.fn(async () => null),
   findSegmentCandidatesForActivity: vi.fn(async () => []),
   findTrackCandidatesForSegment: vi.fn(async () => []),
   getMetricMeansForWindows: vi.fn(async () => []),

@@ -56,6 +56,27 @@ describe('getActivityFullDetail GPS', () => {
     expect(db.getLocations).not.toHaveBeenCalled()
   })
 
+  test("an override shows the track of the row it overrides, timed from that row's start", async () => {
+    vi.mocked(db.getActivityTrack).mockResolvedValue({
+      activity_id: 'synced',
+      full_resolution: true,
+      length_m: 1112,
+      point_count: 1,
+      points: [{ alt: 0, lat: 59, lon: 18, t: 60 }],
+      source: 'garmin',
+      start_time: new Date('2026-06-08T09:55:00Z'),
+    })
+
+    const result = await getActivityFullDetail(
+      'u',
+      { end_time: end, id: 'override', override_target_ids: ['synced'], start_time: start },
+      {},
+    )
+
+    expect(db.getActivityTrack).toHaveBeenCalledWith('u', ['override', 'synced'])
+    expect(result.gps).toEqual([{ lat: 59, lon: 18, time: '2026-06-08T09:56:00.000Z' }])
+  })
+
   const shapeOnlyTrack = {
     activity_id: 'a1',
     full_resolution: false,

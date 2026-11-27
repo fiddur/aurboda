@@ -41,7 +41,7 @@ export const registerSegmentTools = (
 
   server.tool(
     'create_segment',
-    "Create a segment from part of an activity's GPS track (activity_id with start_offset_s and end_offset_s, seconds since the activity's start as get_activity_track's t) or of a route (route_id with start_km and end_km). It must be at least 100 m; without a name it is named after a named location near its start and its length. Every tracked activity of its type is timed on it at once.",
+    "Create a segment from part of an activity's GPS track (activity_id with start_offset_s and end_offset_s, seconds since the track's start_time as get_activity_track's t; an override's segment is created from the row that owns its track) or of a route (route_id with start_km and end_km). It must be at least 100 m; without a name it is named after a named location near its start and its length. Every tracked activity of its type is timed on it at once.",
     { ...createSegmentBodySchema.shape },
     async (params) => {
       const parsed = createSegmentBodySchema.safeParse(params)

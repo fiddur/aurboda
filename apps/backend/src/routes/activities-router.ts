@@ -637,7 +637,7 @@ export const createActivitiesRouter = (
           computeActivityDetailMetrics(user, window),
           getActivityFullDetail(
             user,
-            { ...window, id },
+            { ...window, id, override_target_ids: activity.override_target_ids },
             {
               includeGps: include_gps,
               metrics: parseMetricsParam(metrics),

@@ -213,16 +213,16 @@ export interface TimedGpsPoint {
 
 export interface ActivityTrackPoints {
   full_resolution: boolean
-  /** Each point's `t`: seconds since the activity's start, as segment cuts take them. */
+  /** Each point's `t`: seconds since the start of the row that owns the track, as segment cuts take them. */
   offsets_s: number[]
   points: TimedGpsPoint[]
 }
 
 /**
- * The activity's stored GPS track as timestamped fixes, or null when it has none.
- * `start` is the activity's own start_time, the origin of the track's `t`.
+ * The activity's stored GPS track as timestamped fixes, or null when it has none. Times count
+ * from the track's own `start_time`, which for an override is its target's start, not the page's.
  */
-export const fetchActivityTrack = async (id: string, start: Date): Promise<ActivityTrackPoints | null> => {
+export const fetchActivityTrack = async (id: string): Promise<ActivityTrackPoints | null> => {
   const { token } = auth.value
   try {
     const response = await axios.get<ActivityTrackResponse>(
@@ -231,13 +231,14 @@ export const fetchActivityTrack = async (id: string, start: Date): Promise<Activ
     )
     const track = response.data.data
     if (!track) return null
+    const origin = new Date(track.start_time).getTime()
     return {
       full_resolution: track.full_resolution,
       offsets_s: track.points.map((p) => p.t),
       points: track.points.map((p) => ({
         lat: p.lat,
         lon: p.lon,
-        time: new Date(start.getTime() + p.t * 1000),
+        time: new Date(origin + p.t * 1000),
       })),
     }
   } catch (error) {
