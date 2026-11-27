@@ -32,6 +32,7 @@ import {
   pruneDeletedPeople,
   purgePerson,
   restorePerson,
+  setActivityGroupPeople,
   setActivityPeople,
   softDeletePerson,
   updatePerson,
@@ -327,6 +328,32 @@ describe('People Integration Tests', () => {
     expect(await listActivityGroupRowIds(user, alone)).toEqual([alone])
     expect(await listActivityGroupRowIds(user, deletedSibling)).toEqual(group)
     expect(await listActivityGroupRowIds(user, MISSING)).toEqual([])
+  })
+
+  test("setting a group's people from any member writes them on one row and clears the others", async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    const synced = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'garmin' })
+    const override = (await insertOverride(user, [synced], {
+      activity_type: 'walking',
+      end_time: new Date('2026-11-01T11:00:00Z'),
+      start_time: new Date('2026-11-01T10:00:00Z'),
+    }))!.id!
+    const sibling = await insertActivity(user, '2026-11-01T10:00:00Z', false, { source: 'strava' })
+    const alone = await insertActivity(user, '2026-11-02T10:00:00Z')
+    await query(user, 'UPDATE activities SET superseded_by = $1 WHERE id = $2', [override, sibling])
+    await addActivityPeople(user, synced, [anna.id])
+    await addActivityPeople(user, sibling, [anna.id])
+    await addActivityPeople(user, alone, [anna.id])
+
+    await setActivityGroupPeople(user, sibling, override, [bo.id])
+
+    const linked = await getPeopleForActivities(user, [synced, override, sibling, alone])
+    expect(linked.get(override)).toEqual([{ id: bo.id, name: 'Bo' }])
+    expect(linked.has(synced)).toBe(false)
+    expect(linked.has(sibling)).toBe(false)
+    expect(linked.get(alone)).toEqual([{ id: anna.id, name: 'Anna' }])
   })
 
   describe("a person's activities as merge groups", () => {

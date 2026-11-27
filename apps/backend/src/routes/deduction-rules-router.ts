@@ -6,6 +6,8 @@ import {
   type DeductionRuleResponse,
   type DeductionRulesResponse,
   type EvaluateDeductionRulesResponse,
+  type PreviewDeductionRuleBody,
+  previewDeductionRuleBodySchema,
   type PreviewDeductionRuleResponse,
   type UpdateDeductionRuleBody,
   updateDeductionRuleBodySchema,
@@ -104,13 +106,19 @@ export const createDeductionRulesRouter = (
     },
   )
 
-  router.post<Record<string, never>, PreviewDeductionRuleResponse, AddDeductionRuleBody>(
+  router.post<Record<string, never>, PreviewDeductionRuleResponse, PreviewDeductionRuleBody>(
     '/preview',
     authMiddleware,
-    validateBody(addDeductionRuleBodySchema),
+    validateBody(previewDeductionRuleBodySchema),
     async (req, res) => {
       const user = req.user!
-      const { output_activity_type } = req.body
+      const { output_activity_type, rule_id } = req.body
+
+      if (rule_id && !(await getDeductionRule(user, rule_id))) {
+        return res
+          .status(404)
+          .json({ error: 'Deduction rule not found', sample_days: 0, success: false, would_affect: 0 })
+      }
 
       if (
         !(await activityTypeExists(user, output_activity_type)) &&
@@ -138,7 +146,7 @@ export const createDeductionRulesRouter = (
       const tempRule = {
         conditions: req.body.conditions,
         enabled: true,
-        id: 'preview',
+        id: rule_id ?? 'preview',
         merge_gap_seconds: req.body.merge_gap_seconds,
         mode: req.body.mode,
         name: req.body.name,

@@ -258,6 +258,8 @@ rule, and links the person to every matching activity, old and new.
 - A rule adds nobody to an activity whose people were **set by hand**: one with a person no rule added. People added
   by rules do not count, so two rules can each add their own person to the same activity. The first evaluation
   decides: an activity skipped because its people were set by hand is not filled later when it is emptied.
+- Taking a person a rule added off by hand clears the rule's "added" mark for them, so putting them back by hand
+  later makes the activity's people set by hand.
 - A person added to the rule later is still added to the activities it handled before, under the same two rules.
 - "The activity" is what the activity list shows as one: a synced row and its override, or the rows of a merge. A
   person set by hand on any of them protects all of them.
@@ -340,7 +342,10 @@ When a rule is created or updated, it is immediately evaluated against the last 
 - `DELETE /deduction-rules/:id` -- Delete a rule and its generated activities
 - `POST /deduction-rules/evaluate` -- Manually trigger full re-evaluation
 
-- `POST /deduction-rules/preview` -- Dry-run a rule definition over the last 90 days
+- `POST /deduction-rules/preview` -- Dry-run a rule definition over the last 90 days. When editing a saved rule,
+  pass its id as `rule_id` (an unknown id is a `404`): the dry run then reads what that rule already decided, so an
+  activity whose person it added and someone took off by hand is not counted again. Without it the dry run is a new
+  rule's. The web rule editor sends the id when previewing a saved rule.
 
 MCP tools: `list_deduction_rules`, `add_deduction_rule`, `preview_deduction_rule`, `update_deduction_rule`, `delete_deduction_rule`, `evaluate_deduction_rules`.
 

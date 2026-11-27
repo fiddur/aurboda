@@ -207,7 +207,7 @@ function RuleForm({ id, rule }: { id?: string; rule?: DeductionRule }) {
   })
 
   const previewMutation = useMutation({
-    mutationFn: () => previewDeductionRule(fieldsToBuildBody(fields)),
+    mutationFn: () => previewDeductionRule({ ...fieldsToBuildBody(fields), rule_id: rule?.id }),
     onSuccess: (result) => setPreviewResult(result),
   })
 

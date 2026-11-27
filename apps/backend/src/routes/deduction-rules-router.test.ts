@@ -30,6 +30,7 @@ vi.mock('../services/training-load/dirty.ts', () => ({ markWorkoutHoursDirty: vi
 
 const db = await import('../db/index.ts')
 const { markWorkoutHoursDirty } = await import('../services/training-load/dirty.ts')
+const { evaluateAllRules } = await import('../services/deduction-engine.ts')
 
 const RULE_ID = '0f8b2a39-1d0e-4c64-9d8c-6b3b3c2f7a01'
 
@@ -269,6 +270,42 @@ describe('deduction-rules output_activity_type from the built-in catalogue', () 
       .send(body({ output_activity_type: 'not_a_type' }))
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Unknown activity type: "not_a_type"')
+  })
+
+  test('a preview without a rule id runs under the preview id', async () => {
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'sauna' }))
+    expect(res.status).toBe(200)
+    expect(db.getDeductionRule).not.toHaveBeenCalled()
+    expect(vi.mocked(evaluateAllRules).mock.calls[0]?.[1][0]?.id).toBe('preview')
+  })
+
+  test('a preview of an edit runs under the saved rule id, so it reads what that rule decided', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(rule())
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'sauna', rule_id: RULE_ID }))
+    expect(res.status).toBe(200)
+    expect(db.getDeductionRule).toHaveBeenCalledWith('tester', RULE_ID)
+    expect(vi.mocked(evaluateAllRules).mock.calls[0]?.[1][0]?.id).toBe(RULE_ID)
+  })
+
+  test('a preview of an edit of an unknown rule is a 404', async () => {
+    vi.mocked(db.getDeductionRule).mockResolvedValue(null)
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'sauna', rule_id: RULE_ID }))
+    expect(res.status).toBe(404)
+    expect(evaluateAllRules).not.toHaveBeenCalled()
+  })
+
+  test('a preview with a malformed rule id is a 400', async () => {
+    const res = await supertest(buildApp())
+      .post('/preview')
+      .send(body({ output_activity_type: 'sauna', rule_id: 'not-a-uuid' }))
+    expect(res.status).toBe(400)
+    expect(evaluateAllRules).not.toHaveBeenCalled()
   })
 })
 

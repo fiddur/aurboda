@@ -479,9 +479,12 @@ export const activityGroupRowsSql = (targets: string): string => `
   )`
 
 /** Every live row the user sees as one activity with `activityId` (see `activityGroupRowsSql`). */
-export const listActivityGroupRowIds = async (user: string, activityId: string): Promise<string[]> => {
+export const listActivityGroupRowIds = async (
+  tx: Queryable | string,
+  activityId: string,
+): Promise<string[]> => {
   const result = await query<{ row_id: string }>(
-    user,
+    tx,
     `WITH targets AS (SELECT $1::uuid AS id), ${activityGroupRowsSql('targets')}
      SELECT row_id FROM group_rows ORDER BY row_id`,
     [activityId],
@@ -521,7 +524,9 @@ export const getPeopleForActivityGroups = async (
 
 /**
  * Links `personIds` to `activityId` as its whole set, and drops the links of `clearIds` (the
- * other rows of its merge group, so the set read back is exactly the one given).
+ * other rows of its merge group, so the set read back is exactly the one given). A person a rule
+ * added who is not in the set is taken off by hand, so the rule's record stops saying it added them:
+ * putting them back by hand later reads as set by hand.
  */
 export const setActivityPeople = async (
   user: string,
@@ -529,12 +534,44 @@ export const setActivityPeople = async (
   personIds: string[],
   clearIds: string[] = [],
 ): Promise<void> =>
+  withUserTransaction(user, (tx) => replaceActivityPeopleIn(tx, activityId, personIds, clearIds))
+
+/**
+ * `setActivityPeople` on `writeId`, clearing the other rows of the group `memberId` is in, with the
+ * group read in the same transaction as the write.
+ */
+export const setActivityGroupPeople = async (
+  user: string,
+  memberId: string,
+  writeId: string,
+  personIds: string[],
+): Promise<void> =>
   withUserTransaction(user, async (tx) => {
-    await query(tx, 'DELETE FROM activity_people WHERE activity_id = ANY($1::uuid[])', [
-      [activityId, ...clearIds],
-    ])
-    await addActivityPeopleIn(tx, activityId, personIds)
+    const groupIds = await listActivityGroupRowIds(tx, memberId)
+    await replaceActivityPeopleIn(
+      tx,
+      writeId,
+      personIds,
+      groupIds.filter((rowId) => rowId !== writeId),
+    )
   })
+
+const replaceActivityPeopleIn = async (
+  tx: Queryable,
+  activityId: string,
+  personIds: string[],
+  clearIds: string[],
+) => {
+  const rowIds = [activityId, ...clearIds]
+  await query(tx, 'DELETE FROM activity_people WHERE activity_id = ANY($1::uuid[])', [rowIds])
+  await query(
+    tx,
+    `UPDATE rule_activity_people SET added = false
+      WHERE activity_id = ANY($1::uuid[]) AND added AND NOT (person_id = ANY($2::uuid[]))`,
+    [rowIds, personIds],
+  )
+  await addActivityPeopleIn(tx, activityId, personIds)
+}
 
 const addActivityPeopleIn = async (tx: Queryable | string, activityId: string, personIds: string[]) => {
   if (personIds.length === 0) return
