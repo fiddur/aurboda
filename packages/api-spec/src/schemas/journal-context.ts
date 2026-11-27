@@ -131,7 +131,9 @@ export const journalContextValueSchema = z
       description: 'label + value with the decimals (dot decimal separator) + suffix',
       example: 'ŌR85',
     }),
-    value: z.number().meta({ description: 'The value, unrounded' }),
+    value: z
+      .number()
+      .meta({ description: 'The value, unrounded (a days_since value is truncated to its decimals)' }),
   })
   .meta({ description: 'One computed item of the journal context line', id: 'JournalContextValue' })
 

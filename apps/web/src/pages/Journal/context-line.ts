@@ -5,5 +5,6 @@ export const contextToken = (item: JournalContextValue, locale?: string): string
   `${item.label}${item.value.toLocaleString(locale, {
     maximumFractionDigits: item.decimals,
     minimumFractionDigits: item.decimals,
+    signDisplay: 'negative',
     useGrouping: false,
   })}${item.suffix}`
