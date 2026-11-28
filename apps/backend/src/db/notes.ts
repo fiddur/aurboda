@@ -491,6 +491,8 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
       )}::timestamptz, ${param(params.cursor.id)}::uuid)`
     : ''
   const limit = param(params.limit + 1)
+  // The window would make Postgres read every match before the LIMIT, so only the first page pays for it.
+  const total = params.cursor ? 'NULL::int AS total' : 'count(*) OVER ()::int AS total'
 
   const result = await query(
     user,
@@ -498,7 +500,7 @@ export const searchNotes = async (user: string, params: NotesSearchParams): Prom
             to_char(anchor AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_anchor,
             to_char(created_at AT TIME ZONE 'UTC', ${CURSOR_FORMAT}) AS cursor_created_at,
             total
-       FROM (SELECT n.*, count(*) OVER ()::int AS total FROM (${roots}
+       FROM (SELECT n.*, ${total} FROM (${roots}
        ) n
      ) n
      ${cursorCondition}

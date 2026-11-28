@@ -115,7 +115,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'search_notes',
-    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years; related_type with related_id keeps entries related to that person, activity, meal, report or check-in (the way to list the entries related to a check-in). Page with next_cursor.',
+    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years; related_type with related_id keeps entries related to that person, activity, meal, report or check-in (the way to list the entries related to a check-in). Page with next_cursor; total, on the first page (no cursor) only, counts the matching entries across every page.',
     { ...notesSearchQuerySchema.shape },
     async (params) => {
       const result = await searchNotesForUser(user, params)

@@ -142,7 +142,6 @@ export const sameEntry = (a: EntryForm, b: EntryForm): boolean =>
   a.allDay === b.allDay &&
   (a.allDay ? a.date === b.date : a.start === b.start && a.end === b.end)
 
-/** The local day the entry is on, for picking that day's activities. */
 /** The Timeline around the entry: its whole day for a day entry, else the 24 hours around its time. */
 export const entryTimelineHref = (
   form: Pick<EntryForm, 'allDay' | 'date' | 'start' | 'end'>,
@@ -155,5 +154,6 @@ export const entryTimelineHref = (
   return start ? timelineHref(start, fromDatetimeLocal(form.end)) : undefined
 }
 
+/** The local day the entry is on, for picking that day's activities. */
 export const entryDay = (form: Pick<EntryForm, 'allDay' | 'date' | 'start'>): string =>
   form.allDay ? form.date : form.start.slice(0, 10)

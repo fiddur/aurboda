@@ -1,7 +1,7 @@
 import type { NoteLinkSuggestion } from '@aurboda/api-spec'
 
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 
 import { dismissNoteLinkSuggestion, fetchNoteLinkSuggestions } from '../../state/api'
 import { shownSuggestions, suggestionHint, suggestionLink } from './link-suggestions'
@@ -28,7 +28,9 @@ export const LinkSuggestions = ({
 }) => {
   const typeIcon = useTypeIcon()
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set())
-  useEffect(() => setDismissed(new Set()), [savedAt])
+  // A save's answer can land before a dismissal's: that chip stays hidden until the server knows.
+  const pendingDismissals = useRef(new Set<string>())
+  useEffect(() => setDismissed(new Set(pendingDismissals.current)), [savedAt])
   const suggestions = useQuery({
     enabled: noteId !== undefined,
     queryFn: () => fetchNoteLinkSuggestions(noteId!),
@@ -41,16 +43,19 @@ export const LinkSuggestions = ({
   const dismiss = (suggestion: NoteLinkSuggestion) => {
     const key = linkKey(suggestion)
     setDismissed((current) => new Set([...current, key]))
+    pendingDismissals.current.add(key)
     dismissNoteLinkSuggestion(noteId, {
       entity_id: suggestion.entity_id,
       entity_type: suggestion.entity_type,
-    }).catch(() =>
-      setDismissed((current) => {
-        const next = new Set(current)
-        next.delete(key)
-        return next
-      }),
-    )
+    })
+      .catch(() =>
+        setDismissed((current) => {
+          const next = new Set(current)
+          next.delete(key)
+          return next
+        }),
+      )
+      .finally(() => pendingDismissals.current.delete(key))
   }
 
   return (

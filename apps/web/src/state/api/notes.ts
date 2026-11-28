@@ -208,7 +208,6 @@ export const fetchNoteTags = async (entityTypes?: readonly EntityType[]): Promis
   return response.data.data ?? []
 }
 
-/** With `dryRun` nothing is written; the answer says how many notes would change. */
 export const mergeNoteTags = async (
   from: readonly string[],
   into: string,

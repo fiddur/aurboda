@@ -28,15 +28,18 @@ export const pictureOrder = (
   return [...inline, ...withoutInline(images, content).map((image) => image.id)]
 }
 
-/** Where `current` is among `ids`, and the one `delta` steps away, if any (the ends do not wrap). */
+/**
+ * Where `current` is among `ids` (ids compared case-insensitively), and the one `delta` steps away,
+ * if any (the ends do not wrap).
+ */
 export const pictureStep = (
   ids: readonly string[],
   current: string,
   delta: number,
 ): { index: number; count: number; target?: string } => {
-  const list = ids.includes(current) ? ids : [current]
-  const index = list.indexOf(current)
-  return { count: list.length, index, target: list[index + delta] }
+  const found = ids.findIndex((id) => id.toLowerCase() === current.toLowerCase())
+  if (found === -1) return { count: 1, index: 0, target: undefined }
+  return { count: ids.length, index: found, target: ids[found + delta] }
 }
 
 export interface InlinePictureOptions {

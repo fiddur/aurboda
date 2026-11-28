@@ -1,6 +1,7 @@
 import {
   type ChartDataBreakdownBucket,
   type ExerciseMuscleGroup,
+  exerciseMuscleGroupPlural,
   exerciseMuscleInfo,
   type MuscleGroupOverview,
   type MuscleRecovery,
@@ -263,8 +264,8 @@ export const scoredAsOneNote = (group: StrengthScoreGroupResult): string | undef
     ? `${group.name} is scored as one group: ${andList(group.muscle_groups.map((g) => exerciseMuscleInfo[g].name))}.`
     : undefined
 
-export const notScoredLabel = (name: string): string =>
-  `${name} ${name.endsWith('s') ? 'aren’t' : 'isn’t'} scored`
+export const notScoredLabel = (group: ExerciseMuscleGroup): string =>
+  `${exerciseMuscleInfo[group].name} ${exerciseMuscleGroupPlural[group] ? 'aren’t' : 'isn’t'} scored`
 
 export const SCORE_CHANGE_COLUMN = `±${SCORE_CHANGE_DAYS} d`
 

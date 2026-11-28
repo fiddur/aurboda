@@ -432,7 +432,6 @@ export interface BreakdownPerson {
   created_at: Date
 }
 
-/** The live people named any of `names`. */
 export const listPeopleNamed = async (user: string, names: string[]): Promise<BreakdownPerson[]> => {
   if (names.length === 0) return []
   const result = await query<BreakdownPerson>(

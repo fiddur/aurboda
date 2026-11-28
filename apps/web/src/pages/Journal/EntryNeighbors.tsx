@@ -55,7 +55,7 @@ const NeighborsRow = ({
   if (!previous && !next && !timeline) return null
 
   return (
-    <nav class="activity-neighbors-nav" aria-label="Older and newer entries">
+    <nav class="activity-neighbors-nav" aria-label="Entry navigation">
       <div class="activity-neighbors-row">
         {previous ? (
           <a href={journalEntryHref(previous.id)} title={`Older: ${neighborLabel(previous)}`}>

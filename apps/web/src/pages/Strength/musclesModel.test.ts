@@ -395,9 +395,29 @@ describe('labels', () => {
     expect(scoredAsOneNote(scoreGroup({}))).toBe('Back is scored as one group: Lats and Middle back.')
     expect(scoredAsOneNote(scoreGroup({ muscle_groups: ['chest'] }))).toBeUndefined()
     expect(unscoredText('Traps')).toBe('No lift is scored for traps, so it has no strength score.')
-    expect(notScoredLabel('Traps')).toBe('Traps aren’t scored')
-    expect(notScoredLabel('Neck')).toBe('Neck isn’t scored')
     expect(SCORE_CHANGE_COLUMN).toBe('±30 d')
+  })
+
+  test('every muscle group’s not-scored label', () => {
+    expect(exerciseMuscleGroups.map(notScoredLabel)).toEqual([
+      'Chest isn’t scored',
+      'Shoulders aren’t scored',
+      'Traps aren’t scored',
+      'Lats aren’t scored',
+      'Middle back isn’t scored',
+      'Lower back isn’t scored',
+      'Biceps aren’t scored',
+      'Triceps aren’t scored',
+      'Forearms aren’t scored',
+      'Abdominals aren’t scored',
+      'Glutes aren’t scored',
+      'Abductors aren’t scored',
+      'Adductors aren’t scored',
+      'Quadriceps aren’t scored',
+      'Hamstrings aren’t scored',
+      'Calves aren’t scored',
+      'Neck isn’t scored',
+    ])
   })
 
   test('the score card lines', () => {
