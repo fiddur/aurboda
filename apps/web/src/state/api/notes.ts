@@ -157,11 +157,15 @@ export const fetchNote = async (id: string, tz?: string): Promise<NoteDetail> =>
   return requireNote(response.data.data)
 }
 
-/** The journal context line for a calendar day (YYYY-MM-DD) in `tz`. */
-export const fetchJournalContext = async (date: string, tz?: string): Promise<JournalContext> => {
+/** The journal context line for a calendar day (YYYY-MM-DD) in `tz`; `at`, a timed entry's instant, gives its hour's weather. */
+export const fetchJournalContext = async (
+  date: string,
+  tz?: string,
+  at?: string,
+): Promise<JournalContext> => {
   const response = await axios.get<JournalContextResponse>(`${API_URL}/journal-context`, {
     headers: authHeaders(),
-    params: tz ? { date, tz } : { date },
+    params: { date, ...(tz ? { tz } : {}), ...(at ? { at } : {}) },
   })
   return response.data.data ?? { date, items: [] }
 }

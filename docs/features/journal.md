@@ -496,7 +496,7 @@ built-in emoji. A label you typed is never replaced; a suggested one follows
 when you pick other data.
 
 The day is a `day` entry's date, or the calendar day a `time` entry starts on in
-your timezone. There are five kinds of item:
+your timezone. There are six kinds of item:
 
 - **Metric**: the day's value of a metric, built-in or custom -- the day's total
   for summed metrics such as steps, else the day's average. Optionally from one
@@ -530,6 +530,13 @@ your timezone. There are five kinds of item:
   and while a long recompute of the training load runs (the first read, or one
   reaching back before what is computed); reading an entry waits at most half a
   second for a recompute, which covers the short one a sync leaves behind.
+- **Weather**: the [weather where you were](../open-meteo.md) (needs the Weather
+  data source). A `time` entry shows the hour it starts in, a `day` entry the
+  day's summary. The label gets the condition's emoji; the value is the condition
+  in words (`⛅ Partly cloudy`), or with **Show temperature** (`show_temperature`)
+  the temperature in whole degrees -- the hour's for a `time` entry, the day's
+  lowest–highest for a `day` entry (`⛅2–8°C`, one value when they round alike).
+  Left out when there is no weather.
 
 The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
 ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,
@@ -538,7 +545,11 @@ ordered list of at most 30 items with unique `id`s, each with `kind`, `label`,
 `GET /journal-context?date=YYYY-MM-DD&tz=` (MCP `get_journal_context`) answers the
 line for a day (today in `tz` by default; `tz` defaults to your timezone):
 `{ date, items }`, each item with its `id`, `kind`, `label`, full `name`, unrounded
-`value`, `decimals`, `suffix` (`%`, `d` or empty) and a ready `text`. `GET
+`value`, `decimals`, `suffix` (`%`, `d`, `°C` or empty) and a ready `text`. A
+weather item's `text` is not its `value` (the condition in words, or a range), so
+show the `text`. `at=<ISO instant>`, a `time` entry's start, makes the weather
+item that hour's (the day defaults to the instant's day in `tz`); the answer then
+carries `at` too. The editor asks with `at` for a `time` entry. `GET
 /notes/:id` (`?tz=`) and MCP `get_note` carry it as `context` on a journal entry
 when you have configured items; lists, searches, replies and exports do not.
 

@@ -136,5 +136,20 @@ describe('planWeatherRequests', () => {
     )
     expect(plan.requests.map((r) => r.cell)).toEqual([gothenburg])
     expect(plan.cells_deferred).toBe(1)
+    expect(plan.cells_deferred_missing).toBe(0)
+  })
+
+  test('counts the deferred cells that have hours not stored yet', () => {
+    const plan = planWeatherRequests(
+      [
+        ...hours('2026-11-27T00:00:00Z', 10).map((hour) => ({ cell: stockholm, hour })),
+        { cell: gothenburg, hour: at('2026-11-20T00:00:00Z') },
+        { cell: { lat: 55.6, lon: 13 }, hour: at('2026-11-27T00:00:00Z'), refresh: true },
+      ],
+      now,
+      1,
+    )
+    expect(plan.cells_deferred).toBe(2)
+    expect(plan.cells_deferred_missing).toBe(1)
   })
 })

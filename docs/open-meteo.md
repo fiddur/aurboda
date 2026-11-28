@@ -33,14 +33,14 @@ Settings via the API: `PATCH /api/user/settings` with `weather_enabled` (`true`,
 
 ## How Sync Works
 
-- **REST:** `POST /api/sync/weather` — `{ "full_resync": true }` or `{ "start_date": "YYYY-MM-DD" }`, both optional. The result counts `hours_stored`, `cells` (rounded locations fetched) and `cells_deferred` (rounded locations left for the next run).
+- **REST:** `POST /api/sync/weather` — `{ "full_resync": true }` or `{ "start_date": "YYYY-MM-DD" }`, both optional. The result counts `hours_stored`, `cells` (rounded locations fetched) and `cells_deferred` (rounded locations left for the next run), and carries `window_end` when a `start_date` run was capped. `success` is `true` only when the run's `status` is `success` (the HTTP status is 200 either way).
 - **MCP:** `sync_weather()`
 - **Status:** `GET /api/sync/weather/status`, `get_sync_status(provider: "weather")`
 - **Reset:** `DELETE /api/sync/weather/state`, `reset_sync_state(provider: "weather")`. Both forget the sync state, so the next sync is a first sync. Stored weather is kept.
 
 **Which location an hour gets.** Each hour takes the last location fix at or before the **middle of the hour**, from any source. A fix is carried forward for at most **7 days** (a phone at rest reports little); an hour with no such fix gets no weather.
 
-**Window.** The first sync (or a full resync) covers the **last 90 days**. Later syncs start **48 hours before the last sync**: the most recent hours are model output that Open-Meteo refines, so they are fetched again and the stored rows updated. Older hours that already have weather are skipped, except on a full resync. **Fetch older history from** (`start_date`) fetches from any earlier date up to now.
+**Window.** The first sync (or a full resync) covers the **last 90 days**. Later syncs start **48 hours before the last sync**: the most recent hours are model output that Open-Meteo refines, so they are fetched again and the stored rows updated. Older hours that already have weather are skipped, except on a full resync. **Fetch older history from** (`start_date`) fetches from any earlier date (on a first sync, from the earlier of that date and 90 days ago, so the first 90 days are never skipped), **at most 366 days per run**: a capped run reports `window_end` in its result ("fetched up to …"), does not move the last sync time, and the page fills the date in so **Fetch** continues from there.
 
 **Requests.** The hours are grouped by rounded location, and each location gets one request per contiguous range of days (Open-Meteo answers whole days; only the hours assigned to that location are kept, and never an hour that has not begun):
 
@@ -50,13 +50,13 @@ GET https://api.open-meteo.com/v1/forecast?latitude=59.3&longitude=18.1&start_da
 
 Days within the last 90 days go to the forecast API above; older days to the archive API (`https://archive-api.open-meteo.com/v1/archive`, same parameters).
 
-**At most 20 rounded locations per run**: those with the most hours still missing first. The rest are counted in `cells_deferred`, and the last sync time is not moved on, so the next run (the next scheduler tick, five minutes later) picks them up. A `start_date` fetch that defers locations finishes when you fetch again.
+**At most 20 rounded locations per run**: those with the most hours still missing first. The rest are counted in `cells_deferred`. When a deferred location has hours not stored yet, the last sync time is not moved on, so the next run (the next scheduler tick, five minutes later) picks them up; locations deferred only for the 48-hour refresh do not hold it back, so many places in two days do not make every tick fetch again. A `start_date` fetch that defers locations finishes when you fetch again.
 
 **Background polling.** The scheduler polls every **180 minutes** by default; set `sync_intervals.weather` (or `sync_intervals.default`) to change it. Weather is not synced before queries. After a failed run (Open-Meteo down or throttling) the background poll waits 60 minutes before it tries again; a manual sync runs at once.
 
 ## Reading the weather
 
-- **REST:** `GET /api/weather?date=YYYY-MM-DD[&tz=Europe/Stockholm]` for a calendar day, or `GET /api/weather?start=<ISO>&end=<ISO>` for a span. Exactly one of the two forms (400 otherwise).
+- **REST:** `GET /api/weather?date=YYYY-MM-DD[&tz=Europe/Stockholm]` for a calendar day, or `GET /api/weather?start=<ISO>&end=<ISO>` for a span. Exactly one of the two forms (400 otherwise); a span is at most **31 days** (400 otherwise).
 - **MCP:** `get_weather` with the same parameters.
 
 The answer is `{ hours, summary }`. `hours` lists every stored hour — of the day, or overlapping the span (a 20-minute activity gets its one hour) — with `code`, `temperature`, `precipitation` and `wind_speed` (`null` where a value is missing). `summary` is `null` when no hour has weather, else:
@@ -72,6 +72,11 @@ The answer is `{ hours, summary }`. `hours` lists every stored hour — of the d
 **Condition.** Among the hours with a code: when at least a quarter of them have a precipitating code (WMO 51 and up), the most frequent precipitating code; otherwise the most frequent code. A tie goes to the higher code.
 
 **A day's weather follows where most of the day was spent.** For the `date` form, each hour of the day is given its rounded location the same way the sync does; only the hours of the location with the most hours are summarised (all of them when no location can be told), so a travel day reads as the place you spent it in. `hours` still lists the whole day. The day's condition uses the hours **07:00–21:59** local time when any of them has a code; temperatures, precipitation and wind use all of the day's summarised hours. `tz` defaults to your time zone.
+
+## Where it shows
+
+- **Activities:** an activity's page has a **Weather** row (condition, temperature, precipitation when there was any) for the hours it spans; an activity without an end gets the hour it started in. Not for sleep. The row is left out when there is no weather.
+- **Journal:** the context line's **Weather** item ([journal](./features/journal.md#context-line)): a timed entry's hour, a day entry's day.
 
 ## WMO codes
 

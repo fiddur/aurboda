@@ -84,6 +84,7 @@ import { SchemaDataFields } from './SchemaDataFields'
 import { ActivityMapWithSegmentCreator } from './SegmentCreator'
 import { SegmentEfforts } from './SegmentEfforts'
 import { ShareActivityButton } from './ShareActivityButton'
+import { WeatherStatRow } from './WeatherInfo'
 import './style.css'
 
 const SourceRecordsSection = ({ records }: { records: SourceRecord[] }) => (
@@ -231,6 +232,7 @@ const ActivityStatsTable = ({
   timeRows,
   metricRows,
   location,
+  weather,
   people,
   onFill,
 }: {
@@ -238,6 +240,7 @@ const ActivityStatsTable = ({
   timeRows: ActivityStatRow[]
   metricRows: ActivityStatRow[]
   location?: { start: Date; end: Date }
+  weather?: { start: Date; end: Date }
   people?: { id: string; name: string }[]
   onFill?: (field: string) => void
 }) => (
@@ -258,6 +261,7 @@ const ActivityStatsTable = ({
         <StatRow key={`time-${row.label}`} row={row} />
       ))}
       {location && <LocationStatRow start={location.start} end={location.end} />}
+      {weather && <WeatherStatRow start={weather.start} end={weather.end} />}
       {metricRows.map((row) => (
         <StatRow key={`metric-${row.label}`} row={row} />
       ))}
@@ -497,6 +501,11 @@ const ActivityDetailContent = ({
                 },
               })}
               location={hasEndTime ? { end: displayEnd, start: displayStart } : undefined}
+              weather={
+                isSleepType(activity.activity_type) || hasSleepStages
+                  ? undefined
+                  : { end: realEnd ?? displayStart, start: displayStart }
+              }
               people={activity.people}
               onFill={activity.deleted_at ? undefined : onFillField}
             />

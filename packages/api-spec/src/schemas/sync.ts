@@ -543,6 +543,10 @@ export const weatherSyncResultSchema = z
     status: z.enum(['success', 'skipped', 'error']).meta({
       description: 'Sync status; skipped when weather is not enabled',
     }),
+    window_end: iso8601DateTimeSchema.optional().meta({
+      description:
+        'Set when a start_date run was capped at 366 days: the weather was fetched up to this time, fetch again with start_date from here to continue',
+    }),
   })
   .meta({ id: 'WeatherSyncResult' })
 

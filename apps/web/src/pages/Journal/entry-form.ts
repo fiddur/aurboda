@@ -157,3 +157,16 @@ export const entryTimelineHref = (
 /** The local day the entry is on, for picking that day's activities. */
 export const entryDay = (form: Pick<EntryForm, 'allDay' | 'date' | 'start'>): string =>
   form.allDay ? form.date : form.start.slice(0, 10)
+
+const HOUR_MS = 3_600_000
+
+/** The start of the UTC hour that holds an instant (ISO). */
+export const hourOf = (iso: string): string =>
+  new Date(Math.floor(Date.parse(iso) / HOUR_MS) * HOUR_MS).toISOString()
+
+/** The hour a timed entry starts in (ISO), whose weather its context line shows; undefined for a day entry. */
+export const entryHour = (form: Pick<EntryForm, 'allDay' | 'start'>): string | undefined => {
+  if (form.allDay) return undefined
+  const start = fromDatetimeLocal(form.start)
+  return start ? hourOf(start.toISOString()) : undefined
+}

@@ -334,6 +334,21 @@ describe('sync router', () => {
       })
     })
 
+    test('POST /sync/weather answers success false when the run did not succeed', async () => {
+      const failed = { ...result, error: 'Weather is not enabled', status: 'skipped' as const }
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter({ ...mockDeps, syncWeather: vi.fn().mockResolvedValue(failed) }, testAuthMiddleware),
+      )
+
+      const response = await request(app).post('/sync/weather').send({})
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ result: failed, success: false })
+    })
+
     test('GET /sync/weather/status and DELETE /sync/weather/state', async () => {
       const states = [
         {

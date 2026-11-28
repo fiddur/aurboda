@@ -66,6 +66,8 @@ export interface WeatherPlan {
   requests: WeatherRequest[]
   cells: number
   cells_deferred: number
+  /** Deferred cells with hours not stored yet, as opposed to those only due a refresh. */
+  cells_deferred_missing: number
 }
 
 const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
@@ -123,10 +125,12 @@ export const planWeatherRequests = (
       missingCount(b) - missingCount(a) || b.length - a.length || keyA.localeCompare(keyB),
   )
   const chosen = ranked.slice(0, maxCells)
+  const deferred = ranked.slice(maxCells)
   const forecastFrom = utcDate(now.getTime() - FORECAST_PAST_DAYS * DAY_MS)
   return {
     cells: chosen.length,
-    cells_deferred: ranked.length - chosen.length,
+    cells_deferred: deferred.length,
+    cells_deferred_missing: deferred.filter(([, entries]) => missingCount(entries) > 0).length,
     requests: chosen.flatMap(([, entries]) =>
       requestsForCell(
         entries[0].cell,

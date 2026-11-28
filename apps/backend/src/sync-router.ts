@@ -828,7 +828,7 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
           fullResync: full_resync,
           startDate: start_date ? new Date(start_date) : undefined,
         })
-        res.json({ result, success: true })
+        res.json({ result, success: result.status === 'success' })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message, success: false })

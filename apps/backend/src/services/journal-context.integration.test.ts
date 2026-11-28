@@ -237,10 +237,25 @@ describe('journal context (integration)', () => {
           source_type: 'activity_type',
         },
         { decimals: 0, id: 'm', kind: 'moon', label: '', value: 'illumination' },
+        { decimals: 0, id: 'x', kind: 'weather', label: '', show_temperature: true },
       ],
     })
     await insertTimeSeries(user, [
       { metric: 'readiness_score', source: 'oura', time: new Date('2024-03-10T06:00:00Z'), value: 85 },
+      { metric: 'weather_code', source: 'open_meteo', time: new Date('2024-03-10T12:00:00Z'), value: 0 },
+      {
+        metric: 'weather_temperature',
+        source: 'open_meteo',
+        time: new Date('2024-03-10T12:00:00Z'),
+        value: 5.4,
+      },
+      { metric: 'weather_code', source: 'open_meteo', time: new Date('2024-03-10T15:00:00Z'), value: 3 },
+      {
+        metric: 'weather_temperature',
+        source: 'open_meteo',
+        time: new Date('2024-03-10T15:00:00Z'),
+        value: 1.2,
+      },
     ])
     await insertActivity(user, {
       activity_type: 'meditation',
@@ -251,9 +266,13 @@ describe('journal context (integration)', () => {
     const context = await getJournalContext(user, '2024-03-10', 'UTC')
 
     expect(context?.date).toBe('2024-03-10')
-    expect(context?.items.map((v) => v.id)).toEqual(['r', 'e', 't', 'm'])
+    expect(context?.items.map((v) => v.id)).toEqual(['r', 'e', 't', 'm', 'x'])
     expect(context?.items.find((v) => v.id === 'e')?.text).toBe('E2')
     expect(context?.items.find((v) => v.id === 't')?.value).toBeGreaterThan(0)
+    expect(context?.items.find((v) => v.id === 'x')?.text).toMatch(/^.+1–5°C$/)
+
+    const timed = await getJournalContext(user, '2024-03-10', 'UTC', undefined, '2024-03-10T12:30:00.000Z')
+    expect(timed?.items.find((v) => v.id === 'x')?.text).toBe('☀️5°C')
   })
 
   test('getJournalContext is undefined without configured items', async () => {

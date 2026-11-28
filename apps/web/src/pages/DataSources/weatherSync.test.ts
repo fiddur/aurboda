@@ -15,6 +15,18 @@ describe('weatherSyncMessage', () => {
     )
   })
 
+  it('says where a capped history fetch stopped', () => {
+    expect(
+      weatherSyncMessage({
+        cells: 3,
+        cells_deferred: 0,
+        hours_stored: 8784,
+        status: 'success',
+        window_end: '2025-01-01T00:00:00.000Z',
+      }),
+    ).toBe('8784 hours of weather stored. Fetched up to 2025-01-01, fetch again from there to continue')
+  })
+
   it('shows the error of a failed or skipped sync', () => {
     expect(
       weatherSyncMessage({

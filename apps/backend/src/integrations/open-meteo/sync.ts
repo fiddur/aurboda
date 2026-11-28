@@ -8,7 +8,7 @@
  */
 
 import { WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES, type WeatherSyncResult } from '@aurboda/api-spec'
-import { addMinutes, subDays, subHours } from 'date-fns'
+import { addDays, addMinutes, subDays, subHours } from 'date-fns'
 
 import type { TimeSeriesEntry } from '../../db/time-series.ts'
 import type { TimeSeriesPoint, UserSettings } from '../../db/types.ts'
@@ -33,6 +33,8 @@ export const WEATHER_PROVIDER = 'weather'
 export const WEATHER_DATA_TYPE = 'hourly'
 export const WEATHER_HISTORY_DAYS = 90
 export const WEATHER_REFRESH_HOURS = 48
+/** The longest window one `start_date` run fetches; the rest is fetched by running again from its end. */
+export const WEATHER_MAX_WINDOW_DAYS = 366
 export const WEATHER_DEFAULT_INTERVAL_MINUTES = WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES
 /** How long the background poll leaves Open-Meteo alone after a failed run. */
 export const WEATHER_ERROR_BACKOFF_MINUTES = 60
@@ -80,9 +82,19 @@ export const weatherWindowStart = (
   now: Date,
   options: WeatherSyncOptions,
 ): Date => {
-  if (options.startDate) return options.startDate
-  if (options.fullResync || !lastSyncTime) return subDays(now, WEATHER_HISTORY_DAYS)
+  const history = subDays(now, WEATHER_HISTORY_DAYS)
+  if (options.startDate) {
+    return lastSyncTime || options.startDate < history ? options.startDate : history
+  }
+  if (options.fullResync || !lastSyncTime) return history
   return subHours(lastSyncTime, WEATHER_REFRESH_HOURS)
+}
+
+/** `now`, or for a `start_date` run `WEATHER_MAX_WINDOW_DAYS` after `start` when that is earlier. */
+export const weatherWindowEnd = (start: Date, now: Date, options: WeatherSyncOptions): Date => {
+  if (!options.startDate) return now
+  const cap = addDays(start, WEATHER_MAX_WINDOW_DAYS)
+  return cap < now ? cap : now
 }
 
 const emptyResult = (): Omit<WeatherSyncResult, 'status'> => ({
@@ -152,6 +164,8 @@ export const syncWeather = async (
   try {
     const state = await deps.getSyncState(user, WEATHER_PROVIDER, WEATHER_DATA_TYPE)
     const start = weatherWindowStart(state?.last_sync_time, now, options)
+    const end = weatherWindowEnd(start, now, options)
+    const capped = end < now
     await deps.upsertSyncState(user, {
       data_type: WEATHER_DATA_TYPE,
       provider: WEATHER_PROVIDER,
@@ -160,8 +174,8 @@ export const syncWeather = async (
     })
 
     const refreshFrom = subHours(now, WEATHER_REFRESH_HOURS).getTime()
-    const stored = options.fullResync ? new Set<number>() : await storedHours(user, deps, start, now)
-    const hours = hourStarts(start, now).filter((h) => h.getTime() >= refreshFrom || !stored.has(h.getTime()))
+    const stored = options.fullResync ? new Set<number>() : await storedHours(user, deps, start, end)
+    const hours = hourStarts(start, end).filter((h) => h.getTime() >= refreshFrom || !stored.has(h.getTime()))
     const cells = await deps.locateHours(user, hours)
     const assigned = hours.flatMap((hour, i) => {
       const cell = cells[i]
@@ -170,6 +184,7 @@ export const syncWeather = async (
     const plan = planWeatherRequests(assigned, now)
     result.cells = plan.cells
     result.cells_deferred = plan.cells_deferred
+    if (capped) result.window_end = end.toISOString()
 
     for (const request of plan.requests) {
       const points = toPoints(await deps.fetchHourly(request), request.hours)
@@ -180,7 +195,7 @@ export const syncWeather = async (
     await deps.upsertSyncState(user, {
       data_type: WEATHER_DATA_TYPE,
       error_message: undefined,
-      ...(plan.cells_deferred === 0 && { last_sync_time: now }),
+      ...(plan.cells_deferred_missing === 0 && !capped && { last_sync_time: now }),
       provider: WEATHER_PROVIDER,
       status: 'idle',
     })
