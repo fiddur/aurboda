@@ -4,10 +4,12 @@
  * it exactly like `POST /feed/articles` and only then turns it into a post.
  */
 import type {
+  ArticleContent,
   ArticleDraft,
   ArticleDraftContent,
   CreateArticleBody,
   FeedVisibility,
+  PostMention,
   PublishArticleDraftBody,
   UpdateArticleDraftBody,
 } from '@aurboda/api-spec'
@@ -24,6 +26,7 @@ import type {
 import type { BuildArticleResult } from './article.ts'
 
 import { getArticleDraft, publishArticleDraftPost } from '../db/index.ts'
+import { type ArticleMentionDeps, keepTypedMentions, resolveArticleMentions } from './article-mentions.ts'
 import {
   buildArticleContent,
   checkArticleChallenges,
@@ -140,6 +143,8 @@ export interface PublishDraftDeps {
   postTags?: (user: string, content: ArticleDraftContent) => Promise<string[]>
   /** The lookup-backed checks (local challenges exist); defaults to `checkArticleChallenges` with the configured lookup. */
   checkContent?: (content: ArticlePostInput['article']) => Promise<BuildArticleResult>
+  /** The mentions the published prose makes (`resolveArticleMentions`); defaults to none. */
+  postMentions?: (user: string, article: ArticleContent) => Promise<PostMention[]>
 }
 
 export const draftPostTags = (user: string, content: ArticleDraftContent): Promise<string[]> =>
@@ -148,10 +153,19 @@ export const draftPostTags = (user: string, content: ArticleDraftContent): Promi
 export const checkDraftChallenges = (content: ArticlePostInput['article']): Promise<BuildArticleResult> =>
   checkArticleChallenges(content, configuredStructuredChallengeDeps())
 
-const defaultDeps: PublishDraftDeps = {
+export const defaultPublishDraftDeps: PublishDraftDeps = {
   getDraft: (user, id) => getArticleDraft(user, id),
   publishDraft: (user, id, prepare) => publishArticleDraftPost(user, id, prepare),
 }
+
+/** The default deps, resolving the published prose's mentions through `mentions` when given. */
+export const publishDraftDeps = (mentions: ArticleMentionDeps | undefined): PublishDraftDeps =>
+  mentions == null
+    ? defaultPublishDraftDeps
+    : {
+        ...defaultPublishDraftDeps,
+        postMentions: (user, article) => resolveArticleMentions(mentions, user, article),
+      }
 
 export type PublishDraftResult =
   | { ok: true; post: FeedPostRecord }
@@ -176,7 +190,8 @@ const DRAFT_NOT_FOUND = { error: 'Draft not found', ok: false, status: 404 } as 
  * remove it and create the article post. The lookups run before the transaction
  * so it holds no connection while they take others from the pool; only when the
  * draft was saved between the read and the claim are they run again on the
- * claimed row. Of two concurrent publishes only one creates a post; an invalid
+ * claimed row; the mentions are not looked up again there, only narrowed to the
+ * handles its prose still types. Of two concurrent publishes only one creates a post; an invalid
  * draft, or any failure before commit, leaves the draft as it was. The challenge
  * check reads this instance's databases only, never the network. The caller
  * federates the returned post.
@@ -185,7 +200,7 @@ export const publishArticleDraft = async (
   user: string,
   id: string,
   body: PublishArticleDraftBody,
-  deps: PublishDraftDeps = defaultDeps,
+  deps: PublishDraftDeps = defaultPublishDraftDeps,
 ): Promise<PublishDraftResult> => {
   const draft = await deps.getDraft(user, id)
   if (!draft) return DRAFT_NOT_FOUND
@@ -195,6 +210,7 @@ export const publishArticleDraft = async (
   const checked = await checkedPublishable(draft.article, visibilityOf(draft), checkContent)
   if (!checked.ok) return { error: checked.error, ok: false, status: 400 }
   const tags = await postTags(user, draft.article)
+  const mentions = (await deps.postMentions?.(user, checked.input.article)) ?? []
 
   const outcome = await deps.publishDraft(user, id, async (claimed) => {
     const unchanged = claimed.updated_at.getTime() === draft.updated_at.getTime()
@@ -203,7 +219,15 @@ export const publishArticleDraft = async (
       : await checkedPublishable(claimed.article, visibilityOf(claimed), checkContent)
     if (!publishable.ok) return publishable
     const claimedTags = unchanged ? tags : await postTags(user, claimed.article)
-    return { input: { ...publishable.input, tags: claimedTags }, ok: true }
+    const claimedMentions = unchanged ? mentions : keepTypedMentions(publishable.input.article, mentions)
+    return {
+      input: {
+        ...publishable.input,
+        ...(claimedMentions.length > 0 ? { mentions: claimedMentions } : {}),
+        tags: claimedTags,
+      },
+      ok: true,
+    }
   })
   if (outcome.status === 'missing') return DRAFT_NOT_FOUND
   if (outcome.status === 'rejected') return { error: outcome.error, ok: false, status: 400 }

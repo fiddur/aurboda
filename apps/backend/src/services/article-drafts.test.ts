@@ -340,4 +340,38 @@ describe('publishArticleDraft', () => {
     expect(checked).toEqual(['A week of HRV', 'A month of HRV'])
     expect(fake.created).toEqual([{ article: resaved, tags: ['month'], visibility: 'followers' }])
   })
+
+  test('the post stores the mentions its prose resolves', async () => {
+    const anna = { actor_uri: 'https://example.social/users/anna', handle: '@anna@example.social' }
+    const article = complete({ blocks: [{ markdown: 'With @anna@example.social', type: 'prose' }] })
+    const fake = fakeDeps(draftRecord({ article }))
+    const seen: string[] = []
+    fake.deps.postMentions = async (_user, content) => {
+      seen.push(content.title)
+      return [anna]
+    }
+    await publishArticleDraft('alice', 'd1', {}, fake.deps)
+    expect(seen).toEqual(['A week of HRV'])
+    expect(fake.created[0].mentions).toEqual([anna])
+  })
+
+  test('a draft saved between the read and the claim keeps only the mentions its prose still types', async () => {
+    const anna = { actor_uri: 'https://example.social/users/anna', handle: '@anna@example.social' }
+    const article = complete({ blocks: [{ markdown: 'With @anna@example.social', type: 'prose' }] })
+    const fake = fakeDeps(draftRecord({ article }))
+    const get = fake.deps.getDraft
+    fake.deps.getDraft = async (user, id) => {
+      const found = await get(user, id)
+      fake.drafts.set(id, draftRecord({ article: complete(), updated_at: SAVED_LATER }))
+      return found
+    }
+    let lookups = 0
+    fake.deps.postMentions = async () => {
+      lookups += 1
+      return [anna]
+    }
+    await publishArticleDraft('alice', 'd1', {}, fake.deps)
+    expect(lookups).toBe(1)
+    expect(fake.created[0].mentions).toBeUndefined()
+  })
 })

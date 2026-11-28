@@ -18,6 +18,7 @@ import type { AccountPlans } from '../services/account-plan.ts'
 import type { AccountRecovery } from '../services/account-recovery.ts'
 import type { PostUpdateResender } from '../services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from '../services/admin-users.ts'
+import type { ArticleMentionDeps } from '../services/article-mentions.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { SkipAutoshare } from '../services/autoshare-skip.ts'
 import type { CentralDb } from '../services/central-db.ts'
@@ -237,6 +238,8 @@ interface RestRoutesDeps {
   onHrSettingsChanged: HrSettingsChanged
   onNamedLocationsChanged: NamedLocationsChanged
   dataExport: { exporter: DumpExporter; requestDumpLink: DumpLinkIssuer; tokens: ExportTokens }
+  /** How handles typed in an article's prose resolve to mentions, shared with the MCP tools. */
+  articleMentions: ArticleMentionDeps
   /** The article preview, shared with MCP's `preview_article`. */
   previewArticle: ArticlePreviewer
   /** The tag actor host (`tag_actor_host` server setting): its accounts' boosts are hashtag feeds, not people. */
@@ -298,6 +301,7 @@ export const mountRestRouters = ({
   publicTagActions,
   publicTagModeration,
   postUpdateResender,
+  articleMentions,
   previewArticle,
   reactionActions,
   tagActorHost,
@@ -400,6 +404,7 @@ export const mountRestRouters = ({
       previewArticle,
       tagActorHost,
       threadFederation,
+      articleMentions,
     ),
   )
   httpd.use(

@@ -340,8 +340,10 @@ matching entry, so days before the journal started are not zeros; `display_unit`
 
 On a **dashboard**, a bar, trend or combined chart card with `source_type: "journal"`
 carries the `journal_*` filters in its config; on a shared dashboard `@tags` and `@people`
-can be listed in `masked_breakdown_fields`. Goals and challenges do not take the journal
-as a source.
+can be listed in `masked_breakdown_fields`. Saving a dashboard (home or shared) refuses one
+whose journal chart card breaks these rules, with the chart endpoints' message (a `400` over
+REST, an error from the MCP tools), and saving a journal chart to a shared board notes that
+visitors see its tag and text filters. Goals and challenges do not take the journal as a source.
 
 ```http
 GET /chart-data?source_type=journal&start=2026-01-01T00:00:00Z&end=2026-12-31T23:59:59Z&bucket_size=1M&aggregation=sum&journal_tags=travel&tz=Europe/Stockholm

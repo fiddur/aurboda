@@ -34,8 +34,8 @@ export const withoutParticipantsDelivery = (deliver: FeedDeliver): FeedDeliver =
   updated: (user, post, droppedMentions) => {
     if (deliverable(post)) deliver.updated(user, post, droppedMentions)
   },
-  updatedArticle: (user, post) => {
-    if (deliverable(post)) deliver.updatedArticle(user, post)
+  updatedArticle: (user, post, droppedMentions) => {
+    if (deliverable(post)) deliver.updatedArticle(user, post, droppedMentions)
   },
   updatedChallenge: (user, post) => {
     if (deliverable(post)) deliver.updatedChallenge(user, post)
@@ -73,13 +73,15 @@ export const deliverFeedPostEdit = (
   previous?: Pick<FeedPostRecord, 'mentions'>,
 ): void => {
   if (deliver == null) return
-  if (record.kind === 'article') deliver.updatedArticle(user, record)
-  else if (record.kind === 'challenge') deliver.updatedChallenge(user, record)
+  const dropped = previous ? droppedMentions(previous, record) : []
+  if (record.kind === 'article') {
+    if (dropped.length > 0) deliver.updatedArticle(user, record, dropped)
+    else deliver.updatedArticle(user, record)
+  } else if (record.kind === 'challenge') deliver.updatedChallenge(user, record)
   else if (record.kind === 'exercise') deliver.updatedExercise(user, record)
   else if (record.kind === 'dashboard') deliver.updatedDashboard(user, record)
   else if (record.kind === 'reply') deliver.updatedReply(user, record)
   else {
-    const dropped = previous ? droppedMentions(previous, record) : []
     if (dropped.length > 0) deliver.updated(user, record, dropped)
     else deliver.updated(user, record)
   }

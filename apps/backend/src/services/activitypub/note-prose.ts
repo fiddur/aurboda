@@ -14,10 +14,18 @@
  * fediverse sanitiser, so neither can carry a script/style/`img onerror` payload
  * (#910's boundary, server side).
  */
-import { Marked, marked, type Tokens } from 'marked'
+import {
+  canPrecedeHandle,
+  handleAtStart,
+  handleKey,
+  handleStartIndex,
+  type PostMention,
+} from '@aurboda/api-spec'
+import { Marked, marked, type MarkedExtension, type Tokens } from 'marked'
 import sanitizeHtml from 'sanitize-html'
 
 import { escapeXml } from '../charts/chart-svg.ts'
+import { mentionLink } from './object.ts'
 
 const ARTICLE_TAGS = [
   'p',
@@ -90,13 +98,57 @@ export const sanitizeArticleHtml = (html: string): string => sanitizeHtml(html, 
 /** `sanitizeArticleHtml` minus what Mastodon drops anyway (tables, images, `hr`). */
 const sanitizeNoteHtml = (html: string): string => sanitizeHtml(html, NOTE_SANITIZE_OPTIONS)
 
+interface HandleToken extends Tokens.Generic {
+  type: 'handle'
+  raw: string
+  handle: string
+}
+
+/**
+ * A typed `@user@host` (see `findHandles`) as its own token, ahead of GFM's e-mail autolink: a post's
+ * stored mention renders as a mention link, any other handle as plain text, never as `mailto:`. Not
+ * inside a link's text, code or a URL, and not after a character that makes it an e-mail's tail.
+ */
+export const handleMentions = (mentions: readonly PostMention[] = []): MarkedExtension => {
+  const byHandle = new Map(mentions.map((mention) => [handleKey(mention.handle), mention]))
+  return {
+    extensions: [
+      {
+        level: 'inline',
+        name: 'handle',
+        renderer(token): string {
+          const { handle } = token as HandleToken
+          const mention = byHandle.get(handleKey(handle))
+          return mention ? mentionLink({ actor_uri: mention.actor_uri, handle }) : escapeXml(handle)
+        },
+        start: (src: string): number => handleStartIndex(src),
+        tokenizer(src, tokens): HandleToken | undefined {
+          if (this.lexer.state.inLink) return undefined
+          const match = handleAtStart(src)
+          if (match == null || !canPrecedeHandle(tokens.at(-1)?.raw.at(-1))) return undefined
+          return { handle: match.handle, raw: match.handle, type: 'handle' }
+        },
+      },
+    ],
+  }
+}
+
+export interface ProseOptions {
+  /** The post's mentions: a typed handle among them is linked to its account. */
+  mentions?: readonly PostMention[]
+}
+
 /**
  * Render one run of authored markdown to sanitised, federation-safe HTML. Options
  * (GFM + hard line breaks) are passed per call, matching the web's `renderMarkdown`
  * (#910) without mutating `marked`'s process-wide defaults for every other importer.
  */
-export const renderProse = (markdown: string): string =>
-  sanitizeArticleHtml(marked.parse(markdown, { async: false, breaks: true, gfm: true }))
+export const renderProse = (markdown: string, opts: ProseOptions = {}): string =>
+  sanitizeArticleHtml(
+    new Marked({ async: false, breaks: true, gfm: true }, handleMentions(opts.mentions)).parse(markdown, {
+      async: false,
+    }),
+  )
 
 export const httpUrl = (src: string): URL | null => {
   if (!URL.canParse(src)) return null
@@ -127,7 +179,7 @@ export interface NoteProseImage {
   alt: string
 }
 
-export interface NoteProseOptions {
+export interface NoteProseOptions extends ProseOptions {
   /** Inline HTML standing in for a prose image; default is a link to it. */
   image?: (image: NoteProseImage) => string
 }
@@ -159,7 +211,8 @@ const tableLines = (header: string[], rows: string[][]): string[] => {
  * Render authored markdown for a Mastodon-read Note: the `renderProse` pipeline,
  * except a GFM table is one `<p>` with a line per body row (`**row**: Column value
  * · …`, the corner header in italics first) and an image is `opts.image`'s inline
- * HTML, else a link to it. The result never contains a table, image or `hr`, even
+ * HTML, else a link to it. A typed handle is a mention link when `opts.mentions` has
+ * it, else plain text. The result never contains a table, image or `hr`, even
  * typed as raw HTML.
  */
 export const renderNoteProse = (markdown: string, opts: NoteProseOptions = {}): string => {
@@ -181,6 +234,6 @@ export const renderNoteProse = (markdown: string, opts: NoteProseOptions = {}): 
         return `<p>${lines.join('<br>')}</p>\n`
       },
     },
-  })
+  }).use(handleMentions(opts.mentions))
   return sanitizeNoteHtml(renderer.parse(markdown, { async: false }))
 }

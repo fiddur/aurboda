@@ -344,6 +344,32 @@ describe('article delivery', () => {
     expect(object).toBeInstanceOf(Note)
     expect(object?.id?.href).toBe(noteId)
   })
+
+  test('a handle the article mentions is a Mention tag, a mention link and in cc; an unresolved one is plain text', async () => {
+    const ctx = await contextFor()
+    const anna = 'https://example.social/users/anna'
+    const post: DeliverableArticle = {
+      ...deliverableArticle('public'),
+      article: {
+        blocks: [{ markdown: 'With @anna@example.social and @ghost@example.org.', type: 'prose' }],
+        title: 'Run',
+      },
+      mentions: [{ actor_uri: anna, handle: '@anna@example.social' }],
+    }
+    const object = buildArticleNote(ctx, 'fiddur', post, `${ORIGIN}/api`)
+    const mentions: { href?: string; name?: string }[] = []
+    for await (const tag of object.getTags()) {
+      if (tag instanceof Mention) mentions.push({ href: tag.href?.href, name: tag.name?.toString() })
+    }
+    expect(mentions).toEqual([{ href: anna, name: '@anna@example.social' }])
+    expect(hrefs([...object.ccIds])).toContain(anna)
+    const content = object.content?.toString() ?? ''
+    expect(content).toContain(`<a href="${anna}" class="u-url mention"`)
+    expect(content).toContain('and @ghost@example.org.')
+    expect(content).not.toContain('mailto:')
+    const create = buildArticleNoteCreate(ctx, 'fiddur', post, `${ORIGIN}/api`)
+    expect(hrefs([...create.ccIds])).toContain(anna)
+  })
 })
 
 describe('buildChallengeNote / buildChallengeNoteCreate', () => {

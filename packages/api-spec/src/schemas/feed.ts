@@ -35,6 +35,7 @@ import {
   feedStructuredExerciseShareSchema,
   feedStructuredMetricSchema,
   feedStructuredPostSchema,
+  postMentionSchema,
   publicSeriesSampleSchema,
 } from './feed-structured.ts'
 import { shareVisibilityValues } from './visibility.ts'
@@ -101,16 +102,6 @@ export const MAX_POST_MENTIONS = 10
 const mentionPeopleSchema = z.array(z.string().uuid()).max(MAX_POST_MENTIONS)
 
 const mentionPeopleDescription = `People to mention (person ids, at most ${MAX_POST_MENTIONS}): each must be linked to the activity and have a fediverse handle. The post then tags and addresses each one's account and reads "with @handle"; nothing else about them (no name, no id) is published`
-
-/** Who a post mentions: the actor its federated `Mention` points at, and the handle snapshot naming it. */
-export const postMentionSchema = z
-  .object({
-    actor_uri: z.string().meta({ description: "The mentioned account's actor URI" }),
-    handle: z.string().meta({ description: 'Its `@user@host` handle when the post was written' }),
-  })
-  .meta({ description: 'An account a post mentions', id: 'PostMention' })
-
-export type PostMention = z.infer<typeof postMentionSchema>
 
 /**
  * Defaults are privacy-conservative: nothing is shared unless listed, and
@@ -688,7 +679,8 @@ export const feedPostSchema = z
         'How many remote actors favourited (`Like`d) this post; absent on share, update and public single-post responses',
     }),
     mentions: z.array(postMentionSchema).optional().meta({
-      description: 'The accounts an activity share mentions; absent when none',
+      description:
+        'The accounts the post mentions: those an activity share names, or the handles typed in an article that resolved when it was published or edited; absent when none',
     }),
     quote_count: z.number().int().optional().meta({
       description:

@@ -6,7 +6,7 @@
  * article sanitiser, so a feed reader shows the same prose and chart images a
  * federated Note carries; other posts carry the HTML they federate with.
  */
-import type { ArticleContent, FeedPost, FeedPostVisibility } from '@aurboda/api-spec'
+import type { ArticleContent, FeedPost, FeedPostVisibility, PostMention } from '@aurboda/api-spec'
 
 import type { ArticleSelectorNames } from './article.ts'
 
@@ -37,6 +37,8 @@ export interface AtomArticleSource {
   created_at: Date
   updated_at: Date
   article: ArticleContent
+  /** A typed handle among them is linked to its account; any other stays plain text. */
+  mentions?: readonly PostMention[]
 }
 
 export interface AtomArticleEntry {
@@ -129,7 +131,7 @@ export const articleEntryHtml = (
     selectorNames,
   )
   const titleEnd = markdown.indexOf('\n\n')
-  return titleEnd === -1 ? '' : renderProse(markdown.slice(titleEnd + 2))
+  return titleEnd === -1 ? '' : renderProse(markdown.slice(titleEnd + 2), { mentions: source.mentions })
 }
 
 interface AtomAuthor {

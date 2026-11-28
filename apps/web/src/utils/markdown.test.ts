@@ -238,3 +238,38 @@ describe('attachment pictures', () => {
     ).not.toContain('<img')
   })
 })
+
+describe('handles in markdown', () => {
+  const mention = { actor_uri: 'https://aurboda.net/users/delvoriah', handle: '@delvoriah@aurboda.net' }
+
+  it('shows an unresolved handle as plain text, never a mailto link', () => {
+    const html = renderMarkdown('Thanks @delvoriah@aurboda.net!')
+    expect(html).toBe('<p>Thanks @delvoriah@aurboda.net!</p>\n')
+  })
+
+  it('links a mention the post stores to its account', () => {
+    expect(renderMarkdown('Thanks @Delvoriah@aurboda.net.', [mention])).toBe(
+      '<p>Thanks <a href="https://aurboda.net/users/delvoriah">@Delvoriah@aurboda.net</a>.</p>\n',
+    )
+  })
+
+  it('applies the same rule to remote markdown, with the link hardened', () => {
+    expect(renderRemoteMarkdown('@someone@example.social')).not.toContain('mailto:')
+    const html = renderRemoteMarkdown('@delvoriah@aurboda.net', [], [mention])
+    expect(html).toContain('href="https://aurboda.net/users/delvoriah"')
+    expect(html).toContain('rel="nofollow noopener noreferrer"')
+  })
+
+  it('still autolinks a bare e-mail address', () => {
+    expect(renderMarkdown('mail delvoriah@aurboda.net')).toContain('href="mailto:delvoriah@aurboda.net"')
+  })
+
+  it('leaves a handle in code or a link alone', () => {
+    expect(renderMarkdown('`@delvoriah@aurboda.net`', [mention])).toBe(
+      '<p><code>@delvoriah@aurboda.net</code></p>\n',
+    )
+    expect(renderMarkdown('[@delvoriah@aurboda.net](https://example.org)', [mention])).toBe(
+      '<p><a href="https://example.org">@delvoriah@aurboda.net</a></p>\n',
+    )
+  })
+})

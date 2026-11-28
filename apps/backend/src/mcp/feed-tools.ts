@@ -26,6 +26,7 @@ import {
 import { z } from 'zod'
 
 import type { FeedDeliver } from '../routes/feed-router.ts'
+import type { ArticleMentionDeps } from '../services/article-mentions.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult, ReplyResult } from '../services/feed-reactions.ts'
 import type { FollowerActions } from '../services/followers.ts'
@@ -60,9 +61,11 @@ import {
   emptyArticleDraftContent,
   normalizeArticleDraftContent,
   publishArticleDraft,
+  publishDraftDeps,
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
+import { resolveArticleMentions } from '../services/article-mentions.ts'
 import {
   articleSelectorNames,
   articleWarningsField,
@@ -139,11 +142,14 @@ export interface FeedToolsOptions {
   tagActorHost?: () => Promise<string>
   /** How challenge comments are pushed and threads on other servers pulled. */
   threadFederation?: ThreadFederation
+  /** How handles typed in an article's prose resolve to mentions; absent, none are looked up. */
+  articleMentions?: ArticleMentionDeps
 }
 
 export const registerFeedTools = (server: McpServer, user: string, options: FeedToolsOptions = {}) => {
   const {
     apiBaseUrl,
+    articleMentions,
     deliver,
     followActions,
     followerActions,
@@ -363,7 +369,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'create_article',
-    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
+    'Publish a long-form ARTICLE to your feed: a title, markdown prose, and inline chart blocks over locked time windows. `blocks` is an ordered list of `{type:"prose", markdown}` or `{type:"chart", metric, start?, end?, bucket?, caption?}`. A chart block over `[start, end]` re-resolves live against that window; omit its start/end to inherit `default_start`/`default_end`. A `{type:"challenge", challenge_url, caption?}` block embeds a challenge\'s live standings and a join link; take `challenge_url` from `list_challenges` (`share_url`) or from a joined challenge\'s URL. A `{type:"impact", activity, activity_type, window_minutes?, start?, end?, caption?}` block shows HRV, heart rate and stress before, during and after each session of one activity over its window (like `get_activity_impact` with `match: "exact"`); name `activity` exactly as `get_hrv_activities_correlation` lists it. Use this (not `share_activity`) for a written analysis spanning multiple charts. It publishes (and federates) immediately; to let the user review first, use `create_article_draft` instead. A fediverse handle typed in prose (`@user@host`) becomes a mention (linked, tagged and notified) when it resolves to an account; any other stays plain text. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { ...createArticleBodySchema.shape },
     async (body) => {
       const built = await validateArticleContent({
@@ -375,6 +381,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!built.ok) return errorResponse(built.error)
       const record = await createArticlePost(user, {
         article: built.article,
+        mentions: await resolveArticleMentions(articleMentions, user, built.article),
         tags: await resolvePostTags(user, { explicit: body.tags, texts: articleTexts(built.article) }),
         visibility: body.visibility,
       })
@@ -388,7 +395,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'update_article',
-    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
+    'Update an ARTICLE post (title, blocks, default window, visibility). Provided fields replace the stored ones; omitted fields are unchanged. The `blocks` array, when given, replaces the whole ordered block list. A fediverse handle typed in prose (`@user@host`) becomes a mention (linked, tagged and notified) when it resolves to an account; any other stays plain text, and a mention whose handle the edit removes is dropped. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.',
     { id: z.string().uuid().describe('Feed post ID'), ...updateArticleBodySchema.shape },
     async ({ id, ...body }) => {
       const existing = await getFeedPostById(user, id)
@@ -401,6 +408,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
       if (!built.ok) return errorResponse(built.error)
       const record = await updateFeedPost(user, id, {
         article: built.article,
+        mentions: await resolveArticleMentions(articleMentions, user, built.article, existing.mentions),
         tags: retagPost({
           after: articleTexts(built.article),
           before: articleTexts(existing.article),
@@ -410,7 +418,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
         visibility: body.visibility,
       })
       if (!record) return errorResponse('Article not found')
-      deliver?.updatedArticle(user, record)
+      deliverFeedPostEdit(deliver, user, record, existing)
       return jsonResponse({
         ...(await serializeFeedPost(user, record, { webHost })),
         ...(await articleWarningsField(user, built.article.blocks)),
@@ -495,10 +503,10 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'publish_article_draft',
-    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
+    "Publish an ARTICLE DRAFT to your feed (and federate it): validates it exactly like `create_article` — a title, a metric on every chart, trigger and outcome on every correlation, and a time window for each — and on success creates the article post and deletes the draft. Handles typed in its prose are resolved to mentions as in `create_article`. An incomplete draft is refused with the reason and kept. `visibility` overrides the draft's own. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
     { id: z.string().uuid().describe('Draft ID'), ...publishArticleDraftBodySchema.shape },
     async ({ id, ...body }) => {
-      const result = await publishArticleDraft(user, id, body)
+      const result = await publishArticleDraft(user, id, body, publishDraftDeps(articleMentions))
       if (!result.ok) return errorResponse(result.error)
       deliver?.createdArticle(user, result.post)
       return jsonResponse({
@@ -510,7 +518,7 @@ export const registerFeedTools = (server: McpServer, user: string, options: Feed
 
   server.tool(
     'preview_article',
-    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
+    "Preview what an ARTICLE (or an unfinished draft) WOULD federate, creating nothing: the Note `content` HTML, its title `name`, tags and numbered figure `attachments` (alt text, and whether Mastodon shows each: it keeps the first 4), `publish_error` (what still keeps it from publishing, or null), and `mastodon`: an emulation of Mastodon's web UI — the content after Mastodon's sanitiser without the trailing hashtag paragraph, and the hashtag bar — plus `notes` on what Mastodon changes for this post. Only complete blocks are previewed. Handles typed in prose are not resolved here and show as plain text. `include_images` also returns each shown figure as SVG markup (`image_svg`, null when the block has no data to draw); it is meant for UIs. The answer carries `warnings` when the article shows readers something sensitive (a meal sensitivity or a person, by name); they never block anything.",
     { ...previewArticleBodySchema.shape },
     async (body) => {
       if (!previewArticle) return errorResponse('Article preview is not available')

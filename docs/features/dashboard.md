@@ -462,6 +462,9 @@ masked when saved, and unticking it shows a warning that the names will be visib
 A journal chart's **Tags** (`@tags`) breakdown starts masked the same way, and unticking it warns
 that the tag names will be visible; its `Other` series names no tag or person and keeps its
 name in a two-field breakdown.
+A save refuses a dashboard whose journal chart card breaks the [journal chart rules](journal.md), with
+the chart endpoints' message, and saving a journal chart to a shared board notes that visitors see its
+tag and text filters.
 
 ### Metric Picker
 

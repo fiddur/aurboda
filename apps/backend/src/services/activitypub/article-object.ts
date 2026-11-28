@@ -9,7 +9,7 @@
  * `renderNoteProse` (tables as lines, images as figure references), while the
  * Atom feed keeps the full HTML of `renderProse`.
  */
-import type { ArticleContent } from '@aurboda/api-spec'
+import type { ArticleContent, PostMention } from '@aurboda/api-spec'
 
 import { marked } from 'marked'
 import sanitizeHtml from 'sanitize-html'
@@ -95,12 +95,14 @@ const figureReference = (figure: ArticleFigure): string => {
  * image with an http(s) `src`. Mastodon lays attachments out after the text, so
  * the text carries `Figure N: label` where the image stood. A caption is plain
  * escaped text, not markdown, as on the web's `<figcaption>`. A challenge block
- * adds a "Join the challenge" link after its reference.
+ * adds a "Join the challenge" link after its reference. A typed handle among
+ * `mentions` is a mention link; any other is plain text.
  */
 export const renderArticleNote = (
   article: ArticleContent,
   blockFigureUrl: (blockIndex: number) => string,
   selectorNames: ArticleSelectorNames = {},
+  mentions: readonly PostMention[] = [],
 ): { content: string; figures: ArticleFigure[] } => {
   const figures: ArticleFigure[] = []
   const addFigure = (figure: Omit<ArticleFigure, 'number'>): ArticleFigure => {
@@ -117,7 +119,7 @@ export const renderArticleNote = (
   const heading = `<p><strong>${escapeXml(article.title)}</strong></p>`
   const body = article.blocks
     .map((block, index) => {
-      if (block.type === 'prose') return renderNoteProse(block.markdown, { image: proseImage })
+      if (block.type === 'prose') return renderNoteProse(block.markdown, { image: proseImage, mentions })
       const { height, width } = articleBlockFigureSize(block.type)
       const figure = addFigure({
         block_index: index,
