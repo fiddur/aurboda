@@ -9,6 +9,7 @@ import {
   metricLabels,
   type MetricType,
   type WeatherSummary,
+  weatherTemperatureText,
 } from '@aurboda/api-spec'
 
 import {
@@ -172,14 +173,6 @@ const daysSinceValue = async (
 export const contextWeatherQuery = ({ at, day, tz }: ContextScope): ContextWeatherQuery =>
   at === undefined ? { date: day, tz } : { end: at, start: at }
 
-/** Whole degrees: one value when the lowest and highest round alike, else the range; undefined without any. */
-export const temperatureText = (summary: WeatherSummary): string | undefined => {
-  if (summary.temperature_min === null || summary.temperature_max === null) return undefined
-  const low = fixed(Math.round(summary.temperature_min), 0)
-  const high = fixed(Math.round(summary.temperature_max), 0)
-  return low === high ? `${low}°C` : `${low}–${high}°C`
-}
-
 /**
  * The label gets the condition emoji; the text the temperature with `show_temperature`, else the condition in
  * words (each falling back to the other when it is missing). Undefined when there is nothing to show.
@@ -191,11 +184,11 @@ export const weatherContextValue = (
   if (summary === null) return undefined
   const label = `${item.label}${summary.emoji}`
   const base = { decimals: 0, id: item.id, kind: item.kind, label, name: itemName(item) }
-  const temperature = temperatureText(summary)
+  const temperature = weatherTemperatureText(summary.temperature_min, summary.temperature_max)
   const showTemperature = (): JournalContextValue | undefined =>
     temperature === undefined || summary.temperature_avg === null
       ? undefined
-      : { ...base, suffix: '°C', text: `${label}${temperature}`, value: summary.temperature_avg }
+      : { ...base, suffix: '°C', text: `${label} ${temperature}`, value: summary.temperature_avg }
   const showCondition = (): JournalContextValue | undefined =>
     summary.code === null
       ? undefined

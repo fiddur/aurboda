@@ -8,7 +8,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema } from './activity-measures.ts'
-import { PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
+import { chartLookbackAllTimeNote, PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { baseResponseSchema, dataFieldPathSchema, timeWeightedAveragesNote } from './common.ts'
 import { flaggedExclusionSchema, includeFlaggedBodySchema, includeFlaggedSchema } from './flagged-windows.ts'
 import { JOURNAL_BREAKDOWN_NOTE, journalChartFilterShape } from './journal-chart.ts'
@@ -105,9 +105,9 @@ export const getTrendQuerySchema = z
     }),
     lookback_days: z
       .number()
-      .positive()
+      .nonnegative()
       .default(90)
-      .meta({ description: 'How many days of historical data to include' }),
+      .meta({ description: `How many days of historical data to include; ${chartLookbackAllTimeNote}` }),
     pattern: z.string().optional().meta({
       description:
         "For activity types: regex pattern to match. For metrics: metric name. Required unless source_type is 'journal'.",
@@ -169,7 +169,10 @@ export const trendResultSchema = z
       .record(z.string(), z.array(trendHistoryPointSchema))
       .optional()
       .meta({ description: 'Per-series EMA trend histories keyed by series name' }),
-    lookback_days: z.number().meta({ description: 'Days of data included' }),
+    lookback_days: z.number().meta({
+      description:
+        'Days of data included; for an all-time request (0), the days from the first day with data',
+    }),
     missing_days: trendMissingDaysSchema
       .optional()
       .meta({ description: 'How days without samples were treated (metric source only)' }),
@@ -200,7 +203,10 @@ export const trendQuerySchema = z
       }),
     display_period: trendDisplayPeriodSchema.optional(),
     half_life_days: z.string().optional().meta({ description: 'EMA half-life in days', example: '15' }),
-    lookback_days: z.string().optional().meta({ description: 'Days of historical data', example: '90' }),
+    lookback_days: z
+      .string()
+      .optional()
+      .meta({ description: `Days of historical data; ${chartLookbackAllTimeNote}`, example: '90' }),
     pattern: z.string().optional().meta({
       description: "Pattern (required unless activity_type_id is provided or source_type is 'journal')",
     }),

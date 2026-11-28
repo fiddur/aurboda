@@ -29,6 +29,8 @@ import type {
 
 import {
   ACTIVITY_LANE_CATEGORIES,
+  CHART_ALL_TIME_FALLBACK_DAYS,
+  CHART_ALL_TIME_LOOKBACK_DAYS,
   dayOverviewDefaultMetrics,
   hrZoneMetrics,
   isSleepType,
@@ -49,6 +51,7 @@ import { getActivityRecords, publicRecord } from './activity-records.ts'
 import { listActivityTypeDefinitions } from './activity-type-definitions.ts'
 import { maskBreakdownNames } from './breakdown-mask.ts'
 import { getChartData } from './chart-data.ts'
+import { allTimeLookbackDays, type ChartFirstDaySource, getChartFirstDay } from './chart-first-day.ts'
 import { getActivityImpact } from './correlations/activity-impact.ts'
 import { getBaseline } from './correlations/baseline.ts'
 import { humanizeName } from './correlations/utils.ts'
@@ -148,12 +151,33 @@ export const sinceRange = (since: string, tz: string, now: Date = new Date()): R
   start: dayStartInTz(clampSince(since, tz, now), tz),
 })
 
-const chartWindowOf = (
+type BarChartConfig = Extract<DashboardWidget, { type: 'bar_chart' }>['config']
+
+const chartSourceOf = (config: Omit<BarChartConfig, 'lookback_days'>, tz: string): ChartFirstDaySource => ({
+  activity_type_id: config.tag_definition_id,
+  pattern: config.pattern,
+  source_type: config.source_type,
+  tz,
+  ...journalChartFiltersOf(config),
+})
+
+/** An all-time bar chart's range: from its source's first day, or the fallback lookback without data. */
+const allTimeRange = async (user: string, config: BarChartConfig, tz: string): Promise<Range> => {
+  const firstDay = await getChartFirstDay(user, chartSourceOf(config, tz))
+  return firstDay === undefined ? lookbackRange(CHART_ALL_TIME_FALLBACK_DAYS) : sinceRange(firstDay, tz)
+}
+
+const chartWindowOf = async (
+  user: string,
   options: ResolveOptions,
-  config: { lookback_days: number; since?: string },
+  config: BarChartConfig,
   tz: string,
-) =>
-  !options.window && config.since ? sinceRange(config.since, tz) : windowOf(options, config.lookback_days)
+): Promise<Range> => {
+  if (options.window) return inclusiveRange(options.window)
+  if (config.since) return sinceRange(config.since, tz)
+  if (config.lookback_days === CHART_ALL_TIME_LOOKBACK_DAYS) return allTimeRange(user, config, tz)
+  return lookbackRange(config.lookback_days)
+}
 
 const trendLookbackDays = (
   options: ResolveOptions,
@@ -321,11 +345,11 @@ const resolveTrendChart = async (
 
 const resolveBarChart = async (
   user: string,
-  config: Extract<DashboardWidget, { type: 'bar_chart' }>['config'],
+  config: BarChartConfig,
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
-  const { end, start } = chartWindowOf(options, config, tz)
+  const { end, start } = await chartWindowOf(user, options, config, tz)
   const result = await getChartData(user, {
     activity_type_id: config.tag_definition_id,
     aggregation: config.aggregation ?? 'count',
@@ -376,18 +400,36 @@ const resolveBarChart = async (
 const resolveCombinedLayer = async (
   user: string,
   layer: Extract<DashboardWidget, { type: 'combined_chart' }>['config']['layers'][number],
-  lookback_days: number,
+  lookback: { bars: number; trend: number },
   tz: string,
   options: ResolveOptions,
 ): Promise<CombinedChartLayerData> => {
   if (layer.kind === 'bars') {
     const { kind, ...source } = layer
-    const resolved = await resolveBarChart(user, { ...source, lookback_days }, tz, options)
+    const resolved = await resolveBarChart(user, { ...source, lookback_days: lookback.bars }, tz, options)
     return { data: resolved.type === 'bar_chart' ? resolved.data : null, kind }
   }
   const { color: _color, kind, ...source } = layer
-  const resolved = await resolveTrendChart(user, { ...source, lookback_days }, tz, options)
+  const resolved = await resolveTrendChart(user, { ...source, lookback_days: lookback.trend }, tz, options)
   return { data: resolved.type === 'trend_chart' ? resolved.data : null, kind }
+}
+
+/**
+ * The lookback of a combined chart's trend layers; for all time, the days from its bars layer's first day. The bars
+ * layer keeps the all-time lookback itself, so it starts at that day's midnight as a bar card does, not at the
+ * current time of day that many days back.
+ */
+const combinedTrendLookbackDays = async (
+  user: string,
+  config: Extract<DashboardWidget, { type: 'combined_chart' }>['config'],
+  tz: string,
+  options: ResolveOptions,
+): Promise<number> => {
+  const bars = config.layers.find((layer) => layer.kind === 'bars')
+  if (options.window || config.lookback_days !== CHART_ALL_TIME_LOOKBACK_DAYS || !bars) {
+    return config.lookback_days
+  }
+  return allTimeLookbackDays(await getChartFirstDay(user, chartSourceOf(bars, tz)), dayKey(new Date(), tz))
 }
 
 const resolveCombinedChart = async (
@@ -396,9 +438,13 @@ const resolveCombinedChart = async (
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
+  const lookback = {
+    bars: config.lookback_days,
+    trend: await combinedTrendLookbackDays(user, config, tz, options),
+  }
   const layers = await Promise.all(
     config.layers.map((layer) =>
-      resolveCombinedLayer(user, layer, config.lookback_days, tz, options).catch(
+      resolveCombinedLayer(user, layer, lookback, tz, options).catch(
         (error: unknown): CombinedChartLayerData => {
           console.warn(`Failed to resolve a ${layer.kind} layer of a combined chart:`, error)
           return layer.kind === 'bars' ? { data: null, kind: 'bars' } : { data: null, kind: 'trend' }

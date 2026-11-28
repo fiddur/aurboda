@@ -1,5 +1,9 @@
-import type { DataFieldDefinition, DataItemFieldDefinition, DataSchemaDefinition } from '@aurboda/api-spec'
-
+import {
+  CHART_ALL_TIME_LOOKBACK_DAYS,
+  type DataFieldDefinition,
+  type DataItemFieldDefinition,
+  type DataSchemaDefinition,
+} from '@aurboda/api-spec'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment } from 'preact'
 import { useLocation, useRoute } from 'preact-iso'
@@ -46,7 +50,7 @@ const LOOKBACK_OPTIONS = [
   { label: '180 days', value: 180 },
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
-  { label: 'All time', value: 3650 },
+  { label: 'All time', value: CHART_ALL_TIME_LOOKBACK_DAYS },
 ]
 
 const DURATION_CATEGORIES = new Set(['exercise', 'sleep_rest'])

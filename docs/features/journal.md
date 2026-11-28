@@ -379,6 +379,9 @@ added (not for `(none)` or `Other`).
 breakdown by Tags or With starts masked for shared boards. See
 [Dashboard](./dashboard.md#trend-chart).
 
+**All time** charts the journal from its oldest entry the filters keep, however old, rather than a fixed number
+of years back (`lookback_days=0`; see [Trends: Chart Explorer](./trends.md#chart-explorer)).
+
 ## Pictures and recordings
 
 An entry (a `time` or `day` thread root) can carry pictures -- a photographed diary
@@ -535,7 +538,7 @@ your timezone. There are six kinds of item:
   day's summary. The label gets the condition's emoji; the value is the condition
   in words (`⛅ Partly cloudy`), or with **Show temperature** (`show_temperature`)
   the temperature in whole degrees -- the hour's for a `time` entry, the day's
-  lowest–highest for a `day` entry (`⛅2–8°C`, one value when they round alike).
+  lowest–highest for a `day` entry (`⛅ 2–8 °C`, one value when they round alike).
   Left out when there is no weather.
 
 The setting is `journal_context` in `PATCH /user/settings` (`update_user_settings`): an
@@ -583,6 +586,7 @@ removes it at once. Aurboda ships no templates of its own.
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
 | `GET`    | `/chart-data?source_type=journal`               | `query_chart_data`              |
 | `GET`    | `/trends?source_type=journal`                   | `get_trend`                     |
+| `GET`    | `/chart-data/first-day?source_type=journal`     | `get_chart_first_day`           |
 | `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
 | `POST`   | `/uploads` (`target: note_attachment`)          | `create_upload_url`             |

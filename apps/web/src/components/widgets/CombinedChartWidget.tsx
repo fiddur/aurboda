@@ -1,11 +1,18 @@
-import type { CombinedChartConfig, CombinedChartData, CombinedChartLayerData } from '@aurboda/api-spec'
-
+import {
+  CHART_ALL_TIME_LOOKBACK_DAYS,
+  type CombinedChartConfig,
+  type CombinedChartData,
+  type CombinedChartLayerData,
+  journalChartFiltersOf,
+} from '@aurboda/api-spec'
 import { useQueries, type UseQueryResult } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'preact/hooks'
 
 import { fetchChartData, fetchTrend } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
+import { allTimeLookbackDays, widgetRange } from '../../utils/chart-range'
 import { BarChart } from '../charts/BarChart'
+import { useChartFirstDay } from '../charts/useChartFirstDay'
 import { barsFetchParams, trendFetchParams } from './chartFetchParams'
 import { journalChartTitle, measureChartTitle } from './chartTitle'
 import { type CombinedChartBars, combinedChartParts, nullLayer } from './combinedChart'
@@ -18,6 +25,12 @@ const lookbackToRange = (lookbackDays: number): { start: string; end: string } =
   return { end: end.toISOString(), start: start.toISOString() }
 }
 
+/** The axis range; an all-time chart shown from resolved data (a public board) spans the data it has. */
+const axisRange = (lookbackDays: number): { start?: string; end: string } =>
+  lookbackDays === CHART_ALL_TIME_LOOKBACK_DAYS
+    ? { end: new Date().toISOString() }
+    : lookbackToRange(lookbackDays)
+
 const NO_BUCKETS: CombinedChartBars['buckets'] = []
 
 const combinedChartTitle = ({ layers, title }: CombinedChartConfig): string => {
@@ -29,10 +42,12 @@ const combinedChartTitle = ({ layers, title }: CombinedChartConfig): string => {
 interface CombinedChartViewProps {
   config: CombinedChartConfig
   data: CombinedChartData | null
+  /** The range the bars were fetched for, when the widget fetched them itself. */
+  barsRange?: { start: string; end: string }
 }
 
-export function CombinedChartView({ config, data }: CombinedChartViewProps) {
-  const range = useMemo(() => lookbackToRange(config.lookback_days), [config.lookback_days])
+export function CombinedChartView({ barsRange, config, data }: CombinedChartViewProps) {
+  const range = useMemo(() => barsRange ?? axisRange(config.lookback_days), [barsRange, config.lookback_days])
   const { bars, lines } = useMemo(() => combinedChartParts(config, data), [config, data])
 
   return (
@@ -52,7 +67,23 @@ export function CombinedChartView({ config, data }: CombinedChartViewProps) {
 }
 
 export function CombinedChartWidget({ config }: { config: CombinedChartConfig }) {
-  const { layers, lookback_days } = config
+  const { layers } = config
+  const bars = layers.find((layer) => layer.kind === 'bars')
+  const allTime = config.lookback_days === CHART_ALL_TIME_LOOKBACK_DAYS && bars !== undefined
+  const { firstDay, pending } = useChartFirstDay(
+    {
+      ...(bars?.tag_definition_id ? { activity_type_id: bars.tag_definition_id } : {}),
+      pattern: bars?.pattern,
+      source_type: bars?.source_type ?? 'activity_type',
+      ...(bars ? journalChartFiltersOf(bars) : {}),
+    },
+    allTime,
+  )
+  const lookback_days = allTime ? allTimeLookbackDays(firstDay, new Date()) : config.lookback_days
+  const barsRange = useMemo(
+    () => widgetRange(config.lookback_days, undefined, new Date(), firstDay),
+    [config.lookback_days, firstDay],
+  )
 
   const combine = useCallback(
     (results: UseQueryResult<CombinedChartLayerData>[]) => ({
@@ -69,19 +100,20 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     queries: layers.map((layer) => ({
       queryFn: async (): Promise<CombinedChartLayerData> => {
         if (layer.kind === 'bars') {
-          const chart = await fetchChartData(barsFetchParams(layer, lookbackToRange(lookback_days)))
+          const chart = await fetchChartData(barsFetchParams(layer, barsRange))
           return { data: { buckets: chart.buckets }, kind: 'bars' }
         }
         const trend = await fetchTrend(trendFetchParams(layer, lookback_days))
         return { data: { current_value: trend.current_value, history: trend.history }, kind: 'trend' }
       },
+      enabled: !pending,
       queryKey: ['combined-chart-layer', layer, lookback_days],
       ...HEAVY_QUERY_OPTIONS,
       staleTime: 5 * 60 * 1000,
     })),
   })
 
-  if (isLoading) {
+  if (pending || isLoading) {
     return (
       <div class="chart-widget">
         <h4>{combinedChartTitle(config)}</h4>
@@ -99,5 +131,5 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     )
   }
 
-  return <CombinedChartView config={config} data={data} />
+  return <CombinedChartView config={{ ...config, lookback_days }} data={data} barsRange={barsRange} />
 }

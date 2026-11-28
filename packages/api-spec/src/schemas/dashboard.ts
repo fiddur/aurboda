@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { activityMeasureSchema, recordMeasures } from './activity-measures.ts'
-import { chartFilterFieldSchema, PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
+import { chartFilterFieldSchema, chartLookbackAllTimeNote, PEOPLE_BREAKDOWN_NOTE } from './chart-data.ts'
 import { activityTypeSchema, baseResponseSchema, dataFieldPathSchema, queryBooleanSchema } from './common.ts'
 import { activityImpactTypeSchema } from './correlations.ts'
 import { JOURNAL_BREAKDOWN_NOTE, journalChartFilterShape } from './journal-chart.ts'
@@ -93,6 +93,8 @@ export const sparklineCardConfigSchema = z
 
 export type SparklineCardConfig = z.infer<typeof sparklineCardConfigSchema>
 
+const chartLookbackDaysSchema = z.number().int().nonnegative()
+
 /** The earliest `since` a chart accepts: older dates only make the trend query walk decades of empty days. */
 export const chartSinceMin = '1970-01-01'
 
@@ -123,7 +125,9 @@ export const trendChartConfigSchema = z
       .optional()
       .meta({ description: 'Display period for rate' }),
     half_life_days: z.number().int().positive().optional().meta({ description: 'EMA half-life in days' }),
-    lookback_days: z.number().int().positive().optional().meta({ description: 'Days of data to analyze' }),
+    lookback_days: chartLookbackDaysSchema
+      .optional()
+      .meta({ description: `Days of data to analyze; ${chartLookbackAllTimeNote}` }),
     missing_days: trendMissingDaysSchema.optional(),
     pattern: z
       .string()
@@ -175,7 +179,9 @@ export const barChartConfigSchema = z
     bucket_size: z
       .enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M'])
       .meta({ description: 'Time bucket size' }),
-    lookback_days: z.number().int().positive().meta({ description: 'Days of data to display' }),
+    lookback_days: chartLookbackDaysSchema.meta({
+      description: `Days of data to display; ${chartLookbackAllTimeNote}`,
+    }),
     pattern: z
       .string()
       .min(1)
@@ -235,11 +241,9 @@ export const combinedChartConfigSchema = z
       description:
         'The layers, drawn in this order over one time axis. For now exactly one bars layer and one to three trend layers; the rule may be relaxed as more kinds are supported',
     }),
-    lookback_days: z
-      .number()
-      .int()
-      .positive()
-      .meta({ description: 'Days of data shown, shared by every layer' }),
+    lookback_days: chartLookbackDaysSchema.meta({
+      description: `Days of data shown, shared by every layer; ${chartLookbackAllTimeNote} of the bars layer`,
+    }),
     title: z.string().optional().meta({ description: 'Chart title' }),
   })
   .refine(

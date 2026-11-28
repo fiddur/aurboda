@@ -30,6 +30,14 @@ export const chartDataSourceTypeSchema = z
 
 export type ChartDataSourceType = z.infer<typeof chartDataSourceTypeSchema>
 
+/** A chart range of `lookback_days: 0` starts on the first day the chart's source has data. */
+export const CHART_ALL_TIME_LOOKBACK_DAYS = 0
+
+/** What an all-time chart covers when its source has no data at all. */
+export const CHART_ALL_TIME_FALLBACK_DAYS = 3650
+
+export const chartLookbackAllTimeNote = '0: all time, from the first day the source has data'
+
 export const chartDataBucketSizeSchema = z.enum(['1m', '5m', '15m', '1h', '1d', '1w', '1M']).meta({
   description:
     'Bucket size for aggregation: 1 minute, 5 minutes, 15 minutes, hourly, daily, weekly, or monthly',
@@ -364,3 +372,51 @@ export const chartDataResponseSchema = baseResponseSchema
   .meta({ id: 'ChartDataResponse', description: 'Response containing bucketed chart data' })
 
 export type ChartDataResponse = z.infer<typeof chartDataResponseSchema>
+
+export const chartFirstDayQuerySchema = z
+  .object({
+    pattern: z.string().optional().meta({
+      description:
+        "Activity type (with its subtypes), metric name, or category path; for source_type 'tag' a regex. Not used by the 'journal' source",
+    }),
+    source_type: chartDataSourceTypeSchema,
+    activity_type_id: z
+      .string()
+      .uuid()
+      .optional()
+      .meta({ description: "For source_type 'tag': activity type definition ID (alternative to pattern)" }),
+    ...journalChartFilterShape,
+    tz: ianaTimezoneSchema.optional().meta({
+      description: "IANA timezone whose calendar day is answered; the user's setting when absent",
+      example: 'Europe/Stockholm',
+    }),
+  })
+  .superRefine((query, ctx) => {
+    const message = journalChartError(query)
+    if (message) ctx.addIssue({ code: 'custom', message, path: ['source_type'] })
+  })
+  .meta({
+    description:
+      "Which chart source's first day to find: the same source parameters the chart data and trend take",
+    id: 'ChartFirstDayQuery',
+  })
+
+export type ChartFirstDayQuery = z.infer<typeof chartFirstDayQuerySchema>
+
+export const chartFirstDayResponseSchema = baseResponseSchema
+  .extend({
+    data: z
+      .object({
+        first_day: z.iso.date().optional().meta({
+          description:
+            'The first local calendar day (YYYY-MM-DD) with data for the source; absent when it has none',
+        }),
+      })
+      .optional(),
+  })
+  .meta({
+    description: 'The first day an all-time chart (lookback_days 0) of the source starts on',
+    id: 'ChartFirstDayResponse',
+  })
+
+export type ChartFirstDayResponse = z.infer<typeof chartFirstDayResponseSchema>

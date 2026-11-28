@@ -13,7 +13,6 @@ import {
   formatContextValue,
   getJournalContext,
   type JournalContextDeps,
-  temperatureText,
   truncateTo,
   withJournalContext,
 } from './journal-context.ts'
@@ -395,7 +394,7 @@ describe('contextForItems with the weather', () => {
       ...deps(),
       weather: async () => summary(),
     })
-    expect(context.items.map((v) => [v.text, v.suffix, v.value])).toEqual([['⛅2–8°C', '°C', 4.4]])
+    expect(context.items.map((v) => [v.text, v.suffix, v.value])).toEqual([['⛅ 2–8 °C', '°C', 4.4]])
   })
 
   test("a timed entry asks for the hour it falls in and shows that hour's temperature", async () => {
@@ -417,7 +416,7 @@ describe('contextForItems with the weather', () => {
     )
     expect(queries).toEqual([{ end: at, start: at }])
     expect(context.at).toBe(at)
-    expect(context.items.map((v) => v.text)).toEqual(['⛅0°C'])
+    expect(context.items.map((v) => v.text)).toEqual(['⛅ 0 °C'])
   })
 
   test('falls back to the other figure when the one asked for is missing', async () => {
@@ -428,7 +427,7 @@ describe('contextForItems with the weather', () => {
     expect((await run(noTemperature, { show_temperature: true })).items.map((v) => v.text)).toEqual([
       '⛅ Partly cloudy',
     ])
-    expect((await run(noCode, {})).items.map((v) => v.text)).toEqual(['🌡️2–8°C'])
+    expect((await run(noCode, {})).items.map((v) => v.text)).toEqual(['🌡️ 2–8 °C'])
     const nothing = summary({ ...noTemperature, code: null })
     expect((await run(nothing, {})).items).toEqual([])
   })
@@ -465,15 +464,6 @@ describe('contextForItems with the weather', () => {
     expect(context.items).toEqual([])
     await contextForItems('u', [item({ id: 'm', kind: 'moon', label: '' })], day, 'UTC', failing)
     expect(lookups).toBe(1)
-  })
-})
-
-describe('temperatureText', () => {
-  test('one value when the lowest and highest round alike, never -0', () => {
-    expect(temperatureText(summary({ temperature_max: 4.4, temperature_min: 3.6 }))).toBe('4°C')
-    expect(temperatureText(summary({ temperature_max: -0.2, temperature_min: -0.4 }))).toBe('0°C')
-    expect(temperatureText(summary({ temperature_max: 1, temperature_min: -3.5 }))).toBe('-3–1°C')
-    expect(temperatureText(summary({ temperature_max: null, temperature_min: null }))).toBeUndefined()
   })
 })
 

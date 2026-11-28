@@ -11,7 +11,13 @@ import type { DashboardConfig } from '@aurboda/api-spec'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { addActivityPeople, insertActivity, insertPerson, upsertUserSettings } from '../db/index.ts'
+import {
+  addActivityPeople,
+  insertActivity,
+  insertNote,
+  insertPerson,
+  upsertUserSettings,
+} from '../db/index.ts'
 import { insertTimeSeries } from '../db/time-series.ts'
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { resolveDashboardData } from './shared-dashboard-data.ts'
@@ -474,6 +480,66 @@ describe('resolveDashboardData integration', () => {
     expect(card.type).toBe('metric_card')
     if (card.type !== 'metric_card') return
     expect(card.data?.value).toBe(305)
+  })
+
+  test('an all-time chart (lookback_days 0) starts on the first day its source has data', async () => {
+    const user = getTestUser()
+    await insertNote(user, 'time', null, 'Back then', new Date('1995-06-15T00:30:00Z'))
+    await insertNote(user, 'time', null, 'Lately', new Date('2020-06-15T12:00:00Z'))
+
+    const data = await resolveDashboardData(user, {
+      sections: [
+        {
+          id: 's',
+          title: 'x',
+          type: 'charts',
+          widgets: [
+            { config: { lookback_days: 0, source_type: 'journal' }, id: 'trend', type: 'trend_chart' },
+            {
+              config: { bucket_size: '1M', lookback_days: 0, source_type: 'journal' },
+              id: 'bar',
+              type: 'bar_chart',
+            },
+            {
+              config: {
+                layers: [
+                  { bucket_size: '1M', kind: 'bars', source_type: 'journal' },
+                  { kind: 'trend', source_type: 'journal' },
+                ],
+                lookback_days: 0,
+              },
+              id: 'combined',
+              type: 'combined_chart',
+            },
+            {
+              config: { bucket_size: '1M', lookback_days: 0, pattern: 'weight', source_type: 'metric' },
+              id: 'empty',
+              type: 'bar_chart',
+            },
+          ],
+        },
+      ],
+      version: 1,
+    })
+
+    const trend = data['trend']
+    expect(trend.type === 'trend_chart' && trend.data?.history[0]?.date).toBe('1995-06-15')
+
+    const bar = data['bar']
+    const firstBucket = bar.type === 'bar_chart' ? bar.data?.buckets.find((b) => b.value > 0) : undefined
+    expect(firstBucket?.bucket_start.slice(0, 7)).toBe('1995-06')
+
+    const combined = data['combined']
+    const layers = combined.type === 'combined_chart' ? combined.data?.layers : undefined
+    const barBuckets = layers?.flatMap((layer) => (layer.kind === 'bars' ? (layer.data?.buckets ?? []) : []))
+    const trendHistory = layers?.flatMap((layer) =>
+      layer.kind === 'trend' ? (layer.data?.history ?? []) : [],
+    )
+    expect(barBuckets?.find((b) => b.value > 0)?.bucket_start.slice(0, 7)).toBe('1995-06')
+    expect(trendHistory?.[0]?.date.slice(0, 4)).toBe('1995')
+
+    const empty = data['empty']
+    expect(empty).toEqual({ data: { buckets: [] }, type: 'bar_chart' })
   })
 
   describe("bar_chart buckets in the owner's timezone", () => {

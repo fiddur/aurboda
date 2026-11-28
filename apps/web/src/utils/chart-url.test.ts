@@ -39,6 +39,18 @@ describe('buildChartUrl', () => {
     expect(p.get('lookback_days')).toBe('255')
   })
 
+  test('carries the all-time lookback (0)', () => {
+    const p = params(
+      buildChartUrl({
+        chart_type: 'trend',
+        lookback_days: 0,
+        pattern: 'coffee',
+        source_type: 'activity_type',
+      }),
+    )
+    expect(p.get('lookback_days')).toBe('0')
+  })
+
   test('omits since when the chart has none', () => {
     const p = params(buildChartUrl({ chart_type: 'trend', pattern: 'coffee', source_type: 'activity_type' }))
     expect(p.has('since')).toBe(false)
@@ -250,9 +262,9 @@ describe('sessionScatterHref', () => {
     )
   })
 
-  test('maps the all-time lookback and leaves out what is not given', () => {
+  test('carries the all-time lookback (0) and leaves out what is not given', () => {
     expect(sessionScatterHref('yoga', undefined, 0)).toBe(
-      '/chart?source_type=activity_type&pattern=yoga&lookback_days=3650&chart_type=scatter',
+      '/chart?source_type=activity_type&pattern=yoga&lookback_days=0&chart_type=scatter',
     )
     expect(sessionScatterHref('yoga')).toBe(
       '/chart?source_type=activity_type&pattern=yoga&chart_type=scatter',

@@ -269,10 +269,10 @@ describe('journal context (integration)', () => {
     expect(context?.items.map((v) => v.id)).toEqual(['r', 'e', 't', 'm', 'x'])
     expect(context?.items.find((v) => v.id === 'e')?.text).toBe('E2')
     expect(context?.items.find((v) => v.id === 't')?.value).toBeGreaterThan(0)
-    expect(context?.items.find((v) => v.id === 'x')?.text).toMatch(/^.+1–5°C$/)
+    expect(context?.items.find((v) => v.id === 'x')?.text).toMatch(/^.+ 1–5 °C$/)
 
     const timed = await getJournalContext(user, '2024-03-10', 'UTC', undefined, '2024-03-10T12:30:00.000Z')
-    expect(timed?.items.find((v) => v.id === 'x')?.text).toBe('☀️5°C')
+    expect(timed?.items.find((v) => v.id === 'x')?.text).toBe('☀️ 5 °C')
   })
 
   test('getJournalContext is undefined without configured items', async () => {

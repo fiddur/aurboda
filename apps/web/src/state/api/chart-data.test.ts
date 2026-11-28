@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchChartData } from './chart-data'
+import { fetchChartData, fetchChartFirstDay } from './chart-data'
 import { browserTz } from './client'
 import { fetchTrend } from './trends'
 
@@ -125,5 +125,37 @@ describe('fetchTrend', () => {
 
     const [, config] = vi.mocked(axios.get).mock.calls[0] ?? []
     expect(config?.params).toMatchObject({ pattern: 'coffee', source_type: 'activity_type' })
+  })
+
+  it('sends an all-time lookback (0) for the server to resolve', async () => {
+    await fetchTrend({ lookback_days: 0, source_type: 'journal' })
+
+    const [, config] = vi.mocked(axios.get).mock.calls[0] ?? []
+    expect(config?.params).toMatchObject({ lookback_days: '0' })
+  })
+})
+
+describe('fetchChartFirstDay', () => {
+  beforeEach(() => {
+    vi.mocked(axios.get).mockReset()
+  })
+
+  it("asks for the source's first day in the browser's zone", async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { data: { first_day: '1995-04-02' }, success: true } })
+
+    expect(
+      await fetchChartFirstDay({ journal_q: '', journal_tags: 'travel', source_type: 'journal' }),
+    ).toEqual({
+      first_day: '1995-04-02',
+    })
+    const [url, config] = vi.mocked(axios.get).mock.calls[0] ?? []
+    expect(url).toBe('http://api.test/chart-data/first-day')
+    expect(config?.params).toEqual({ journal_tags: 'travel', source_type: 'journal', tz: browserTz })
+  })
+
+  it('answers no first day for a source without data', async () => {
+    vi.mocked(axios.get).mockResolvedValue({ data: { data: {}, success: true } })
+
+    expect(await fetchChartFirstDay({ pattern: 'weight', source_type: 'metric' })).toEqual({})
   })
 })
