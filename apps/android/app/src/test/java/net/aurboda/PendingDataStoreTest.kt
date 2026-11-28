@@ -64,6 +64,22 @@ class PendingDataStoreTest {
     }
 
     @Test
+    fun `a failed attempt records the server's verdict on the entry`() {
+        val metric = PendingPayload.Metric(PendingMetricPayload(metric = "weight", value = 72.5, time = "2026-11-01T08:00:00Z"))
+        val fresh = PendingEntry(id = "a", data = metric, created_at = "2026-11-01T08:00:00Z")
+
+        val refused = fresh.failedWith("Out of range", 400)
+        assertEquals(fresh.copy(fail_count = 1, last_error = "Out of range", refused = true), refused)
+        assertEquals(fresh.copy(fail_count = 1, last_error = "offline"), fresh.failedWith("offline", null))
+
+        assertEquals(refused.copy(fail_count = 2), refused.failedWith("offline", null))
+        assertEquals(
+            refused.copy(fail_count = 2, last_error = "Server returned 500", refused = false),
+            refused.failedWith("Server returned 500", 500),
+        )
+    }
+
+    @Test
     fun `the idle message names the entries left for the user`() {
         assertEquals("No queued entries", idlePendingDataMessage(0))
         assertEquals("1 entry needs attention", idlePendingDataMessage(1))
