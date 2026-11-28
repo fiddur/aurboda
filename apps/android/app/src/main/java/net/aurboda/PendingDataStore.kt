@@ -50,6 +50,8 @@ data class PendingEntry(
     val created_at: String,
     val fail_count: Int = 0,
     val last_error: String? = null,
+    /** The server refused the entry itself (see [isPermanentRefusal]): a sync no longer sends it until it is edited. */
+    val refused: Boolean = false,
 )
 
 fun addPendingEntry(context: Context, entry: PendingEntry) {
@@ -95,15 +97,32 @@ fun recordCreatedActivity(context: Context, id: String, activityId: String) {
     updatePendingEntry(context, entry.withCreatedActivityId(activityId))
 }
 
-fun markPendingEntryFailed(context: Context, id: String, error: String) {
+fun markPendingEntryFailed(context: Context, id: String, error: String, refused: Boolean = false) {
     val entries = getPendingEntries(context).map {
-        if (it.id == id) it.copy(fail_count = it.fail_count + 1, last_error = error) else it
+        if (it.id == id) it.copy(fail_count = it.fail_count + 1, last_error = error, refused = refused) else it
     }
     savePendingEntries(context, entries)
-    Log.d(TAG, "Marked pending entry $id as failed (error: $error)")
+    Log.d(TAG, "Marked pending entry $id as failed (error: $error, refused: $refused)")
 }
 
+/** Refused entries count: they still need the user's attention. */
 fun pendingEntryCount(context: Context): Int = getPendingEntries(context).size
+
+/** The entries a sync sends, and how many it leaves for the user because the server refused them. */
+data class PendingQueue(val toSend: List<PendingEntry>, val refused: Int)
+
+fun pendingQueueOf(entries: List<PendingEntry>): PendingQueue {
+    val (refused, toSend) = entries.partition { it.refused }
+    return PendingQueue(toSend = toSend, refused = refused.size)
+}
+
+/** The pending-data stage's message when a sync has nothing to send. */
+fun idlePendingDataMessage(refused: Int): String =
+    when (refused) {
+        0 -> "No queued entries"
+        1 -> "1 entry needs attention"
+        else -> "$refused entries need attention"
+    }
 
 private fun savePendingEntries(context: Context, entries: List<PendingEntry>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

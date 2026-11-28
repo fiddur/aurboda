@@ -1,5 +1,6 @@
 package net.aurboda
 
+import io.ktor.http.HttpStatusCode
 import org.junit.Test
 import org.junit.Assert.*
 
@@ -110,5 +111,27 @@ class DataApiTest {
         assertTrue(parsed.success)
         assertEquals("550e8400-e29b-41d4-a716-446655440000", parsed.data?.id)
         assertEquals("exercise", parsed.data?.activityType)
+    }
+
+    @Test
+    fun `writeError shows the server's reason for a refused write`() {
+        val body = """{"success":false,"error":"\"strength_score\" is calculated by Aurboda and cannot be written."}"""
+        val error = writeError(HttpStatusCode.BadRequest, body)
+        assertEquals("\"strength_score\" is calculated by Aurboda and cannot be written.", error.message)
+        assertEquals(400, error.statusCode)
+    }
+
+    @Test
+    fun `writeError falls back to the status when the body has no reason`() {
+        assertEquals("Server returned 400 Bad Request", writeError(HttpStatusCode.BadRequest, "").message)
+        assertEquals("Server returned 400 Bad Request", writeError(HttpStatusCode.BadRequest, "Bad Request").message)
+        assertEquals("Server returned 400 Bad Request", writeError(HttpStatusCode.BadRequest, """{"error":"  "}""").message)
+    }
+
+    @Test
+    fun `writeError keeps the read-only message for a 402`() {
+        val body = """{"success":false,"error":"Renew to write","payment_url":null}"""
+        assertEquals(DataResult.Error("Renew to write", 402), writeError(HttpStatusCode.PaymentRequired, body))
+        assertEquals(READ_ONLY_FALLBACK_MESSAGE, writeError(HttpStatusCode.PaymentRequired, "").message)
     }
 }

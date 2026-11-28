@@ -43,11 +43,22 @@ fun syncStopOf(status: Int?, serverMessage: String? = null): SyncStop? =
  */
 fun countsAsEntryFailure(stop: SyncStop?): Boolean = stop?.outcome != HttpOutcome.ReadOnly
 
-/** The `error` of a 402 body (`{ success: false, error, payment_url }`), or a fallback when it has none. */
-fun readOnlyMessage(body: String?): String =
+/**
+ * Whether the server refused a queued entry for what it is, so sending it again unchanged would be
+ * refused again. A network failure (no status), a refused token, a read-only account and the
+ * retryable answers say nothing about the entry.
+ */
+fun isPermanentRefusal(status: Int?): Boolean = status != null && status in PERMANENT_REFUSAL_STATUSES
+
+private val PERMANENT_REFUSAL_STATUSES = setOf(400, 404, 409, 413, 422)
+
+/** The non-blank string `error` of a JSON error body (`{ success: false, error, ... }`), or null. */
+fun errorBodyMessage(body: String?): String? =
   body
     ?.let { runCatching { appJson.parseToJsonElement(it) as? JsonObject }.getOrNull() }
     ?.get("error")
     ?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
     ?.takeIf { it.isNotBlank() }
-    ?: READ_ONLY_FALLBACK_MESSAGE
+
+/** The `error` of a 402 body (`{ success: false, error, payment_url }`), or a fallback when it has none. */
+fun readOnlyMessage(body: String?): String = errorBodyMessage(body) ?: READ_ONLY_FALLBACK_MESSAGE

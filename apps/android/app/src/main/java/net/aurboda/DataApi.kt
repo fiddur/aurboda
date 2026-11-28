@@ -135,10 +135,17 @@ data class AddActivityResponse(
     val error: String? = null,
 )
 
-/** A refused write keeps its status, so a sync can tell a read-only account (402) or refused token (401) from a bad entry. */
-private fun writeError(status: HttpStatusCode, body: String): DataResult.Error =
+/**
+ * A refused write keeps its status, so a sync can tell a read-only account (402) or refused token (401) from a bad entry,
+ * and the server's reason, so the app reads as the web does.
+ */
+fun writeError(status: HttpStatusCode, body: String): DataResult.Error =
     DataResult.Error(
-        if (classifyHttpStatus(status.value) == HttpOutcome.ReadOnly) readOnlyMessage(body) else "Server returned $status",
+        if (classifyHttpStatus(status.value) == HttpOutcome.ReadOnly) {
+            readOnlyMessage(body)
+        } else {
+            errorBodyMessage(body) ?: "Server returned $status"
+        },
         status.value,
     )
 

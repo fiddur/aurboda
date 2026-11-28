@@ -205,15 +205,17 @@ class SyncWorker(
 
   /**
    * Process pending local data entries (activities and metrics queued offline).
-   * Successfully sent entries are removed; failures are left for the next sync cycle.
+   * Successfully sent entries are removed; failures are left for the next sync cycle, except that
+   * an entry the server refused is not sent again until the user edits it.
    *
    * @return non-null when the server's answer ends the whole run, with the rest of the queue kept.
    */
   private suspend fun processPendingData(serverUrl: String, authToken: String, reporter: SyncProgressReporter): SyncStop? {
-    val entries = getPendingEntries(applicationContext)
+    val queue = pendingQueueOf(getPendingEntries(applicationContext))
+    val entries = queue.toSend
     if (entries.isEmpty()) {
       reporter.updateStage(SyncStage.PendingData) {
-        it.copy(status = SyncStageStatus.Done, message = "No queued entries")
+        it.copy(status = SyncStageStatus.Done, message = idlePendingDataMessage(queue.refused))
       }
       return null
     }
@@ -272,7 +274,7 @@ class SyncWorker(
         is DataResult.Error -> {
           val stop = syncStopOf(result.statusCode, result.message)
           if (countsAsEntryFailure(stop)) {
-            markPendingEntryFailed(applicationContext, entry.id, result.message)
+            markPendingEntryFailed(applicationContext, entry.id, result.message, isPermanentRefusal(result.statusCode))
             failed++
             Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
           } else {

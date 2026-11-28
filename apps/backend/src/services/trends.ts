@@ -778,6 +778,7 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     { ...input, pattern, source_type: sourceType, tz },
     requestedLookbackDays,
     input.end,
+    { exactType: input.measure === undefined },
   )
 
   if (sourceType === 'journal') {
