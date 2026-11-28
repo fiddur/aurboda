@@ -97,9 +97,11 @@ configure the credentials in **Admin Settings > Integrations > Oura API**:
 - **Client ID** — OAuth client ID from the Oura application
 - **Client Secret** — OAuth client secret
 
-The OAuth callback URL to register with Oura is: `{WEB_HOST}/auth/ouracb`, where
-`WEB_HOST` (env var) is the public URL of the server (e.g., `https://aurboda.net`).
-`WEB_HOST` must be HTTPS for webhooks.
+The OAuth callback URL to register with Oura is: `{API_BASE_URL}/auth/ouracb`, where
+`API_BASE_URL` (env var) is the public URL of the backend (e.g., `https://aurboda.net/api`,
+giving `https://aurboda.net/api/auth/ouracb`). Oura matches the redirect URI exactly, so a
+URL without the `/api` part is refused when a user connects.
+`API_BASE_URL` must be HTTPS for webhooks.
 
 If credentials are not configured, the "Connect Oura" button in user settings
 will be disabled with a message asking the admin to configure them. Oura-related
@@ -150,7 +152,7 @@ When enabled, Oura sends notifications to Aurboda whenever new data is available
 
 1. Admin enables webhooks in **Admin Settings > Integrations > Oura Webhook Push**
 2. The server creates webhook subscriptions with Oura for all data types (create + update events)
-3. When Oura has new data for any connected user, it sends a notification to `{WEB_HOST}/api/webhooks/oura`
+3. When Oura has new data for any connected user, it sends a notification to `{API_BASE_URL}/webhooks/oura`
 4. The server looks up which local user the notification is for (via the Oura user ID mapping created during OAuth) and triggers a sync for that user and data type
 5. Notifications are debounced (5-second window) to batch rapid updates
 
@@ -171,7 +173,7 @@ Webhooks are a **system-level** feature, not per-user. Once the admin enables we
 
 ### Requirements
 
-- `WEB_HOST` must use HTTPS (the toggle is hidden if HTTP)
+- `API_BASE_URL` must use HTTPS (the toggle is hidden if HTTP)
 - Oura Client ID and Client Secret must be configured in Admin Settings
 - The webhook endpoint must be publicly accessible
 
