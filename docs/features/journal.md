@@ -12,7 +12,7 @@ in the Android app, which embeds the same page.
 
 `/journal` lists your entries newest first, grouped by day, loading more as you
 scroll (or with **Load more**). Each entry shows its time (or "All day"), title,
-tags, the start of its text (**Show more** for the rest) and small previews of its
+its [context line](#context-line) when you have configured one, tags, the start of its text (**Show more** for the rest) and small previews of its
 pictures and recordings. At the top:
 
 - **New entry**, and **New entry from template** when you have templates;
@@ -554,7 +554,15 @@ show the `text`. `at=<ISO instant>`, a `time` entry's start, makes the weather
 item that hour's (the day defaults to the instant's day in `tz`); the answer then
 carries `at` too. The editor asks with `at` for a `time` entry. `GET
 /notes/:id` (`?tz=`) and MCP `get_note` carry it as `context` on a journal entry
-when you have configured items; lists, searches, replies and exports do not.
+when you have configured items. The lists carry it only when asked:
+`include_context=true` on `GET /notes/search` (MCP `search_notes`) and `GET
+/notes?from=&to=` (MCP `query_notes`) adds each journal entry's line, the same
+`context` `get_note` gives it, in the read's `tz` (default your timezone). It is
+computed once per day (and per timed entry's start, for the weather's hour), so
+leave it off when the figures are not needed. The journal page asks for it, and
+shows each entry's line, without the ⚙️ button, between its title and its text;
+the Timeline, On this day and the pickers do not. Replies and exports never carry
+it.
 
 ## Templates
 
@@ -581,13 +589,13 @@ removes it at once. Aurboda ships no templates of its own.
 | `GET`    | `/notes/:id/link-suggestions`                   | `get_note_link_suggestions`     |
 | `POST`   | `/notes/:id/link-suggestions/dismissals`        | `dismiss_note_link_suggestion`  |
 | `GET`    | `/notes/link-suggestions`                       | `list_note_link_suggestions`    |
-| `GET`    | `/notes/search`                                 | `search_notes`                  |
+| `GET`    | `/notes/search` (`include_context`)             | `search_notes`                  |
 | `GET`    | `/notes/tags`                                   | `list_note_tags`                |
 | `POST`   | `/notes/tags/merge`                             | `merge_note_tags`               |
 | `GET`    | `/chart-data?source_type=journal`               | `query_chart_data`              |
 | `GET`    | `/trends?source_type=journal`                   | `get_trend`                     |
 | `GET`    | `/chart-data/first-day?source_type=journal`     | `get_chart_first_day`           |
-| `GET`    | `/notes?from=&to=`                              | `query_notes`                   |
+| `GET`    | `/notes?from=&to=` (`include_context`)          | `query_notes`                   |
 | `POST`   | `/notes/:id/attachments`                        | `add_note_attachment`           |
 | `POST`   | `/uploads` (`target: note_attachment`)          | `create_upload_url`             |
 | `GET`    | `/notes/:id/attachments/:attachment_id`         | `get_note_attachment`           |

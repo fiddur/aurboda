@@ -17,7 +17,7 @@ import {
 import { z } from 'zod'
 
 import { dayKey } from '../services/day-keys.ts'
-import { getJournalContext, withJournalContext } from '../services/journal-context.ts'
+import { getJournalContext, withJournalContext, withJournalContexts } from '../services/journal-context.ts'
 import {
   addNote,
   deleteNoteById,
@@ -79,7 +79,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_note',
-    "Get one comment or journal entry by its ID: a thread root comes with its replies (oldest first) and, for a journal entry, its pictures and recordings and, when the user configured one, its context line for the entry's day (`context`, as get_journal_context); a reply comes on its own.",
+    "Get one comment or journal entry by its ID: a thread root comes with its replies (oldest first) and, for a journal entry, its pictures and recordings and, when the user configured one, its context line (`context`, as get_journal_context): the user's own figures for the entry's day, such as metrics, trends, time since, the moon, training load and the weather. A reply comes on its own.",
     { id: noteIdSchema('get'), tz: tzSchema },
     async ({ id, tz }) => {
       if (!isKnownTimezone(tz)) return errorResponse(`Not an IANA timezone: ${tz}`)
@@ -92,7 +92,7 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_journal_context',
-    'Get the journal context line for a day: the figures the user configured in the journal_context setting (metric values, trends, days since an activity or date, the moon, the training load, the weather), computed for that calendar day; with `at` (a timed entry start) the weather is that of its hour. Items without a value for the day are left out; items is empty when none are configured. Each item has a ready `text` (label + value + suffix) and a full `name`.',
+    'Get the journal context line for a day: the figures the user configured in the journal_context setting (metric values, trends, days since an activity or date, the moon, the training load, the weather), computed for that calendar day; with `at` (a timed entry start) the weather is that of its hour. The same object a journal entry carries as `context` (get_note, or include_context on query_notes and search_notes), for a day with or without an entry. Items without a value for the day are left out; items is empty when none are configured. Each item has a ready `text` (label + value + suffix) and a full `name`.',
     { ...journalContextQuerySchema.shape },
     async ({ at, date, tz: requestedTz }) => {
       const tz = requestedTz ?? (await getUserTimezone(user))
@@ -104,22 +104,29 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'query_notes',
-    'List every comment anchored in a time range (threads nested, replies not listed separately). Covers comments on entities, which inherit the entity\'s times, free-standing "time" comments about a moment, and "day" journal entries whose date is one of the range\'s local dates in tz. To search or page through the journal, use search_notes.',
+    'List every comment anchored in a time range (threads nested, replies not listed separately). Covers comments on entities, which inherit the entity\'s times, free-standing "time" comments about a moment, and "day" journal entries whose date is one of the range\'s local dates in tz. include_context adds each journal entry\'s context line (`context`, as get_note). To search or page through the journal, use search_notes.',
     { ...notesQueryRangeSchema.shape, tz: tzSchema },
-    async ({ from, to, tz, needs_text }) => {
+    async ({ from, to, tz, needs_text, include_context }) => {
       if (!isKnownTimezone(tz)) return errorResponse(`Not an IANA timezone: ${tz}`)
       const notes = await getNotesInRange(user, new Date(from), new Date(to), tz, { needs_text })
-      return tzJsonResponse({ data: notes, success: true }, tz)
+      const data = include_context ? await withJournalContexts(user, notes, tz) : notes
+      return tzJsonResponse({ data, success: true }, tz)
     },
   )
 
   server.tool(
     'search_notes',
-    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years; related_type with related_id keeps entries related to that person, activity, meal, report or check-in (the way to list the entries related to a check-in). Page with next_cursor; total, on the first page (no cursor) only, counts the matching entries across every page.',
+    'Search and list journal entries and comments, newest first, with their replies nested. With no filter it lists the free-standing entries ("time" and "day" notes); entity_types adds comments on activities, meals and so on. q is a full-text search over title and content (a match in a reply returns its thread root); tags keeps entries carrying all the given tags; from/to are local dates; on_this_day lists entries from the same month and day in earlier years; related_type with related_id keeps entries related to that person, activity, meal, report or check-in (the way to list the entries related to a check-in). include_context adds each journal entry\'s context line (`context`, as get_note). Page with next_cursor; total, on the first page (no cursor) only, counts the matching entries across every page.',
     { ...notesSearchQuerySchema.shape },
     async (params) => {
-      const result = await searchNotesForUser(user, params)
-      if (!result.success) return errorResponse(result.error)
+      const found = await searchNotesForUser(user, params)
+      if (!found.success) return errorResponse(found.error)
+      const result = params.include_context
+        ? {
+            ...found,
+            data: await withJournalContexts(user, found.data, params.tz ?? (await getUserTimezone(user))),
+          }
+        : found
       return params.tz ? tzJsonResponse(result, params.tz) : jsonResponse(result)
     },
   )

@@ -546,9 +546,15 @@ const needsTextSchema = queryBooleanSchema.optional().meta({
     'true keeps only the entries still to be written up: at least one picture and no text (blank or whitespace)',
 })
 
+const includeContextSchema = queryBooleanSchema.optional().meta({
+  description:
+    "Add each journal entry's context line (`context`): the user's own configured figures for the entry's day — metrics, trends, time since, moon, training load, weather. Computed per day, so leave it off when the figures are not needed.",
+})
+
 export const notesQueryRangeSchema = z
   .object({
     from: iso8601DateTimeSchema.meta({ description: 'Start of the window (inclusive)' }),
+    include_context: includeContextSchema,
     needs_text: needsTextSchema,
     to: iso8601DateTimeSchema.meta({
       description:
@@ -570,12 +576,6 @@ export const noteParamsSchema = z
   .meta({ id: 'NoteParams' })
 
 export type NoteParams = z.infer<typeof noteParamsSchema>
-
-export const notesResponseSchema = createDataArrayResponseSchema(noteSchema).meta({
-  id: 'NotesResponse',
-})
-
-export type NotesResponse = z.infer<typeof notesResponseSchema>
 
 export const noteResponseSchema = createDataResponseSchema(noteSchema).meta({
   id: 'NoteResponse',
@@ -654,6 +654,7 @@ export const notesSearchQuerySchema = z
       description:
         "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
     }),
+    include_context: includeContextSchema,
     limit: z.coerce
       .number()
       .int()
@@ -704,22 +705,6 @@ export const notesSearchQuerySchema = z
   .meta({ id: 'NotesSearchQuery' })
 
 export type NotesSearchQuery = z.infer<typeof notesSearchQuerySchema>
-
-export const notesSearchResponseSchema = baseResponseSchema
-  .extend({
-    data: z.array(noteSchema).optional(),
-    next_cursor: z
-      .string()
-      .nullable()
-      .optional()
-      .meta({ description: 'Cursor of the next page, or null when this is the last' }),
-    total: z.number().int().min(0).optional().meta({
-      description: 'How many entries match the query across every page; on the first page (no cursor) only',
-    }),
-  })
-  .meta({ id: 'NotesSearchResponse' })
-
-export type NotesSearchResponse = z.infer<typeof notesSearchResponseSchema>
 
 export const deleteNoteQuerySchema = z
   .object({
@@ -946,6 +931,7 @@ export const noteLinkSuggestionsPageQuerySchema = z
       description:
         "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
     }),
+    include_context: includeContextSchema,
     limit: z.coerce
       .number()
       .int()

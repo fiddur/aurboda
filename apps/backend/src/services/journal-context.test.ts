@@ -15,6 +15,7 @@ import {
   type JournalContextDeps,
   truncateTo,
   withJournalContext,
+  withJournalContexts,
 } from './journal-context.ts'
 import { moonPhase } from './moon.ts'
 
@@ -497,6 +498,130 @@ describe('withJournalContext', () => {
     })
     expect(queries).toEqual([{ date: '2024-03-10', tz: 'UTC' }])
     expect(result.context?.at).toBeUndefined()
+  })
+})
+
+describe('withJournalContexts', () => {
+  const moonAndWeather = async () => [
+    item({ id: 'm', kind: 'moon', label: '' }),
+    item({ id: 'w', kind: 'weather', label: '' }),
+  ]
+  const counting = (overrides: Partial<JournalContextDeps> = {}) => {
+    const queries: unknown[] = []
+    const calls = { customMetrics: 0, items: 0 }
+    const d = deps({
+      getCustomMetrics: async () => {
+        calls.customMetrics++
+        return []
+      },
+      getItems: async () => {
+        calls.items++
+        return moonAndWeather()
+      },
+      weather: async (_user, query) => {
+        queries.push(query)
+        return summary()
+      },
+      ...overrides,
+    })
+    return { calls, deps: d, queries }
+  }
+
+  test('leaves the notes untouched and computes nothing when no items are configured', async () => {
+    const notes = [{ date: '2024-03-10', entity_type: 'day' }]
+    const { deps: d, queries } = counting({ getItems: async () => [] })
+    expect(await withJournalContexts('u', notes, 'UTC', d)).toEqual(notes)
+    expect(queries).toEqual([])
+  })
+
+  test('does not read the items without a journal entry, and leaves other notes untouched', async () => {
+    const notes = [{ entity_type: 'activity', start_time: '2024-03-10T10:00:00.000Z' }]
+    const { calls, deps: d } = counting()
+    expect(await withJournalContexts('u', notes, 'UTC', d)).toEqual(notes)
+    expect(calls.items).toBe(0)
+  })
+
+  test('computes once for two entries on one day, and once per day', async () => {
+    const notes = [
+      { date: '2024-03-10', entity_type: 'day', id: 'a' },
+      { date: '2024-03-10', entity_type: 'day', id: 'b' },
+      { date: '2024-03-09', entity_type: 'day', id: 'c' },
+      { entity_type: 'activity', id: 'd', start_time: '2024-03-10T10:00:00.000Z' },
+    ]
+    const {
+      calls,
+      deps: d,
+      queries,
+    } = counting({
+      getItems: async () => [
+        item({ id: 'w', kind: 'weather', label: '' }),
+        item({ id: 'x', kind: 'metric', label: 'X', metric: 'steps' }),
+      ],
+      metricValue: async () => 1,
+    })
+    const result = await withJournalContexts('u', notes, 'UTC', d)
+    expect(queries).toEqual([
+      { date: '2024-03-10', tz: 'UTC' },
+      { date: '2024-03-09', tz: 'UTC' },
+    ])
+    expect(calls.customMetrics).toBe(1)
+    expect(result.map((n) => n.context?.date)).toEqual(['2024-03-10', '2024-03-10', '2024-03-09', undefined])
+    expect(result[0].context).toBe(result[1].context)
+  })
+
+  test('keys a time entry by its start and a day entry by its day, as withJournalContext does', async () => {
+    const time = { entity_type: 'time', start_time: '2024-03-10T14:20:00.000Z' }
+    const day = { date: '2024-03-10', entity_type: 'day' }
+    const { deps: d, queries } = counting()
+    const [timed, whole] = await withJournalContexts('u', [time, day], 'UTC', d)
+    expect(queries).toEqual([
+      { end: time.start_time, start: time.start_time },
+      { date: '2024-03-10', tz: 'UTC' },
+    ])
+    expect(timed.context).toEqual((await withJournalContext('u', time, 'UTC', d)).context)
+    expect(whole.context).toEqual((await withJournalContext('u', day, 'UTC', d)).context)
+    expect(timed.context?.at).toBe(time.start_time)
+    expect(whole.context?.at).toBeUndefined()
+  })
+
+  test('leaves replies inside a thread without a line', async () => {
+    const reply = { content: 'yes', entity_type: 'note' }
+    const [entry] = await withJournalContexts(
+      'u',
+      [{ date: '2024-03-10', entity_type: 'day', replies: [reply] }],
+      'UTC',
+      counting().deps,
+    )
+    expect(entry.context).toBeDefined()
+    expect(entry.replies).toEqual([reply])
+  })
+
+  test('a day whose computation fails leaves only its entries without a line', async () => {
+    const { deps: d } = counting()
+    let calls = 0
+    const flaky: JournalContextDeps = {
+      ...d,
+      getItems: async () => [item({ id: 't', kind: 'training_load', label: 'T' })],
+      trainingLoadValue: (scope) => {
+        calls++
+        if (scope.day === '2024-03-09') throw new Error('boom')
+        return Promise.resolve({ atl: 1, ctl: 2, tsb: 1 })
+      },
+    }
+    const result = await quiet(() =>
+      withJournalContexts(
+        'u',
+        [
+          { date: '2024-03-10', entity_type: 'day' },
+          { date: '2024-03-09', entity_type: 'day' },
+        ],
+        'UTC',
+        flaky,
+      ),
+    )
+    expect(calls).toBe(2)
+    expect(result[0].context?.items.map((v) => v.text)).toEqual(['T2'])
+    expect(result[1].context).toBeUndefined()
   })
 })
 

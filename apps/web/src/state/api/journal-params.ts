@@ -10,6 +10,7 @@ export interface JournalQuery {
   on_this_day?: string
   needs_text?: boolean
   include_comments?: boolean
+  include_context?: boolean
   related?: { type: NoteRelatedEntityType; id: string }
   cursor?: string
   limit?: number
@@ -31,6 +32,7 @@ export const journalSearchParams = (query: JournalQuery): Record<string, string>
   if (query.on_this_day) params.on_this_day = query.on_this_day
   if (query.needs_text) params.needs_text = 'true'
   if (query.include_comments) params.entity_types = JOURNAL_WITH_COMMENTS_ENTITY_TYPES
+  if (query.include_context) params.include_context = 'true'
   if (query.related) {
     params.related_type = query.related.type
     params.related_id = query.related.id

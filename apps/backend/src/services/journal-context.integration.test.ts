@@ -8,7 +8,10 @@ import {
   getJournalContext,
   journalTrainingLoadDeps,
   trainingLoadAt,
+  withJournalContext,
+  withJournalContexts,
 } from './journal-context.ts'
+import { addNote, getNoteForUser, searchNotesForUser } from './mutations.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -273,6 +276,45 @@ describe('journal context (integration)', () => {
 
     const timed = await getJournalContext(user, '2024-03-10', 'UTC', undefined, '2024-03-10T12:30:00.000Z')
     expect(timed?.items.find((v) => v.id === 'x')?.text).toBe('☀️ 5 °C')
+  })
+
+  test("a listed entry's context equals the one get_note gives it", async () => {
+    const user = getTestUser()
+    await upsertUserSettings(user, {
+      journal_context: [
+        { decimals: 0, id: 'r', kind: 'metric', label: 'ŌR', metric: 'readiness_score', missing: 'hide' },
+        { decimals: 0, id: 'm', kind: 'moon', label: '', value: 'illumination' },
+        { decimals: 0, id: 'x', kind: 'weather', label: '', show_temperature: true },
+      ],
+    })
+    await insertTimeSeries(user, [
+      { metric: 'readiness_score', source: 'oura', time: new Date('2024-03-10T06:00:00Z'), value: 85 },
+      { metric: 'weather_code', source: 'open_meteo', time: new Date('2024-03-10T12:00:00Z'), value: 0 },
+      {
+        metric: 'weather_temperature',
+        source: 'open_meteo',
+        time: new Date('2024-03-10T12:00:00Z'),
+        value: 5.4,
+      },
+    ])
+    const timed = await addNote(user, {
+      content: 'Lunch walk',
+      entity_type: 'time',
+      start_time: '2024-03-10T12:30:00.000Z',
+    })
+    const day = await addNote(user, { content: 'A good day', date: '2024-03-10', entity_type: 'day' })
+    expect(timed.success && day.success).toBe(true)
+
+    const found = await searchNotesForUser(user, { tz: 'UTC' })
+    if (!found.success) throw new Error(found.error)
+    const listed = await withJournalContexts(user, found.data, 'UTC')
+
+    for (const id of [timed.data?.id, day.data?.id]) {
+      const single = await getNoteForUser(user, id!)
+      const detail = single.data && (await withJournalContext(user, single.data, 'UTC'))
+      expect(detail?.context?.items.length).toBeGreaterThan(0)
+      expect(listed.find((note) => note.id === id)?.context).toEqual(detail?.context)
+    }
   })
 
   test('getJournalContext is undefined without configured items', async () => {

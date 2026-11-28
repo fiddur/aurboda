@@ -1,4 +1,4 @@
-import type { Note } from '@aurboda/api-spec'
+import type { JournalContext, Note, NoteDetail } from '@aurboda/api-spec'
 
 import { normalizeTag } from '@aurboda/api-spec'
 import { addDays, format, parseISO } from 'date-fns'
@@ -18,15 +18,19 @@ export const entryDate = (note: Note): string | undefined => {
 
 export interface JournalDay {
   date: string
-  entries: Note[]
+  entries: NoteDetail[]
 }
+
+/** The context line a listed entry shows: none when it came without one or with no items. */
+export const listedContext = (note: NoteDetail): JournalContext | undefined =>
+  note.context && note.context.items.length > 0 ? note.context : undefined
 
 /**
  * Entries by local day, newest day first. Within a day the `day` entries (no time of day) come
  * first, then the timed ones in the order they arrived (the API answers newest first).
  */
-export const groupEntriesByDay = (notes: readonly Note[]): JournalDay[] => {
-  const byDate = new Map<string, Note[]>()
+export const groupEntriesByDay = (notes: readonly NoteDetail[]): JournalDay[] => {
+  const byDate = new Map<string, NoteDetail[]>()
   for (const note of notes) {
     const date = entryDate(note)
     if (date === undefined) continue
@@ -112,6 +116,7 @@ export const journalQueryFor = (
   tz: string | undefined,
 ): JournalQuery => ({
   include_comments: filters.withComments || filters.related !== undefined,
+  include_context: true,
   needs_text: filters.needsText,
   q,
   related: filters.related,

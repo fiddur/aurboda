@@ -4,11 +4,17 @@ import type { McpServer } from './helpers.ts'
 
 import { registerNoteTools } from './note-tools.ts'
 
-vi.mock('../services/journal-context.ts', () => ({ getJournalContext: vi.fn(), withJournalContext: vi.fn() }))
+vi.mock('../services/journal-context.ts', () => ({
+  getJournalContext: vi.fn(),
+  withJournalContext: vi.fn(),
+  withJournalContexts: vi.fn(),
+}))
 
 vi.mock('../services/mutations.ts', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getNoteForUser: vi.fn(),
+  getNotesInRange: vi.fn(),
+  searchNotesForUser: vi.fn(),
 }))
 
 vi.mock('../services/settings.ts', async (importOriginal) => ({
@@ -128,5 +134,56 @@ describe('note tools', () => {
 
     expect(body(result).data.context).toEqual({ date: '2024-03-10', items: [value] })
     expect(journalContext.withJournalContext).toHaveBeenCalledWith('alice', note, 'UTC')
+  })
+
+  describe('include_context on the lists', () => {
+    const entry = {
+      content: 'A day',
+      created_at: '2024-03-10T12:00:00.000Z',
+      date: '2024-03-10',
+      entity_id: null,
+      entity_type: 'day' as const,
+      id: NOTE_ID,
+      tags: [],
+      updated_at: '2024-03-10T12:00:00.000Z',
+    }
+    const context = { date: '2024-03-10', items: [value] }
+
+    beforeEach(() => {
+      vi.mocked(mutations.getNotesInRange).mockResolvedValue([entry])
+      vi.mocked(mutations.searchNotesForUser).mockResolvedValue({
+        data: [entry],
+        next_cursor: null,
+        success: true,
+      })
+      vi.mocked(journalContext.withJournalContexts).mockImplementation(async (_user, notes) =>
+        notes.map((n) => ({ ...n, context })),
+      )
+    })
+
+    const range = { from: '2024-03-10T00:00:00Z', to: '2024-03-11T00:00:00Z', tz: 'UTC' }
+
+    test('query_notes adds the context lines only when asked', async () => {
+      const call = setup()
+      expect(body(await call('query_notes', range)).data[0].context).toBeUndefined()
+      expect(journalContext.withJournalContexts).not.toHaveBeenCalled()
+
+      const result = await call('query_notes', { ...range, include_context: true })
+      expect(body(result).data[0].context).toEqual(context)
+      expect(journalContext.withJournalContexts).toHaveBeenCalledWith('alice', [entry], 'UTC')
+    })
+
+    test("search_notes adds the context lines only when asked, in the user's timezone by default", async () => {
+      const call = setup()
+      expect(body(await call('search_notes', {})).data[0].context).toBeUndefined()
+      expect(journalContext.withJournalContexts).not.toHaveBeenCalled()
+
+      const result = await call('search_notes', { include_context: true })
+      expect(body(result).data[0].context).toEqual(context)
+      expect(journalContext.withJournalContexts).toHaveBeenCalledWith('alice', [entry], 'Europe/Stockholm')
+
+      await call('search_notes', { include_context: true, tz: 'UTC' })
+      expect(journalContext.withJournalContexts).toHaveBeenLastCalledWith('alice', [entry], 'UTC')
+    })
   })
 })

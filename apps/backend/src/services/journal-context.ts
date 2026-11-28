@@ -19,6 +19,7 @@ import {
   getLatestMetricSampleTimeBefore,
   getUserSettings,
 } from '../db/index.ts'
+import { mapWithConcurrency } from '../utils.ts'
 import { getCustomMetrics } from './custom-metrics.ts'
 import { dayEndInTz, dayKey, dayStartInTz, shiftDayKey } from './day-keys.ts'
 import { type DerivedMetric, derivedMetric } from './derived-metrics.ts'
@@ -235,28 +236,21 @@ export const computeContextValue = async (
   }
 }
 
-/**
- * The items' values for `day`, in order; an item without a value, or whose computation fails, is left out. `at`, a
- * timed entry's instant, gives the weather of its hour instead of the day's.
- */
-export const contextForItems = async (
-  user: string,
+const needsCustomMetrics = (items: readonly JournalContextItem[]): boolean =>
+  items.some((item) => item.kind === 'metric' || item.kind === 'trend')
+
+const contextForScope = async (
   items: readonly JournalContextItem[],
-  day: string,
-  tz: string,
+  base: ContextScope,
   deps: JournalContextDeps,
-  at?: string,
 ): Promise<JournalContext> => {
-  const needsMetrics = items.some((item) => item.kind === 'metric' || item.kind === 'trend')
-  const customMetrics = needsMetrics ? await deps.getCustomMetrics(user) : []
-  const base: ContextScope = { customMetrics, day, tz, user, ...(at === undefined ? {} : { at }) }
   const scope: ContextScope = {
     ...base,
     ...(items.some((item) => item.kind === 'training_load') && {
       trainingLoad: deps.trainingLoadValue(base),
     }),
     ...(items.some((item) => item.kind === 'weather') && {
-      weather: deps.weather(user, contextWeatherQuery(base)).catch((error: unknown) => {
+      weather: deps.weather(base.user, contextWeatherQuery(base)).catch((error: unknown) => {
         console.warn('Journal context weather failed:', error)
         return null
       }),
@@ -271,10 +265,26 @@ export const contextForItems = async (
     ),
   )
   return {
-    ...(at === undefined ? {} : { at }),
-    date: day,
+    ...(base.at === undefined ? {} : { at: base.at }),
+    date: base.day,
     items: values.filter((value) => value !== undefined),
   }
+}
+
+/**
+ * The items' values for `day`, in order; an item without a value, or whose computation fails, is left out. `at`, a
+ * timed entry's instant, gives the weather of its hour instead of the day's.
+ */
+export const contextForItems = async (
+  user: string,
+  items: readonly JournalContextItem[],
+  day: string,
+  tz: string,
+  deps: JournalContextDeps,
+  at?: string,
+): Promise<JournalContext> => {
+  const customMetrics = needsCustomMetrics(items) ? await deps.getCustomMetrics(user) : []
+  return contextForScope(items, { customMetrics, day, tz, user, ...(at === undefined ? {} : { at }) }, deps)
 }
 
 const mean = (values: readonly number[]): number | undefined =>
@@ -434,18 +444,62 @@ export const entryContextDay = (
   return undefined
 }
 
+type JournalEntryLike = { entity_type: string; date?: string; start_time?: string }
+
+/** What a journal entry's line is computed for: its day and, for a `time` entry, its start (the weather's hour). */
+const entryContextTarget = (note: JournalEntryLike, tz: string): { day: string; at?: string } | undefined => {
+  const day = entryContextDay(note, tz)
+  if (day === undefined) return undefined
+  return note.entity_type === 'time' && note.start_time ? { at: note.start_time, day } : { day }
+}
+
+const targetKey = ({ at, day }: { day: string; at?: string }): string => `${day}|${at ?? ''}`
+
+const JOURNAL_CONTEXTS_CONCURRENCY = 4
+
+/**
+ * `notes` with each journal entry's context line, when the user configured one: one computation per distinct day (and
+ * timed entry start), shared by the entries on it. A day whose computation fails leaves its entries without a line.
+ */
+export const withJournalContexts = async <T extends JournalEntryLike>(
+  user: string,
+  notes: readonly T[],
+  tz: string,
+  deps: JournalContextDeps = defaultJournalContextDeps,
+): Promise<(T & { context?: JournalContext })[]> => {
+  const targets = notes.map((note) => entryContextTarget(note, tz))
+  if (targets.every((target) => target === undefined)) return [...notes]
+  const items = await deps.getItems(user)
+  if (items.length === 0) return [...notes]
+  const customMetrics = needsCustomMetrics(items) ? await deps.getCustomMetrics(user) : []
+  const distinct = [
+    ...new Map(
+      targets.filter((target) => target !== undefined).map((target) => [targetKey(target), target]),
+    ).values(),
+  ]
+  const computed = await mapWithConcurrency(distinct, JOURNAL_CONTEXTS_CONCURRENCY, async (target) => {
+    const base: ContextScope = { customMetrics, tz, user, ...target }
+    const context = await contextForScope(items, base, deps).catch((error: unknown) => {
+      console.warn(`Journal context for ${target.day} failed:`, error)
+      return undefined
+    })
+    return [targetKey(target), context] as const
+  })
+  const contexts = new Map(computed)
+  return notes.map((note, i) => {
+    const target = targets[i]
+    const context = target === undefined ? undefined : contexts.get(targetKey(target))
+    return context ? { ...note, context } : note
+  })
+}
+
 /** `note` with its journal context line, when it is a journal entry and the user configured one. */
-export const withJournalContext = async <
-  T extends { entity_type: string; date?: string; start_time?: string },
->(
+export const withJournalContext = async <T extends JournalEntryLike>(
   user: string,
   note: T,
   tz: string,
   deps: JournalContextDeps = defaultJournalContextDeps,
 ): Promise<T & { context?: JournalContext }> => {
-  const day = entryContextDay(note, tz)
-  if (day === undefined) return note
-  const at = note.entity_type === 'time' ? note.start_time : undefined
-  const context = await getJournalContext(user, day, tz, deps, at)
-  return context ? { ...note, context } : note
+  const [result] = await withJournalContexts(user, [note], tz, deps)
+  return result ?? note
 }

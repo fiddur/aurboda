@@ -20,7 +20,10 @@ vi.mock('../services/mutations.ts', () => ({
   updateNote: vi.fn(),
 }))
 
-vi.mock('../services/journal-context.ts', () => ({ withJournalContext: vi.fn() }))
+vi.mock('../services/journal-context.ts', () => ({
+  withJournalContext: vi.fn(),
+  withJournalContexts: vi.fn(),
+}))
 
 vi.mock('../services/settings.ts', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -102,6 +105,32 @@ describe('GET /notes', () => {
     expect(vi.mocked(mutations.getNotesInRange).mock.calls[0]![3]).toBe('Europe/Stockholm')
   })
 
+  test('adds the context lines with include_context, for the days in the user’s timezone by default', async () => {
+    vi.mocked(mutations.getNotesInRange).mockResolvedValue([noteData])
+    vi.mocked(journalContext.withJournalContexts).mockImplementation(async (_user, notes) =>
+      notes.map((note) => ({ ...note, context: { date: '2024-01-15', items: [] } })),
+    )
+    const range = { from: '2024-01-15T00:00:00Z', to: '2024-01-15T23:59:59Z' }
+
+    const without = await supertest(buildApp())
+      .get('/')
+      .query({ ...range, include_context: 'false' })
+    expect(without.body.data[0].context).toBeUndefined()
+    expect(journalContext.withJournalContexts).not.toHaveBeenCalled()
+
+    const res = await supertest(buildApp())
+      .get('/')
+      .query({ ...range, include_context: 'true' })
+    expect(res.status).toBe(200)
+    expect(res.body.data[0].context).toEqual({ date: '2024-01-15', items: [] })
+    expect(journalContext.withJournalContexts).toHaveBeenCalledWith('tester', [noteData], 'Europe/Stockholm')
+
+    await supertest(buildApp())
+      .get('/')
+      .query({ ...range, include_context: 'true', tz: 'UTC' })
+    expect(journalContext.withJournalContexts).toHaveBeenLastCalledWith('tester', [noteData], 'UTC')
+  })
+
   test('400s when a range query is missing `to`', async () => {
     const res = await supertest(buildApp()).get('/').query({ from: '2024-01-15T00:00:00Z' })
 
@@ -154,6 +183,36 @@ describe('GET /notes/search', () => {
     ['a date off the calendar', { on_this_day: '2023-02-29' }],
   ])('400s on %s', async (_label, query) => {
     const res = await supertest(buildApp()).get('/search').query(query)
+
+    expect(res.status).toBe(400)
+    expect(mutations.searchNotesForUser).not.toHaveBeenCalled()
+  })
+
+  test('adds the context lines only with include_context', async () => {
+    vi.mocked(mutations.searchNotesForUser).mockResolvedValue({
+      data: [noteData],
+      next_cursor: null,
+      success: true,
+    })
+    vi.mocked(journalContext.withJournalContexts).mockImplementation(async (_user, notes) =>
+      notes.map((note) => ({ ...note, context: { date: '2024-01-15', items: [] } })),
+    )
+
+    const without = await supertest(buildApp()).get('/search')
+    expect(without.body.data[0].context).toBeUndefined()
+    expect(journalContext.withJournalContexts).not.toHaveBeenCalled()
+
+    const res = await supertest(buildApp()).get('/search').query({ include_context: 'true' })
+    expect(res.status).toBe(200)
+    expect(res.body.data[0].context).toEqual({ date: '2024-01-15', items: [] })
+    expect(journalContext.withJournalContexts).toHaveBeenCalledWith('tester', [noteData], 'Europe/Stockholm')
+
+    await supertest(buildApp()).get('/search').query({ include_context: 'true', tz: 'UTC' })
+    expect(journalContext.withJournalContexts).toHaveBeenLastCalledWith('tester', [noteData], 'UTC')
+  })
+
+  test('400s on an include_context that is not a boolean', async () => {
+    const res = await supertest(buildApp()).get('/search').query({ include_context: 'maybe' })
 
     expect(res.status).toBe(400)
     expect(mutations.searchNotesForUser).not.toHaveBeenCalled()
