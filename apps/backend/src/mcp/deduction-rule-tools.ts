@@ -9,7 +9,6 @@ import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { DeductionQueue } from '../services/deduction-queue.ts'
 
 import {
-  activityTypeExists,
   deleteDeductionRule,
   ensureActivityType,
   getDeductionRule,
@@ -19,10 +18,9 @@ import {
   updateDeductionRule,
 } from '../db/index.ts'
 import { activityPeopleError } from '../services/activity-people.ts'
-import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
-import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { removeRuleActivities } from '../services/deduction-rule-activities.ts'
+import { previewDeductionRule } from '../services/deduction-rule-preview.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { errorResponse, jsonResponse, type McpServer } from './helpers.ts'
 
@@ -172,43 +170,13 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
     'Dry-run a rule definition to see how many activities would be affected without creating or modifying anything. Samples the last 90 days.',
     { ...previewDeductionRuleBodySchema.shape },
     async (params) => {
-      if (params.rule_id && !(await getDeductionRule(user, params.rule_id))) {
-        return errorResponse('Deduction rule not found')
-      }
-      if (
-        !(await activityTypeExists(user, params.output_activity_type)) &&
-        !getCatalogActivityType(loadActivityTypeCatalog(), params.output_activity_type)
-      ) {
-        return errorResponse(`Unknown activity type: "${params.output_activity_type}"`)
-      }
-
-      const ruleShapeError = validateRuleShape(params)
-      if (ruleShapeError) return errorResponse(ruleShapeError)
-      const peopleError = await activityPeopleError(user, params.output_people)
-      if (peopleError) return errorResponse(peopleError)
-
-      // Create a temporary rule object for evaluation (no DB insert)
-      const tempRule = {
-        conditions: params.conditions,
-        enabled: true,
-        id: params.rule_id ?? 'preview',
-        merge_gap_seconds: params.merge_gap_seconds,
-        mode: params.mode,
-        name: params.name,
-        output_activity_type: params.output_activity_type,
-        output_category: params.output_category,
-        output_data: params.output_data as Record<string, unknown> | undefined,
-        output_media_field: params.output_media_field,
-        output_people: params.output_people,
-        output_title: params.output_title,
-        output_title_field: params.output_title_field,
-        priority: params.priority ?? 0,
-      }
-
-      const window = { end: new Date(), start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
-      const result = await evaluateAllRules(user, [tempRule], window, engineDeps, true)
-
-      return jsonResponse({ sample_days: 90, success: true, would_affect: result.activities_created })
+      const preview = await previewDeductionRule(user, params, engineDeps)
+      if (preview.status !== 'ok') return errorResponse(preview.error)
+      return jsonResponse({
+        sample_days: preview.sample_days,
+        success: true,
+        would_affect: preview.would_affect,
+      })
     },
   )
 }

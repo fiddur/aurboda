@@ -517,6 +517,76 @@ describe('a rule adding people to activities (integration)', () => {
     expect(await namesOn(user, [fikaId])).toEqual(['Anna'])
   })
 
+  test('a person a rule linked before its record existed, taken off by hand, stays off', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await meditation(user)
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const withAnna = await fikaRule(user, [anna.id])
+    const withBo = await insertDeductionRule(user, {
+      conditions: [{ activity_type: 'meditation', kind: 'activity' }],
+      enabled: false,
+      mode: 'enrich',
+      name: 'Fika with Bo',
+      output_activity_type: 'fika',
+      output_people: [bo.id],
+    })
+    await query(user, 'INSERT INTO activity_people (activity_id, person_id) VALUES ($1, $2)', [
+      fikaId,
+      anna.id,
+    ])
+
+    expect((await updateActivity(user, fikaId, { people: [] })).success).toBe(true)
+    const records = await query<{ activity_id: string; added: boolean; person_id: string }>(
+      user,
+      'SELECT activity_id, person_id, added FROM rule_activity_people WHERE rule_id = $1',
+      [withAnna.id],
+    )
+    expect(records.rows).toEqual([{ activity_id: fikaId, added: false, person_id: anna.id }])
+    expect(await recordedFor(user, withBo.id)).toBe(0)
+
+    const deps = createDefaultEngineDeps()
+    expect((await evaluateRule(user, withAnna, window, deps, true)).would_affect).toBe(0)
+    await evaluateAllRules(user, [withAnna], window, deps)
+    expect(await namesOn(user, [fikaId])).toEqual([])
+  })
+
+  test("taking a person off by hand keeps the rule's one record for them", async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await meditation(user)
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const rule = await fikaRule(user, [anna.id, bo.id])
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await recordedFor(user, rule.id)).toBe(2)
+
+    expect((await updateActivity(user, fikaId, { people: [bo.id] })).success).toBe(true)
+    expect(await recordedFor(user, rule.id)).toBe(2)
+    expect((await updateActivity(user, fikaId, { people: [anna.id, bo.id] })).success).toBe(true)
+    expect(await recordedFor(user, rule.id)).toBe(2)
+
+    await evaluateAllRules(user, [rule], window, deps)
+    expect(await namesOn(user, [fikaId])).toEqual(['Anna', 'Bo'])
+  })
+
+  test('adding a person by hand that a rule names records nothing for the rule', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const rule = await fikaRule(user, [anna.id])
+
+    expect((await updateActivity(user, fikaId, { people: [anna.id] })).success).toBe(true)
+    expect((await updateActivity(user, fikaId, { people: [anna.id] })).success).toBe(true)
+
+    expect(await recordedFor(user, rule.id)).toBe(0)
+  })
+
   test('the preview of an edit counts nothing the saved rule already decided; one under the preview id does', async () => {
     const user = getTestUser()
     await ensureType(user, 'fika')

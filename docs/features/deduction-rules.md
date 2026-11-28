@@ -259,7 +259,8 @@ rule, and links the person to every matching activity, old and new.
   by rules do not count, so two rules can each add their own person to the same activity. The first evaluation
   decides: an activity skipped because its people were set by hand is not filled later when it is emptied.
 - Taking a person a rule added off by hand clears the rule's "added" mark for them, so putting them back by hand
-  later makes the activity's people set by hand.
+  later makes the activity's people set by hand. Taking off a person the rule has no record for (one added before
+  rules kept records) records them as considered for every rule that names them, so no rule adds them back.
 - A person added to the rule later is still added to the activities it handled before, under the same two rules.
 - "The activity" is what the activity list shows as one: a synced row and its override, or the rows of a merge. A
   person set by hand on any of them protects all of them.

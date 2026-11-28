@@ -1,4 +1,4 @@
-import type { DeductionRuleMode, UpdateDeductionRuleBody } from '@aurboda/api-spec'
+import type { DeductionRuleMode, PreviewDeductionRuleBody, UpdateDeductionRuleBody } from '@aurboda/api-spec'
 
 import axios from 'axios'
 
@@ -16,21 +16,9 @@ export const fetchDeductionRules = async (): Promise<DeductionRule[]> => {
   return response.data.data ?? []
 }
 
-export const previewDeductionRule = async (body: {
-  name: string
-  conditions: DeductionRuleCondition[]
-  output_activity_type: string
-  output_title?: string
-  merge_gap_seconds?: number
-  priority?: number
-  mode?: DeductionRuleMode
-  output_data?: Record<string, unknown>
-  output_media_field?: OutputMediaField
-  output_title_field?: string
-  output_category?: DeductionRule['output_category']
-  output_people?: string[]
-  rule_id?: string
-}): Promise<{ would_affect: number; sample_days: number }> => {
+export const previewDeductionRule = async (
+  body: Omit<PreviewDeductionRuleBody, 'conditions'> & { conditions: DeductionRuleCondition[] },
+): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(
     `${API_URL}/deduction-rules/preview`,

@@ -17,7 +17,6 @@ import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
 import type { DeductionQueue } from '../services/deduction-queue.ts'
 
 import {
-  activityTypeExists,
   deleteDeductionRule,
   ensureActivityType,
   getDeductionRule,
@@ -27,10 +26,9 @@ import {
   updateDeductionRule,
 } from '../db/index.ts'
 import { activityPeopleError } from '../services/activity-people.ts'
-import { getCatalogActivityType, loadActivityTypeCatalog } from '../services/activity-type-catalog.ts'
 import { removeCategoriesOfNonCategorisingRule } from '../services/deduction-category.ts'
-import { evaluateAllRules } from '../services/deduction-engine.ts'
 import { removeRuleActivities } from '../services/deduction-rule-activities.ts'
+import { previewDeductionRule } from '../services/deduction-rule-preview.ts'
 import { mergeRuleUpdate, validateRuleShape } from '../services/media-plays.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateBody } from '../validation.ts'
@@ -111,59 +109,13 @@ export const createDeductionRulesRouter = (
     authMiddleware,
     validateBody(previewDeductionRuleBodySchema),
     async (req, res) => {
-      const user = req.user!
-      const { output_activity_type, rule_id } = req.body
-
-      if (rule_id && !(await getDeductionRule(user, rule_id))) {
+      const preview = await previewDeductionRule(req.user!, req.body, engineDeps)
+      if (preview.status !== 'ok') {
         return res
-          .status(404)
-          .json({ error: 'Deduction rule not found', sample_days: 0, success: false, would_affect: 0 })
+          .status(preview.status === 'not_found' ? 404 : 400)
+          .json({ error: preview.error, sample_days: 0, success: false, would_affect: 0 })
       }
-
-      if (
-        !(await activityTypeExists(user, output_activity_type)) &&
-        !getCatalogActivityType(loadActivityTypeCatalog(), output_activity_type)
-      ) {
-        return res.status(400).json({
-          error: `Unknown activity type: "${output_activity_type}"`,
-          sample_days: 0,
-          success: false,
-          would_affect: 0,
-        })
-      }
-
-      const ruleShapeError = validateRuleShape(req.body)
-      if (ruleShapeError) {
-        return res
-          .status(400)
-          .json({ error: ruleShapeError, sample_days: 0, success: false, would_affect: 0 })
-      }
-      const peopleError = await activityPeopleError(user, req.body.output_people)
-      if (peopleError) {
-        return res.status(400).json({ error: peopleError, sample_days: 0, success: false, would_affect: 0 })
-      }
-
-      const tempRule = {
-        conditions: req.body.conditions,
-        enabled: true,
-        id: rule_id ?? 'preview',
-        merge_gap_seconds: req.body.merge_gap_seconds,
-        mode: req.body.mode,
-        name: req.body.name,
-        output_activity_type,
-        output_category: req.body.output_category,
-        output_data: req.body.output_data as Record<string, unknown> | undefined,
-        output_media_field: req.body.output_media_field,
-        output_people: req.body.output_people,
-        output_title: req.body.output_title,
-        output_title_field: req.body.output_title_field,
-        priority: req.body.priority ?? 0,
-      }
-
-      const window = { end: new Date(), start: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
-      const result = await evaluateAllRules(user, [tempRule], window, engineDeps, true)
-
-      res.json({ sample_days: 90, success: true, would_affect: result.activities_created })
+      res.json({ sample_days: preview.sample_days, success: true, would_affect: preview.would_affect })
     },
   )
 
