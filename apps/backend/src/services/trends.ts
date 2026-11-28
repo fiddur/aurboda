@@ -23,6 +23,7 @@ import {
 
 import { getSourceFilter, inWindowsSql, query, windowParams } from '../db/index.ts'
 import { sampleRowsSql } from '../db/time-weighted.ts'
+import { resolveChartLookbackDays } from './chart-first-day.ts'
 import { dayEndInTz, dayKey, dayKeysEndingAt, dayStartInTz } from './day-keys.ts'
 import {
   countFlaggedSamples,
@@ -43,7 +44,7 @@ import {
   measureFilter,
   queryMeasuredActivities,
 } from './queries/activity-measure-series.ts'
-import { categoryPathMatchSql, subcategoryLikePattern } from './screentime-sql.ts'
+import { categoryFirstSpanSql, categoryPathMatchSql, subcategoryLikePattern } from './screentime-sql.ts'
 import { computeEma, displayUnits, firstPeriodWeight, LN2, warmupLength } from './trend-ema.ts'
 
 export { computeEma, firstPeriodWeight }
@@ -231,46 +232,6 @@ const calculateMetricTrend = async (
   return { currentValue, history }
 }
 
-const screentimeSpanFilterSql = `deleted_at IS NULL
-            AND superseded_by IS NULL
-            AND end_time IS NOT NULL`
-
-/**
- * The first day of a category's spans (`$1`) and its sub-categories' (`subcategoryPattern`). A plain MIN over the
- * LIKE match is planned as a walk of the time index, which reads the whole table for a young or unknown category, and
- * forcing the path index instead reads every matching span. So this skips through the distinct sub-category paths in
- * `idx_activities_category_path_start` order and takes each path's earliest span from the same index.
- */
-const categoryFirstSpanSql = (subcategoryPattern: string): string => `
-      WITH RECURSIVE sub_paths AS (
-        (SELECT data->>'category_path' AS path
-           FROM activities
-          WHERE ${screentimeSpanFilterSql}
-            AND data->>'category_path' LIKE ${subcategoryPattern}
-          ORDER BY data->>'category_path' USING ~<~
-          LIMIT 1)
-        UNION ALL
-        SELECT (SELECT data->>'category_path'
-                  FROM activities
-                 WHERE ${screentimeSpanFilterSql}
-                   AND data->>'category_path' LIKE ${subcategoryPattern}
-                   AND data->>'category_path' ~>~ sub_paths.path
-                 ORDER BY data->>'category_path' USING ~<~
-                 LIMIT 1)
-          FROM sub_paths
-         WHERE sub_paths.path IS NOT NULL
-      ),
-      paths AS (
-        SELECT $1::text AS path
-        UNION ALL
-        SELECT path FROM sub_paths WHERE path IS NOT NULL
-      )
-      SELECT (MIN((SELECT MIN(start_time)
-                     FROM activities
-                    WHERE ${screentimeSpanFilterSql}
-                      AND data->>'category_path' = paths.path)) AT TIME ZONE $7::text)::date AS first_day
-        FROM paths`
-
 /**
  * Aggregates daily screentime span hours from `activities` whose category path
  * is the given path or one of its sub-categories, then applies EMA.
@@ -296,7 +257,7 @@ const calculateProductivityCategoryTrend = async (
   const result = await query(
     user,
     `
-    WITH ${seriesDateRangeSql(today, categoryFirstSpanSql(subcategoryPattern))},
+    WITH ${seriesDateRangeSql(today, categoryFirstSpanSql('$1', '$7', subcategoryPattern))},
     daily_values AS (
       SELECT
         d.day,
@@ -806,12 +767,18 @@ export const getTrend = async (user: string, input: GetTrendInput): Promise<Tren
     aggregation = 'count',
     display_period: displayPeriod = 'monthly',
     half_life_days: halfLifeDays = 15,
-    lookback_days: lookbackDays = 90,
+    lookback_days: requestedLookbackDays = 90,
     pattern = '',
     source_type: sourceType,
     tz = 'UTC',
   } = input
   const anchorDay = anchorDayOf(input.end, tz)
+  const lookbackDays = await resolveChartLookbackDays(
+    user,
+    { ...input, pattern, source_type: sourceType, tz },
+    requestedLookbackDays,
+    input.end,
+  )
 
   if (sourceType === 'journal') {
     return getJournalTrend(user, input, { displayPeriod, halfLifeDays, lookbackDays, tz })

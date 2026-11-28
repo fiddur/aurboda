@@ -104,6 +104,8 @@ A bar chart of the **journal** (`source_type: "journal"`, no `pattern`) counts e
 
 A trend or bar chart can have a fixed start instead of a rolling lookback: `since` (`YYYY-MM-DD`) charts from that date up to today and wins over `lookback_days`. Bars start at the date's midnight and a trend looks back the whole days from the date to today, in the viewer's timezone on your own board and in the owner's timezone on a shared one. The Chart Explorer's **Since…** range saves it this way. A period dashboard's window still overrides it, as it does every lookback.
 
+`lookback_days: 0` is **all time**: the chart starts on the first day its source has data (an activity type with its subtypes, a metric's first sample, a category with its sub-categories, the journal through its filters), in the same timezone as above, so a journal going back to the 1990s charts from then. A source without any data falls back to ten years. The Chart Explorer's **All time** saves it this way; a card saved with `3650`, what All time stored before, still reads as 3650 days on a board and opens in the Chart Explorer as All time, which saves it as 0 when you update the card. The first day comes from `GET /chart-data/first-day` (MCP `get_chart_first_day`), which takes a chart's source parameters and answers `{ "first_day": "YYYY-MM-DD" }`, without `first_day` when the source has no data.
+
 ### Combined Chart
 
 Bars and one or more trend lines drawn over one time axis and one y scale, like an exercise's
@@ -113,7 +115,7 @@ API or MCP. The dialog adds a starter chart (weekly `coffee` counts with their w
 days); it has no form for the layers.
 
 **Configuration:** optional `title` (default "Combined chart"), `lookback_days` shared by every
-layer, and `layers`, a list of typed layers drawn in order:
+layer (`0` for all time, from the bars layer's first day), and `layers`, a list of typed layers drawn in order:
 
 - `{ "kind": "bars", ... }` takes a bar chart's source fields (`source_type`, `pattern`,
   `bucket_size`, `aggregation`, `measure`, `filter_field`, `filter_value`, `tag_definition_id`,

@@ -1,4 +1,6 @@
 import {
+  CHART_ALL_TIME_FALLBACK_DAYS,
+  CHART_ALL_TIME_LOOKBACK_DAYS,
   metricUnits as builtinMetricUnits,
   getMetricAggregation,
   isComputedMetric,
@@ -39,7 +41,7 @@ const LOOKBACK_OPTIONS = [
   { label: '180 days', value: 180 },
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
-  { label: 'All time', value: 3650 },
+  { label: 'All time', value: CHART_ALL_TIME_LOOKBACK_DAYS },
 ]
 
 const formatMetricLabel = (metric: string): string =>
@@ -57,7 +59,7 @@ function SourceFilteredChart({ metric, unit, lookback }: { metric: string; unit:
   const [selectedSource, setSelectedSource] = useState<string | null>(null)
 
   const end = new Date()
-  const start = new Date(end.getTime() - lookback * 86400000)
+  const start = new Date(end.getTime() - (lookback || CHART_ALL_TIME_FALLBACK_DAYS) * 86400000)
 
   const { data, isLoading } = useQuery({
     queryFn: () => fetchMetricTimeSeriesWithSource(metric, start, end),

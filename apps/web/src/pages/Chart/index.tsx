@@ -14,6 +14,8 @@ import type { ComponentChild } from 'preact'
 import {
   activityMeasureLabels,
   activityMeasures,
+  CHART_ALL_TIME_FALLBACK_DAYS,
+  CHART_ALL_TIME_LOOKBACK_DAYS,
   type ChartDataAggregation,
   type DashboardConfig,
   type DashboardWidget,
@@ -46,6 +48,7 @@ import {
 import { SessionScatterChart } from '../../components/charts/SessionScatterChart'
 import { trendPlot, trendPlotSeries } from '../../components/charts/trendGaps'
 import { TrendLineChart } from '../../components/charts/TrendLineChart'
+import { useChartFirstDay } from '../../components/charts/useChartFirstDay'
 import { goalsHref } from '../../components/goalPrefill'
 import { MetricPicker } from '../../components/MetricPicker'
 import { SessionGroupPicker } from '../../components/sessions/SessionGroupPicker'
@@ -76,9 +79,17 @@ import {
 } from '../../state/api'
 import { auth } from '../../state/auth'
 import { CHART_PRIMARY } from '../../theme'
-import { chartRange, localDateKey, sinceForLookback, validateSince } from '../../utils/chart-range'
+import {
+  chartRange,
+  isAllTime,
+  localDateKey,
+  parseLookbackDays,
+  sinceForLookback,
+  validateSince,
+} from '../../utils/chart-range'
 import { measureFilter } from '../../utils/measures'
 import { newWidgetId } from '../../utils/widget-id'
+import { allTimeBucket } from './allTime'
 import { buildBarDataHref } from './barDataHref'
 import { breakdownOptions } from './breakdownOptions'
 import {
@@ -133,7 +144,7 @@ const LOOKBACK_OPTIONS = [
   { label: '180 days', value: 180 },
   { label: '1 year', value: 365 },
   { label: '2 years', value: 730 },
-  { label: 'All time', value: 3650 },
+  { label: 'All time', value: CHART_ALL_TIME_LOOKBACK_DAYS },
 ]
 
 const SINCE_OPTION = 'since'
@@ -209,7 +220,7 @@ function parseQuery(query: Record<string, string>): ChartState {
     ...parseScatterQuery(query),
     display_period: (query.display_period ?? 'monthly') as TrendDisplayPeriod,
     ...measureState,
-    lookback_days: Number(query.lookback_days) || 90,
+    lookback_days: parseLookbackDays(query.lookback_days),
     missing_days: query.missing_days === 'zero' || query.missing_days === 'skip' ? query.missing_days : '',
     ...(journal ? parseJournalQuery(query) : EMPTY_JOURNAL_STATE),
     pattern: query.source_type === LEGACY_CATEGORY_SOURCE || journal ? '' : (query.pattern ?? ''),
@@ -481,11 +492,16 @@ function SourcePicker({
   )
 }
 
-/** A fixed lookback, or "Since…" with a date that is applied only once it leaves a range up to today. */
+/**
+ * A fixed lookback, all time from the source's first day, or "Since…" with a date that is applied only once it
+ * leaves a range up to today.
+ */
 function RangeControl({
+  firstDay,
   state,
   onUpdate,
 }: {
+  firstDay: string | undefined
   state: ChartState
   onUpdate: (patch: Partial<ChartState>) => void
 }) {
@@ -514,9 +530,16 @@ function RangeControl({
             const { value } = e.target as HTMLSelectElement
             setError('')
             if (value === SINCE_OPTION) {
-              const since = sinceForLookback(state.lookback_days, new Date())
+              const since =
+                firstDay ?? sinceForLookback(state.lookback_days || CHART_ALL_TIME_FALLBACK_DAYS, new Date())
               setDraft(since)
               onUpdate({ since })
+            } else if (Number(value) === CHART_ALL_TIME_LOOKBACK_DAYS) {
+              onUpdate({
+                bucket_size: allTimeBucket(state.bucket_size),
+                lookback_days: Number(value),
+                since: '',
+              })
             } else {
               onUpdate({ lookback_days: Number(value), since: '' })
             }
@@ -597,11 +620,13 @@ function ScatterControls({
 }
 
 function ChartControls({
+  firstDay,
   state,
   journalPicker,
   onJournalPicker,
   onUpdate,
 }: {
+  firstDay: string | undefined
   state: ChartState
   journalPicker: JournalPicker
   onJournalPicker: (picker: JournalPicker) => void
@@ -657,7 +682,7 @@ function ChartControls({
       />
 
       <div class="chart-controls-row">
-        <RangeControl state={state} onUpdate={onUpdate} />
+        <RangeControl firstDay={firstDay} state={state} onUpdate={onUpdate} />
 
         {state.chart_type === 'scatter' ? (
           <ScatterControls state={state} onUpdate={onUpdate} />
@@ -1272,6 +1297,17 @@ export function Chart() {
     )
   }, [legacyCategoryPath, screentimeCategories, handleUpdate, query.aggregation])
 
+  const firstDaySource = {
+    ...trendPatternOf(state),
+    ...(state.activity_type_id ? { activity_type_id: state.activity_type_id } : {}),
+    ...journalParamsOf(state),
+    source_type: state.source_type,
+  }
+  const { firstDay, pending: firstDayPending } = useChartFirstDay(
+    firstDaySource,
+    Boolean(isLoggedIn) && isAllTime(state.lookback_days, state.since) && hasSource(firstDaySource),
+  )
+
   if (!isLoggedIn) {
     return (
       <div class="page page--full chart-page">
@@ -1284,8 +1320,8 @@ export function Chart() {
   }
 
   const { end, lookback_days, start } = useMemo(
-    () => chartRange({ lookback_days: state.lookback_days, since: state.since }, new Date()),
-    [state.lookback_days, state.since],
+    () => chartRange({ lookback_days: state.lookback_days, since: state.since }, new Date(), firstDay),
+    [state.lookback_days, state.since, firstDay],
   )
   const scatter = state.chart_type === 'scatter'
   const journal = state.source_type === 'journal'
@@ -1311,6 +1347,7 @@ export function Chart() {
       </p>
 
       <ChartControls
+        firstDay={firstDay}
         state={state}
         journalPicker={journalPicker}
         onJournalPicker={setJournalPicker}
@@ -1325,7 +1362,9 @@ export function Chart() {
         />
       )}
 
-      {scatter ? (
+      {firstDayPending && state.chart_type !== 'trend' ? (
+        <div class="chart-loading">Loading chart data...</div>
+      ) : scatter ? (
         <ScatterDisplay key={state.group_by} state={state} start={start} end={end} onUpdate={handleUpdate} />
       ) : state.chart_type === 'trend' ? (
         <TrendDisplay

@@ -24,6 +24,8 @@ Examples:
 - Tag trend: "How many painkillers per month?" -> pattern: "pain_killer", sourceType: "tag"
 - Metric trend: "What's my average weight trend?" -> pattern: "weight", sourceType: "metric"
 
+All time: lookback_days 0 starts the trend on the first day the source has data (get_chart_first_day); the result's lookback_days is the days that came to.
+
 Measure trend (activity_type only): with measure set, the trend is the decaying best of that list-item measure
 (e1rm, max_weight, ...) per session: a running best that decays with the half-life between sessions and is lifted by
 any session that beats it, so one weak session never pulls it down. filter_field/filter_value pick one exercise

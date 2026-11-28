@@ -6,11 +6,16 @@ import {
   type ChartDataResponse,
   chartBreakdownError,
   chartFilterError,
+  type ChartFirstDayQuery,
+  chartFirstDayQuerySchema,
+  type ChartFirstDayResponse,
   journalChartError,
   journalChartFiltersOf,
 } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
+import { getChartFirstDay } from '../services/chart-first-day.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { type TypedRouter, typedRouter } from '../typed-router.ts'
 import { validateQuery } from '../validation.ts'
 
@@ -78,6 +83,20 @@ export const createChartDataRouter = (authMiddleware: RequestHandler): TypedRout
         },
         success: true,
       })
+    },
+  )
+
+  router.get<Record<string, never>, ChartFirstDayResponse, unknown, ChartFirstDayQuery>(
+    '/first-day',
+    authMiddleware,
+    validateQuery(chartFirstDayQuerySchema),
+    async (req, res) => {
+      const user = req.user!
+      const first_day = await getChartFirstDay(user, {
+        ...req.query,
+        tz: req.query.tz ?? (await getUserTimezone(user)),
+      })
+      res.json({ data: first_day === undefined ? {} : { first_day }, success: true })
     },
   )
 

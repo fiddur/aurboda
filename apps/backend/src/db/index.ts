@@ -863,6 +863,13 @@ export {
 
 export { getDataPresence } from './data-presence.ts'
 
+export {
+  getFirstActivityDay,
+  getFirstActivityDayMatching,
+  getFirstCategoryDay,
+  getFirstMetricDay,
+} from './first-day.ts'
+
 export { getRecentSourceActivity, type RecentSourceActivity } from './data-source-activity.ts'
 
 export {

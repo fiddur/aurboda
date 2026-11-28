@@ -38,7 +38,7 @@ export const fetchTrend = async (params: FetchTrendParams): Promise<TrendResult>
   if (params.aggregation) query.aggregation = params.aggregation
   if (params.display_period) query.display_period = params.display_period
   if (params.half_life_days) query.half_life_days = params.half_life_days.toString()
-  if (params.lookback_days) query.lookback_days = params.lookback_days.toString()
+  if (params.lookback_days !== undefined) query.lookback_days = params.lookback_days.toString()
   if (params.activity_type_id) query.tag_definition_id = params.activity_type_id
   if (params.breakdown_fields?.length) query.breakdown_fields = params.breakdown_fields.join(',')
   if (params.missing_days) query.missing_days = params.missing_days

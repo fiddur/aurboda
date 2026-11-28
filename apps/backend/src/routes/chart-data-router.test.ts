@@ -5,9 +5,12 @@ import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { getChartData } from '../services/chart-data.ts'
+import { getChartFirstDay } from '../services/chart-first-day.ts'
 import { createChartDataRouter } from './chart-data-router.ts'
 
 vi.mock('../services/chart-data.ts', () => ({ getChartData: vi.fn() }))
+vi.mock('../services/chart-first-day.ts', () => ({ getChartFirstDay: vi.fn() }))
+vi.mock('../services/settings.ts', () => ({ getUserTimezone: vi.fn(async () => 'Europe/Oslo') }))
 
 const auth: RequestHandler = (req, _res, next) => {
   req.user = 'testuser'
@@ -160,5 +163,41 @@ describe('GET /chart-data journal source', () => {
     )
     expect(res.status).toBe(400)
     expect(res.body.error).toBe('Either pattern or tag_definition_id is required')
+  })
+})
+
+describe('GET /chart-data/first-day', () => {
+  beforeEach(() => {
+    vi.mocked(getChartFirstDay).mockReset()
+  })
+
+  test("answers the source's first day, in the user's zone when tz is absent", async () => {
+    vi.mocked(getChartFirstDay).mockResolvedValue('1995-04-02')
+    const res = await supertest(app).get('/chart-data/first-day?source_type=journal&journal_tags=travel')
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: { first_day: '1995-04-02' }, success: true })
+    expect(vi.mocked(getChartFirstDay).mock.calls[0]![1]).toMatchObject({
+      journal_tags: 'travel',
+      source_type: 'journal',
+      tz: 'Europe/Oslo',
+    })
+  })
+
+  test('answers no first day for a source without data, and passes tz on', async () => {
+    vi.mocked(getChartFirstDay).mockResolvedValue(undefined)
+    const res = await supertest(app).get(
+      '/chart-data/first-day?source_type=metric&pattern=weight&tz=Europe/Stockholm',
+    )
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ data: {}, success: true })
+    expect(vi.mocked(getChartFirstDay).mock.calls[0]![1].tz).toBe('Europe/Stockholm')
+  })
+
+  test('rejects journal filters on another source without querying', async () => {
+    const res = await supertest(app).get(
+      '/chart-data/first-day?source_type=metric&pattern=weight&journal_q=x',
+    )
+    expect(res.status).toBe(400)
+    expect(getChartFirstDay).not.toHaveBeenCalled()
   })
 })

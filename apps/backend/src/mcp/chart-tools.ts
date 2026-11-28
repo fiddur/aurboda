@@ -2,6 +2,7 @@ import {
   chartBreakdownError,
   chartDataQuerySchema,
   chartFilterError,
+  chartFirstDayQuerySchema,
   JOURNAL_BREAKDOWN_MAX_SERIES,
   JOURNAL_OTHER_SERIES,
   journalChartError,
@@ -10,6 +11,8 @@ import {
 } from '@aurboda/api-spec'
 
 import { getChartData } from '../services/chart-data.ts'
+import { getChartFirstDay } from '../services/chart-first-day.ts'
+import { getUserTimezone } from '../services/settings.ts'
 import { jsonResponse, type McpServer } from './helpers.ts'
 
 export const registerChartTools = (server: McpServer, user: string) => {
@@ -25,6 +28,7 @@ Measures: for activity types with list items (strength sets), measure (volume, e
 Who it was with: breakdown_fields=["@people"] (activity_type) gives one series per person by name, an activity with several people counted in each, "(none)" for no one; it combines with data fields and item paths like a data field.
 Journal: source_type="journal" (no pattern) charts the journal's entries, the thread roots search_notes lists: aggregation count is entries per bucket, sum the words written (an entry's own content, not its replies). breakdown_fields takes only "@tags" (one series per tag, explicit or #hashtag, an entry counted under each of its tags, "(none)" for untagged) and "@people" (one per person the entry is related to, "(none)" for no one); both give "<tag> / <person>" series. At most ${JOURNAL_BREAKDOWN_MAX_SERIES} series: the ${JOURNAL_BREAKDOWN_MAX_SERIES - 1} largest over the range and the rest summed as "${JOURNAL_OTHER_SERIES}". Filters as in search_notes: journal_tags (comma-separated, all of them), journal_related_type + journal_related_id, journal_q (full text), journal_entity_types (default "time,day"). measure, filter_field and filter_value do not apply.
 Time zone: pass tz (IANA, e.g. "Europe/Stockholm") so days, weeks and months start at the user's local midnight; omitted means UTC.
+All time: get_chart_first_day gives the source's first day with data, to pass as start.
 
 Examples:
 - Daily coffee counts this month: source_type="tag", pattern="coffee", bucket_size="1d", aggregation="count"
@@ -75,6 +79,26 @@ Each screentime category is also an activity type (its activity_type_name), so s
           ...journalChartFiltersOf(params),
         })
         return jsonResponse({ data: { buckets }, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return jsonResponse({ error: message, success: false })
+      }
+    },
+  )
+
+  server.tool(
+    'get_chart_first_day',
+    `The first local day (YYYY-MM-DD) with data for a chart source, where an all-time chart (lookback_days 0 on a dashboard trend, bar or combined chart, or on get_trend) starts. Takes the source parameters query_chart_data and get_trend take: source_type, pattern (an activity type with its subtypes, a metric, a category path; a regex for 'tag'), the journal_* filters for the journal, and tz (the user's setting when omitted). first_day is absent when the source has no data. Pass it as start to query_chart_data to chart a source over all its history.`,
+    { ...chartFirstDayQuerySchema.shape },
+    async (params) => {
+      const queryError = journalChartError(params)
+      if (queryError) return jsonResponse({ error: queryError, success: false })
+      try {
+        const first_day = await getChartFirstDay(user, {
+          ...params,
+          tz: params.tz ?? (await getUserTimezone(user)),
+        })
+        return jsonResponse({ data: first_day === undefined ? {} : { first_day }, success: true })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         return jsonResponse({ error: message, success: false })

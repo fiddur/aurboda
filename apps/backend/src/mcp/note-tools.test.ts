@@ -77,7 +77,7 @@ describe('note tools', () => {
       label: '⛅',
       name: 'Weather',
       suffix: '°C',
-      text: '⛅4°C',
+      text: '⛅ 4 °C',
       value: 4.2,
     }
     vi.mocked(journalContext.getJournalContext).mockResolvedValue({

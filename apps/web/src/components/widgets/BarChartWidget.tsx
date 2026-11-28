@@ -14,10 +14,11 @@ import { useMemo } from 'preact/hooks'
 
 import { fetchChartData } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
-import { widgetRange } from '../../utils/chart-range'
+import { isAllTime, widgetRange } from '../../utils/chart-range'
 import { buildChartUrl, type ChartOrigin } from '../../utils/chart-url'
 import { BarChart } from '../charts/BarChart'
 import { BreakdownLegend, breakdownBarSeries } from '../charts/breakdown'
+import { useChartFirstDay } from '../charts/useChartFirstDay'
 import { barsFetchParams } from './chartFetchParams'
 import { journalChartTitle, measureChartTitle } from './chartTitle'
 import { HEAVY_QUERY_OPTIONS } from './heavyQuery'
@@ -106,12 +107,22 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     filter_value,
     since,
   } = config
-  const params = barsFetchParams(config, widgetRange(lookback_days, since, new Date()))
+  const hasSource = source_type === 'journal' || Boolean(pattern ?? activity_type_id)
+  const { firstDay, pending } = useChartFirstDay(
+    {
+      ...(activity_type_id ? { activity_type_id } : {}),
+      pattern,
+      source_type,
+      ...journalChartFiltersOf(config),
+    },
+    hasSource && isAllTime(lookback_days, since),
+  )
+  const params = barsFetchParams(config, widgetRange(lookback_days, since, new Date(), firstDay))
   const { aggregation } = params
   const journalFilters = journalChartFiltersOf(params)
 
   const chartQuery = useQuery({
-    enabled: source_type === 'journal' || Boolean(pattern ?? activity_type_id),
+    enabled: hasSource && !pending,
     queryFn: () => fetchChartData({ ...params, ...(breakdown_fields?.length ? { breakdown_fields } : {}) }),
     queryKey: [
       'chart-data',
@@ -121,6 +132,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
       bucket_size,
       lookback_days,
       since,
+      firstDay,
       aggregation,
       breakdown_fields,
       measure,
@@ -167,7 +179,7 @@ export function BarChartWidget({ config, origin }: BarChartWidgetProps) {
     origin,
   })
 
-  if (chartQuery.isLoading) {
+  if (pending || chartQuery.isLoading) {
     return (
       <div class="chart-widget">
         <h4>{displayTitle}</h4>

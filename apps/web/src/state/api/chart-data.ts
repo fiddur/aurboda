@@ -4,6 +4,8 @@ import type {
   ChartDataBucket,
   ChartDataResponse,
   ChartDataSourceType,
+  ChartFirstDayQuery,
+  ChartFirstDayResponse,
   JournalChartFilters,
 } from '@aurboda/api-spec'
 
@@ -71,4 +73,25 @@ export const fetchChartData = async (params: FetchChartDataParams): Promise<Char
   }
 
   return { buckets: (data?.buckets ?? []) as ChartDataBucket[] }
+}
+
+export interface ChartFirstDayParams extends JournalChartFilters {
+  activity_type_id?: string
+  pattern?: string
+  source_type: ChartDataSourceType
+}
+
+/** The first local day with data for a chart source, where its all-time range starts; absent without data. */
+export const fetchChartFirstDay = async (params: ChartFirstDayParams): Promise<{ first_day?: string }> => {
+  const { token } = auth.value
+  const query: ChartFirstDayQuery = { source_type: params.source_type, tz: browserTz }
+  if (params.pattern) query.pattern = params.pattern
+  if (params.activity_type_id) query.activity_type_id = params.activity_type_id
+  setJournalFilters(query, params)
+
+  const response = await axios.get<ChartFirstDayResponse>(`${API_URL}/chart-data/first-day`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: query,
+  })
+  return response.data.data ?? {}
 }

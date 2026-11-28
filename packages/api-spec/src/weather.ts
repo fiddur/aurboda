@@ -56,3 +56,13 @@ export const weatherCondition = (code: number): WeatherCondition =>
 
 /** WMO codes from 51 up are drizzle, rain, snow, showers or thunderstorms. */
 export const isPrecipitatingWeatherCode = (code: number): boolean => code >= 51
+
+const wholeDegrees = (value: number): number => Math.round(value) + 0
+
+/** Whole degrees, "4–6 °C", or one value ("5 °C") when the lowest and highest round alike; undefined without both. */
+export const weatherTemperatureText = (min: number | null, max: number | null): string | undefined => {
+  if (min === null || max === null) return undefined
+  const low = wholeDegrees(min)
+  const high = wholeDegrees(max)
+  return low === high ? `${low} °C` : `${low}–${high} °C`
+}

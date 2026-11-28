@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  allTimeLookbackDays,
   chartRange,
+  isAllTime,
   localDateKey,
   lookbackToRange,
+  parseLookbackDays,
   parseSince,
   sinceForLookback,
   sinceToLookbackDays,
@@ -113,6 +116,65 @@ describe('chartRange', () => {
   })
 })
 
+describe('parseLookbackDays', () => {
+  test('a whole number of days, 0 being all time', () => {
+    expect(parseLookbackDays('30')).toBe(30)
+    expect(parseLookbackDays('0')).toBe(0)
+  })
+
+  test('the ten-year lookback "All time" used to be reads as all time', () => {
+    expect(parseLookbackDays('3650')).toBe(0)
+  })
+
+  test('90 when absent or not a whole number of days', () => {
+    expect(parseLookbackDays(undefined)).toBe(90)
+    expect(parseLookbackDays('')).toBe(90)
+    expect(parseLookbackDays('soon')).toBe(90)
+    expect(parseLookbackDays('-5')).toBe(90)
+    expect(parseLookbackDays('1.5')).toBe(90)
+  })
+})
+
+describe('isAllTime', () => {
+  test('lookback 0 without a since date', () => {
+    expect(isAllTime(0, '')).toBe(true)
+    expect(isAllTime(0, undefined)).toBe(true)
+    expect(isAllTime(0, '2026-03-01')).toBe(false)
+    expect(isAllTime(90, undefined)).toBe(false)
+  })
+})
+
+describe('allTimeLookbackDays', () => {
+  test('the days since the first day, ten years without one', () => {
+    expect(allTimeLookbackDays('2026-11-01', now)).toBe(10)
+    expect(allTimeLookbackDays(undefined, now)).toBe(3650)
+  })
+})
+
+describe('chartRange all time', () => {
+  test("starts at the first day's local midnight and keeps lookback 0 for the trend", () => {
+    expect(chartRange({ lookback_days: 0, since: '' }, now, '1995-04-02')).toEqual({
+      end: lookbackToRange(0, now).end,
+      lookback_days: 0,
+      start: new Date(1995, 3, 2).toISOString(),
+    })
+  })
+
+  test('starts ten years back without a first day', () => {
+    expect(chartRange({ lookback_days: 0, since: '' }, now)).toEqual({
+      end: lookbackToRange(0, now).end,
+      lookback_days: 0,
+      start: lookbackToRange(3650, now).start,
+    })
+  })
+
+  test('a since date still wins', () => {
+    expect(chartRange({ lookback_days: 0, since: '2026-03-01' }, now, '1995-04-02').start).toBe(
+      new Date(2026, 2, 1).toISOString(),
+    )
+  })
+})
+
 describe('widgetLookbackDays', () => {
   test('a since date wins over the stored lookback', () => {
     expect(widgetLookbackDays(30, '2026-11-01', now)).toBe(10)
@@ -136,6 +198,17 @@ describe('widgetRange', () => {
     expect(widgetRange(7, '2026-03-01', now)).toEqual({
       end: now.toISOString(),
       start: new Date(2026, 2, 1).toISOString(),
+    })
+  })
+
+  test("all time starts at the first day's local midnight, or ten years back without one", () => {
+    expect(widgetRange(0, undefined, now, '1995-04-02')).toEqual({
+      end: now.toISOString(),
+      start: new Date(1995, 3, 2).toISOString(),
+    })
+    expect(widgetRange(0, undefined, now)).toEqual({
+      end: now.toISOString(),
+      start: new Date(2016, 10, 13, 15, 30).toISOString(),
     })
   })
 
