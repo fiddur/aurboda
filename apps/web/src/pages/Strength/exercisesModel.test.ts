@@ -270,6 +270,40 @@ describe('exercisePoints', () => {
     expect(exercisePoints(score, undefined)).toBeUndefined()
     expect(exercisePoints(undefined, 'barbell_bench_press')).toBeUndefined()
   })
+
+  test('a lift in two score groups: the counted match, then the highest score, whatever the group order', () => {
+    const twoGroups = (counted: boolean, other: boolean): StrengthScore['groups'] => [
+      scoreGroup({
+        lifts: [lift({ catalog_keys: ['dips'], counted: other, lift: 'dips', score: 85 })],
+      }),
+      scoreGroup({
+        group: 'triceps',
+        lifts: [lift({ catalog_keys: ['dips'], counted, lift: 'dips', score: 70 })],
+        muscle_groups: ['triceps'],
+        name: 'Triceps',
+      }),
+    ]
+    const both = (scoreGroups: StrengthScore['groups']) => [
+      exercisePoints({ ...score, groups: scoreGroups }, 'dips'),
+      exercisePoints({ ...score, groups: scoreGroups.toReversed() }, 'dips'),
+    ]
+    expect(both(twoGroups(true, false))).toEqual([
+      { counted: true, points: 70 },
+      { counted: true, points: 70 },
+    ])
+    expect(both(twoGroups(false, false))).toEqual([
+      { counted: false, points: 85 },
+      { counted: false, points: 85 },
+    ])
+    const unscored = [
+      scoreGroup({ lifts: [lift({ catalog_keys: ['dips'], lift: 'dips' })] }),
+      ...twoGroups(true, false).slice(1),
+    ]
+    expect(both(unscored)).toEqual([
+      { counted: true, points: 70 },
+      { counted: true, points: 70 },
+    ])
+  })
 })
 
 describe('exerciseSummaryLine', () => {

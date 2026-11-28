@@ -49,7 +49,7 @@ export const getStrengthScoreInputAggregates = async (
                     MAX(updated_at)::text AS changed_at
                FROM time_series WHERE metric = 'weight') w,
             (SELECT COUNT(*)::int AS count, MAX(updated_at)::text AS changed_at FROM item_value_identities) i,
-            (SELECT COUNT(*)::int AS count, MAX(created_at)::text AS changed_at FROM item_value_aliases) al,
+            (SELECT COUNT(*)::int AS count, MAX(updated_at)::text AS changed_at FROM item_value_aliases) al,
             (SELECT COUNT(*)::int AS count, MAX(updated_at)::text AS changed_at FROM shared_exercises) s`,
     [activityTypes],
   )

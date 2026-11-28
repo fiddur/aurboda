@@ -139,17 +139,24 @@ export interface ExercisePoints {
   counted: boolean
 }
 
-/** The score of the lift the exercise counts as; undefined when it is no scoring lift or has no score. */
+/**
+ * The score of the lift the exercise counts as; undefined when it is no scoring lift or has no score. A lift in
+ * several score groups takes the counted match, then the highest score, so the group order does not matter.
+ */
 export const exercisePoints = (
   score: StrengthScore | null | undefined,
   catalogKey: string | undefined,
 ): ExercisePoints | undefined => {
   if (!score || catalogKey === undefined) return undefined
-  for (const group of score.groups) {
-    const lift = group.lifts.find((l) => l.catalog_keys.includes(catalogKey))
-    if (lift) return lift.score === null ? undefined : { counted: lift.counted, points: lift.score }
-  }
-  return undefined
+  const [best] = score.groups
+    .flatMap((group) => group.lifts)
+    .flatMap((l) =>
+      l.score !== null && l.catalog_keys.includes(catalogKey)
+        ? [{ counted: l.counted, points: l.score }]
+        : [],
+    )
+    .toSorted((a, b) => Number(b.counted) - Number(a.counted) || b.points - a.points)
+  return best
 }
 
 /** The phone row's third line: `{count}× · {volume} · best set {set} · e1RM {e1rm}`, without what is missing. */

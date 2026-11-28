@@ -114,6 +114,7 @@ export const tableCreationOrder = [
   'activity_tracks_segments_suggested_at',
   'activity_features',
   'item_value_aliases',
+  'item_value_aliases_updated_at',
   'item_value_aliases_indexes',
   'item_value_identities',
   'item_value_identities_indexes',

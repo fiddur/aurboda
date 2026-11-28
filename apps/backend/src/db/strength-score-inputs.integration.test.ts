@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import { deleteActivity, insertActivity } from './activities/index.ts'
-import { upsertItemValueAlias } from './item-value-aliases.ts'
+import { repointItemValueAliases, upsertItemValueAlias } from './item-value-aliases.ts'
 import { upsertItemValueIdentity } from './item-value-identities.ts'
 import { createSharedExercise } from './shared-exercises.ts'
 import { getStrengthScoreInputAggregates } from './strength-score-inputs.ts'
@@ -85,5 +85,22 @@ describe('strength score input aggregates integration', () => {
     expect(after.weight).toMatchObject({ count: 1, deleted: 1 })
     expect(after.activities.count).toBe(1)
     expect(after.activities.changed_at).not.toBe(before.activities.changed_at)
+  })
+
+  test('changes when an alias is re-pointed or upserted to another value', async () => {
+    const user = getTestUser()
+    const field = 'strength_training.sets.exercise'
+    await upsertItemValueAlias(user, field, 'Bench', 'Bench press')
+    const created = await getStrengthScoreInputAggregates(user, types)
+
+    await repointItemValueAliases(user, field, 'Bench press', 'Barbell bench press')
+    const repointed = await getStrengthScoreInputAggregates(user, types)
+    expect(repointed.item_value_aliases.count).toBe(1)
+    expect(repointed.item_value_aliases.changed_at).not.toBe(created.item_value_aliases.changed_at)
+
+    await upsertItemValueAlias(user, field, 'bench', 'Bench press')
+    const upserted = await getStrengthScoreInputAggregates(user, types)
+    expect(upserted.item_value_aliases.count).toBe(1)
+    expect(upserted.item_value_aliases.changed_at).not.toBe(repointed.item_value_aliases.changed_at)
   })
 })
