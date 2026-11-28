@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { activityBreakdownSql, breakdownSeriesKeys, personSeriesLabels } from './people-breakdown.ts'
+import {
+  activityBreakdownSql,
+  breakdownRowPeople,
+  breakdownSeriesKeys,
+  personSeriesLabels,
+  stablePersonSeriesLabels,
+} from './people-breakdown.ts'
 
 const person = (id: string, name: string, created: string) => ({ created_at: new Date(created), id, name })
 
@@ -32,6 +38,29 @@ describe('personSeriesLabels', () => {
   })
 })
 
+describe('stablePersonSeriesLabels', () => {
+  test('ranks over every namesake in the account, not only the people given', async () => {
+    const earlier = person('e', 'Anna', '2026-01-01')
+    const later = person('l', 'Anna', '2026-02-01')
+    const bo = person('b', 'Bo', '2026-01-15')
+    const asked: string[][] = []
+    const labels = await stablePersonSeriesLabels('user', [later, bo], async (_user, names) => {
+      asked.push(names)
+      return [earlier, later, bo]
+    })
+    expect(asked).toEqual([['Anna', 'Bo']])
+    expect(labels.get('l')).toBe('Anna (2)')
+    expect(labels.get('b')).toBe('Bo')
+  })
+
+  test('looks nothing up when there are no people', async () => {
+    const labels = await stablePersonSeriesLabels('user', [], () => {
+      throw new Error('looked up')
+    })
+    expect(labels).toEqual(new Map())
+  })
+})
+
 describe('activityBreakdownSql', () => {
   test('refuses a field that is neither a data field nor @people', () => {
     expect(activityBreakdownSql(["x'; drop"], 'a')).toBeUndefined()
@@ -55,15 +84,28 @@ describe('activityBreakdownSql', () => {
 })
 
 describe('breakdownSeriesKeys', () => {
+  const created = new Date('2026-01-01')
+  const later = new Date('2026-02-01')
+  const rows = [
+    { field_0: 'happy', field_1: 'Anna', field_1_created: created, field_1_id: 'a1' },
+    { field_0: 'happy', field_1: 'Anna', field_1_created: later, field_1_id: 'a2' },
+    { field_0: 'sad', field_1: null, field_1_created: null, field_1_id: null },
+  ]
+
+  test('the people of the @people columns', () => {
+    expect(breakdownRowPeople(rows, ['mood', '@people'])).toEqual([
+      { created_at: created, id: 'a1', name: 'Anna' },
+      { created_at: later, id: 'a2', name: 'Anna' },
+    ])
+    expect(breakdownRowPeople(rows, ['mood', 'other'])).toEqual([])
+  })
+
   test('labels people, (none) for no one, joined with the other fields in order', () => {
-    const created = new Date('2026-01-01')
-    const later = new Date('2026-02-01')
-    const rows = [
-      { field_0: 'happy', field_1: 'Anna', field_1_created: created, field_1_id: 'a1' },
-      { field_0: 'happy', field_1: 'Anna', field_1_created: later, field_1_id: 'a2' },
-      { field_0: 'sad', field_1: null, field_1_created: null, field_1_id: null },
-    ]
-    expect(breakdownSeriesKeys(rows, ['mood', '@people'])).toEqual([
+    const labels = new Map([
+      ['a1', 'Anna'],
+      ['a2', 'Anna (2)'],
+    ])
+    expect(breakdownSeriesKeys(rows, ['mood', '@people'], labels)).toEqual([
       'happy / Anna',
       'happy / Anna (2)',
       'sad / (none)',

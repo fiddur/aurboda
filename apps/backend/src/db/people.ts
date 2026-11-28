@@ -432,19 +432,34 @@ export interface BreakdownPerson {
   created_at: Date
 }
 
+/** The live people named any of `names`. */
+export const listPeopleNamed = async (user: string, names: string[]): Promise<BreakdownPerson[]> => {
+  if (names.length === 0) return []
+  const result = await query<BreakdownPerson>(
+    user,
+    'SELECT id, name, created_at FROM people WHERE deleted_at IS NULL AND name = ANY($1::text[])',
+    [names],
+  )
+  return result.rows
+}
+
 /**
  * A LATERAL join giving `ppl.person_id`, `ppl.person_name` and `ppl.person_created_at` for each live
  * person linked to activity row `alias` or to a live row it supersedes: one joined row per person, or
- * one row of NULLs when there is none, so a merge group counts its people once.
+ * one row of NULLs when there is none, so a merge group counts its people once. Two lookups in a
+ * UNION rather than one `OR`, which made Postgres scan all of `activity_people` per activity row.
  */
 export const activityPeopleLateralSql = (alias: string): string => `
   LEFT JOIN LATERAL (
-    SELECT DISTINCT p.id AS person_id, p.name AS person_name, p.created_at AS person_created_at
-      FROM activity_people ap
-      JOIN people p ON p.id = ap.person_id AND p.deleted_at IS NULL
-     WHERE ap.activity_id = ${alias}.id
-        OR ap.activity_id IN (
-             SELECT s.id FROM activities s WHERE s.superseded_by = ${alias}.id AND s.deleted_at IS NULL)
+    SELECT p.id AS person_id, p.name AS person_name, p.created_at AS person_created_at
+      FROM (
+        SELECT ap.person_id FROM activity_people ap WHERE ap.activity_id = ${alias}.id
+        UNION
+        SELECT ap.person_id
+          FROM activities s JOIN activity_people ap ON ap.activity_id = s.id
+         WHERE s.superseded_by = ${alias}.id AND s.deleted_at IS NULL
+      ) linked
+      JOIN people p ON p.id = linked.person_id AND p.deleted_at IS NULL
   ) ppl ON true`
 
 /**
@@ -492,7 +507,6 @@ export const listActivityGroupRowIds = async (
   return result.rows.map((row) => row.row_id)
 }
 
-/** The live people of each of `activityIds` and of the live rows each supersedes. */
 export const getPeopleForActivityGroups = async (
   user: string,
   activityIds: string[],

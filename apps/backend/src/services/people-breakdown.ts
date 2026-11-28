@@ -1,6 +1,6 @@
 import { isPeopleBreakdownField } from '@aurboda/api-spec'
 
-import { activityPeopleLateralSql, type BreakdownPerson } from '../db/index.ts'
+import { activityPeopleLateralSql, type BreakdownPerson, listPeopleNamed } from '../db/index.ts'
 
 export const NONE_LABEL = '(none)'
 
@@ -22,13 +22,25 @@ export const personSeriesLabels = (people: Iterable<BreakdownPerson>): Map<strin
   return labels
 }
 
+/**
+ * `personSeriesLabels` ranked over every live person of the account who shares a name with one of
+ * `people`, so a person's label is the same whichever range or widget they appear in.
+ */
+export const stablePersonSeriesLabels = async (
+  user: string,
+  people: BreakdownPerson[],
+  peopleNamed?: (user: string, names: string[]) => Promise<BreakdownPerson[]>,
+): Promise<Map<string, string>> => {
+  const names = [...new Set(people.map((p) => p.name))]
+  if (names.length === 0) return new Map()
+  return personSeriesLabels([...people, ...(await (peopleNamed ?? listPeopleNamed)(user, names))])
+}
+
 const SCALAR_FIELD = /^[a-z][a-z0-9_]*$/
 
 export interface ActivityBreakdownSql {
-  /** Select-list columns `field_<i>` (and, for `@people`, `field_<i>_id` and `field_<i>_created`). */
   columns: string[]
   groupBy: string[]
-  /** The people join, when `@people` is among the fields; empty otherwise. */
   join: string
 }
 
@@ -60,25 +72,34 @@ export const activityBreakdownSql = (fields: string[], alias: string): ActivityB
   }
 }
 
-/** The series key of each row of an `activityBreakdownSql` query: its field values joined by ` / `. */
-export const breakdownSeriesKeys = (rows: Record<string, unknown>[], fields: string[]): string[] => {
+/** The people in the `@people` columns of the rows of an `activityBreakdownSql` query. */
+export const breakdownRowPeople = (rows: Record<string, unknown>[], fields: string[]): BreakdownPerson[] => {
   const peopleIndexes = fields.flatMap((f, i) => (isPeopleBreakdownField(f) ? [i] : []))
-  const labels = personSeriesLabels(
-    rows.flatMap((row) =>
-      peopleIndexes.flatMap((i) =>
-        row[`field_${i}_id`] == null
-          ? []
-          : [
-              {
-                created_at: row[`field_${i}_created`] as Date,
-                id: row[`field_${i}_id`] as string,
-                name: row[`field_${i}`] as string,
-              },
-            ],
-      ),
+  return rows.flatMap((row) =>
+    peopleIndexes.flatMap((i) =>
+      row[`field_${i}_id`] == null
+        ? []
+        : [
+            {
+              created_at: row[`field_${i}_created`] as Date,
+              id: row[`field_${i}_id`] as string,
+              name: row[`field_${i}`] as string,
+            },
+          ],
     ),
   )
-  return rows.map((row) =>
+}
+
+/**
+ * The series key of each row of an `activityBreakdownSql` query: its field values joined by ` / `,
+ * a person by their label in `labels`.
+ */
+export const breakdownSeriesKeys = (
+  rows: Record<string, unknown>[],
+  fields: string[],
+  labels: Map<string, string>,
+): string[] =>
+  rows.map((row) =>
     fields
       .map((f, i) => {
         if (!isPeopleBreakdownField(f)) return row[`field_${i}`] as string
@@ -87,4 +108,3 @@ export const breakdownSeriesKeys = (rows: Record<string, unknown>[], fields: str
       })
       .join(' / '),
   )
-}

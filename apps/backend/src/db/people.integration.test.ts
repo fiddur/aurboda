@@ -26,6 +26,7 @@ import {
   listLinkedActivityIds,
   listLivePersonIds,
   listPeople,
+  listPeopleNamed,
   listPeopleWithActivities,
   listPersonActivityGroups,
   listPersonDates,
@@ -279,6 +280,26 @@ describe('People Integration Tests', () => {
     await softDeletePerson(user, bo.id)
     expect((await getPeopleForActivities(user, [walk])).has(walk)).toBe(false)
     expect(await getPeopleForActivities(user, [])).toEqual(new Map())
+  })
+
+  test('the live people with any of the given names, archived ones too', async () => {
+    const user = getTestUser()
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const anna2 = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await insertPerson(user, { name: 'Cy' })
+    const gone = await insertPerson(user, { name: 'Anna' })
+    await softDeletePerson(user, gone.id)
+    await updatePerson(user, bo.id, { archived: true })
+
+    const named = await listPeopleNamed(user, ['Anna', 'Bo', 'Nobody'])
+
+    expect(named.toSorted((a, b) => a.created_at.getTime() - b.created_at.getTime())).toEqual([
+      { created_at: anna.created_at, id: anna.id, name: 'Anna' },
+      { created_at: anna2.created_at, id: anna2.id, name: 'Anna' },
+      { created_at: bo.created_at, id: bo.id, name: 'Bo' },
+    ])
+    expect(await listPeopleNamed(user, [])).toEqual([])
   })
 
   test("an activity group's people: its own and its live superseded rows', live people once each", async () => {

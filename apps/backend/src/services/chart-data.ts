@@ -35,9 +35,10 @@ import {
 import { loadMuscleGroupResolvers } from './muscle-group-resolvers.ts'
 import {
   activityBreakdownSql,
+  breakdownRowPeople,
   breakdownSeriesKeys,
   NONE_LABEL,
-  personSeriesLabels,
+  stablePersonSeriesLabels,
 } from './people-breakdown.ts'
 import {
   type MeasuredActivity,
@@ -327,7 +328,11 @@ const queryActivityTypeBreakdown = async (
     [...bucket.params, types, start, end],
   )
 
-  const seriesKeys = breakdownSeriesKeys(result.rows, fields)
+  const seriesKeys = breakdownSeriesKeys(
+    result.rows,
+    fields,
+    await stablePersonSeriesLabels(user, breakdownRowPeople(result.rows, fields)),
+  )
   const seriesSet = new Set<string>()
   const bucketMap = new Map<string, Record<string, number>>()
   result.rows.forEach((row, i) => {
@@ -375,10 +380,12 @@ type ScalarParts = (m: MeasuredActivity, field: string) => SeriesPart[]
 
 const NO_PEOPLE: SeriesPart[] = [{ key: 'person:', name: NONE_LABEL }]
 
-/** One part per person the session was with, labelled as in `personSeriesLabels` over all of `people`. */
-const scalarPartsWithPeople = (people: Map<string, BreakdownPerson[]> | undefined): ScalarParts => {
+/** One part per person the session was with, labelled by `labels`. */
+const scalarPartsWithPeople = (
+  people: Map<string, BreakdownPerson[]> | undefined,
+  labels: Map<string, string>,
+): ScalarParts => {
   if (!people) return (m, field) => [scalarPart(m, field)]
-  const labels = personSeriesLabels([...people.values()].flat())
   return (m, field) => {
     if (!isPeopleBreakdownField(field)) return [scalarPart(m, field)]
     const ids = new Set(
@@ -562,7 +569,10 @@ const queryMeasureChart = async (
     measure,
     muscle,
     resolverOf,
-    scalarParts: scalarPartsWithPeople(people),
+    scalarParts: scalarPartsWithPeople(
+      people,
+      people ? await stablePersonSeriesLabels(user, [...people.values()].flat()) : new Map(),
+    ),
   }
   const names = new Map<string, string>()
   const byBucket = new Map<number, Map<string, number[]>>()

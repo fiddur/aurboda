@@ -32,7 +32,12 @@ import {
   loadFlaggedWindows,
 } from './flagged-windows.ts'
 import { getJournalTrend } from './journal-chart.ts'
-import { activityBreakdownSql, breakdownSeriesKeys } from './people-breakdown.ts'
+import {
+  activityBreakdownSql,
+  breakdownRowPeople,
+  breakdownSeriesKeys,
+  stablePersonSeriesLabels,
+} from './people-breakdown.ts'
 import {
   type MeasureFilter,
   measureFilter,
@@ -623,7 +628,11 @@ const calculateActivityTypeBreakdownTrend = async (
     params,
   )
 
-  const seriesKeys = breakdownSeriesKeys(result.rows, breakdownFields)
+  const seriesKeys = breakdownSeriesKeys(
+    result.rows,
+    breakdownFields,
+    await stablePersonSeriesLabels(user, breakdownRowPeople(result.rows, breakdownFields)),
+  )
   const seriesDaily = new Map<string, Map<string, number>>()
   for (const [i, row] of result.rows.entries()) {
     const seriesKey = seriesKeys[i]

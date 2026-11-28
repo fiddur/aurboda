@@ -1102,6 +1102,7 @@ export {
   listLinkedActivityIds,
   listLivePersonIds,
   listPeople,
+  listPeopleNamed,
   listPeopleWithActivities,
   listPersonActivityGroups,
   listPersonDates,
