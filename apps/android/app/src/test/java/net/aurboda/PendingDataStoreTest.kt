@@ -32,6 +32,45 @@ class PendingDataStoreTest {
     }
 
     @Test
+    fun `an entry queued before refusals decodes as not refused`() {
+        val stored = """
+            [{"id":"e4","data":{"type":"metric","payload":{"metric":"weight","value":72.5,"time":"2026-11-01T08:00:00Z"}},
+              "created_at":"2026-11-01T08:00:00Z","fail_count":3,"last_error":"Server returned 400 Bad Request"}]
+        """.trimIndent()
+        assertFalse(appJson.decodeFromString<List<PendingEntry>>(stored).single().refused)
+    }
+
+    @Test
+    fun `a refused entry survives the queue`() {
+        val entry = PendingEntry(
+            id = "e5",
+            data = PendingPayload.Metric(PendingMetricPayload(metric = "strength_score", value = 3.0, time = "2026-11-01T08:00:00Z")),
+            created_at = "2026-11-01T08:00:00Z",
+            fail_count = 1,
+            last_error = "\"strength_score\" is calculated by Aurboda and cannot be written.",
+            refused = true,
+        )
+        assertEquals(entry, appJson.decodeFromString<List<PendingEntry>>(appJson.encodeToString(listOf(entry))).single())
+    }
+
+    @Test
+    fun `a sync sends only the entries the server has not refused`() {
+        val metric = PendingPayload.Metric(PendingMetricPayload(metric = "weight", value = 72.5, time = "2026-11-01T08:00:00Z"))
+        val failed = PendingEntry(id = "a", data = metric, created_at = "2026-11-01T08:00:00Z", fail_count = 2)
+        val refused = PendingEntry(id = "b", data = metric, created_at = "2026-11-01T08:00:00Z", fail_count = 1, refused = true)
+        val fresh = PendingEntry(id = "c", data = metric, created_at = "2026-11-01T08:00:00Z")
+        assertEquals(PendingQueue(toSend = listOf(failed, fresh), refused = 1), pendingQueueOf(listOf(failed, refused, fresh)))
+        assertEquals(PendingQueue(toSend = emptyList(), refused = 0), pendingQueueOf(emptyList()))
+    }
+
+    @Test
+    fun `the idle message names the entries left for the user`() {
+        assertEquals("No queued entries", idlePendingDataMessage(0))
+        assertEquals("1 entry needs attention", idlePendingDataMessage(1))
+        assertEquals("2 entries need attention", idlePendingDataMessage(2))
+    }
+
+    @Test
     fun `a metric's unit survives the queue`() {
         val entry = PendingEntry(
             id = "e2",

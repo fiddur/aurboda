@@ -37,6 +37,14 @@ export interface ChartFirstDayDeps {
   getFirstMetricDay: typeof getFirstMetricDay
 }
 
+export interface ChartFirstDayOptions {
+  /**
+   * Read an `activity_type` or `tag` source as exactly that type, as a trend counts it (`activity_type = $1`), rather
+   * than with its subtypes or as a regex.
+   */
+  exactType?: boolean
+}
+
 /** Resolved at call time, so importing this module never touches the db module's bindings. */
 const defaultDeps: ChartFirstDayDeps = {
   expandActivityTypes: (...args) => expandActivityTypes(...args),
@@ -53,6 +61,24 @@ const sampledMetricOf = (pattern: string): string => {
   return isHrZoneMetric(metric as MetricType) ? 'heart_rate' : metric
 }
 
+const activityFirstDay = async (
+  user: string,
+  source: ChartFirstDaySource,
+  options: ChartFirstDayOptions,
+  deps: ChartFirstDayDeps,
+): Promise<string | undefined> => {
+  const { pattern, tz } = source
+  if (options.exactType) return pattern ? deps.getFirstActivityDay(user, [pattern], tz) : undefined
+  if (source.source_type === 'activity_type') {
+    return pattern
+      ? deps.getFirstActivityDay(user, await deps.expandActivityTypes(user, [pattern]), tz)
+      : undefined
+  }
+  const typeId = source.activity_type_id ?? source.tag_definition_id
+  if (typeId) return deps.getFirstActivityDay(user, await deps.expandActivityTypes(user, [typeId]), tz)
+  return pattern ? deps.getFirstActivityDayMatching(user, pattern, tz) : undefined
+}
+
 /**
  * The first local day (`YYYY-MM-DD` in `tz`) with data for a chart source, read the way the chart reads it:
  * an activity type with its subtypes, a metric from its trusted sources, a category with its sub-categories, the
@@ -61,6 +87,7 @@ const sampledMetricOf = (pattern: string): string => {
 export const getChartFirstDay = async (
   user: string,
   source: ChartFirstDaySource,
+  options: ChartFirstDayOptions = {},
   deps: ChartFirstDayDeps = defaultDeps,
 ): Promise<string | undefined> => {
   const { pattern, tz } = source
@@ -71,14 +98,8 @@ export const getChartFirstDay = async (
       return deps.getFirstJournalDay(user, { ...parsed.filters, tz })
     }
     case 'activity_type':
-      return pattern
-        ? deps.getFirstActivityDay(user, await deps.expandActivityTypes(user, [pattern]), tz)
-        : undefined
-    case 'tag': {
-      const typeId = source.activity_type_id ?? source.tag_definition_id
-      if (typeId) return deps.getFirstActivityDay(user, await deps.expandActivityTypes(user, [typeId]), tz)
-      return pattern ? deps.getFirstActivityDayMatching(user, pattern, tz) : undefined
-    }
+    case 'tag':
+      return activityFirstDay(user, source, options, deps)
     case 'metric': {
       if (!pattern) return undefined
       const metric = sampledMetricOf(pattern)
@@ -101,8 +122,9 @@ export const resolveChartLookbackDays = async (
   source: ChartFirstDaySource,
   lookbackDays: number,
   end: Date = new Date(),
+  options: ChartFirstDayOptions = {},
   deps: ChartFirstDayDeps = defaultDeps,
 ): Promise<number> =>
   lookbackDays === CHART_ALL_TIME_LOOKBACK_DAYS
-    ? allTimeLookbackDays(await getChartFirstDay(user, source, deps), dayKey(end, source.tz))
+    ? allTimeLookbackDays(await getChartFirstDay(user, source, options, deps), dayKey(end, source.tz))
     : lookbackDays

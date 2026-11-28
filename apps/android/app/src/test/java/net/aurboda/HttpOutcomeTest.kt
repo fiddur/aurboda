@@ -59,6 +59,12 @@ class HttpOutcomeTest {
   }
 
   @Test
+  fun `isPermanentRefusal is true only for answers about the entry itself`() {
+    listOf(400, 404, 409, 413, 422).forEach { assertTrue("$it", isPermanentRefusal(it)) }
+    listOf(null, 200, 401, 402, 403, 408, 429, 500, 503).forEach { assertFalse("$it", isPermanentRefusal(it)) }
+  }
+
+  @Test
   fun `readOnlyMessage reads the error of a 402 body`() {
     val body = """{"success":false,"error":"This account is read-only until the plan is renewed","payment_url":null}"""
     assertEquals("This account is read-only until the plan is renewed", readOnlyMessage(body))

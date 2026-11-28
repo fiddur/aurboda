@@ -89,6 +89,7 @@ import net.aurboda.getCachedCustomMetrics
 import net.aurboda.getCachedMetricCatalog
 import net.aurboda.getCachedPeople
 import net.aurboda.getPendingEntries
+import net.aurboda.isPermanentRefusal
 import net.aurboda.markPendingEntryFailed
 import net.aurboda.metricUnitOptions
 import net.aurboda.metricUnitToSend
@@ -822,7 +823,18 @@ private fun PendingEntriesSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
-            if (entry.fail_count > 0) {
+            if (entry.refused) {
+                Text(
+                    "Refused: ${entry.last_error ?: "unknown error"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    if (activityCreated) "Not sent again. Retry or delete it." else "Not sent again. Edit or delete it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            } else if (entry.fail_count > 0) {
                 Text(
                     "Failed ${entry.fail_count}x: ${entry.last_error ?: "unknown error"}",
                     style = MaterialTheme.typography.bodySmall,
@@ -882,7 +894,7 @@ private fun PendingEntriesSection(
                         if (error == null) {
                             removePendingEntry(context, entry.id)
                         } else {
-                            markPendingEntryFailed(context, entry.id, error.message)
+                            markPendingEntryFailed(context, entry.id, error.message, isPermanentRefusal(error.statusCode))
                         }
                         entries = getPendingEntries(context)
                     }
@@ -915,6 +927,7 @@ private fun PendingEntriesSection(
                             ),
                             fail_count = 0,
                             last_error = null,
+                            refused = false,
                         )
                         is PendingPayload.Metric -> currentEditing.copy(
                             data = PendingPayload.Metric(
@@ -922,6 +935,7 @@ private fun PendingEntriesSection(
                             ),
                             fail_count = 0,
                             last_error = null,
+                            refused = false,
                         )
                     }
                     updatePendingEntry(context, updated)
@@ -1175,14 +1189,24 @@ private fun AddActivityTab(
                     submitting = false
                     when (outcome) {
                         is PendingActivityOutcome.ActivityFailed -> {
-                            markPendingEntryFailed(context, pendingEntry.id, outcome.error.message)
+                            markPendingEntryFailed(
+                                context,
+                                pendingEntry.id,
+                                outcome.error.message,
+                                isPermanentRefusal(outcome.error.statusCode),
+                            )
                             message = "Error: ${outcome.error.message}"
                             isError = true
                         }
                         PendingActivityOutcome.Sent, is PendingActivityOutcome.CommentFailed -> {
                             if (outcome is PendingActivityOutcome.CommentFailed) {
-                                markPendingEntryFailed(context, pendingEntry.id, outcome.error.message)
-                                message = "Activity added. The comment will be sent later."
+                                val refused = isPermanentRefusal(outcome.error.statusCode)
+                                markPendingEntryFailed(context, pendingEntry.id, outcome.error.message, refused)
+                                message = if (refused) {
+                                    "Activity added. The comment was refused: ${outcome.error.message}"
+                                } else {
+                                    "Activity added. The comment will be sent later."
+                                }
                             } else {
                                 removePendingEntry(context, pendingEntry.id)
                                 message = "Activity added!"
@@ -1387,7 +1411,7 @@ private fun AddMetricTab(
                             timeMillis = nowEpochMillis()
                         }
                         is DataResult.Error -> {
-                            markPendingEntryFailed(context, pendingEntry.id, result.message)
+                            markPendingEntryFailed(context, pendingEntry.id, result.message, isPermanentRefusal(result.statusCode))
                             message = "Error: ${result.message}"
                             isError = true
                         }

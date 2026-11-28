@@ -362,6 +362,16 @@ Linking a provider is web-only: the embedded Settings page shows no Link buttons
   progress view. It does not log out; the periodic run tries again on its normal
   schedule. `classifyHttpStatus` (`HttpOutcome.kt`) is where the status codes get
   their meaning.
+- **Refused entry.** A write the server refuses shows the server's `error` (e.g.
+  `"strength_score" is calculated by Aurboda and cannot be written.`), on the Add
+  form as on the web, rather than only the status; a body without one shows
+  "Server returned" and the status. A queued entry (or its comment) refused with
+  `400`, `404`, `409`, `413` or `422` (`isPermanentRefusal`) is marked refused: it
+  stays in the pending list as "Refused:" and the reason, "Not sent again. Edit or
+  delete it.", and sync no longer sends it until its time is edited; **Retry**
+  sends it once more and keeps it refused only if it is refused again. Its sync stage then reads "1 entry needs attention" when
+  nothing else is queued. Other failures (offline, timeouts, `5xx`) keep being
+  retried, counted as "Failed Nx".
 
 ## Live sensors
 
