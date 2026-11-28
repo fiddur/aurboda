@@ -374,8 +374,12 @@ export const activitiesTables: Record<string, string> = {
       field      VARCHAR(200) NOT NULL,
       alias      TEXT NOT NULL,
       value      TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `,
+  item_value_aliases_updated_at: `
+    ALTER TABLE item_value_aliases ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   `,
   item_value_aliases_indexes: `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_item_value_aliases_field_alias ON item_value_aliases (field, lower(btrim(alias)))

@@ -30,7 +30,7 @@ export const upsertItemValueAlias = async (
   const result = await query<ItemValueAliasRow>(
     user,
     `INSERT INTO item_value_aliases (field, alias, value) VALUES ($1, $2, $3)
-     ON CONFLICT (field, lower(btrim(alias))) DO UPDATE SET value = EXCLUDED.value, alias = EXCLUDED.alias
+     ON CONFLICT (field, lower(btrim(alias))) DO UPDATE SET value = EXCLUDED.value, alias = EXCLUDED.alias, updated_at = now()
      RETURNING ${COLUMNS}`,
     [field, alias, value],
   )
@@ -50,7 +50,7 @@ export const repointItemValueAliases = async (
 ): Promise<number> => {
   const result = await query(
     user,
-    `UPDATE item_value_aliases SET value = $3
+    `UPDATE item_value_aliases SET value = $3, updated_at = now()
       WHERE field = $1 AND lower(btrim(value)) = lower(btrim($2))`,
     [field, fromValue, toValue],
   )

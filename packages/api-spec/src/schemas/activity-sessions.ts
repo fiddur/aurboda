@@ -124,6 +124,9 @@ export const activitySessionGroupSchema = z
     duration_max: z.number().optional().meta({ description: 'Longest session (minutes)' }),
     duration_median: z.number().optional().meta({ description: 'Median session length (minutes)' }),
     duration_min: z.number().optional().meta({ description: 'Shortest session (minutes)' }),
+    equipment: z.array(exerciseEquipmentSchema).optional().meta({
+      description: 'With catalog_key: the equipment of the catalogue entry',
+    }),
     first_start_time: iso8601DateTimeSchema,
     hr: valueDistributionSchema
       .optional()
@@ -133,9 +136,6 @@ export const activitySessionGroupSchema = z
       .meta({ description: 'HR zone seconds summed over the sessions' }),
     last_start_time: iso8601DateTimeSchema,
     max_hr: z.number().optional().meta({ description: 'Highest heart rate across the sessions' }),
-    equipment: z.array(exerciseEquipmentSchema).optional().meta({
-      description: 'With catalog_key: the equipment of the catalogue entry',
-    }),
     measures: activityMeasuresSchema.optional().meta({
       description:
         "Grouped by an item path: the sessions' measures for this value combined — volume and set_count summed, e1rm, max_weight and max_time at their maximum",
