@@ -15,6 +15,7 @@ const makeSync = (overrides: Partial<SyncProvider> = {}): SyncProvider => ({
   syncLastFmIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
   syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
+  syncWeatherIfNeeded: vi.fn().mockResolvedValue(undefined),
   ...overrides,
 })
 
@@ -40,6 +41,8 @@ describe('runScheduledSyncs', () => {
     expect(sync.syncGravlIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncHomeAssistantIfNeeded).toHaveBeenCalledWith('alice')
     expect(sync.syncHomeAssistantIfNeeded).toHaveBeenCalledTimes(2)
+    expect(sync.syncWeatherIfNeeded).toHaveBeenCalledWith('bob')
+    expect(sync.syncWeatherIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncRescueTimeIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncLastFmIfNeeded).toHaveBeenCalledTimes(2)
     expect(sync.syncCalendarsIfNeeded).toHaveBeenCalledTimes(2)

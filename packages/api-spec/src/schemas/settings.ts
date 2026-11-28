@@ -92,7 +92,7 @@ export const syncIntervalsSchema = z
   .record(
     z.string().meta({
       description:
-        'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar, home_assistant) or "default"',
+        'Provider name (gravl, garmin, oura, rescuetime, lastfm, calendar, home_assistant, weather) or "default"',
     }),
     z.number().int().min(5).max(1440).meta({ description: 'Poll interval in minutes (5–1440)' }),
   )
@@ -364,6 +364,10 @@ export const updateSettingsInputSchema = z
       description:
         'Home Assistant device_tracker.* or person.* entity to pull locations from (set to null to clear)',
     }),
+    weather_enabled: z.boolean().nullable().optional().meta({
+      description:
+        'Fetch the hourly weather where you were from Open-Meteo, sending only your coordinates rounded to 0.1° (about 11 km). Default false: nothing is fetched (set to null to reset to the default).',
+    }),
   })
   .meta({ id: 'UpdateSettingsInput' })
 
@@ -588,6 +592,10 @@ export const userSettingsResponseSchema = baseResponseSchema
     tz_follows_device: z.boolean().default(true).meta({
       description:
         "Whether the Android app's sync sets tz from the phone's time zone; false once a zone is chosen by hand",
+    }),
+    weather_enabled: z.boolean().default(false).meta({
+      description:
+        'Whether the hourly weather where you were is fetched from Open-Meteo (coordinates rounded to 0.1°)',
     }),
   })
   .meta({ id: 'UserSettingsResponse' })

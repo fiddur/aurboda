@@ -44,6 +44,12 @@ import {
 } from '../integrations/home-assistant/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { syncLastFmData } from '../integrations/lastfm/sync.ts'
+import {
+  defaultWeatherSyncDeps,
+  getWeatherSyncStates,
+  resetWeatherSyncState,
+  syncWeather,
+} from '../integrations/open-meteo/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { getStravaSyncStates, resetStravaSyncState, syncStrava } from '../integrations/strava/sync.ts'
@@ -190,6 +196,9 @@ export const mountSyncRouter = ({
         syncHomeAssistant,
         getHomeAssistantSyncStates,
         resetHomeAssistantSyncState,
+        syncWeather: (user, options) => syncWeather(user, defaultWeatherSyncDeps(), options),
+        getWeatherSyncStates,
+        resetWeatherSyncState,
         onSourceArrivals: sourceEnrichQueue
           ? (user, arrivals) => void sourceEnrichQueue.enqueue(user, arrivals)
           : undefined,

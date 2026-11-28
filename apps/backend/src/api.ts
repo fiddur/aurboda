@@ -102,6 +102,7 @@ import {
   defaultHomeAssistantSyncDeps,
   syncHomeAssistantLocations,
 } from './integrations/home-assistant/sync.ts'
+import { defaultWeatherSyncDeps, syncWeather } from './integrations/open-meteo/sync.ts'
 import { ouraClient } from './integrations/oura/client.ts'
 import { createOwnTracksRouter } from './integrations/owntracks/router.ts'
 import { stravaClient } from './integrations/strava/client.ts'
@@ -548,6 +549,7 @@ const main = async () => {
     onActivitySynced: activityNotifier,
     onTrackWritten,
     syncHomeAssistant: (user) => syncHomeAssistant(user),
+    syncWeather: (user) => syncWeather(user, defaultWeatherSyncDeps()),
   })
   const syncProvider = gateSyncProvider(ungatedSyncProvider, isReadOnly)
 

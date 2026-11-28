@@ -140,3 +140,37 @@ describe('MCP resync_garmin_activity_detail tool', () => {
     expect(resyncGarminActivityDetail).toHaveBeenCalledWith('alice', 'a1', undefined)
   })
 })
+
+describe('MCP sync_weather tool', () => {
+  test('passes the options to the weather sync and reports its result', async () => {
+    const syncWeather = vi
+      .fn()
+      .mockResolvedValue({ cells: 1, cells_deferred: 0, hours_stored: 24, status: 'success' })
+    const { server, tools } = buildFakeServer()
+    registerSyncTools(server, 'alice', { syncWeather })
+
+    const response = await tools.get('sync_weather')!({ full_resync: true, start_date: '2024-01-01' })
+
+    expect(syncWeather).toHaveBeenCalledWith('alice', { fullResync: true, startDate: new Date('2024-01-01') })
+    expect(JSON.parse(response.content[0].text)).toEqual({
+      result: { cells: 1, cells_deferred: 0, hours_stored: 24, status: 'success' },
+      success: true,
+    })
+  })
+
+  test('a skipped sync is not a success', async () => {
+    const syncWeather = vi.fn().mockResolvedValue({
+      cells: 0,
+      cells_deferred: 0,
+      error: 'Weather is not enabled',
+      hours_stored: 0,
+      status: 'skipped',
+    })
+    const { server, tools } = buildFakeServer()
+    registerSyncTools(server, 'alice', { syncWeather })
+
+    const response = await tools.get('sync_weather')!({})
+
+    expect(JSON.parse(response.content[0].text).success).toBe(false)
+  })
+})

@@ -979,3 +979,18 @@ a.garmin-data-type-label:hover {
 .data-sources-page .garmin-expiry-choices button:hover:not(:disabled) {
   border-color: var(--color-accent);
 }
+
+.data-source-detail .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.data-source-detail .checkbox-field input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}

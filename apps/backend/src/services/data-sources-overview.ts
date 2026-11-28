@@ -23,6 +23,7 @@ export type SourceSettings = Pick<
   | 'oura_connected'
   | 'rescue_time_key'
   | 'strava_connected'
+  | 'weather_enabled'
 >
 
 export interface DataSourceSignals {
@@ -90,6 +91,7 @@ const sourceStates: Record<DataSourceId, (signals: DataSourceSignals) => SourceS
     ),
   rescuetime: rescueTimeState,
   strava: ({ settings }) => connected(settings.strava_connected),
+  weather: ({ settings }) => activeIf(settings.weather_enabled, 'Enabled', 'Not enabled'),
 }
 
 export const buildDataSourcesOverview = (signals: DataSourceSignals): DataSourcesOverview => {

@@ -15,7 +15,8 @@ Key areas covered by MCP tools:
 - **Activity types** -- manage custom activity type definitions
 - **Deduction rules** -- create rules that auto-generate activities from data conditions
 - **Screentime** -- manage category rules and recategorize
-- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Home Assistant, Last.fm, RescueTime, calendars
+- **Sync** -- trigger data syncs from Garmin, Oura, Strava, Gravl, Home Assistant, Last.fm, RescueTime, calendars, weather
+- **Weather** -- `get_weather`: the hourly weather where you were for a day or a span, with a summary ([open-meteo.md](open-meteo.md))
 - **Settings** -- user preferences, HR zones, training load configuration
 - **Export** -- `export_data_dump` links a download of your whole database as SQL ([data export](data-export.md))
 - **Account** -- `delete_my_account` deletes your account for good; admins can `delete_user` ([deleting accounts](admin.md#deleting-accounts))
@@ -423,8 +424,14 @@ The following metrics are available for querying and manual entry:
 | `readiness_score`          | score       | Readiness score (0-100)        |
 | `resilience_score`         | score       | Resilience score (0-100)       |
 | `productivity_score`       | score       | Productivity score (0-100)     |
+| `weather_code`             | wmo         | WMO weather code (Open-Meteo)  |
+| `weather_temperature`      | celsius     | Outdoor temperature at 2 m     |
+| `weather_precipitation`    | mm          | Precipitation per hour         |
+| `weather_wind_speed`       | m/s         | Wind speed at 10 m             |
 | `strength_score`           | points      | Strength score (read only)     |
 | `strength_score_<group>`   | points      | Strength score of one group    |
+
+The weather metrics are hourly rows with source `open_meteo`, written by the [weather sync](open-meteo.md).
 
 The strength score metrics are calculated by Aurboda and cannot be written or deleted; the groups
 are chest, shoulders, back, biceps, triceps, quadriceps, hamstrings and glutes (see

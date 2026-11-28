@@ -93,6 +93,17 @@ describe('journal_strip_metadata over GET/PATCH /user/settings', () => {
   })
 })
 
+describe('weather_enabled over GET/PATCH /user/settings', () => {
+  test('is false until set, and reads back what was stored', async () => {
+    expect((await supertest(app()).get('/user/settings')).body.weather_enabled).toBe(false)
+
+    const patched = await supertest(app()).patch('/user/settings').send({ weather_enabled: true })
+    expect(patched.status).toBe(200)
+    expect(patched.body.weather_enabled).toBe(true)
+    expect((await supertest(app()).get('/user/settings')).body.weather_enabled).toBe(true)
+  })
+})
+
 describe('tz over PATCH /user/settings', () => {
   test('stores the zone as device_timezone and answers it as tz', async () => {
     const res = await supertest(app()).patch('/user/settings').send({ tz: 'Europe/Stockholm' })

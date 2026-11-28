@@ -80,6 +80,21 @@ describe('journal_strip_metadata through the settings MCP tools', () => {
   })
 })
 
+describe('weather_enabled through the settings MCP tools', () => {
+  test('is false until set, true once set, and null resets it', async () => {
+    const call = setup()
+    expect((await call('get_user_settings')).weather_enabled).toBe(false)
+
+    const updated = await call('update_user_settings', { weather_enabled: true })
+    expect(updated.weather_enabled).toBe(true)
+    expect((await call('get_user_settings')).weather_enabled).toBe(true)
+
+    await call('update_user_settings', { weather_enabled: null })
+    expect(store.settings).not.toHaveProperty('weather_enabled')
+    expect((await call('get_user_settings')).weather_enabled).toBe(false)
+  })
+})
+
 describe('tz through the settings MCP tools', () => {
   test('update_user_settings sets the time zone and null clears it', async () => {
     const call = setup()

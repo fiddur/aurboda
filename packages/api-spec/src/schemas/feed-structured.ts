@@ -341,14 +341,6 @@ export const feedStructuredArticleBlockSchema = z
 
 export type FeedStructuredArticleBlock = z.infer<typeof feedStructuredArticleBlockSchema>
 
-/**
- * The native structured representation of a shared *article* post: its title
- * and ordered blocks, each resolved to its locked window's live data. Served at
- * the same `GET /public/:username/feed/:postId` endpoint as an activity's
- * `FeedStructuredActivity` (see `FeedStructuredPost`) so a following Aurboda
- * instance renders a native inline article — real interactive charts and
- * scatters — instead of only the Mastodon-style prose + attached PNGs.
- */
 /** Who a post mentions: the actor its federated `Mention` points at, and the handle snapshot naming it. */
 export const postMentionSchema = z
   .object({
@@ -359,6 +351,14 @@ export const postMentionSchema = z
 
 export type PostMention = z.infer<typeof postMentionSchema>
 
+/**
+ * The native structured representation of a shared *article* post: its title
+ * and ordered blocks, each resolved to its locked window's live data. Served at
+ * the same `GET /public/:username/feed/:postId` endpoint as an activity's
+ * `FeedStructuredActivity` (see `FeedStructuredPost`) so a following Aurboda
+ * instance renders a native inline article — real interactive charts and
+ * scatters — instead of only the Mastodon-style prose + attached PNGs.
+ */
 export const feedStructuredArticleSchema = z
   .object({
     blocks: z

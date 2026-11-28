@@ -51,6 +51,7 @@ export const syncStatusQuerySchema = z
         'activitywatch',
         'gravl',
         'home_assistant',
+        'weather',
         'all',
       ])
       .optional()
@@ -73,6 +74,7 @@ export const syncProviderSchema = z
     'activitywatch',
     'gravl',
     'home_assistant',
+    'weather',
     'all',
   ])
   .meta({
@@ -208,6 +210,20 @@ export const syncHomeAssistantBodySchema = z
   .meta({ id: 'SyncHomeAssistantBody' })
 
 export type SyncHomeAssistantBody = z.infer<typeof syncHomeAssistantBodySchema>
+
+export const syncWeatherBodySchema = z
+  .object({
+    full_resync: z.boolean().optional().meta({
+      description: 'If true, fetches the last 90 days again instead of continuing from the last sync',
+    }),
+    start_date: dateOnlySchema.optional().meta({
+      description:
+        'Fetch the weather from this date up to now instead (any date; days older than 90 days come from the Open-Meteo archive)',
+    }),
+  })
+  .meta({ id: 'SyncWeatherBody' })
+
+export type SyncWeatherBody = z.infer<typeof syncWeatherBodySchema>
 
 export const syncCalendarsBodySchema = z
   .object({
@@ -515,6 +531,38 @@ export const homeAssistantSyncStatusResponseSchema = baseResponseSchema
   .meta({ id: 'HomeAssistantSyncStatusResponse' })
 
 export type HomeAssistantSyncStatusResponse = z.infer<typeof homeAssistantSyncStatusResponseSchema>
+
+export const weatherSyncResultSchema = z
+  .object({
+    cells: z.number().int().meta({ description: 'Distinct rounded locations fetched in this run' }),
+    cells_deferred: z.number().int().meta({
+      description: 'Rounded locations left for the next run (at most 20 are fetched per run)',
+    }),
+    error: z.string().optional().meta({ description: 'Error message if status is error' }),
+    hours_stored: z.number().int().meta({ description: 'Hours of weather stored' }),
+    status: z.enum(['success', 'skipped', 'error']).meta({
+      description: 'Sync status; skipped when weather is not enabled',
+    }),
+  })
+  .meta({ id: 'WeatherSyncResult' })
+
+export type WeatherSyncResult = z.infer<typeof weatherSyncResultSchema>
+
+export const weatherSyncResponseSchema = baseResponseSchema
+  .extend({
+    result: weatherSyncResultSchema.optional().meta({ description: 'Sync result' }),
+  })
+  .meta({ id: 'WeatherSyncResponse' })
+
+export type WeatherSyncResponse = z.infer<typeof weatherSyncResponseSchema>
+
+export const weatherSyncStatusResponseSchema = baseResponseSchema
+  .extend({
+    states: z.array(providerSyncStatusSchema).optional().meta({ description: 'Weather sync states' }),
+  })
+  .meta({ id: 'WeatherSyncStatusResponse' })
+
+export type WeatherSyncStatusResponse = z.infer<typeof weatherSyncStatusResponseSchema>
 
 export const ouraSyncResponseSchema = baseResponseSchema
   .extend({

@@ -540,7 +540,7 @@ const fixesFromRows = (rows: FixRow[]) =>
 
 const FIX_COLUMNS = 'ST_Y(location::geometry) as lat, ST_X(location::geometry) as lon, time, regions, source'
 
-const getLastFixBefore = async (
+export const getLastFixBefore = async (
   user: string,
   before: Date,
   notBefore: Date,

@@ -141,5 +141,6 @@ export const gateSyncProvider = (
     syncLastFmIfNeeded: gated(sync.syncLastFmIfNeeded),
     syncOuraIfNeeded: gated(sync.syncOuraIfNeeded),
     syncRescueTimeIfNeeded: gated(sync.syncRescueTimeIfNeeded),
+    syncWeatherIfNeeded: gated(sync.syncWeatherIfNeeded),
   }
 }

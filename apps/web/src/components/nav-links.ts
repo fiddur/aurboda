@@ -115,6 +115,11 @@ export const DATA_SOURCE_LINKS = [
     path: '/data-sources/home-assistant',
     description: 'Your location from Home Assistant.',
   },
+  {
+    label: 'Weather',
+    path: '/data-sources/weather',
+    description: 'The weather where you were, from Open-Meteo.',
+  },
   { label: 'Calendars', path: '/data-sources/calendars', description: 'Events from your calendars.' },
 ]
 

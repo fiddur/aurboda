@@ -15,6 +15,9 @@ import type {
   HomeAssistantEntitiesResponse,
   HomeAssistantSyncResponse,
   HomeAssistantSyncStatusResponse,
+  SyncWeatherBody,
+  WeatherSyncResponse,
+  WeatherSyncStatusResponse,
 } from '@aurboda/api-spec'
 
 import axios from 'axios'
@@ -276,6 +279,22 @@ export const fetchHomeAssistantSyncStatus = async (): Promise<HomeAssistantSyncS
 export const fetchHomeAssistantEntities = async (): Promise<HomeAssistantEntitiesResponse> => {
   const { token } = auth.value
   const response = await axios.get<HomeAssistantEntitiesResponse>(`${API_URL}/home-assistant/entities`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const syncWeather = async (body: SyncWeatherBody = {}): Promise<WeatherSyncResponse> => {
+  const { token } = auth.value
+  const response = await axios.post<WeatherSyncResponse>(`${API_URL}/sync/weather`, body, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  return response.data
+}
+
+export const fetchWeatherSyncStatus = async (): Promise<WeatherSyncStatusResponse> => {
+  const { token } = auth.value
+  const response = await axios.get<WeatherSyncStatusResponse>(`${API_URL}/sync/weather/status`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   return response.data

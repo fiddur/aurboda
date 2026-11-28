@@ -233,6 +233,7 @@ const settingsWithDefaultsSchema = userSettingsResponseSchema.pick({
   training_load: true,
   tz: true,
   tz_follows_device: true,
+  weather_enabled: true,
 })
 
 const withDefaults = (settings: UserSettings) =>

@@ -229,6 +229,7 @@ export type SyncIntervalProvider =
   | 'lastfm'
   | 'oura'
   | 'rescuetime'
+  | 'weather'
 
 /**
  * Background poll interval for one pull-based provider (#1042). Empty means

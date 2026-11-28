@@ -1,4 +1,4 @@
-import type { HomeAssistantSyncResult } from '@aurboda/api-spec'
+import type { HomeAssistantSyncResult, WeatherSyncResult } from '@aurboda/api-spec'
 
 import { isBefore, subDays, subMinutes } from 'date-fns'
 
@@ -32,6 +32,11 @@ import {
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
 import {
+  WEATHER_DATA_TYPE,
+  WEATHER_DEFAULT_INTERVAL_MINUTES,
+  WEATHER_PROVIDER,
+} from '../integrations/open-meteo/sync.ts'
+import {
   isRateLimited as isOuraRateLimited,
   type OuraDataType,
   syncOuraDataType,
@@ -63,6 +68,7 @@ export type SchedulableProvider =
   | 'lastfm'
   | 'oura'
   | 'rescuetime'
+  | 'weather'
 
 /**
  * Poll interval for a provider: the user's per-provider setting, else their
@@ -104,6 +110,8 @@ export interface SyncProviderConfig {
    * own `onLocationsSynced` fires detection and deduction, so nothing is chained here.
    */
   syncHomeAssistant?: (user: string) => Promise<HomeAssistantSyncResult>
+  /** Weather pull from Open-Meteo (optional - if not provided, it is disabled). */
+  syncWeather?: (user: string) => Promise<WeatherSyncResult>
   /**
    * Fired after a successful auto-sync that ingested new data, so deduction
    * rules run over the freshly-synced window. Wired to the same
@@ -373,6 +381,33 @@ export function createSyncProvider(config: SyncProviderConfig): SyncProvider {
         triggerDeductionAfterSync(user, syncState, result)
       } catch (error) {
         auditError(user, 'sync', 'Failed to auto-sync RescueTime', { error: String(error) })
+      }
+    }),
+
+    syncWeatherIfNeeded: debounced('syncWeatherIfNeeded', async (user: string): Promise<void> => {
+      if (!config.syncWeather) return
+
+      try {
+        const settings = await getSettings(user)
+        if (settings.weather_enabled !== true) return
+
+        const syncState = await getSyncState(user, WEATHER_PROVIDER, WEATHER_DATA_TYPE)
+        const interval = resolveSyncInterval(
+          settings.sync_intervals,
+          'weather',
+          WEATHER_DEFAULT_INTERVAL_MINUTES,
+        )
+        const now = new Date()
+        if (syncState?.last_sync_time && isBefore(subMinutes(now, interval), syncState.last_sync_time)) {
+          return
+        }
+        if (syncState?.status === 'error' && syncState.retry_after && isBefore(now, syncState.retry_after)) {
+          return
+        }
+
+        await config.syncWeather(user)
+      } catch (error) {
+        auditError(user, 'sync', 'Failed to auto-sync weather', { error: String(error) })
       }
     }),
   }

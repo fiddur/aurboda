@@ -26,6 +26,7 @@ import {
   syncOuraBodySchema,
   syncRescueTimeBodySchema,
   syncStravaBodySchema,
+  syncWeatherBodySchema,
   type ActivityWatchSyncResponse,
   type ActivityWatchSyncResult,
   type ActivityWatchSyncStatusResponse,
@@ -77,6 +78,10 @@ import {
   type SyncRescueTimeBody,
   type SyncStravaBody,
   type SyncResponse,
+  type SyncWeatherBody,
+  type WeatherSyncResponse,
+  type WeatherSyncResult,
+  type WeatherSyncStatusResponse,
 } from '@aurboda/api-spec'
 
 import type { SourceArrival } from './services/source-identity.ts'
@@ -198,6 +203,13 @@ export interface SyncRouterDeps {
   ) => Promise<HomeAssistantSyncResult>
   getHomeAssistantSyncStates?: (user: string) => Promise<ProviderSyncStatus[]>
   resetHomeAssistantSyncState?: (user: string) => Promise<void>
+  /** Absent when the weather integration is not wired (tests). */
+  syncWeather?: (
+    user: string,
+    options: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<WeatherSyncResult>
+  getWeatherSyncStates?: (user: string) => Promise<ProviderSyncStatus[]>
+  resetWeatherSyncState?: (user: string) => Promise<void>
   getActivityWatchSyncStates: (user: string) => Promise<ProviderSyncStatus[]>
   getPendingOutboundSync: (user: string, limit?: number) => Promise<PendingOutboundSyncResult>
   ackOutboundSync: (user: string, id: string, hcRecordId?: string) => Promise<boolean>
@@ -799,6 +811,56 @@ export const createSyncRouter = (deps: SyncRouterDeps, authMiddleware: RequestHa
       }
     },
   )
+
+  router.post<Record<string, never>, WeatherSyncResponse, SyncWeatherBody>(
+    '/weather',
+    authMiddleware,
+    validateBody(syncWeatherBodySchema),
+    async (req, res) => {
+      const user = req.user!
+      const { full_resync, start_date } = req.body
+      if (!deps.syncWeather) {
+        return res.status(400).json({ error: 'Weather integration is not available', success: false })
+      }
+
+      try {
+        const result = await deps.syncWeather(user, {
+          fullResync: full_resync,
+          startDate: start_date ? new Date(start_date) : undefined,
+        })
+        res.json({ result, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.get<Record<string, never>, WeatherSyncStatusResponse>(
+    '/weather/status',
+    authMiddleware,
+    async (req, res) => {
+      const user = req.user!
+      try {
+        const states = deps.getWeatherSyncStates ? await deps.getWeatherSyncStates(user) : []
+        res.json({ states, success: true })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message, success: false })
+      }
+    },
+  )
+
+  router.delete<Record<string, never>, SyncResponse>('/weather/state', authMiddleware, async (req, res) => {
+    const user = req.user!
+    try {
+      await deps.resetWeatherSyncState?.(user)
+      res.json({ success: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      res.status(500).json({ error: message, success: false })
+    }
+  })
 
   // Get pending outbound sync entries for the Android app to write to Health Connect
   router.get<ParamsDictionary, OutboundSyncResponse>('/outbound', authMiddleware, async (req, res) => {

@@ -309,6 +309,62 @@ describe('sync router', () => {
     })
   })
 
+  describe('weather endpoints', () => {
+    const result = { cells: 2, cells_deferred: 0, hours_stored: 48, status: 'success' as const }
+
+    test('returns 400 when the integration is not wired', async () => {
+      const response = await request(createTestApp()).post('/sync/weather').send({})
+      expect(response.status).toBe(400)
+      expect(response.body.error).toContain('Weather integration is not available')
+    })
+
+    test('POST /sync/weather passes the options through and returns the result', async () => {
+      const syncWeather = vi.fn().mockResolvedValue(result)
+      const app = express()
+      app.use(express.json())
+      app.use('/sync', createSyncRouter({ ...mockDeps, syncWeather }, testAuthMiddleware))
+
+      const response = await request(app).post('/sync/weather').send({ start_date: '2024-01-01' })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({ result, success: true })
+      expect(syncWeather).toHaveBeenCalledWith('testuser', {
+        fullResync: undefined,
+        startDate: new Date('2024-01-01'),
+      })
+    })
+
+    test('GET /sync/weather/status and DELETE /sync/weather/state', async () => {
+      const states = [
+        {
+          error_message: null,
+          last_sync_time: '2026-11-13T10:00:00Z',
+          provider: 'weather',
+          retry_after: null,
+          status: 'idle' as const,
+        },
+      ]
+      const resetWeatherSyncState = vi.fn().mockResolvedValue(undefined)
+      const app = express()
+      app.use(express.json())
+      app.use(
+        '/sync',
+        createSyncRouter(
+          { ...mockDeps, getWeatherSyncStates: vi.fn().mockResolvedValue(states), resetWeatherSyncState },
+          testAuthMiddleware,
+        ),
+      )
+
+      const status = await request(app).get('/sync/weather/status')
+      expect(status.body).toEqual({ states, success: true })
+
+      const reset = await request(app).delete('/sync/weather/state')
+      expect(reset.status).toBe(200)
+      expect(resetWeatherSyncState).toHaveBeenCalledWith('testuser')
+      expect(mockDeps.processHealthConnectData).not.toHaveBeenCalled()
+    })
+  })
+
   describe('deletions endpoint', () => {
     test('POST /sync/deletions calls deleteHealthConnectRecords', async () => {
       vi.mocked(mockDeps.deleteHealthConnectRecords).mockResolvedValueOnce(3)
