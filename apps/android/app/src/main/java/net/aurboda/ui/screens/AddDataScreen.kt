@@ -894,7 +894,7 @@ private fun PendingEntriesSection(
                         if (error == null) {
                             removePendingEntry(context, entry.id)
                         } else {
-                            markPendingEntryFailed(context, entry.id, error.message, isPermanentRefusal(error.statusCode))
+                            markPendingEntryFailed(context, entry.id, error.message, error.statusCode)
                         }
                         entries = getPendingEntries(context)
                     }
@@ -1193,7 +1193,7 @@ private fun AddActivityTab(
                                 context,
                                 pendingEntry.id,
                                 outcome.error.message,
-                                isPermanentRefusal(outcome.error.statusCode),
+                                outcome.error.statusCode,
                             )
                             message = "Error: ${outcome.error.message}"
                             isError = true
@@ -1201,7 +1201,7 @@ private fun AddActivityTab(
                         PendingActivityOutcome.Sent, is PendingActivityOutcome.CommentFailed -> {
                             if (outcome is PendingActivityOutcome.CommentFailed) {
                                 val refused = isPermanentRefusal(outcome.error.statusCode)
-                                markPendingEntryFailed(context, pendingEntry.id, outcome.error.message, refused)
+                                markPendingEntryFailed(context, pendingEntry.id, outcome.error.message, outcome.error.statusCode)
                                 message = if (refused) {
                                     "Activity added. The comment was refused: ${outcome.error.message}"
                                 } else {
@@ -1411,7 +1411,7 @@ private fun AddMetricTab(
                             timeMillis = nowEpochMillis()
                         }
                         is DataResult.Error -> {
-                            markPendingEntryFailed(context, pendingEntry.id, result.message, isPermanentRefusal(result.statusCode))
+                            markPendingEntryFailed(context, pendingEntry.id, result.message, result.statusCode)
                             message = "Error: ${result.message}"
                             isError = true
                         }

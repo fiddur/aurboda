@@ -97,15 +97,23 @@ fun recordCreatedActivity(context: Context, id: String, activityId: String) {
     updatePendingEntry(context, entry.withCreatedActivityId(activityId))
 }
 
-fun markPendingEntryFailed(context: Context, id: String, error: String, refused: Boolean = false) {
-    val entries = getPendingEntries(context).map {
-        if (it.id == id) it.copy(fail_count = it.fail_count + 1, last_error = error, refused = refused) else it
+/**
+ * A failed attempt without a status (offline) says nothing about the entry, so one the server
+ * refused before keeps that verdict and its reason.
+ */
+fun PendingEntry.failedWith(error: String, statusCode: Int?): PendingEntry =
+    if (refused && statusCode == null) {
+        copy(fail_count = fail_count + 1)
+    } else {
+        copy(fail_count = fail_count + 1, last_error = error, refused = isPermanentRefusal(statusCode))
     }
+
+fun markPendingEntryFailed(context: Context, id: String, error: String, statusCode: Int? = null) {
+    val entries = getPendingEntries(context).map { if (it.id == id) it.failedWith(error, statusCode) else it }
     savePendingEntries(context, entries)
-    Log.d(TAG, "Marked pending entry $id as failed (error: $error, refused: $refused)")
+    Log.d(TAG, "Marked pending entry $id as failed (error: $error, status: $statusCode)")
 }
 
-/** Refused entries count: they still need the user's attention. */
 fun pendingEntryCount(context: Context): Int = getPendingEntries(context).size
 
 /** The entries a sync sends, and how many it leaves for the user because the server refused them. */

@@ -369,8 +369,10 @@ Linking a provider is web-only: the embedded Settings page shows no Link buttons
   `400`, `404`, `409`, `413` or `422` (`isPermanentRefusal`) is marked refused: it
   stays in the pending list as "Refused:" and the reason, "Not sent again. Edit or
   delete it.", and sync no longer sends it until its time is edited; **Retry**
-  sends it once more and keeps it refused only if it is refused again. Its sync stage then reads "1 entry needs attention" when
-  nothing else is queued. Other failures (offline, timeouts, `5xx`) keep being
+  sends it once more and it stays refused if it is refused again, or if the
+  attempt gets no answer at all (offline), in which case the reason is kept too.
+  Its sync stage then reads "1 entry needs attention" when nothing else is
+  queued. Other failures (offline, timeouts, `5xx`) keep being
   retried, counted as "Failed Nx".
 
 ## Live sensors
