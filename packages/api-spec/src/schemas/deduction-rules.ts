@@ -306,6 +306,17 @@ export const addDeductionRuleBodySchema = z
 
 export type AddDeductionRuleBody = z.infer<typeof addDeductionRuleBodySchema>
 
+export const previewDeductionRuleBodySchema = addDeductionRuleBodySchema
+  .extend({
+    rule_id: z.string().uuid().optional().meta({
+      description:
+        'The saved rule this previews an edit of, so what that rule already decided is not counted again',
+    }),
+  })
+  .meta({ id: 'PreviewDeductionRuleBody' })
+
+export type PreviewDeductionRuleBody = z.infer<typeof previewDeductionRuleBodySchema>
+
 export const updateDeductionRuleBodySchema = z
   .object({
     conditions: z.array(conditionSchema).min(1).optional().meta({ description: 'New conditions' }),

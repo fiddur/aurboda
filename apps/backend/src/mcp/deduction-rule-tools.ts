@@ -1,4 +1,8 @@
-import { addDeductionRuleBodySchema, updateDeductionRuleBodySchema } from '@aurboda/api-spec'
+import {
+  addDeductionRuleBodySchema,
+  previewDeductionRuleBodySchema,
+  updateDeductionRuleBodySchema,
+} from '@aurboda/api-spec'
 import { z } from 'zod'
 
 import type { DeductionEngineDeps } from '../services/deduction-engine.ts'
@@ -166,8 +170,11 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
   server.tool(
     'preview_deduction_rule',
     'Dry-run a rule definition to see how many activities would be affected without creating or modifying anything. Samples the last 90 days.',
-    { ...addDeductionRuleBodySchema.shape },
+    { ...previewDeductionRuleBodySchema.shape },
     async (params) => {
+      if (params.rule_id && !(await getDeductionRule(user, params.rule_id))) {
+        return errorResponse('Deduction rule not found')
+      }
       if (
         !(await activityTypeExists(user, params.output_activity_type)) &&
         !getCatalogActivityType(loadActivityTypeCatalog(), params.output_activity_type)
@@ -184,7 +191,7 @@ Multiple conditions use AND logic — all must overlap in time. The rule is appl
       const tempRule = {
         conditions: params.conditions,
         enabled: true,
-        id: 'preview',
+        id: params.rule_id ?? 'preview',
         merge_gap_seconds: params.merge_gap_seconds,
         mode: params.mode,
         name: params.name,

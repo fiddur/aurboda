@@ -29,6 +29,7 @@ export const previewDeductionRule = async (body: {
   output_title_field?: string
   output_category?: DeductionRule['output_category']
   output_people?: string[]
+  rule_id?: string
 }): Promise<{ would_affect: number; sample_days: number }> => {
   const { token } = auth.value
   const response = await axios.post<{ success: boolean; would_affect: number; sample_days: number }>(

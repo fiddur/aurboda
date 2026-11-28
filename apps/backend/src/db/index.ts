@@ -1119,6 +1119,7 @@ export {
   pruneDeletedPeople,
   purgePerson,
   restorePerson,
+  setActivityGroupPeople,
   setActivityPeople,
   softDeletePerson,
   type TimeInterval,

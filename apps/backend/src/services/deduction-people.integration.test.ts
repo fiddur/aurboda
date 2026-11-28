@@ -497,6 +497,43 @@ describe('a rule adding people to activities (integration)', () => {
     expect(preview.would_affect).toBe(1)
   })
 
+  test('a person a rule added, taken off by hand and put back by hand, counts as set by hand', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    const bo = await insertPerson(user, { name: 'Bo' })
+    await meditation(user)
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const withAnna = await fikaRule(user, [anna.id])
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [withAnna], window, deps)
+
+    expect((await updateActivity(user, fikaId, { people: [] })).success).toBe(true)
+    expect((await updateActivity(user, fikaId, { people: [anna.id] })).success).toBe(true)
+    const withBo = await fikaRule(user, [bo.id])
+    expect((await evaluateRule(user, withBo, window, deps, true)).would_affect).toBe(0)
+    await evaluateAllRules(user, [withAnna, withBo], window, deps)
+
+    expect(await namesOn(user, [fikaId])).toEqual(['Anna'])
+  })
+
+  test('the preview of an edit counts nothing the saved rule already decided; one under the preview id does', async () => {
+    const user = getTestUser()
+    await ensureType(user, 'fika')
+    const anna = await insertPerson(user, { name: 'Anna' })
+    await meditation(user)
+    const fikaId = await fika(user, '2026-11-01T10:30:00Z', {}, '2026-11-01T11:30:00Z')
+    const rule = await fikaRule(user, [anna.id])
+    const deps = createDefaultEngineDeps()
+    await evaluateAllRules(user, [rule], window, deps)
+    expect((await updateActivity(user, fikaId, { people: [] })).success).toBe(true)
+
+    expect(
+      (await evaluateAllRules(user, [{ ...rule, id: 'preview' }], window, deps, true)).activities_created,
+    ).toBe(1)
+    expect((await evaluateAllRules(user, [rule], window, deps, true)).activities_created).toBe(0)
+  })
+
   test('deleting the rule drops its record and keeps the links', async () => {
     const user = getTestUser()
     await ensureType(user, 'fika')
