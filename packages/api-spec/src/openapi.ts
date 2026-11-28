@@ -5885,7 +5885,7 @@ const openApiDocument = createDocument({
     '/sync/weather': {
       post: {
         description:
-          'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for the places in your location history, sending only coordinates rounded to 0.1°. Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or full_resync covers the last 90 days; later syncs continue from 48 hours before the last sync; start_date fetches from that date instead (older than 90 days from the archive). At most 20 rounded locations per run, the most used first; the rest wait for the next run. Requires weather_enabled in user settings.',
+          'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for the places in your location history, sending only coordinates rounded to 0.1°. Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or full_resync covers the last 90 days; later syncs continue from 48 hours before the last sync; start_date fetches from that date instead (older than 90 days from the archive). At most 20 rounded locations per run, the most used first: the scheduler continues a first sync by itself, a start_date fetch that reports cells_deferred is finished by fetching again. Requires weather_enabled in user settings.',
         requestBody: {
           content: { 'application/json': { schema: syncWeatherBodySchema } },
         },

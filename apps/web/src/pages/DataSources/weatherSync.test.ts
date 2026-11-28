@@ -9,9 +9,9 @@ describe('weatherSyncMessage', () => {
     )
   })
 
-  it('says when places wait for the next sync', () => {
+  it('says when places are left to fetch', () => {
     expect(weatherSyncMessage({ cells: 20, cells_deferred: 3, hours_stored: 48, status: 'success' })).toBe(
-      '48 hours of weather stored; 3 more places will follow in the next sync',
+      '48 hours of weather stored; 3 more places left, sync again to fetch them',
     )
   })
 

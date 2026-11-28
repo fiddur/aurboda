@@ -8,6 +8,8 @@ export const weatherMetrics = [
   'weather_wind_speed',
 ] as const satisfies readonly MetricType[]
 
+export const WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES = 180
+
 export type WeatherMetric = (typeof weatherMetrics)[number]
 
 export interface WeatherCondition {

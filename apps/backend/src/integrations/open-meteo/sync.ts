@@ -7,8 +7,7 @@
  * are picked up by the next run.
  */
 
-import type { WeatherSyncResult } from '@aurboda/api-spec'
-
+import { WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES, type WeatherSyncResult } from '@aurboda/api-spec'
 import { addMinutes, subDays, subHours } from 'date-fns'
 
 import type { TimeSeriesEntry } from '../../db/time-series.ts'
@@ -34,7 +33,7 @@ export const WEATHER_PROVIDER = 'weather'
 export const WEATHER_DATA_TYPE = 'hourly'
 export const WEATHER_HISTORY_DAYS = 90
 export const WEATHER_REFRESH_HOURS = 48
-export const WEATHER_DEFAULT_INTERVAL_MINUTES = 180
+export const WEATHER_DEFAULT_INTERVAL_MINUTES = WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES
 /** How long the background poll leaves Open-Meteo alone after a failed run. */
 export const WEATHER_ERROR_BACKOFF_MINUTES = 60
 const INSERT_CHUNK = 2000

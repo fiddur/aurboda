@@ -1,5 +1,8 @@
-import type { ProviderSyncStatus, SyncWeatherBody } from '@aurboda/api-spec'
-
+import {
+  type ProviderSyncStatus,
+  type SyncWeatherBody,
+  WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES,
+} from '@aurboda/api-spec'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useCallback, useState } from 'preact/hooks'
@@ -28,8 +31,6 @@ const DATA_TYPES: DataTypeItem[] = [
   { label: 'Precipitation' },
   { label: 'Wind speed' },
 ]
-
-const WEATHER_DEFAULT_INTERVAL_MINUTES = 180
 
 const DOCS_URL = 'https://github.com/fiddur/aurboda/blob/develop/docs/open-meteo.md'
 
@@ -194,7 +195,7 @@ export function WeatherSource() {
             {enabled && (
               <WeatherSyncSection syncStates={syncStatusData?.states} syncStatusLoading={syncStatusLoading} />
             )}
-            <SyncIntervalField provider="weather" defaultMinutes={WEATHER_DEFAULT_INTERVAL_MINUTES} />
+            <SyncIntervalField provider="weather" defaultMinutes={WEATHER_DEFAULT_SYNC_INTERVAL_MINUTES} />
           </>
         )}
 

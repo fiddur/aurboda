@@ -176,17 +176,49 @@ describe('locateHours', () => {
     (_, i) => new Date(Date.parse('2026-11-01T00:00:00Z') + i * 3_600_000),
   )
 
+  const fixes = [
+    { lat: 59.33, lon: 18.07, time: new Date('2026-10-31T20:00:00Z') },
+    { lat: 57.7, lon: 11.97, time: new Date('2026-11-01T05:00:00Z') },
+    { lat: 55.6, lon: 13.0, time: new Date('2026-11-02T00:10:00Z') },
+    { lat: 60.39, lon: 5.32, time: new Date('2026-11-04T12:00:00Z') },
+  ]
+  const history = {
+    getLastFixBefore: vi.fn(async (_user: string, before: Date, notBefore: Date) =>
+      fixes.findLast((f) => f.time < before && f.time >= notBefore),
+    ),
+    getLocationPoints: vi.fn(async (_user: string, start: Date, end: Date) =>
+      fixes.filter((f) => f.time >= start && f.time <= end),
+    ),
+  }
+
+  test('a fix between two day chunks places the first hour after the boundary', async () => {
+    const cells = await locateHours('alice', hours, history)
+
+    expect(cells[23]).toEqual({ lat: 57.7, lon: 12 })
+    expect(cells[24]).toEqual({ lat: 55.6, lon: 13 })
+  })
+
+  test('sparse hours: fixes in the hole between two chunks are not skipped', async () => {
+    const sparse = [hours[0], new Date('2026-11-05T08:00:00Z')]
+    const cells = await locateHours('alice', sparse, history)
+
+    expect(cells).toEqual([
+      { lat: 59.3, lon: 18.1 },
+      { lat: 60.4, lon: 5.3 },
+    ])
+  })
+
   test('reads the fixes a day at a time and carries the last one across', async () => {
     const getLocationPoints = vi.fn(async (_user: string, start: Date) =>
       start.toISOString() === '2026-11-01T00:30:00.000Z'
         ? [{ lat: 57.7, lon: 11.97, time: new Date('2026-11-01T05:00:00Z') }]
         : [],
     )
-    const getLastFixBefore = vi.fn(async () => ({
-      lat: 59.33,
-      lon: 18.07,
-      time: new Date('2026-10-31T20:00:00Z'),
-    }))
+    const getLastFixBefore = vi.fn(async (_user: string, before: Date) =>
+      before.toISOString() === '2026-11-01T00:30:00.000Z'
+        ? { lat: 59.33, lon: 18.07, time: new Date('2026-10-31T20:00:00Z') }
+        : { lat: 57.7, lon: 11.97, time: new Date('2026-11-01T05:00:00Z') },
+    )
     const cells = await locateHours('alice', hours, { getLastFixBefore, getLocationPoints })
 
     expect(getLocationPoints).toHaveBeenCalledTimes(2)

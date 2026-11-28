@@ -536,7 +536,7 @@ export const weatherSyncResultSchema = z
   .object({
     cells: z.number().int().meta({ description: 'Distinct rounded locations fetched in this run' }),
     cells_deferred: z.number().int().meta({
-      description: 'Rounded locations left for the next run (at most 20 are fetched per run)',
+      description: 'Rounded locations not fetched by this run (at most 20 per run): sync again to fetch them',
     }),
     error: z.string().optional().meta({ description: 'Error message if status is error' }),
     hours_stored: z.number().int().meta({ description: 'Hours of weather stored' }),

@@ -42,7 +42,8 @@ const defaultLocateHoursDeps: LocateHoursDeps = { getLastFixBefore, getLocationP
 
 /**
  * `hourCells` over the user's location history, read a day at a time so a long window never
- * holds more than a day of fixes. `hours` ascending.
+ * holds more than a day of fixes. `hours` ascending and possibly sparse, so each chunk looks up
+ * its own last fix before it: fixes between two chunks are not in either chunk's read.
  */
 export const locateHours = async (
   user: string,
@@ -51,12 +52,6 @@ export const locateHours = async (
 ): Promise<(WeatherCell | null)[]> => {
   if (hours.length === 0) return []
   const middle = (hour: Date): number => hour.getTime() + HOUR_MS / 2
-  const firstMiddle = middle(hours[0])
-  let carry = await deps.getLastFixBefore(
-    user,
-    new Date(firstMiddle),
-    new Date(firstMiddle - MAX_FIX_CARRY_MS),
-  )
   const cells: (WeatherCell | null)[] = []
   let index = 0
   while (index < hours.length) {
@@ -64,13 +59,11 @@ export const locateHours = async (
     const chunkEnd = chunkStart + DAY_MS
     const chunkHours: Date[] = []
     while (index < hours.length && middle(hours[index]) < chunkEnd) chunkHours.push(hours[index++])
-    const points = await deps.getLocationPoints(
-      user,
-      new Date(chunkStart),
-      new Date(middle(chunkHours[chunkHours.length - 1])),
-    )
+    const [carry, points] = await Promise.all([
+      deps.getLastFixBefore(user, new Date(chunkStart), new Date(chunkStart - MAX_FIX_CARRY_MS)),
+      deps.getLocationPoints(user, new Date(chunkStart), new Date(middle(chunkHours[chunkHours.length - 1]))),
+    ])
     cells.push(...hourCells(carry ? [carry, ...points] : points, chunkHours))
-    carry = points.at(-1) ?? carry
   }
   return cells
 }
