@@ -156,4 +156,9 @@ describe('pictureStep', () => {
   it('treats a picture missing from the list as the only one', () => {
     expect(pictureStep([a, b], c, 1)).toEqual({ count: 1, index: 0, target: undefined })
   })
+
+  it('finds the picture whatever the casing of its id', () => {
+    expect(pictureStep([a, b.toUpperCase(), c], b, 1)).toEqual({ count: 3, index: 1, target: c })
+    expect(pictureStep([a, b, c], b.toUpperCase(), -1)).toEqual({ count: 3, index: 1, target: a })
+  })
 })

@@ -113,6 +113,27 @@ export const exerciseMuscleInfo: Record<ExerciseMuscle, { group: ExerciseMuscleG
   wrist_flexors: { group: 'forearms', name: 'Wrist flexors' },
 }
 
+/** Whether a group's display name in {@link exerciseMuscleInfo} takes a plural verb ("Traps are", "Neck is"). */
+export const exerciseMuscleGroupPlural: Record<ExerciseMuscleGroup, boolean> = {
+  abdominals: true,
+  abductors: true,
+  adductors: true,
+  biceps: true,
+  calves: true,
+  chest: false,
+  forearms: true,
+  glutes: true,
+  hamstrings: true,
+  lats: true,
+  lower_back: false,
+  middle_back: false,
+  neck: false,
+  quadriceps: true,
+  shoulders: true,
+  traps: true,
+  triceps: true,
+}
+
 export const exerciseEquipmentCategories = ['free_weights', 'machines', 'cables', 'other'] as const
 
 export const exerciseEquipmentCategorySchema = z.enum(exerciseEquipmentCategories).meta({

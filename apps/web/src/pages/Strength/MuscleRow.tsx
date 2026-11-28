@@ -45,7 +45,7 @@ const RecoveryCell = ({ now, readyPercent, row }: { now: Date; readyPercent?: nu
 
 const ScoreCell = ({ row, scoreLoaded }: { row: Row; scoreLoaded: boolean }) => {
   if (scoreLoaded && !row.score_group) {
-    const label = notScoredLabel(row.name)
+    const label = notScoredLabel(row.muscle_group)
     return (
       <span class="strength-muscle-cell strength-muscle-muted" title={label}>
         <span role="img" aria-label={label}>

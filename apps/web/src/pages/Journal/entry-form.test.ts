@@ -5,17 +5,17 @@ import { describe, expect, test } from 'vitest'
 import { timelineHref } from '../Timeline/viewHash'
 import {
   addTags,
+  discardOnLeave,
   emptyEntryForm,
   entryDay,
   entryFormProblem,
+  entryTimelineHref,
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
-  discardOnLeave,
   isEntryEmpty,
   sameEntry,
   tagChips,
-  entryTimelineHref,
 } from './entry-form'
 
 const base = emptyEntryForm(new Date(2026, 10, 20, 9, 30))

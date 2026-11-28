@@ -1506,10 +1506,17 @@ describe('Notes Integration Tests', () => {
       await insertNote(user, 'time', null, 'Swim', new Date('2024-01-15T11:00:00Z'))
 
       const first = await search(user, { limit: 2, text: { websearch: 'walk' } })
-      expect(first.notes).toHaveLength(2)
+      expect(first.notes.map((n) => n.content)).toEqual(['Walk 10', 'Walk 09'])
       expect(first.total).toBe(3)
-      const second = await search(user, { cursor: first.next_cursor ?? undefined, limit: 2 })
+      const second = await search(user, {
+        cursor: first.next_cursor ?? undefined,
+        limit: 2,
+        text: { websearch: 'walk' },
+      })
+      expect(second.notes.map((n) => n.content)).toEqual(['Walk 08'])
+      expect(second.next_cursor).toBeNull()
       expect(second.total).toBeUndefined()
+      expect(second).not.toHaveProperty('total')
       expect((await search(user, { tags: ['none'] })).total).toBe(0)
     })
 

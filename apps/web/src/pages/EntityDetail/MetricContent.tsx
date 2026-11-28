@@ -20,15 +20,6 @@ export const MetricContent = ({ entityId }: { entityId: string }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<MetricDraft>({ time: '', value: '' })
 
-  const startEditing = useCallback(() => {
-    if (!parsed) return
-    setDraft({
-      time: formatDateTimeLocal(new Date(parsed.time)),
-      value: '', // will be populated by MetricDetail via onDraftInit
-    })
-    setIsEditing(true)
-  }, [parsed])
-
   const handleDraftInit = useCallback(
     (d: Partial<MetricDraft>) => {
       if (isEditing) setDraft((prev) => ({ ...prev, ...d }))
@@ -62,6 +53,17 @@ export const MetricContent = ({ entityId }: { entityId: string }) => {
       window.location.href = `/detail/metric/${encodeURIComponent(newEntityId)}`
     },
   })
+  const resetSave = saveMutation.reset
+
+  const startEditing = useCallback(() => {
+    if (!parsed) return
+    resetSave()
+    setDraft({
+      time: formatDateTimeLocal(new Date(parsed.time)),
+      value: '', // will be populated by MetricDetail via onDraftInit
+    })
+    setIsEditing(true)
+  }, [parsed, resetSave])
 
   return (
     <>
@@ -76,6 +78,7 @@ export const MetricContent = ({ entityId }: { entityId: string }) => {
           isEditing={isEditing}
           onStartEditing={startEditing}
           onCancelEditing={() => {
+            resetSave()
             setIsEditing(false)
             setDraft({ time: '', value: '' })
           }}
