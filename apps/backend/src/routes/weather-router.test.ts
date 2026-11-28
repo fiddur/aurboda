@@ -49,6 +49,15 @@ describe('GET /weather', () => {
     expect(response.body.hours).toHaveLength(1)
   })
 
+  test('400 for a span longer than 31 days', async () => {
+    const { app } = buildApp()
+    const ok = await supertest(app).get('/weather?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:00Z')
+    expect(ok.status).toBe(200)
+    const tooLong = await supertest(app).get('/weather?start=2026-10-01T00:00:00Z&end=2026-11-01T00:00:01Z')
+    expect(tooLong.status).toBe(400)
+    expect(tooLong.body.success).toBe(false)
+  })
+
   test('400 with neither form', async () => {
     const response = await supertest(buildApp().app).get('/weather')
     expect(response.status).toBe(400)

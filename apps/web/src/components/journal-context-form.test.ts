@@ -68,6 +68,7 @@ describe('journal context form', () => {
     moon: (item) => item,
     training_load: (item) => ({ ...item, value: 'tsb' }) as JournalContextItem,
     trend: (item) => ({ ...item, pattern: 'run' }) as JournalContextItem,
+    weather: (item) => ({ ...item, show_temperature: true }) as JournalContextItem,
   }
 
   test.each(Object.keys(completions) as ContextKind[])(
@@ -102,6 +103,7 @@ describe('journal context form', () => {
 
   test('names what an item still lacks', () => {
     expect(itemProblem(moon('a'))).toBeUndefined()
+    expect(itemProblem(withKind({ decimals: 0, id: 'a', label: '' }, 'weather'))).toBeUndefined()
     expect(itemProblem(withKind({ decimals: 0, id: 'a', label: '' }, 'metric'))).toBe('Choose a metric')
     const date: JournalContextItem = {
       decimals: 1,
@@ -174,6 +176,7 @@ describe('journal context form', () => {
         suggestedLabel({ ...withKind(moon('m'), 'metric'), metric: 'weight' } as JournalContextItem, icons),
       ).toBe('⚖️')
       expect(suggestedLabel(moon('m'), icons)).toBeUndefined()
+      expect(suggestedLabel(withKind(moon('w'), 'weather'), icons)).toBeUndefined()
     })
 
     test('fills an empty label', () => {

@@ -92,12 +92,12 @@ export const registerNoteTools = (server: McpServer, user: string) => {
 
   server.tool(
     'get_journal_context',
-    'Get the journal context line for a day: the figures the user configured in the journal_context setting (metric values, trends, days since an activity or date, the moon), computed for that calendar day. Items without a value for the day are left out; items is empty when none are configured. Each item has a ready `text` (label + value + suffix) and a full `name`.',
+    'Get the journal context line for a day: the figures the user configured in the journal_context setting (metric values, trends, days since an activity or date, the moon, the training load, the weather), computed for that calendar day; with `at` (a timed entry start) the weather is that of its hour. Items without a value for the day are left out; items is empty when none are configured. Each item has a ready `text` (label + value + suffix) and a full `name`.',
     { ...journalContextQuerySchema.shape },
-    async ({ date, tz: requestedTz }) => {
+    async ({ at, date, tz: requestedTz }) => {
       const tz = requestedTz ?? (await getUserTimezone(user))
-      const day = date ?? dayKey(new Date(), tz)
-      const context = await getJournalContext(user, day, tz)
+      const day = date ?? dayKey(at === undefined ? new Date() : new Date(at), tz)
+      const context = await getJournalContext(user, day, tz, undefined, at)
       return jsonResponse({ data: context ?? { date: day, items: [] }, success: true })
     },
   )

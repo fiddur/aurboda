@@ -8,6 +8,7 @@ import {
   type JournalContextValue,
   metricLabels,
   type MetricType,
+  type WeatherSummary,
 } from '@aurboda/api-spec'
 
 import {
@@ -25,6 +26,7 @@ import { queryMetrics } from './queries/index.ts'
 import { getEffectiveHrZones } from './settings.ts'
 import { computeTrainingLoad, createTrainingLoadDeps, type TrainingLoadDeps } from './training-load/index.ts'
 import { getTrend } from './trends.ts'
+import { getWeather } from './weather.ts'
 
 type ItemOf<K extends JournalContextItem['kind']> = Extract<JournalContextItem, { kind: K }>
 type ElapsedUnit = ItemOf<'days_since'>['unit']
@@ -32,14 +34,21 @@ type TrainingLoadKey = ItemOf<'training_load'>['value']
 
 export type TrainingLoadValues = Record<TrainingLoadKey, number>
 
+/** A day's weather, or the hour's that holds an instant (`start` = `end`). */
+export type ContextWeatherQuery = { date: string; tz: string } | { start: string; end: string }
+
 /** What every item of one context computation shares. */
 export interface ContextScope {
+  /** A timed entry's instant (ISO): the weather is that hour's rather than the day's. */
+  at?: string
   customMetrics: CustomMetricDefinition[]
   day: string
   /** The day's training load, fetched once for every training_load item of the context. */
   trainingLoad?: Promise<TrainingLoadValues | undefined>
   tz: string
   user: string
+  /** The weather, fetched once for every weather item of the context. */
+  weather?: Promise<WeatherSummary | null>
 }
 
 export interface JournalContextDeps {
@@ -51,6 +60,8 @@ export interface JournalContextDeps {
   trainingLoadValue: (scope: ContextScope) => Promise<TrainingLoadValues | undefined>
   /** Whole days from the latest occurrence of `pattern` on or before `day` to `day`. */
   daysSinceActivity: (user: string, pattern: string, day: string, tz: string) => Promise<number | undefined>
+  /** The weather summary; null when there is none. */
+  weather: (user: string, query: ContextWeatherQuery) => Promise<WeatherSummary | null>
 }
 
 /** Time from calendar day `from` to calendar day `to`; undefined when `from` is after `to`. */
@@ -104,6 +115,8 @@ export const itemName = (item: JournalContextItem): string => {
       return moonNames[item.value]
     case 'training_load':
       return trainingLoadNames[item.value]
+    case 'weather':
+      return 'Weather'
   }
 }
 
@@ -156,6 +169,42 @@ const daysSinceValue = async (
   return value === undefined ? undefined : truncateTo(value, item.decimals)
 }
 
+export const contextWeatherQuery = ({ at, day, tz }: ContextScope): ContextWeatherQuery =>
+  at === undefined ? { date: day, tz } : { end: at, start: at }
+
+/** Whole degrees: one value when the lowest and highest round alike, else the range; undefined without any. */
+export const temperatureText = (summary: WeatherSummary): string | undefined => {
+  if (summary.temperature_min === null || summary.temperature_max === null) return undefined
+  const low = fixed(Math.round(summary.temperature_min), 0)
+  const high = fixed(Math.round(summary.temperature_max), 0)
+  return low === high ? `${low}°C` : `${low}–${high}°C`
+}
+
+/**
+ * The label gets the condition emoji; the text the temperature with `show_temperature`, else the condition in
+ * words (each falling back to the other when it is missing). Undefined when there is nothing to show.
+ */
+export const weatherContextValue = (
+  item: ItemOf<'weather'>,
+  summary: WeatherSummary | null,
+): JournalContextValue | undefined => {
+  if (summary === null) return undefined
+  const label = `${item.label}${summary.emoji}`
+  const base = { decimals: 0, id: item.id, kind: item.kind, label, name: itemName(item) }
+  const temperature = temperatureText(summary)
+  const showTemperature = (): JournalContextValue | undefined =>
+    temperature === undefined || summary.temperature_avg === null
+      ? undefined
+      : { ...base, suffix: '°C', text: `${label}${temperature}`, value: summary.temperature_avg }
+  const showCondition = (): JournalContextValue | undefined =>
+    summary.code === null
+      ? undefined
+      : { ...base, suffix: '', text: `${label} ${summary.condition}`, value: summary.code }
+  return item.show_temperature
+    ? (showTemperature() ?? showCondition())
+    : (showCondition() ?? showTemperature())
+}
+
 export const computeContextValue = async (
   scope: ContextScope,
   item: JournalContextItem,
@@ -185,23 +234,41 @@ export const computeContextValue = async (
       const load = await (scope.trainingLoad ?? deps.trainingLoadValue(scope))
       return load === undefined ? undefined : formatContextValue(item, load[item.value])
     }
+    case 'weather':
+      return weatherContextValue(
+        item,
+        await (scope.weather ?? deps.weather(scope.user, contextWeatherQuery(scope))),
+      )
   }
 }
 
-/** The items' values for `day`, in order; an item without a value, or whose computation fails, is left out. */
+/**
+ * The items' values for `day`, in order; an item without a value, or whose computation fails, is left out. `at`, a
+ * timed entry's instant, gives the weather of its hour instead of the day's.
+ */
 export const contextForItems = async (
   user: string,
   items: readonly JournalContextItem[],
   day: string,
   tz: string,
   deps: JournalContextDeps,
+  at?: string,
 ): Promise<JournalContext> => {
   const needsMetrics = items.some((item) => item.kind === 'metric' || item.kind === 'trend')
   const customMetrics = needsMetrics ? await deps.getCustomMetrics(user) : []
-  const base: ContextScope = { customMetrics, day, tz, user }
-  const scope: ContextScope = items.some((item) => item.kind === 'training_load')
-    ? { ...base, trainingLoad: deps.trainingLoadValue(base) }
-    : base
+  const base: ContextScope = { customMetrics, day, tz, user, ...(at === undefined ? {} : { at }) }
+  const scope: ContextScope = {
+    ...base,
+    ...(items.some((item) => item.kind === 'training_load') && {
+      trainingLoad: deps.trainingLoadValue(base),
+    }),
+    ...(items.some((item) => item.kind === 'weather') && {
+      weather: deps.weather(user, contextWeatherQuery(base)).catch((error: unknown) => {
+        console.warn('Journal context weather failed:', error)
+        return null
+      }),
+    }),
+  }
   const values = await Promise.all(
     items.map((item) =>
       computeContextValue(scope, item, deps).catch((error: unknown) => {
@@ -210,7 +277,11 @@ export const contextForItems = async (
       }),
     ),
   )
-  return { date: day, items: values.filter((value) => value !== undefined) }
+  return {
+    ...(at === undefined ? {} : { at }),
+    date: day,
+    items: values.filter((value) => value !== undefined),
+  }
 }
 
 const mean = (values: readonly number[]): number | undefined =>
@@ -331,18 +402,33 @@ export const defaultJournalContextDeps: JournalContextDeps = {
     return result.history.length === 0 ? undefined : result.current_value
   },
   trainingLoadValue: ({ day, tz, user }) => trainingLoadAt(journalTrainingLoadDeps, user, day, tz),
+  weather: async (user, query) => {
+    const result = await getWeather(user, query)
+    return result.ok ? result.weather.summary : null
+  },
 }
 
-/** The journal context line for `date` (today in `tz` when omitted); undefined when the user configured no items. */
+/**
+ * The journal context line for `date` (when omitted, the day of `at`, else today, in `tz`); undefined when the user
+ * configured no items. `at`, a timed entry's instant, gives the weather of its hour.
+ */
 export const getJournalContext = async (
   user: string,
   date: string | undefined,
   tz: string,
   deps: JournalContextDeps = defaultJournalContextDeps,
+  at?: string,
 ): Promise<JournalContext | undefined> => {
   const items = await deps.getItems(user)
   if (items.length === 0) return undefined
-  return contextForItems(user, items, date ?? dayKey(new Date(), tz), tz, deps)
+  return contextForItems(
+    user,
+    items,
+    date ?? dayKey(at === undefined ? new Date() : new Date(at), tz),
+    tz,
+    deps,
+    at,
+  )
 }
 
 /** The calendar day a journal entry is about: a `day` entry's date, a `time` entry's start in `tz`. */
@@ -366,6 +452,7 @@ export const withJournalContext = async <
 ): Promise<T & { context?: JournalContext }> => {
   const day = entryContextDay(note, tz)
   if (day === undefined) return note
-  const context = await getJournalContext(user, day, tz, deps)
+  const at = note.entity_type === 'time' ? note.start_time : undefined
+  const context = await getJournalContext(user, day, tz, deps, at)
   return context ? { ...note, context } : note
 }

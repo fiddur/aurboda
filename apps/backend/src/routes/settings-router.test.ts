@@ -104,6 +104,18 @@ describe('weather_enabled over GET/PATCH /user/settings', () => {
   })
 })
 
+describe('a weather journal_context item over GET/PATCH /user/settings', () => {
+  test('is stored with its default and read back', async () => {
+    const patched = await supertest(app())
+      .patch('/user/settings')
+      .send({ journal_context: [{ id: 'w', kind: 'weather', label: '' }] })
+    expect(patched.status).toBe(200)
+    const expected = [{ decimals: 0, id: 'w', kind: 'weather', label: '', show_temperature: false }]
+    expect(patched.body.journal_context).toEqual(expected)
+    expect((await supertest(app()).get('/user/settings')).body.journal_context).toEqual(expected)
+  })
+})
+
 describe('tz over PATCH /user/settings', () => {
   test('stores the zone as device_timezone and answers it as tz', async () => {
     const res = await supertest(app()).patch('/user/settings').send({ tz: 'Europe/Stockholm' })

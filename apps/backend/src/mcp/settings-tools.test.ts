@@ -138,3 +138,13 @@ describe('the home dashboard through update_user_settings', () => {
     expect(store.settings).not.toHaveProperty('dashboard')
   })
 })
+
+describe('a weather journal_context item through the settings MCP tools', () => {
+  test('is stored and read back', async () => {
+    const call = setup()
+    const item = { decimals: 0, id: 'w', kind: 'weather', label: '🌡', show_temperature: true }
+    const updated = await call('update_user_settings', { journal_context: [item] })
+    expect(updated.success).toBe(true)
+    expect((await call('get_user_settings')).journal_context).toEqual([item])
+  })
+})

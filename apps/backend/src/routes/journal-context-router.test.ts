@@ -46,7 +46,13 @@ describe('GET /journal-context', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ data: { date: '2024-03-10', items: [value] }, success: true })
-    expect(journalContext.getJournalContext).toHaveBeenCalledWith('tester', '2024-03-10', 'UTC')
+    expect(journalContext.getJournalContext).toHaveBeenCalledWith(
+      'tester',
+      '2024-03-10',
+      'UTC',
+      undefined,
+      undefined,
+    )
   })
 
   test("defaults to today in the user's timezone, and answers no items when none are configured", async () => {
@@ -57,7 +63,43 @@ describe('GET /journal-context', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.data).toEqual({ date: today, items: [] })
-    expect(journalContext.getJournalContext).toHaveBeenCalledWith('tester', today, 'Europe/Stockholm')
+    expect(journalContext.getJournalContext).toHaveBeenCalledWith(
+      'tester',
+      today,
+      'Europe/Stockholm',
+      undefined,
+      undefined,
+    )
+  })
+
+  test("passes a timed entry's instant on, its day in tz being the default date", async () => {
+    const weather = {
+      decimals: 0,
+      id: 'w',
+      kind: 'weather' as const,
+      label: '⛅',
+      name: 'Weather',
+      suffix: '',
+      text: '⛅ Partly cloudy',
+      value: 2,
+    }
+    vi.mocked(journalContext.getJournalContext).mockResolvedValue({
+      at: '2024-03-10T23:30:00.000Z',
+      date: '2024-03-11',
+      items: [weather],
+    })
+
+    const res = await supertest(buildApp()).get('/').query({ at: '2024-03-10T23:30:00.000Z' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.items).toEqual([weather])
+    expect(journalContext.getJournalContext).toHaveBeenCalledWith(
+      'tester',
+      '2024-03-11',
+      'Europe/Stockholm',
+      undefined,
+      '2024-03-10T23:30:00.000Z',
+    )
   })
 
   test('refuses a malformed date or an unknown tz', async () => {

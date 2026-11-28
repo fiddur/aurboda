@@ -54,6 +54,7 @@ import {
   addTags,
   emptyEntryForm,
   entryDay,
+  entryHour,
   type EntryForm,
   entryFormProblem,
   entryTimelineHref,
@@ -1047,7 +1048,7 @@ export const EntryEditor = ({ id: initialId, templateId }: { id?: string; templa
             onInput={(e) => patch({ title: e.currentTarget.value })}
             onBlur={flush}
           />
-          <EntryContextLine context={noteContext} date={entryDay(form)} />
+          <EntryContextLine at={entryHour(form)} context={noteContext} date={entryDay(form)} />
           <EntryText
             mode={mode}
             onEdit={() => startEditing(true)}

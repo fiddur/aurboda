@@ -19,9 +19,10 @@ export const createJournalContextRouter = (authMiddleware: AnyMiddleware): Typed
     validateQuery(journalContextQuerySchema),
     async (req, res) => {
       const user = req.user!
+      const { at } = req.query
       const tz = req.query.tz ?? (await getUserTimezone(user))
-      const date = req.query.date ?? dayKey(new Date(), tz)
-      const context = await getJournalContext(user, date, tz)
+      const date = req.query.date ?? dayKey(at === undefined ? new Date() : new Date(at), tz)
+      const context = await getJournalContext(user, date, tz, undefined, at)
       res.json({ data: context ?? { date, items: [] }, success: true })
     },
   )

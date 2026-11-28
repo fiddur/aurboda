@@ -60,7 +60,42 @@ describe('note tools', () => {
     const result = await setup()('get_journal_context', { date: '2024-03-10', tz: 'UTC' })
 
     expect(body(result)).toEqual({ data: { date: '2024-03-10', items: [value] }, success: true })
-    expect(journalContext.getJournalContext).toHaveBeenCalledWith('alice', '2024-03-10', 'UTC')
+    expect(journalContext.getJournalContext).toHaveBeenCalledWith(
+      'alice',
+      '2024-03-10',
+      'UTC',
+      undefined,
+      undefined,
+    )
+  })
+
+  test("get_journal_context passes a timed entry's instant on, defaulting the day to its day", async () => {
+    const weather = {
+      decimals: 0,
+      id: 'w',
+      kind: 'weather' as const,
+      label: '⛅',
+      name: 'Weather',
+      suffix: '°C',
+      text: '⛅4°C',
+      value: 4.2,
+    }
+    vi.mocked(journalContext.getJournalContext).mockResolvedValue({
+      at: '2024-03-10T23:30:00.000Z',
+      date: '2024-03-11',
+      items: [weather],
+    })
+
+    const result = await setup()('get_journal_context', { at: '2024-03-10T23:30:00.000Z' })
+
+    expect(body(result).data.items).toEqual([weather])
+    expect(journalContext.getJournalContext).toHaveBeenCalledWith(
+      'alice',
+      '2024-03-11',
+      'Europe/Stockholm',
+      undefined,
+      '2024-03-10T23:30:00.000Z',
+    )
   })
 
   test("get_journal_context defaults to today in the user's timezone and to no items", async () => {

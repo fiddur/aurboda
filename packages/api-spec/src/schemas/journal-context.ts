@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { createDataResponseSchema, dataSourceSchema, dateOnlySchema } from './common.ts'
+import {
+  createDataResponseSchema,
+  dataSourceSchema,
+  dateOnlySchema,
+  iso8601DateTimeSchema,
+} from './common.ts'
 import { trendChartConfigSchema } from './dashboard.ts'
 import { noteSchema } from './notes.ts'
 import { ianaTimezoneSchema } from './timezone.ts'
@@ -128,6 +133,21 @@ export const journalContextTrainingLoadItemSchema = z
     id: 'JournalContextTrainingLoadItem',
   })
 
+export const journalContextWeatherItemSchema = z
+  .object({
+    ...itemBaseShape,
+    kind: z.literal('weather'),
+    show_temperature: z.boolean().default(false).meta({
+      description:
+        "Show the temperature (whole °C; a day entry's lowest–highest) instead of the condition in words",
+    }),
+  })
+  .meta({
+    description:
+      "The weather where the user was (needs the Weather data source): for an entry with a time the hour it falls in, for a day entry the day's; the label gets the condition emoji; left out when there is no weather",
+    id: 'JournalContextWeatherItem',
+  })
+
 export const journalContextItemSchema = z
   .discriminatedUnion('kind', [
     journalContextMetricItemSchema,
@@ -135,6 +155,7 @@ export const journalContextItemSchema = z
     journalContextDaysSinceItemSchema,
     journalContextMoonItemSchema,
     journalContextTrainingLoadItemSchema,
+    journalContextWeatherItemSchema,
   ])
   .meta({ description: 'One item of the journal context line', id: 'JournalContextItem' })
 
@@ -157,18 +178,23 @@ export const journalContextValueSchema = z
     decimals: z.number().int().meta({ description: 'Decimals the value is shown with' }),
     id: z.string().meta({ description: 'The configured item id' }),
     kind: z
-      .enum(['metric', 'trend', 'days_since', 'moon', 'training_load'])
+      .enum(['metric', 'trend', 'days_since', 'moon', 'training_load', 'weather'])
       .meta({ description: 'The item kind' }),
-    label: z.string().meta({ description: 'The label (for the moon followed by the phase emoji)' }),
+    label: z.string().meta({
+      description:
+        'The label (for the moon followed by the phase emoji, for the weather by the condition emoji)',
+    }),
     name: z.string().meta({ description: 'A full name of the item, e.g. for a tooltip' }),
-    suffix: z.string().meta({ description: 'Unit suffix after the value ("%", "d" or empty)' }),
+    suffix: z.string().meta({ description: 'Unit suffix after the value ("%", "d", "°C" or empty)' }),
     text: z.string().meta({
-      description: 'label + value with the decimals (dot decimal separator) + suffix',
+      description:
+        'label + value with the decimals (dot decimal separator) + suffix; for the weather label + the condition in words, or the temperature (a range for a day entry)',
       example: 'ŌR85',
     }),
-    value: z
-      .number()
-      .meta({ description: 'The value, unrounded (a days_since value is truncated to its decimals)' }),
+    value: z.number().meta({
+      description:
+        'The value, unrounded (a days_since value is truncated to its decimals; for the weather the mean temperature with show_temperature, else the WMO code)',
+    }),
   })
   .meta({ description: 'One computed item of the journal context line', id: 'JournalContextValue' })
 
@@ -176,6 +202,9 @@ export type JournalContextValue = z.infer<typeof journalContextValueSchema>
 
 export const journalContextSchema = z
   .object({
+    at: iso8601DateTimeSchema.optional().meta({
+      description: "The instant the line is for, on a timed entry's line: the weather is that hour's",
+    }),
     date: dateOnlySchema.meta({ description: 'The calendar day the line is for (YYYY-MM-DD)' }),
     items: z.array(journalContextValueSchema).meta({
       description: 'The configured items that have a value for the day, in the configured order',
@@ -190,6 +219,10 @@ export type JournalContext = z.infer<typeof journalContextSchema>
 
 export const journalContextQuerySchema = z
   .object({
+    at: iso8601DateTimeSchema.optional().meta({
+      description:
+        "An instant, a timed entry's start: the weather item shows that hour's weather instead of the day's. The day defaults to the instant's day in tz",
+    }),
     date: dateOnlySchema
       .optional()
       .meta({ description: 'The calendar day (YYYY-MM-DD); today in tz when omitted' }),

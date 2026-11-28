@@ -16,6 +16,7 @@ export const contextKindLabels: Record<ContextKind, string> = {
   moon: 'Moon',
   training_load: 'Training load',
   trend: 'Trend',
+  weather: 'Weather',
 }
 
 /** `c1`, `c2`, …: the first one no item has. */
@@ -43,6 +44,8 @@ export const withKind = (
       return { ...base, kind, value: 'illumination' }
     case 'training_load':
       return { ...base, kind, value: 'ctl' }
+    case 'weather':
+      return { ...base, kind, show_temperature: false }
   }
 }
 
@@ -98,6 +101,7 @@ export const itemProblem = (item: JournalContextItem): string | undefined => {
       return item.pattern ? undefined : 'Choose an activity type or tag'
     case 'moon':
     case 'training_load':
+    case 'weather':
       return undefined
   }
 }
@@ -178,6 +182,7 @@ export const suggestedLabel = (item: JournalContextItem, icons: IconSources): st
       return item.source_type === 'date' || !item.pattern ? undefined : patternIcon(item.pattern, icons)
     case 'moon':
     case 'training_load':
+    case 'weather':
       return undefined
   }
 }

@@ -2,6 +2,7 @@ import {
   type JournalContextItem,
   journalContextItemSchema,
   journalContextItemsSchema,
+  type WeatherSummary,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
@@ -12,7 +13,9 @@ import {
   formatContextValue,
   getJournalContext,
   type JournalContextDeps,
+  temperatureText,
   truncateTo,
+  withJournalContext,
 } from './journal-context.ts'
 import { moonPhase } from './moon.ts'
 
@@ -25,6 +28,7 @@ const deps = (overrides: Partial<JournalContextDeps> = {}): JournalContextDeps =
   metricValue: async () => undefined,
   trainingLoadValue: async () => undefined,
   trendValue: async () => undefined,
+  weather: async () => null,
   ...overrides,
 })
 
@@ -337,6 +341,172 @@ describe('contextForItems with training load', () => {
       },
     })
     expect(loads).toBe(0)
+  })
+})
+
+const summary = (overrides: Partial<WeatherSummary> = {}): WeatherSummary => ({
+  code: 2,
+  condition: 'Partly cloudy',
+  emoji: '⛅',
+  hours: 24,
+  precipitation_sum: 0,
+  temperature_avg: 4.4,
+  temperature_max: 7.6,
+  temperature_min: 2.2,
+  wind_speed_max: 5,
+  ...overrides,
+})
+
+describe('contextForItems with the weather', () => {
+  const day = '2024-03-10'
+  const weather = (raw: Record<string, unknown> = {}) => item({ id: 'w', kind: 'weather', label: '', ...raw })
+
+  test('defaults to the condition in words', () => {
+    expect(weather()).toMatchObject({ show_temperature: false })
+  })
+
+  test("a day entry shows the day's condition, the label getting its emoji", async () => {
+    const queries: unknown[] = []
+    const context = await contextForItems('u', [weather({ label: 'W' })], day, 'Europe/Stockholm', {
+      ...deps(),
+      weather: async (_user, query) => {
+        queries.push(query)
+        return summary()
+      },
+    })
+    expect(queries).toEqual([{ date: day, tz: 'Europe/Stockholm' }])
+    expect(context.items).toEqual([
+      {
+        decimals: 0,
+        id: 'w',
+        kind: 'weather',
+        label: 'W⛅',
+        name: 'Weather',
+        suffix: '',
+        text: 'W⛅ Partly cloudy',
+        value: 2,
+      },
+    ])
+    expect(context.at).toBeUndefined()
+  })
+
+  test("a day entry's temperature is the day's range", async () => {
+    const context = await contextForItems('u', [weather({ show_temperature: true })], day, 'UTC', {
+      ...deps(),
+      weather: async () => summary(),
+    })
+    expect(context.items.map((v) => [v.text, v.suffix, v.value])).toEqual([['⛅2–8°C', '°C', 4.4]])
+  })
+
+  test("a timed entry asks for the hour it falls in and shows that hour's temperature", async () => {
+    const at = '2024-03-10T14:20:00.000Z'
+    const queries: unknown[] = []
+    const context = await contextForItems(
+      'u',
+      [weather({ show_temperature: true })],
+      day,
+      'UTC',
+      {
+        ...deps(),
+        weather: async (_user, query) => {
+          queries.push(query)
+          return summary({ hours: 1, temperature_avg: -0.3, temperature_max: -0.3, temperature_min: -0.3 })
+        },
+      },
+      at,
+    )
+    expect(queries).toEqual([{ end: at, start: at }])
+    expect(context.at).toBe(at)
+    expect(context.items.map((v) => v.text)).toEqual(['⛅0°C'])
+  })
+
+  test('falls back to the other figure when the one asked for is missing', async () => {
+    const noTemperature = summary({ temperature_avg: null, temperature_max: null, temperature_min: null })
+    const noCode = summary({ code: null, condition: 'Unknown', emoji: '🌡️' })
+    const run = (s: WeatherSummary, raw: Record<string, unknown>) =>
+      contextForItems('u', [weather(raw)], day, 'UTC', { ...deps(), weather: async () => s })
+    expect((await run(noTemperature, { show_temperature: true })).items.map((v) => v.text)).toEqual([
+      '⛅ Partly cloudy',
+    ])
+    expect((await run(noCode, {})).items.map((v) => v.text)).toEqual(['🌡️2–8°C'])
+    const nothing = summary({ ...noTemperature, code: null })
+    expect((await run(nothing, {})).items).toEqual([])
+  })
+
+  test('is left out without weather, and fetched once for every weather item', async () => {
+    let lookups = 0
+    const context = await contextForItems(
+      'u',
+      [weather(), weather({ id: 'w2', show_temperature: true }), item({ id: 'm', kind: 'moon', label: '' })],
+      day,
+      'UTC',
+      {
+        ...deps(),
+        weather: async () => {
+          lookups++
+          return null
+        },
+      },
+    )
+    expect(lookups).toBe(1)
+    expect(context.items.map((v) => v.id)).toEqual(['m'])
+  })
+
+  test('is left out when the lookup fails, and not looked up without a weather item', async () => {
+    let lookups = 0
+    const failing = {
+      ...deps(),
+      weather: async () => {
+        lookups++
+        throw new Error('down')
+      },
+    }
+    const context = await quiet(() => contextForItems('u', [weather()], day, 'UTC', failing))
+    expect(context.items).toEqual([])
+    await contextForItems('u', [item({ id: 'm', kind: 'moon', label: '' })], day, 'UTC', failing)
+    expect(lookups).toBe(1)
+  })
+})
+
+describe('temperatureText', () => {
+  test('one value when the lowest and highest round alike, never -0', () => {
+    expect(temperatureText(summary({ temperature_max: 4.4, temperature_min: 3.6 }))).toBe('4°C')
+    expect(temperatureText(summary({ temperature_max: -0.2, temperature_min: -0.4 }))).toBe('0°C')
+    expect(temperatureText(summary({ temperature_max: 1, temperature_min: -3.5 }))).toBe('-3–1°C')
+    expect(temperatureText(summary({ temperature_max: null, temperature_min: null }))).toBeUndefined()
+  })
+})
+
+describe('withJournalContext', () => {
+  const items = async () => [item({ id: 'w', kind: 'weather', label: '' })]
+
+  test("a time entry's context is for its start", async () => {
+    const queries: unknown[] = []
+    const note = { entity_type: 'time', start_time: '2024-03-10T23:30:00.000Z' }
+    const result = await withJournalContext('u', note, 'Europe/Stockholm', {
+      ...deps(),
+      getItems: items,
+      weather: async (_user, query) => {
+        queries.push(query)
+        return summary()
+      },
+    })
+    expect(queries).toEqual([{ end: note.start_time, start: note.start_time }])
+    expect(result.context).toMatchObject({ at: note.start_time, date: '2024-03-11' })
+  })
+
+  test("a day entry's context is for its day", async () => {
+    const queries: unknown[] = []
+    const result = await withJournalContext('u', { date: '2024-03-10', entity_type: 'day' }, 'UTC', {
+      ...deps(),
+      getItems: items,
+      weather: async (_user, query) => {
+        queries.push(query)
+        return summary()
+      },
+    })
+    expect(queries).toEqual([{ date: '2024-03-10', tz: 'UTC' }])
+    expect(result.context?.at).toBeUndefined()
   })
 })
 

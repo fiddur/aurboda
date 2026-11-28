@@ -8,6 +8,7 @@ import { fetchJournalContext, fetchUserSettings } from '../../state/api'
 import { auth } from '../../state/auth'
 import { browserTimezone } from '../../utils/browserTimezone'
 import { ContextTokens } from './ContextTokens'
+import { hourOf } from './entry-form'
 import '../../components/DashboardEditor/style.css'
 
 const ContextDialog = ({ date, onClose }: { date: string; onClose: () => void }) => {
@@ -71,9 +72,17 @@ const ContextDialog = ({ date, onClose }: { date: string; onClose: () => void })
 
 /**
  * The entry's context line, with the button that configures it: the line the entry came with until it is
- * refetched, else the one fetched for `date` (a new entry's day).
+ * refetched, else the one fetched for `date` (a new entry's day) and, for a timed entry, `at`, the hour it starts in.
  */
-export const EntryContextLine = ({ context, date }: { context?: JournalContext; date: string }) => {
+export const EntryContextLine = ({
+  at,
+  context,
+  date,
+}: {
+  at?: string
+  context?: JournalContext
+  date: string
+}) => {
   const [open, setOpen] = useState(false)
   const { data: settings } = useQuery({
     enabled: Boolean(auth.value.token),
@@ -82,9 +91,12 @@ export const EntryContextLine = ({ context, date }: { context?: JournalContext; 
     staleTime: 5 * 60_000,
   })
   const { data } = useQuery({
-    initialData: context && context.date === date ? context : undefined,
-    queryFn: () => fetchJournalContext(date, browserTimezone() ?? undefined),
-    queryKey: ['journal-context', date],
+    initialData:
+      context && context.date === date && (context.at === undefined ? undefined : hourOf(context.at)) === at
+        ? context
+        : undefined,
+    queryFn: () => fetchJournalContext(date, browserTimezone() ?? undefined, at),
+    queryKey: at === undefined ? ['journal-context', date] : ['journal-context', date, at],
     staleTime: 60_000,
   })
   const unconfigured = settings !== undefined && (settings.journal_context?.length ?? 0) === 0

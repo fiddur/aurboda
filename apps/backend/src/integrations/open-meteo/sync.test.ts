@@ -5,7 +5,7 @@ import type { SyncState, TimeSeriesPoint } from '../../db/types.ts'
 import type { HourlyWeather } from './client.ts'
 import type { WeatherCell, WeatherRequest } from './hours.ts'
 
-import { syncWeather, type WeatherSyncDeps, weatherWindowStart } from './sync.ts'
+import { syncWeather, type WeatherSyncDeps, weatherWindowEnd, weatherWindowStart } from './sync.ts'
 
 const now = new Date('2026-11-28T12:30:00Z')
 const stockholm: WeatherCell = { lat: 59.3, lon: 18.1 }
@@ -69,6 +69,37 @@ describe('weatherWindowStart', () => {
   test('start_date reaches any date', () => {
     const startDate = new Date('2024-01-01T00:00:00Z')
     expect(weatherWindowStart(new Date('2026-11-28T09:00:00Z'), now, { startDate })).toEqual(startDate)
+  })
+
+  test('a recent start_date after an earlier sync starts there', () => {
+    const startDate = new Date('2026-11-20T00:00:00Z')
+    expect(weatherWindowStart(new Date('2026-11-28T09:00:00Z'), now, { startDate })).toEqual(startDate)
+  })
+
+  test('a first sync with a recent start_date still covers the last 90 days', () => {
+    const startDate = new Date('2026-11-20T00:00:00Z')
+    expect(weatherWindowStart(undefined, now, { startDate })).toEqual(new Date('2026-08-30T12:30:00Z'))
+  })
+
+  test('a first sync with an older start_date starts there', () => {
+    const startDate = new Date('2026-01-01T00:00:00Z')
+    expect(weatherWindowStart(undefined, now, { startDate })).toEqual(startDate)
+  })
+})
+
+describe('weatherWindowEnd', () => {
+  test('is now without a start_date', () => {
+    expect(weatherWindowEnd(new Date('2020-01-01T00:00:00Z'), now, {})).toEqual(now)
+  })
+
+  test('caps a start_date run at 366 days', () => {
+    const startDate = new Date('2024-01-01T00:00:00Z')
+    expect(weatherWindowEnd(startDate, now, { startDate })).toEqual(new Date('2025-01-01T00:00:00Z'))
+  })
+
+  test('is now when start_date is less than 366 days back', () => {
+    const startDate = new Date('2026-01-01T00:00:00Z')
+    expect(weatherWindowEnd(startDate, now, { startDate })).toEqual(now)
   })
 })
 
@@ -143,6 +174,44 @@ describe('syncWeather', () => {
     const result = await syncWeather('alice', deps)
     expect(result).toMatchObject({ cells: 20, cells_deferred: 5, status: 'success' })
     expect(states.at(-1)).toMatchObject({ status: 'idle' })
+    expect(states.at(-1)?.last_sync_time).toBeUndefined()
+  })
+
+  test('cells deferred only for a refresh do not hold the last sync time back', async () => {
+    const lastSync = new Date('2026-11-28T09:00:00Z')
+    const refreshHours = new Set(
+      Array.from({ length: 30 }, (_, i) => new Date('2026-11-26T10:00:00Z').getTime() + i * 3_600_000),
+    )
+    const stored: TimeSeriesEntry[] = [...refreshHours].map((t) => ({
+      metric: 'weather_code',
+      source: 'open_meteo',
+      time: new Date(t),
+      unit: 'wmo',
+      value: 3,
+    }))
+    const { deps, states } = makeDeps({
+      getStoredEntries: async () => stored,
+      getSyncState: async () => syncState(lastSync),
+      locateHours: async (_user, hours) =>
+        hours.map((h, i) => (refreshHours.has(h.getTime()) ? { lat: 40 + i / 10, lon: 10 } : stockholm)),
+    })
+    const result = await syncWeather('alice', deps)
+    expect(result.cells_deferred).toBeGreaterThan(0)
+    expect(states.at(-1)).toMatchObject({ last_sync_time: now, status: 'idle' })
+  })
+
+  test('a start_date run longer than 366 days stops there, says so and keeps the last sync time', async () => {
+    const located: Date[] = []
+    const { deps, states } = makeDeps({
+      getSyncState: async () => syncState(new Date('2026-11-28T09:00:00Z')),
+      locateHours: async (_user, hours) => {
+        located.push(...hours)
+        return hours.map(() => stockholm)
+      },
+    })
+    const result = await syncWeather('alice', deps, { startDate: new Date('2024-01-01T00:00:00Z') })
+    expect(result).toMatchObject({ status: 'success', window_end: '2025-01-01T00:00:00.000Z' })
+    expect(located.at(-1)).toEqual(new Date('2025-01-01T00:00:00Z'))
     expect(states.at(-1)?.last_sync_time).toBeUndefined()
   })
 

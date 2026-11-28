@@ -245,6 +245,29 @@ const TrainingLoadFields = ({
   </div>
 )
 
+const WeatherFields = ({
+  item,
+  onChange,
+}: {
+  item: Extract<JournalContextItem, { kind: 'weather' }>
+  onChange: Change
+}) => (
+  <div class="form-group">
+    <label>
+      <input
+        type="checkbox"
+        checked={item.show_temperature}
+        onChange={(e) => onChange({ ...item, show_temperature: (e.target as HTMLInputElement).checked })}
+      />{' '}
+      Show temperature
+    </label>
+    <p class="field-description">
+      Needs the <a href="/data-sources/weather">Weather</a> data source. An entry with a time shows the
+      weather of its hour, a day entry the day's.
+    </p>
+  </div>
+)
+
 const KindFields = ({ item, onChange }: { item: JournalContextItem; onChange: Change }) => {
   switch (item.kind) {
     case 'metric':
@@ -257,6 +280,8 @@ const KindFields = ({ item, onChange }: { item: JournalContextItem; onChange: Ch
       return <MoonFields item={item} onChange={onChange} />
     case 'training_load':
       return <TrainingLoadFields item={item} onChange={onChange} />
+    case 'weather':
+      return <WeatherFields item={item} onChange={onChange} />
   }
 }
 
@@ -458,8 +483,8 @@ export function JournalContextSettings({
     <div class="form-field journal-context-settings">
       <p class="field-description">
         A short line of figures shown under a journal entry's title, computed for the entry's day, e.g. a
-        readiness score, a trend, the days since an activity or the moon. An item without a value that day is
-        left out. Changes are saved as you make them.
+        readiness score, a trend, the days since an activity, the moon or the weather. An item without a value
+        that day is left out. Changes are saved as you make them.
       </p>
       {items.map((item, index) => (
         <ItemEditor

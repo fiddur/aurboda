@@ -30,4 +30,10 @@ describe('contextToken', () => {
     )
     expect(contextToken(value({ label: 'S', value: 12345 }), 'en-US')).toBe('S12345')
   })
+
+  test("shows the weather's text, which is not its value", () => {
+    expect(
+      contextToken(value({ kind: 'weather', label: '⛅', text: '⛅ Partly cloudy', value: 2 }), 'en-US'),
+    ).toBe('⛅ Partly cloudy')
+  })
 })

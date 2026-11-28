@@ -385,7 +385,7 @@ export const registerSyncTools = (
 
   server.tool(
     'sync_weather',
-    'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for where you were, sending only coordinates rounded to 0.1° (about 11 km). Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or a full_resync covers the last 90 days; later syncs continue from 48 hours before the last one; start_date fetches from that date instead (any date). At most 20 rounded locations per run: the scheduler continues a first sync by itself, a start_date fetch that reports cells_deferred is finished by calling again. Needs weather_enabled in user settings.',
+    'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for where you were, sending only coordinates rounded to 0.1° (about 11 km). Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or a full_resync covers the last 90 days; later syncs continue from 48 hours before the last one; start_date fetches from that date instead (any date; on a first sync from the earlier of start_date and 90 days ago), at most 366 days per call: a capped run reports window_end, call again with start_date from there. At most 20 rounded locations per run: the scheduler continues a first sync by itself, a start_date fetch that reports cells_deferred is finished by calling again. Needs weather_enabled in user settings.',
     { ...syncWeatherBodySchema.shape },
     async ({ full_resync, start_date }) => {
       const result = await syncWeather(user, {

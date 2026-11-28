@@ -9,10 +9,12 @@ import {
   emptyEntryForm,
   entryDay,
   entryFormProblem,
+  entryHour,
   entryTimelineHref,
   formFromNote,
   formToCreateBody,
   formToUpdateBody,
+  hourOf,
   isEntryEmpty,
   sameEntry,
   tagChips,
@@ -188,6 +190,20 @@ describe('entryDay', () => {
   test('an all-day entry is on its date, a timed one on its start day', () => {
     expect(entryDay({ allDay: true, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-20')
     expect(entryDay({ allDay: false, date: '2026-11-20', start: '2026-11-19T22:00' })).toBe('2026-11-19')
+  })
+})
+
+describe('entryHour', () => {
+  test("a timed entry's start hour, none for a day entry", () => {
+    expect(entryHour({ allDay: false, start: '2026-11-19T22:40' })).toBe(
+      hourOf(new Date(2026, 10, 19, 22, 40).toISOString()),
+    )
+    expect(entryHour({ allDay: true, start: '2026-11-19T22:40' })).toBeUndefined()
+    expect(entryHour({ allDay: false, start: '' })).toBeUndefined()
+  })
+
+  test('hourOf floors to the UTC hour', () => {
+    expect(hourOf('2026-11-19T22:40:12.345Z')).toBe('2026-11-19T22:00:00.000Z')
   })
 })
 

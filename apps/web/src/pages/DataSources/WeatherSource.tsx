@@ -104,6 +104,7 @@ function WeatherSyncSection({
         const { result } = await syncWeather(body)
         setSyncStatus(result?.status === 'success' ? 'done' : 'error')
         setSyncMessage(result ? weatherSyncMessage(result) : 'Sync failed')
+        if (result?.window_end) setOlderFrom(result.window_end.slice(0, 10))
         await queryClient.invalidateQueries({ queryKey: ['weatherSyncStatus'] })
       } catch (err) {
         setSyncStatus('error')
