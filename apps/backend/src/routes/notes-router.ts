@@ -38,7 +38,7 @@ import {
   updateNoteBodySchema,
 } from '@aurboda/api-spec'
 
-import { withJournalContext } from '../services/journal-context.ts'
+import { withJournalContext, withJournalContexts } from '../services/journal-context.ts'
 import {
   addNote,
   deleteNoteById,
@@ -79,13 +79,21 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     validateQueryOneOf((query) => (isRangeQuery(query) ? notesQueryRangeSchema : notesQuerySchema)),
     async (req, res) => {
       const user = req.user!
-      const notes =
-        'from' in req.query
-          ? await getNotesInRange(user, new Date(req.query.from), new Date(req.query.to), req.query.tz, {
-              needs_text: req.query.needs_text,
-            })
-          : await getNotesForEntity(user, req.query.entity_type, req.query.entity_id)
-      res.json({ data: notes, success: true })
+      if (!('from' in req.query)) {
+        res.json({
+          data: await getNotesForEntity(user, req.query.entity_type, req.query.entity_id),
+          success: true,
+        })
+        return
+      }
+      const { from, include_context, needs_text, to, tz } = req.query
+      const notes = await getNotesInRange(user, new Date(from), new Date(to), tz, { needs_text })
+      res.json({
+        data: include_context
+          ? await withJournalContexts(user, notes, tz ?? (await getUserTimezone(user)))
+          : notes,
+        success: true,
+      })
     },
   )
 
@@ -94,11 +102,15 @@ export const createNotesRouter = (authMiddleware: AnyMiddleware): TypedRouter =>
     authMiddleware,
     validateQuery(notesSearchQuerySchema),
     async (req, res) => {
-      const result = await searchNotesForUser(req.user!, req.query)
+      const user = req.user!
+      const result = await searchNotesForUser(user, req.query)
       if (!result.success) {
         return res.status(400).json({ error: result.error, success: false })
       }
-      res.json({ data: result.data, next_cursor: result.next_cursor, success: true, total: result.total })
+      const data = req.query.include_context
+        ? await withJournalContexts(user, result.data, req.query.tz ?? (await getUserTimezone(user)))
+        : result.data
+      res.json({ data, next_cursor: result.next_cursor, success: true, total: result.total })
     },
   )
 

@@ -32,10 +32,10 @@ describe('getTrend', () => {
     // Mock query to return daily counts with EMA values
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-01'), ema_value: 2.5 },
-        { day: new Date('2026-01-08'), ema_value: 3.0 },
-        { day: new Date('2026-01-15'), ema_value: 2.8 },
-        { day: new Date('2026-02-02'), ema_value: 3.5 },
+        { day: '2026-01-01', ema_value: 2.5 },
+        { day: '2026-01-08', ema_value: 3.0 },
+        { day: '2026-01-15', ema_value: 2.8 },
+        { day: '2026-02-02', ema_value: 3.5 },
       ],
     } as never)
 
@@ -58,8 +58,8 @@ describe('getTrend', () => {
   test('uses custom half-life and lookback days', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-02-01'), ema_value: 1.5 },
-        { day: new Date('2026-02-02'), ema_value: 2.0 },
+        { day: '2026-02-01', ema_value: 1.5 },
+        { day: '2026-02-02', ema_value: 2.0 },
       ],
     } as never)
 
@@ -80,9 +80,9 @@ describe('getTrend', () => {
   test('returns trend data for metrics', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-15'), ema_value: 72.5 },
-        { day: new Date('2026-02-01'), ema_value: 71.8 },
-        { day: new Date('2026-02-02'), ema_value: 71.5 },
+        { day: '2026-01-15', ema_value: 72.5 },
+        { day: '2026-02-01', ema_value: 71.8 },
+        { day: '2026-02-02', ema_value: 71.5 },
       ],
     } as never)
 
@@ -102,8 +102,8 @@ describe('getTrend', () => {
   test('accepts custom metrics when provided', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-20'), ema_value: 3.5 },
-        { day: new Date('2026-02-02'), ema_value: 2.1 },
+        { day: '2026-01-20', ema_value: 3.5 },
+        { day: '2026-02-02', ema_value: 2.1 },
       ],
     } as never)
 
@@ -136,8 +136,8 @@ describe('getTrend', () => {
   test('formats history dates correctly', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-15T00:00:00Z'), ema_value: 5.0 },
-        { day: new Date('2026-02-02T00:00:00Z'), ema_value: 4.5 },
+        { day: '2026-01-15', ema_value: 5.0 },
+        { day: '2026-02-02', ema_value: 4.5 },
       ],
     } as never)
 
@@ -153,8 +153,8 @@ describe('getTrend', () => {
   test('returns trend data for productivity_category', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-15'), ema_value: 2.3 },
-        { day: new Date('2026-02-02'), ema_value: 3.1 },
+        { day: '2026-01-15', ema_value: 2.3 },
+        { day: '2026-02-02', ema_value: 3.1 },
       ],
     } as never)
 
@@ -179,7 +179,7 @@ describe('getTrend', () => {
 
   test('uses sum aggregation for metrics when specified', async () => {
     vi.mocked(db.query).mockResolvedValue({
-      rows: [{ day: new Date('2026-02-02'), ema_value: 150.0 }],
+      rows: [{ day: '2026-02-02', ema_value: 150.0 }],
     } as never)
 
     const result = await getTrend('testuser', {
@@ -343,9 +343,9 @@ describe('getTrend', () => {
   test('returns breakdown trend with per-series EMA histories on one x-axis from the first sample', async () => {
     vi.mocked(db.query).mockResolvedValue({
       rows: [
-        { day: new Date('2026-01-30'), field_0: 'alice', first_day: '2026-01-30', value: 1 },
-        { day: new Date('2026-02-01'), field_0: 'bob', first_day: '2026-01-30', value: 2 },
-        { day: new Date('2026-02-01'), field_0: 'alice', first_day: '2026-01-30', value: 1 },
+        { day: '2026-01-30', field_0: 'alice', first_day: '2026-01-30', value: 1 },
+        { day: '2026-02-01', field_0: 'bob', first_day: '2026-01-30', value: 2 },
+        { day: '2026-02-01', field_0: 'alice', first_day: '2026-01-30', value: 1 },
       ],
     } as never)
 
@@ -368,7 +368,7 @@ describe('getTrend', () => {
 
   test('a breakdown series older than the window weighs a full period from its oldest displayed point', async () => {
     const daily = Array.from({ length: 60 }, (_, i) => ({
-      day: new Date(Date.UTC(2026, 1, 2 - i)),
+      day: new Date(Date.UTC(2026, 1, 2 - i)).toISOString().slice(0, 10),
       field_0: 'alice',
       first_day: '2025-01-01',
       value: 1,
@@ -441,7 +441,7 @@ describe('getTrend', () => {
 
     test('a breakdown trend lists its days in tz', async () => {
       vi.mocked(db.query).mockResolvedValue({
-        rows: [{ day: new Date('2026-02-03'), field_0: 'alice', first_day: '2026-01-01', value: 1 }],
+        rows: [{ day: '2026-02-03', field_0: 'alice', first_day: '2026-01-01', value: 1 }],
       } as never)
 
       const result = await getTrend('testuser', {

@@ -1139,6 +1139,10 @@ a.journal-related-add {
   white-space: nowrap;
 }
 
+.journal-entry-context {
+  margin: 0 0 0.25rem;
+}
+
 .journal-context-hint {
   font-style: italic;
 }

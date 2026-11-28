@@ -1,4 +1,4 @@
-import type { Note, NotesSearchResponse } from '@aurboda/api-spec'
+import type { Note, NoteDetail, NotesSearchResponse } from '@aurboda/api-spec'
 import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query'
 
 import { DELETED_NOTE_RETENTION_DAYS } from '@aurboda/api-spec'
@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   fetchDeletedEntries,
   fetchNoteTemplates,
+  JOURNAL_LIST_KEY,
   type JournalQuery,
   restoreJournalEntry,
   restoreNoteTemplate,
@@ -17,6 +18,7 @@ import {
 import { renderMarkdown } from '../../utils/markdown'
 import { entityHref } from '../Timeline/commentItems'
 import { AttachmentStrip, PictureViewer, useInlinePictures } from './Attachments'
+import { ContextTokens } from './ContextTokens'
 import {
   ActiveTags,
   JOURNAL_KEY,
@@ -40,6 +42,7 @@ import {
   journalChartHref,
   type JournalFilters as Filters,
   journalQueryFor,
+  listedContext,
   localToday,
   searchFromQuery,
   tagsFromQuery,
@@ -149,9 +152,10 @@ const EntryFoot = ({
     </footer>
   ) : null
 
-const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }) => {
+const EntryCard = ({ note, onTag }: { note: NoteDetail; onTag: (tag: string) => void }) => {
   const [viewing, setViewing] = useState<string | undefined>(undefined)
   const attachments = note.attachments ?? []
+  const context = listedContext(note)
   return (
     <article class="journal-entry">
       <EntryHead note={note} />
@@ -159,6 +163,11 @@ const EntryCard = ({ note, onTag }: { note: Note; onTag: (tag: string) => void }
         <h3 class="journal-entry-title">
           {isJournalEntry(note) ? <a href={editorHref(note)}>{note.title}</a> : note.title}
         </h3>
+      )}
+      {context && (
+        <div class="journal-context-line journal-entry-context">
+          <ContextTokens context={context} />
+        </div>
       )}
       <EntryText content={note.content} noteId={note.id} onOpenPicture={setViewing} />
       {(note.related ?? []).length > 0 && <RelatedChips links={note.related ?? []} />}
@@ -483,7 +492,7 @@ const useJournalPages = (query: JournalQuery): JournalPages =>
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       searchJournal({ ...query, cursor: pageParam }),
-    queryKey: [...JOURNAL_KEY, 'list', query],
+    queryKey: [...JOURNAL_LIST_KEY, query],
   })
 
 const JournalEntries = ({

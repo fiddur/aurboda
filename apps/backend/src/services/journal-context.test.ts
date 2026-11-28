@@ -7,6 +7,7 @@ import {
 import { describe, expect, test } from 'vitest'
 
 import {
+  clusterDays,
   contextForItems,
   elapsedSince,
   entryContextDay,
@@ -15,6 +16,7 @@ import {
   type JournalContextDeps,
   truncateTo,
   withJournalContext,
+  withJournalContexts,
 } from './journal-context.ts'
 import { moonPhase } from './moon.ts'
 
@@ -26,7 +28,7 @@ const deps = (overrides: Partial<JournalContextDeps> = {}): JournalContextDeps =
   getItems: async () => [],
   metricValue: async () => undefined,
   trainingLoadValue: async () => undefined,
-  trendValue: async () => undefined,
+  trendValues: async () => new Map(),
   weather: async () => null,
   ...overrides,
 })
@@ -179,7 +181,7 @@ describe('contextForItems', () => {
           if (metricItem.metric === 'broken') throw new Error('boom')
           return metricItem.metric === 'readiness_score' ? 85 : undefined
         },
-        trendValue: async () => 5.71,
+        trendValues: async (_scope, _item, days) => new Map(days.map((key) => [key, 5.71])),
       }),
     )
     expect(context.date).toBe(day)
@@ -272,7 +274,8 @@ describe('contextForItems', () => {
         return []
       },
       metricValue: async () => 1,
-      trendValue: async () => 2,
+      trendValues: async (_scope: unknown, _item: unknown, days: readonly string[]) =>
+        new Map(days.map((key) => [key, 2])),
     }
     const metric = (id: string) => item({ id, kind: 'metric', label: '', metric: 'weight' })
     await contextForItems(
@@ -497,6 +500,236 @@ describe('withJournalContext', () => {
     })
     expect(queries).toEqual([{ date: '2024-03-10', tz: 'UTC' }])
     expect(result.context?.at).toBeUndefined()
+  })
+})
+
+describe('withJournalContexts', () => {
+  const moonAndWeather = async () => [
+    item({ id: 'm', kind: 'moon', label: '' }),
+    item({ id: 'w', kind: 'weather', label: '' }),
+  ]
+  const counting = (overrides: Partial<JournalContextDeps> = {}) => {
+    const queries: unknown[] = []
+    const calls = { customMetrics: 0, items: 0 }
+    const d = deps({
+      getCustomMetrics: async () => {
+        calls.customMetrics++
+        return []
+      },
+      getItems: async () => {
+        calls.items++
+        return moonAndWeather()
+      },
+      weather: async (_user, query) => {
+        queries.push(query)
+        return summary()
+      },
+      ...overrides,
+    })
+    return { calls, deps: d, queries }
+  }
+
+  test('leaves the notes untouched and computes nothing when no items are configured', async () => {
+    const notes = [{ date: '2024-03-10', entity_type: 'day' }]
+    const { deps: d, queries } = counting({ getItems: async () => [] })
+    expect(await withJournalContexts('u', notes, 'UTC', d)).toEqual(notes)
+    expect(queries).toEqual([])
+  })
+
+  test('does not read the items without a journal entry, and leaves other notes untouched', async () => {
+    const notes = [{ entity_type: 'activity', start_time: '2024-03-10T10:00:00.000Z' }]
+    const { calls, deps: d } = counting()
+    expect(await withJournalContexts('u', notes, 'UTC', d)).toEqual(notes)
+    expect(calls.items).toBe(0)
+  })
+
+  test('computes once for two entries on one day, and once per day', async () => {
+    const notes = [
+      { date: '2024-03-10', entity_type: 'day', id: 'a' },
+      { date: '2024-03-10', entity_type: 'day', id: 'b' },
+      { date: '2024-03-09', entity_type: 'day', id: 'c' },
+      { entity_type: 'activity', id: 'd', start_time: '2024-03-10T10:00:00.000Z' },
+    ]
+    const {
+      calls,
+      deps: d,
+      queries,
+    } = counting({
+      getItems: async () => [
+        item({ id: 'w', kind: 'weather', label: '' }),
+        item({ id: 'x', kind: 'metric', label: 'X', metric: 'steps' }),
+      ],
+      metricValue: async () => 1,
+    })
+    const result = await withJournalContexts('u', notes, 'UTC', d)
+    expect(queries).toEqual([
+      { date: '2024-03-10', tz: 'UTC' },
+      { date: '2024-03-09', tz: 'UTC' },
+    ])
+    expect(calls.customMetrics).toBe(1)
+    expect(result.map((n) => n.context?.date)).toEqual(['2024-03-10', '2024-03-10', '2024-03-09', undefined])
+    expect(result[0].context).toEqual(result[1].context)
+  })
+
+  test('keys a time entry by its start and a day entry by its day, as withJournalContext does', async () => {
+    const time = { entity_type: 'time', start_time: '2024-03-10T14:20:00.000Z' }
+    const day = { date: '2024-03-10', entity_type: 'day' }
+    const { deps: d, queries } = counting()
+    const [timed, whole] = await withJournalContexts('u', [time, day], 'UTC', d)
+    expect(queries).toEqual([
+      { end: time.start_time, start: time.start_time },
+      { date: '2024-03-10', tz: 'UTC' },
+    ])
+    expect(timed.context).toEqual((await withJournalContext('u', time, 'UTC', d)).context)
+    expect(whole.context).toEqual((await withJournalContext('u', day, 'UTC', d)).context)
+    expect(timed.context?.at).toBe(time.start_time)
+    expect(whole.context?.at).toBeUndefined()
+  })
+
+  test('leaves replies inside a thread without a line', async () => {
+    const reply = { content: 'yes', entity_type: 'note' }
+    const [entry] = await withJournalContexts(
+      'u',
+      [{ date: '2024-03-10', entity_type: 'day', replies: [reply] }],
+      'UTC',
+      counting().deps,
+    )
+    expect(entry.context).toBeDefined()
+    expect(entry.replies).toEqual([reply])
+  })
+
+  test("a day's failing shared work leaves out only its items that need it", async () => {
+    const failing: JournalContextDeps = {
+      ...counting().deps,
+      getItems: async () => [
+        item({ id: 't', kind: 'training_load', label: 'T' }),
+        item({ id: 'm', kind: 'moon', label: 'M' }),
+      ],
+      trainingLoadValue: async (scope) => {
+        if (scope.day === '2024-03-09') throw new Error('boom')
+        return { atl: 1, ctl: 2, tsb: 1 }
+      },
+    }
+    const result = await quiet(() =>
+      withJournalContexts(
+        'u',
+        [
+          { date: '2024-03-10', entity_type: 'day' },
+          { date: '2024-03-09', entity_type: 'day' },
+        ],
+        'UTC',
+        failing,
+      ),
+    )
+    expect(result[0].context?.items.map((v) => v.id)).toEqual(['t', 'm'])
+    expect(result[1].context?.items.map((v) => v.id)).toEqual(['m'])
+  })
+
+  test('timed entries on one day compute the day items once and the weather per start, in configured order', async () => {
+    const calls = { metric: 0, trainingLoad: 0, trend: 0 }
+    const starts = ['2024-03-10T08:10:00.000Z', '2024-03-10T12:40:00.000Z', '2024-03-10T18:05:00.000Z']
+    const { deps: d, queries } = counting({
+      getItems: async () => [
+        item({ id: 'x', kind: 'metric', label: 'X', metric: 'steps' }),
+        item({ id: 'w', kind: 'weather', label: '' }),
+        item({ id: 's', kind: 'trend', label: 'S', pattern: 'sauna', source_type: 'activity_type' }),
+        item({ id: 't', kind: 'training_load', label: 'T' }),
+      ],
+      metricValue: async () => {
+        calls.metric++
+        return 1
+      },
+      trainingLoadValue: async () => {
+        calls.trainingLoad++
+        return { atl: 1, ctl: 2, tsb: 1 }
+      },
+      trendValues: async (_scope, _item, days) => {
+        calls.trend++
+        return new Map(days.map((day) => [day, 3]))
+      },
+    })
+    const result = await withJournalContexts(
+      'u',
+      starts.map((start_time) => ({ entity_type: 'time', start_time })),
+      'UTC',
+      d,
+    )
+    expect(calls).toEqual({ metric: 1, trainingLoad: 1, trend: 1 })
+    expect(queries).toEqual(starts.map((at) => ({ end: at, start: at })))
+    for (const [i, entry] of result.entries()) {
+      expect(entry.context?.at).toBe(starts[i])
+      expect(entry.context?.items.map((v) => v.id)).toEqual(['x', 'w', 's', 't'])
+      expect(entry.context).toEqual(
+        (await withJournalContext('u', { entity_type: 'time', start_time: starts[i] }, 'UTC', d)).context,
+      )
+    }
+  })
+})
+
+describe('clusterDays', () => {
+  test('sorts, deduplicates and splits where days are more than the limit apart', () => {
+    expect(clusterDays(['2024-03-31', '2024-03-01', '2024-03-01', '2024-05-02', '2024-04-01'])).toEqual([
+      ['2024-03-01', '2024-03-31', '2024-04-01'],
+      ['2024-05-02'],
+    ])
+    expect(clusterDays(['2024-03-01', '2024-03-31', '2024-05-01'])).toEqual([
+      ['2024-03-01', '2024-03-31'],
+      ['2024-05-01'],
+    ])
+    expect(clusterDays(['2024-03-01', '2024-04-01'])).toEqual([['2024-03-01'], ['2024-04-01']])
+    expect(clusterDays(['2024-03-01', '2024-04-01'], 31)).toEqual([['2024-03-01', '2024-04-01']])
+  })
+
+  test('a single day is a cluster of one, and no days none', () => {
+    expect(clusterDays(['2024-03-01'])).toEqual([['2024-03-01']])
+    expect(clusterDays([])).toEqual([])
+  })
+})
+
+describe('withJournalContexts trend batching', () => {
+  const trendItem = (id: string) =>
+    item({ id, kind: 'trend', label: id, pattern: 'sauna', source_type: 'activity_type' })
+
+  const run = async (dates: string[], trendValues: JournalContextDeps['trendValues']) =>
+    quiet(() =>
+      withJournalContexts(
+        'u',
+        dates.map((date) => ({ date, entity_type: 'day' })),
+        'UTC',
+        deps({ getItems: async () => [trendItem('a'), trendItem('b')], trendValues }),
+      ),
+    )
+
+  test('ten days in one cluster read each trend item once', async () => {
+    const asked: [string, string[]][] = []
+    const dates = Array.from({ length: 10 }, (_, i) => `2024-03-${String(10 + i * 2).padStart(2, '0')}`)
+    const result = await run(dates, async (_scope, trend, days) => {
+      asked.push([trend.id, [...days]])
+      return new Map(days.map((day, i) => [day, i]))
+    })
+    expect(asked).toEqual([
+      ['a', [...dates].sort()],
+      ['b', [...dates].sort()],
+    ])
+    expect(result.map((entry) => entry.context?.items.map((v) => v.value))).toEqual(
+      dates.map((_, i) => [i, i]),
+    )
+  })
+
+  test('two far-apart days read each item twice, and a failing read drops only its values', async () => {
+    const asked: string[] = []
+    const result = await run(['2024-03-10', '2024-06-10'], async (_scope, trend, days) => {
+      asked.push(`${trend.id} ${days.join(',')}`)
+      if (trend.id === 'b' && days[0] === '2024-06-10') throw new Error('down')
+      return new Map(days.map((day) => [day, 1]))
+    })
+    expect(asked.sort()).toEqual(['a 2024-03-10', 'a 2024-06-10', 'b 2024-03-10', 'b 2024-06-10'])
+    expect(result.map((entry) => entry.context?.items.map((v) => v.id))).toEqual([['a', 'b'], ['a']])
+  })
+
+  test('a day the trend has no value for leaves the item out', async () => {
+    const result = await run(['2024-03-10', '2024-03-12'], async () => new Map([['2024-03-12', 4]]))
+    expect(result.map((entry) => entry.context?.items.map((v) => v.id))).toEqual([[], ['a', 'b']])
   })
 })
 

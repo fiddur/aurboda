@@ -212,7 +212,7 @@ const calculateMetricTrend = async (
       ) dv2
       GROUP BY dv.day
     )
-    SELECT day, ${emaValueSql}
+    SELECT day::text AS day, ${emaValueSql}
     FROM ema_calc
     WHERE day >= ${today} - INTERVAL '1 day' * $2::integer
     ORDER BY day
@@ -223,7 +223,7 @@ const calculateMetricTrend = async (
   const history: TrendHistoryPoint[] = result.rows
     .filter((row) => row.ema_value !== null)
     .map((row) => ({
-      date: row.day.toISOString().split('T')[0],
+      date: row.day as string,
       value: Number(row.ema_value),
     }))
 
@@ -289,7 +289,7 @@ const calculateProductivityCategoryTrend = async (
       ) dv2
       GROUP BY dv.day
     )
-    SELECT day, COALESCE(ema_value, 0) as ema_value
+    SELECT day::text AS day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
     WHERE day >= ${today} - INTERVAL '1 day' * $2::integer
     ORDER BY day
@@ -298,7 +298,7 @@ const calculateProductivityCategoryTrend = async (
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
-    date: row.day.toISOString().split('T')[0],
+    date: row.day as string,
     value: Number(row.ema_value),
   }))
 
@@ -367,7 +367,7 @@ const calculateActivityTypeTrend = async (
       ) dv2
       GROUP BY dv.day
     )
-    SELECT day, COALESCE(ema_value, 0) as ema_value
+    SELECT day::text AS day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
     WHERE day >= ${today} - INTERVAL '1 day' * $2::integer
     ORDER BY day
@@ -376,7 +376,7 @@ const calculateActivityTypeTrend = async (
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
-    date: row.day.toISOString().split('T')[0],
+    date: row.day as string,
     value: Number(row.ema_value),
   }))
 
@@ -438,7 +438,7 @@ const calculateActivityTypeCountTrend = async (
       ) dc2
       GROUP BY dc.day
     )
-    SELECT day, COALESCE(ema_value, 0) as ema_value
+    SELECT day::text AS day, COALESCE(ema_value, 0) as ema_value
     FROM ema_calc
     WHERE day >= ${today} - INTERVAL '1 day' * $2::integer
     ORDER BY day
@@ -447,7 +447,7 @@ const calculateActivityTypeCountTrend = async (
   )
 
   const history: TrendHistoryPoint[] = result.rows.map((row) => ({
-    date: row.day.toISOString().split('T')[0],
+    date: row.day as string,
     value: Number(row.ema_value),
   }))
 
@@ -571,7 +571,7 @@ const calculateActivityTypeBreakdownTrend = async (
   const today = anchorDaySql(params, 3, anchorDay)
   const result = await query(
     user,
-    `SELECT date_trunc('day', a.start_time AT TIME ZONE $3::text)::date AS day,
+    `SELECT date_trunc('day', a.start_time AT TIME ZONE $3::text)::date::text AS day,
             ${breakdown.columns.join(', ')},
             ${valueExpr} AS value,
             (SELECT (MIN(start_time) AT TIME ZONE $3::text)::date::text
@@ -597,7 +597,7 @@ const calculateActivityTypeBreakdownTrend = async (
   const seriesDaily = new Map<string, Map<string, number>>()
   for (const [i, row] of result.rows.entries()) {
     const seriesKey = seriesKeys[i]
-    const day = (row.day as Date).toISOString().split('T')[0]
+    const day = row.day as string
     const value = Number(row.value)
 
     seriesDaily.getOrInsertComputed(seriesKey, () => new Map()).set(day, value)

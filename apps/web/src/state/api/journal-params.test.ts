@@ -20,6 +20,7 @@ describe('journalSearchParams', () => {
       journalSearchParams({
         cursor: 'abc',
         include_comments: true,
+        include_context: true,
         needs_text: true,
         on_this_day: '2026-11-20',
         q: ' lake ',
@@ -30,6 +31,7 @@ describe('journalSearchParams', () => {
     ).toEqual({
       cursor: 'abc',
       entity_types: 'time,day,activity,meal,report',
+      include_context: 'true',
       needs_text: 'true',
       on_this_day: '2026-11-20',
       q: 'lake',

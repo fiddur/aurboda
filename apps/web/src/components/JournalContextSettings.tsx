@@ -8,6 +8,7 @@ import {
   apiErrorMessage,
   fetchActivityTypeDefinitions,
   fetchJournalContext,
+  JOURNAL_LIST_KEY,
   updateUserSettings,
 } from '../state/api'
 import { browserTimezone } from '../utils/browserTimezone'
@@ -444,6 +445,7 @@ export function JournalContextSettings({
       savedRef.current = JSON.stringify(sent)
       queryClient.setQueryData(['userSettings'], result)
       void queryClient.invalidateQueries({ queryKey: ['journal-context'] })
+      void queryClient.invalidateQueries({ queryKey: JOURNAL_LIST_KEY })
       savingRef.current = false
       if (mountedRef.current) setStatus({ status: 'saved', time: new Date() })
       runAutosave()

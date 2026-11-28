@@ -206,6 +206,8 @@ import {
   journalContextResponseSchema,
   noteDetailResponseSchema,
   noteGetQuerySchema,
+  notesResponseSchema,
+  notesSearchResponseSchema,
 } from './schemas/journal-context.ts'
 import {
   addNamedLocationBodySchema,
@@ -284,9 +286,7 @@ import {
   mergeNoteTagsResponseSchema,
   noteResponseSchema,
   noteRevisionsResponseSchema,
-  notesResponseSchema,
   notesSearchQuerySchema,
-  notesSearchResponseSchema,
   updateNoteBodySchema,
 } from './schemas/notes.ts'
 import {

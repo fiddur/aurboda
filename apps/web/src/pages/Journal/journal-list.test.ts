@@ -17,6 +17,7 @@ import {
   commentsFromQuery,
   journalChartHref,
   journalQueryFor,
+  listedContext,
   searchFromQuery,
   tagList,
   tagsFromQuery,
@@ -126,6 +127,7 @@ describe('journalQueryFor', () => {
   test('maps the filters to the search, with no related filter by default', () => {
     expect(journalQueryFor({ ...filters, jumpTo: '2026-11-01', tags: ['lake'] }, 'walk', 'UTC')).toEqual({
       include_comments: false,
+      include_context: true,
       needs_text: false,
       q: 'walk',
       related: undefined,
@@ -143,6 +145,30 @@ describe('journalQueryFor', () => {
       related,
     })
     expect(isUnfiltered({ ...filters, related }, '')).toBe(false)
+  })
+})
+
+describe('listedContext', () => {
+  const entry = { content: 'x', date: '2026-11-20', entity_type: 'day' as const, id: 'a' }
+  const token = {
+    decimals: 0,
+    id: 'm',
+    kind: 'moon' as const,
+    label: '🌕',
+    name: 'Moon illumination',
+    suffix: '%',
+    text: '🌕99%',
+    value: 99,
+  }
+
+  test('is the line the entry came with, when it has items', () => {
+    const context = { date: '2026-11-20', items: [token] }
+    expect(listedContext({ ...entry, context })).toBe(context)
+  })
+
+  test('is none without a line or with an empty one', () => {
+    expect(listedContext(entry)).toBeUndefined()
+    expect(listedContext({ ...entry, context: { date: '2026-11-20', items: [] } })).toBeUndefined()
   })
 })
 

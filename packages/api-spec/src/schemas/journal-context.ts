@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
 import {
+  baseResponseSchema,
+  createDataArrayResponseSchema,
   createDataResponseSchema,
   dataSourceSchema,
   dateOnlySchema,
@@ -244,7 +246,7 @@ export const noteDetailSchema = noteSchema
   .extend({
     context: journalContextSchema.optional().meta({
       description:
-        "On a journal entry (a `time` or `day` root): the journal context line for the entry's day, when the user has configured one",
+        "On a journal entry (a `time` or `day` root): the journal context line for the entry's day, when the user has configured one (on a list or search, only with include_context)",
     }),
   })
   .meta({ id: 'NoteDetail' })
@@ -256,6 +258,28 @@ export const noteDetailResponseSchema = createDataResponseSchema(noteDetailSchem
 })
 
 export type NoteDetailResponse = z.infer<typeof noteDetailResponseSchema>
+
+export const notesResponseSchema = createDataArrayResponseSchema(noteDetailSchema).meta({
+  id: 'NotesResponse',
+})
+
+export type NotesResponse = z.infer<typeof notesResponseSchema>
+
+export const notesSearchResponseSchema = baseResponseSchema
+  .extend({
+    data: z.array(noteDetailSchema).optional(),
+    next_cursor: z
+      .string()
+      .nullable()
+      .optional()
+      .meta({ description: 'Cursor of the next page, or null when this is the last' }),
+    total: z.number().int().min(0).optional().meta({
+      description: 'How many entries match the query across every page; on the first page (no cursor) only',
+    }),
+  })
+  .meta({ id: 'NotesSearchResponse' })
+
+export type NotesSearchResponse = z.infer<typeof notesSearchResponseSchema>
 
 export const noteGetQuerySchema = z
   .object({
