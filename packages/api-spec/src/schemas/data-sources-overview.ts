@@ -15,6 +15,7 @@ export const dataKindIds = [
   'phone_screen_time',
   'music',
   'calendar',
+  'weather',
   'own_logging',
 ] as const
 
@@ -50,6 +51,7 @@ export const dataKinds: readonly DataKindInfo[] = [
   { id: 'phone_screen_time', label: 'Screen time on a phone', one_source_enough: false },
   { id: 'music', label: 'Music', one_source_enough: false },
   { id: 'calendar', label: 'Calendar', one_source_enough: false },
+  { id: 'weather', label: 'Weather', one_source_enough: false },
   { id: 'own_logging', label: 'Your own logging', one_source_enough: false },
 ]
 
@@ -67,6 +69,7 @@ export const dataSourceIds = [
   'mpris',
   'owntracks',
   'home_assistant',
+  'weather',
   'calendars',
 ] as const
 
@@ -190,6 +193,13 @@ export const connectableSources: readonly ConnectableSource[] = [
     kinds: ['location'],
     name: 'Home Assistant',
     path: '/data-sources/home-assistant',
+  },
+  {
+    group: 'location',
+    id: 'weather',
+    kinds: ['weather'],
+    name: 'Weather (Open-Meteo)',
+    path: '/data-sources/weather',
   },
   {
     group: 'calendar',

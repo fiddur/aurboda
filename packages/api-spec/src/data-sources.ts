@@ -102,6 +102,15 @@ export const dataSources: DataSourceInfo[] = [
     userSetup: 'Home Assistant URL, long-lived token, tracker entity',
   },
   {
+    name: 'Weather (Open-Meteo)',
+    homepage: 'https://open-meteo.com/',
+    doc: 'open-meteo.md',
+    provides: 'Hourly weather (condition, temperature, precipitation, wind) where you were',
+    how: 'Pull (API), from your rounded location history',
+    adminSetup: 'None',
+    userSetup: 'Turn on weather',
+  },
+  {
     name: 'RescueTime',
     homepage: 'https://www.rescuetime.com/',
     doc: 'rescuetime.md',

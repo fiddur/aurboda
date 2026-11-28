@@ -203,6 +203,7 @@ describe('getHrvActivitiesCorrelation', () => {
       syncHomeAssistantIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncOuraIfNeeded: vi.fn().mockResolvedValue(undefined),
       syncRescueTimeIfNeeded: vi.fn().mockResolvedValue(undefined),
+      syncWeatherIfNeeded: vi.fn().mockResolvedValue(undefined),
     }
 
     await getHrvActivitiesCorrelation('testuser', 30, syncProvider)

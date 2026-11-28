@@ -205,6 +205,7 @@ describe('gateSyncProvider', () => {
     syncLastFmIfNeeded: vi.fn(async () => {}),
     syncOuraIfNeeded: vi.fn(async () => {}),
     syncRescueTimeIfNeeded: vi.fn(async () => {}),
+    syncWeatherIfNeeded: vi.fn(async () => {}),
   })
 
   const callAll = async (sync: SyncProvider, user: string) => {
@@ -215,6 +216,7 @@ describe('gateSyncProvider', () => {
     await sync.syncLastFmIfNeeded(user)
     await sync.syncOuraIfNeeded(user, 'tags')
     await sync.syncRescueTimeIfNeeded(user)
+    await sync.syncWeatherIfNeeded(user)
   }
 
   test('skips every pull for a read-only user', async () => {

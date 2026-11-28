@@ -82,6 +82,7 @@ export interface SyncProvider {
   syncLastFmIfNeeded: (user: string) => Promise<void>
   syncGravlIfNeeded: (user: string) => Promise<void>
   syncHomeAssistantIfNeeded: (user: string) => Promise<void>
+  syncWeatherIfNeeded: (user: string) => Promise<void>
 }
 
 export interface MetricDataPoint {

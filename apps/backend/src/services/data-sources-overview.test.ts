@@ -28,6 +28,7 @@ const noSettings: SourceSettings = {
   oura_connected: false,
   rescue_time_key: null,
   strava_connected: false,
+  weather_enabled: false,
 }
 
 const noActivity: RecentSourceActivity = {
@@ -115,6 +116,19 @@ describe('buildDataSourcesOverview', () => {
       detail: 'Not connected',
       status: 'not_set_up',
     })
+  })
+
+  test('weather is active once enabled, and is a kind of its own', () => {
+    expect(source(buildDataSourcesOverview(signals()), 'weather')).toMatchObject({
+      detail: 'Not enabled',
+      group: 'location',
+      kinds: ['weather'],
+      status: 'not_set_up',
+    })
+    const overview = buildDataSourcesOverview(signals({ weather_enabled: true }))
+    expect(source(overview, 'weather')).toMatchObject({ detail: 'Enabled', status: 'active' })
+    expect(kind(overview, 'weather')).toMatchObject({ active_sources: ['weather'], overlap: false })
+    expect(kind(overview, 'location').available_sources).not.toContain('weather')
   })
 
   test('Garmin and Oura both feed sleep without an overlap warning', () => {

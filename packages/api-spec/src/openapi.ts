@@ -438,6 +438,9 @@ import {
   syncRescueTimeBodySchema,
   syncResponseSchema,
   syncStatusResponseSchema,
+  syncWeatherBodySchema,
+  weatherSyncResponseSchema,
+  weatherSyncStatusResponseSchema,
 } from './schemas/sync.ts'
 import { activityTrackResponseSchema, trackBackfillResponseSchema } from './schemas/tracks.ts'
 import {
@@ -446,6 +449,7 @@ import {
   uploadResultResponseSchema,
   uploadUrlResponseSchema,
 } from './schemas/uploads.ts'
+import { weatherQuerySchema, weatherResponseSchema } from './schemas/weather.ts'
 import {
   webauthnAuthOptionsBodySchema,
   webauthnAuthOptionsResponseSchema,
@@ -5878,6 +5882,73 @@ const openApiDocument = createDocument({
         tags: ['Sync'],
       },
     },
+    '/sync/weather': {
+      post: {
+        description:
+          'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for the places in your location history, sending only coordinates rounded to 0.1°. Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or full_resync covers the last 90 days; later syncs continue from 48 hours before the last sync; start_date fetches from that date instead (older than 90 days from the archive). At most 20 rounded locations per run, the most used first: the scheduler continues a first sync by itself, a start_date fetch that reports cells_deferred is finished by fetching again. Requires weather_enabled in user settings.',
+        requestBody: {
+          content: { 'application/json': { schema: syncWeatherBodySchema } },
+        },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: weatherSyncResponseSchema } },
+            description: 'Sync result',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Sync weather',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/weather/status': {
+      get: {
+        description: 'Current weather sync state: last sync time, status and error.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: weatherSyncStatusResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get weather sync status',
+        tags: ['Sync'],
+      },
+    },
+    '/sync/weather/state': {
+      delete: {
+        description:
+          'Forget the weather sync state, the last sync time included, so the next sync is a first sync. Stored weather is kept.',
+        responses: {
+          200: {
+            content: { 'application/json': { schema: syncResponseSchema } },
+            description: 'Successful response',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Reset weather sync state',
+        tags: ['Sync'],
+      },
+    },
+    '/weather': {
+      get: {
+        description:
+          "The stored hourly weather where you were, for a calendar day (date, with tz) or a span (start and end; every hour that overlaps it), with a summary. A day's summary follows the rounded location where most of its hours were spent, and its condition the hours 07:00–21:59 when any of them has a code. The same as the get_weather MCP tool.",
+        requestParams: { query: weatherQuerySchema },
+        responses: {
+          200: {
+            content: { 'application/json': { schema: weatherResponseSchema } },
+            description: 'Successful response',
+          },
+          400: {
+            content: { 'application/json': { schema: errorResponseSchema } },
+            description: 'Neither or both of date and start/end given',
+          },
+        },
+        security: [{ bearerAuth: [] }],
+        summary: 'Get the weather for a day or span',
+        tags: ['Weather'],
+      },
+    },
     '/data-sources/overview': {
       get: {
         description:
@@ -7104,6 +7175,7 @@ const openApiDocument = createDocument({
       description: 'Data synchronization with external services',
       name: 'Sync',
     },
+    { description: 'Hourly weather where you were, from Open-Meteo', name: 'Weather' },
   ],
 })
 

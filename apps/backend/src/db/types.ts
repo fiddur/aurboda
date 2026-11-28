@@ -503,12 +503,13 @@ export interface UserSettings {
   home_assistant_url?: string // Home Assistant base URL (origin + path, no trailing slash)
   home_assistant_token?: string // Home Assistant long-lived access token (write-only)
   home_assistant_entity_id?: string // device_tracker.* or person.* entity to pull locations from
+  weather_enabled?: boolean // Fetch hourly weather for rounded locations from Open-Meteo (opt-in)
   sync_intervals?: SyncIntervals // Per-provider background poll intervals in minutes, `default` as fallback
 }
 
 /**
  * Background sync poll intervals in minutes, keyed by provider
- * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`, `home_assistant`) with
+ * (`gravl`, `garmin`, `oura`, `rescuetime`, `lastfm`, `calendar`, `home_assistant`, `weather`) with
  * `default` as the fallback for providers without an explicit entry.
  */
 export type SyncIntervals = Partial<Record<string, number>>

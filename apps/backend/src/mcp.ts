@@ -102,6 +102,7 @@ import { installToolCatalogue } from './mcp/tool-catalogue.ts'
 import { registerTrainingLoadTools } from './mcp/training-load-tools.ts'
 import { registerTrendTools } from './mcp/trend-tools.ts'
 import { registerUploadUrlTools } from './mcp/upload-url-tools.ts'
+import { registerWeatherTools } from './mcp/weather-tools.ts'
 import { type AccountGate, safeRefusal } from './services/account-gate.ts'
 import { checkInDeps } from './services/check-ins.ts'
 import { createDefaultEngineDeps } from './services/deduction-deps.ts'
@@ -257,6 +258,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   })
   registerSettingsTools(server, user, deps.onHrSettingsChanged, deps.onProfileChanged)
   registerLocationTools(server, user, deps.onNamedLocationsChanged)
+  registerWeatherTools(server, user)
   registerCorrelationTools(server, user, deps.sync)
   registerTrainingLoadTools(server, user)
   registerTrendTools(server, user)

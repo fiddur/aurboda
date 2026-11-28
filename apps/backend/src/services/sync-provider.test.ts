@@ -524,6 +524,77 @@ describe('createSyncProvider › syncHomeAssistantIfNeeded', () => {
   })
 })
 
+describe('createSyncProvider › syncWeatherIfNeeded', () => {
+  const result = { cells: 0, cells_deferred: 0, hours_stored: 0, status: 'success' as const }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-01T06:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('does nothing while weather is not enabled', async () => {
+    vi.mocked(getSettings).mockResolvedValue({} as never)
+    const syncWeather = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncWeather }).syncWeatherIfNeeded('alice')
+    expect(syncWeather).not.toHaveBeenCalled()
+  })
+
+  test('does nothing within the 180-minute default interval', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ weather_enabled: true } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T03:30:00Z'),
+    } as never)
+    const syncWeather = vi.fn().mockResolvedValue(result)
+    await createSyncProvider({ syncThresholdMinutes: 1, syncWeather }).syncWeatherIfNeeded('alice')
+    expect(syncWeather).not.toHaveBeenCalled()
+  })
+
+  test('syncs when the last sync is older than the interval, or never happened', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ weather_enabled: true } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T02:59:00Z'),
+    } as never)
+    const syncWeather = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncWeather })
+    await provider.syncWeatherIfNeeded('alice')
+    expect(syncWeather).toHaveBeenCalledWith('alice')
+
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue(null)
+    await provider.syncWeatherIfNeeded('alice')
+    expect(syncWeather).toHaveBeenCalledTimes(2)
+  })
+
+  test('honours the user’s own weather interval and a pending retry_after', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      sync_intervals: { weather: 30 },
+      weather_enabled: true,
+    } as never)
+    vi.mocked(dbIndex.getSyncState).mockResolvedValue({
+      last_sync_time: new Date('2026-06-01T05:00:00Z'),
+      retry_after: new Date('2026-06-01T06:30:00Z'),
+      status: 'error',
+    } as never)
+    const syncWeather = vi.fn().mockResolvedValue(result)
+    const provider = createSyncProvider({ recheckMs: 0, syncWeather })
+    await provider.syncWeatherIfNeeded('alice')
+    expect(syncWeather).not.toHaveBeenCalled()
+
+    vi.setSystemTime(new Date('2026-06-01T06:31:00Z'))
+    await provider.syncWeatherIfNeeded('alice')
+    expect(syncWeather).toHaveBeenCalledTimes(1)
+  })
+
+  test('skips when the integration is not wired', async () => {
+    await expect(createSyncProvider({}).syncWeatherIfNeeded('alice')).resolves.toBeUndefined()
+    expect(getSettings).not.toHaveBeenCalled()
+  })
+})
+
 describe('createSyncProvider › recheck debounce', () => {
   const stale = new Date('2026-06-01T00:00:00Z')
 

@@ -65,6 +65,7 @@ const DataSources = lazyPage(() => import('./pages/DataSources/index.jsx'), 'Dat
 const LastFmSource = lazyPage(() => import('./pages/DataSources/LastFmSource.jsx'), 'LastFmSource')
 const OuraSource = lazyPage(() => import('./pages/DataSources/OuraSource.jsx'), 'OuraSource')
 const OwnTracksSource = lazyPage(() => import('./pages/DataSources/OwnTracksSource.jsx'), 'OwnTracksSource')
+const WeatherSource = lazyPage(() => import('./pages/DataSources/WeatherSource.jsx'), 'WeatherSource')
 const RescueTimeSource = lazyPage(
   () => import('./pages/DataSources/RescueTimeSource.jsx'),
   'RescueTimeSource',
@@ -242,6 +243,7 @@ function AppShell() {
             <Route path="/data-sources/lastfm" component={LastFmSource} />
             <Route path="/data-sources/owntracks" component={OwnTracksSource} />
             <Route path="/data-sources/home-assistant" component={HomeAssistantSource} />
+            <Route path="/data-sources/weather" component={WeatherSource} />
             <Route path="/data-sources/calendars" component={CalendarsSource} />
             <Route path="/activity-types" component={ActivityTypes} />
             <Route path="/deduction-rules/:id" component={DeductionRuleDetail} />

@@ -131,6 +131,7 @@ import { createTracksRouter } from '../routes/tracks-router.ts'
 import { createTrainingLoadRouter } from '../routes/training-load-router.ts'
 import { createTrendsRouter } from '../routes/trends-router.ts'
 import { createUploadUrlRouter } from '../routes/uploads-router.ts'
+import { createWeatherRouter } from '../routes/weather-router.ts'
 import { createWebAuthnRouter } from '../routes/webauthn-router.ts'
 import { createWellKnownRouter, type WellKnownConfig } from '../routes/well-known-router.ts'
 import {
@@ -369,6 +370,7 @@ export const mountRestRouters = ({
     '/home-assistant',
     createHomeAssistantRouter(authMiddleware, { client: homeAssistant, getSettings }),
   )
+  httpd.use('/weather', createWeatherRouter(authMiddleware))
   httpd.use(createSettingsRouter(authMiddleware, onHrSettingsChanged, onProfileChanged))
   httpd.use(createAuditLogRouter(authMiddleware))
   httpd.use('/export', createExportRouter({ authMiddleware, ...dataExport }))

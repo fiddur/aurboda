@@ -76,6 +76,10 @@ export const validMetrics = [
   'strength_score_quadriceps',
   'strength_score_hamstrings',
   'strength_score_glutes',
+  'weather_code',
+  'weather_temperature',
+  'weather_precipitation',
+  'weather_wind_speed',
 ] as const
 
 export const metricTypeSchema = z.enum(validMetrics).meta({
@@ -205,6 +209,7 @@ export const dataSourceSchema = z
     'lastfm-auto',
     'mpris',
     'location-detection',
+    'open_meteo',
   ])
   .meta({
     description: 'Source of the data',
@@ -306,6 +311,10 @@ export const metricUnits: Record<MetricType, string> = {
   strength_score_quadriceps: 'points',
   strength_score_hamstrings: 'points',
   strength_score_glutes: 'points',
+  weather_code: 'wmo',
+  weather_temperature: 'celsius',
+  weather_precipitation: 'mm',
+  weather_wind_speed: 'm/s',
 }
 
 export const metricAggregationSchema = z.enum(['avg', 'sum']).meta({
@@ -482,6 +491,10 @@ export const metricLabels: Record<string, string> = {
   strength_score_quadriceps: 'Strength Score (Quadriceps)',
   strength_score_hamstrings: 'Strength Score (Hamstrings)',
   strength_score_glutes: 'Strength Score (Glutes)',
+  weather_code: 'Weather Code (WMO)',
+  weather_temperature: 'Outdoor Temperature',
+  weather_precipitation: 'Precipitation',
+  weather_wind_speed: 'Wind Speed',
 }
 
 export const getMetricDisplayName = (metric: string): string => metricLabels[metric] ?? metric
@@ -506,6 +519,7 @@ export const sumMetrics: MetricType[] = [
   'hr_zone_5_sec',
   'training_impulse',
   'activity_impulse',
+  'weather_precipitation',
 ]
 
 export const getMetricAggregation = (

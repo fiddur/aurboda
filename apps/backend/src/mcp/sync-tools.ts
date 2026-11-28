@@ -11,7 +11,9 @@ import {
   syncProviderSchema,
   syncRescueTimeBodySchema,
   syncStravaBodySchema,
+  syncWeatherBodySchema,
   tzSchema,
+  type WeatherSyncResult,
 } from '@aurboda/api-spec'
 import { subDays } from 'date-fns'
 import { z } from 'zod'
@@ -42,6 +44,7 @@ import {
 import { syncGravlWorkouts } from '../integrations/gravl/sync.ts'
 import { syncAllCalendars } from '../integrations/ical/sync.ts'
 import { DEFAULT_SYNC_HISTORY_DAYS, syncLastFmData } from '../integrations/lastfm/sync.ts'
+import { defaultWeatherSyncDeps, syncWeather as syncWeatherData } from '../integrations/open-meteo/sync.ts'
 import { syncAllOuraData } from '../integrations/oura/sync.ts'
 import { syncRescueTimeData } from '../integrations/rescuetime/sync.ts'
 import { syncStrava } from '../integrations/strava/sync.ts'
@@ -69,7 +72,14 @@ export interface SyncToolDeps {
   ) => Promise<HomeAssistantSyncResult>
   homeAssistant?: HomeAssistantClient
   reprocessGarminPushes?: (user: string, since?: Date) => Promise<number>
+  syncWeather?: (
+    user: string,
+    options?: { fullResync?: boolean; startDate?: Date },
+  ) => Promise<WeatherSyncResult>
 }
+
+const defaultSyncWeather = (user: string, options?: { fullResync?: boolean; startDate?: Date }) =>
+  syncWeatherData(user, defaultWeatherSyncDeps(), options)
 
 export const registerSyncTools = (
   server: McpServer,
@@ -85,6 +95,7 @@ export const registerSyncTools = (
     syncHomeAssistant,
     homeAssistant,
     reprocessGarminPushes,
+    syncWeather = defaultSyncWeather,
   }: SyncToolDeps = {},
 ) => {
   server.tool(
@@ -372,6 +383,19 @@ export const registerSyncTools = (
     },
   )
 
+  server.tool(
+    'sync_weather',
+    'Fetch the hourly weather (WMO code, temperature, precipitation, wind speed) from Open-Meteo for where you were, sending only coordinates rounded to 0.1° (about 11 km). Each hour gets the last location fix at or before its middle, carried forward up to 7 days. The first sync or a full_resync covers the last 90 days; later syncs continue from 48 hours before the last one; start_date fetches from that date instead (any date). At most 20 rounded locations per run: the scheduler continues a first sync by itself, a start_date fetch that reports cells_deferred is finished by calling again. Needs weather_enabled in user settings.',
+    { ...syncWeatherBodySchema.shape },
+    async ({ full_resync, start_date }) => {
+      const result = await syncWeather(user, {
+        fullResync: full_resync,
+        startDate: start_date ? new Date(start_date) : undefined,
+      })
+      return jsonResponse({ result, success: result.status === 'success' })
+    },
+  )
+
   const syncProviders = [
     'oura',
     'garmin',
@@ -382,11 +406,12 @@ export const registerSyncTools = (
     'activitywatch',
     'gravl',
     'home_assistant',
+    'weather',
   ] as const
 
   server.tool(
     'get_sync_status',
-    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, ActivityWatch, Gravl and Home Assistant data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
+    'Get the current sync status for Oura, Garmin, Strava, RescueTime, Calendar, Last.fm, ActivityWatch, Gravl, Home Assistant and weather data sources. Shows last sync time, status, and any errors. For Strava, also includes queue counts (pending and active jobs).',
     {
       provider: syncProviderSchema.optional().describe('Which provider to check. Defaults to "all".'),
       tz: tzSchema,
@@ -421,6 +446,7 @@ export const registerSyncTools = (
     'calendar',
     'lastfm',
     'home_assistant',
+    'weather',
   ] as const
 
   server.tool(
