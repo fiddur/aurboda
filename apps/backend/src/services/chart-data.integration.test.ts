@@ -453,6 +453,23 @@ describe('breaking a chart down by who the activity was with (@people)', () => {
     ])
   })
 
+  test('a same-named person keeps their suffix in a range the other is absent from', async () => {
+    const user = getTestUser()
+    await insertPerson(user, { name: 'Anna' })
+    const gone = await insertPerson(user, { name: 'Anna' })
+    const anna2 = await insertPerson(user, { name: 'Anna' })
+    await softDeletePerson(user, gone.id)
+    await addActivityPeople(user, await walk(user, '2026-06-02T10:00:00Z', 60), [anna2.id])
+
+    const result = await getChartData(user, {
+      ...juneInput,
+      aggregation: 'count',
+      breakdown_fields: ['@people'],
+    })
+
+    expect(result.breakdown_series).toEqual(['Anna (2)'])
+  })
+
   test('compound with a data field, in the order of breakdown_fields', async () => {
     const user = getTestUser()
     await seedJune(user)

@@ -6,6 +6,10 @@ import { foldSeries, journalFiltersOf, journalSeriesNames } from './journal-char
 const day = new Date('2024-03-04T00:00:00Z')
 const alex = { created_at: new Date('2024-01-01T00:00:00Z'), id: 'a', name: 'Alex' }
 const otherAlex = { created_at: new Date('2024-02-01T00:00:00Z'), id: 'b', name: 'Alex' }
+const labels = new Map([
+  ['a', 'Alex'],
+  ['b', 'Alex (2)'],
+])
 
 describe('journalSeriesNames', () => {
   test('names a tag series by the tag and an untagged entry (none)', () => {
@@ -13,22 +17,22 @@ describe('journalSeriesNames', () => {
       { bucket_start: day, tag: 'travel', value: 1 },
       { bucket_start: day, tag: null, value: 2 },
     ]
-    expect(journalSeriesNames(rows, ['@tags'])).toEqual(['travel', '(none)'])
+    expect(journalSeriesNames(rows, ['@tags'], labels)).toEqual(['travel', '(none)'])
   })
 
-  test('labels same-named people apart, (none) for no one', () => {
+  test('names a person by their label, (none) for no one', () => {
     const rows = [
       { bucket_start: day, person: otherAlex, value: 1 },
       { bucket_start: day, person: alex, value: 1 },
       { bucket_start: day, person: null, value: 1 },
     ]
-    expect(journalSeriesNames(rows, ['@people'])).toEqual(['Alex (2)', 'Alex', '(none)'])
+    expect(journalSeriesNames(rows, ['@people'], labels)).toEqual(['Alex (2)', 'Alex', '(none)'])
   })
 
   test('joins both fields in the order given', () => {
     const rows = [{ bucket_start: day, person: alex, tag: 'work', value: 1 }]
-    expect(journalSeriesNames(rows, ['@people', '@tags'])).toEqual(['Alex / work'])
-    expect(journalSeriesNames(rows, ['@tags', '@people'])).toEqual(['work / Alex'])
+    expect(journalSeriesNames(rows, ['@people', '@tags'], labels)).toEqual(['Alex / work'])
+    expect(journalSeriesNames(rows, ['@tags', '@people'], labels)).toEqual(['work / Alex'])
   })
 })
 

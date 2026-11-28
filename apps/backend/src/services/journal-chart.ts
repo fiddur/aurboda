@@ -31,7 +31,7 @@ import {
 import { UUID_RE } from '../utils.ts'
 import { dayEndInTz, dayKey, dayKeysEndingAt, dayStartInTz } from './day-keys.ts'
 import { splitSearchText } from './notes.ts'
-import { NONE_LABEL, personSeriesLabels } from './people-breakdown.ts'
+import { NONE_LABEL, stablePersonSeriesLabels } from './people-breakdown.ts'
 import { computeEma, displayUnits, warmupLength } from './trend-ema.ts'
 
 type JournalFilters = Omit<JournalFilterParams, 'tz'>
@@ -86,10 +86,15 @@ const breakdownOf = (fields: string[]): { tags: boolean; people: boolean } => {
   return { people: fields.some(isPeopleBreakdownField), tags: fields.some(isTagsBreakdownField) }
 }
 
-/** Each row's series name: its tag and/or person in the order of `fields`, joined by ` / `. */
-export const journalSeriesNames = (rows: JournalSeriesRow[], fields: string[]): string[] => {
-  const labels = personSeriesLabels(rows.flatMap((row) => (row.person ? [row.person] : [])))
-  return rows.map((row) =>
+const rowPeople = (rows: JournalSeriesRow[]) => rows.flatMap((row) => (row.person ? [row.person] : []))
+
+/** Each row's series name: its tag and/or person (by `labels`) in the order of `fields`, joined by ` / `. */
+export const journalSeriesNames = (
+  rows: JournalSeriesRow[],
+  fields: string[],
+  labels: Map<string, string>,
+): string[] =>
+  rows.map((row) =>
     fields
       .map((field) => {
         if (isTagsBreakdownField(field)) return row.tag ?? NONE_LABEL
@@ -97,7 +102,6 @@ export const journalSeriesNames = (rows: JournalSeriesRow[], fields: string[]): 
       })
       .join(' / '),
   )
-}
 
 /**
  * At most `max` series: with more, the `max - 1` with the highest total (ties by name) are kept and
@@ -164,7 +168,7 @@ export const getJournalChartData = async (
     }
   }
 
-  const names = journalSeriesNames(rows, fields)
+  const names = journalSeriesNames(rows, fields, await stablePersonSeriesLabels(user, rowPeople(rows)))
   const totals = new Map<string, number>()
   rows.forEach((row, i) => sumInto(totals, names[i], row.value))
   const { nameOf, series } = foldSeries(totals)
@@ -248,7 +252,7 @@ export const getJournalTrend = async (
     return { ...base, current_value: history.at(-1)?.value ?? 0, history }
   }
 
-  const names = journalSeriesNames(rows, fields)
+  const names = journalSeriesNames(rows, fields, await stablePersonSeriesLabels(user, rowPeople(rows)))
   const displayStart = days[Math.min(Math.ceil(warmupCount), days.length - 1)]
   const totals = new Map<string, number>()
   rows.forEach((row, i) => {

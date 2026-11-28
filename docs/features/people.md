@@ -83,8 +83,9 @@ up to more than the total), and `(none)` for an activity with no one. It combine
 fields (`Anna / happy`) and, with a measure, with a per-exercise or per-muscle-group breakdown. A
 synced activity and its override, or the members of a merge, count once with the people of all of
 them; deleted people are left out and archived ones kept, and two people with the same name get
-separate series (`Anna`, `Anna (2)`, by who was added first). Clicking a bar opens its activities
-filtered by the other fields only.
+separate series (`Anna`, `Anna (2)`, numbered by who was added first among all your people with that
+name, so a person keeps the same label in every chart and period, even one the other Anna is not
+in). Clicking a bar opens its activities filtered by the other fields only.
 
 Saving such a chart to a board ticks **With** under "Mask on public boards", so a shared board shows
 A, B, C… instead of names; unticking it warns "Names of the people will be visible to anyone who can
