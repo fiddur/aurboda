@@ -484,7 +484,7 @@ describe('resolveDashboardData integration', () => {
 
   test('an all-time chart (lookback_days 0) starts on the first day its source has data', async () => {
     const user = getTestUser()
-    await insertNote(user, 'time', null, 'Back then', new Date('1995-06-15T12:00:00Z'))
+    await insertNote(user, 'time', null, 'Back then', new Date('1995-06-15T00:30:00Z'))
     await insertNote(user, 'time', null, 'Lately', new Date('2020-06-15T12:00:00Z'))
 
     const data = await resolveDashboardData(user, {

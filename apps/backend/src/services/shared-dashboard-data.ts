@@ -400,22 +400,26 @@ const resolveBarChart = async (
 const resolveCombinedLayer = async (
   user: string,
   layer: Extract<DashboardWidget, { type: 'combined_chart' }>['config']['layers'][number],
-  lookback_days: number,
+  lookback: { bars: number; trend: number },
   tz: string,
   options: ResolveOptions,
 ): Promise<CombinedChartLayerData> => {
   if (layer.kind === 'bars') {
     const { kind, ...source } = layer
-    const resolved = await resolveBarChart(user, { ...source, lookback_days }, tz, options)
+    const resolved = await resolveBarChart(user, { ...source, lookback_days: lookback.bars }, tz, options)
     return { data: resolved.type === 'bar_chart' ? resolved.data : null, kind }
   }
   const { color: _color, kind, ...source } = layer
-  const resolved = await resolveTrendChart(user, { ...source, lookback_days }, tz, options)
+  const resolved = await resolveTrendChart(user, { ...source, lookback_days: lookback.trend }, tz, options)
   return { data: resolved.type === 'trend_chart' ? resolved.data : null, kind }
 }
 
-/** A combined chart's shared lookback; for all time, the days from its bars layer's first day. */
-const combinedLookbackDays = async (
+/**
+ * The lookback of a combined chart's trend layers; for all time, the days from its bars layer's first day. The bars
+ * layer keeps the all-time lookback itself, so it starts at that day's midnight as a bar card does, not at the
+ * current time of day that many days back.
+ */
+const combinedTrendLookbackDays = async (
   user: string,
   config: Extract<DashboardWidget, { type: 'combined_chart' }>['config'],
   tz: string,
@@ -434,10 +438,13 @@ const resolveCombinedChart = async (
   tz: string,
   options: ResolveOptions,
 ): Promise<WidgetData> => {
-  const lookbackDays = await combinedLookbackDays(user, config, tz, options)
+  const lookback = {
+    bars: config.lookback_days,
+    trend: await combinedTrendLookbackDays(user, config, tz, options),
+  }
   const layers = await Promise.all(
     config.layers.map((layer) =>
-      resolveCombinedLayer(user, layer, lookbackDays, tz, options).catch(
+      resolveCombinedLayer(user, layer, lookback, tz, options).catch(
         (error: unknown): CombinedChartLayerData => {
           console.warn(`Failed to resolve a ${layer.kind} layer of a combined chart:`, error)
           return layer.kind === 'bars' ? { data: null, kind: 'bars' } : { data: null, kind: 'trend' }

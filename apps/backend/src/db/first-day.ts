@@ -8,7 +8,6 @@ const firstDayOf = async (user: string, sql: string, params: unknown[]): Promise
 
 const liveActivitySql = 'deleted_at IS NULL AND superseded_by IS NULL'
 
-/** The first local day in `tz` of a live activity of one of `types`. */
 export const getFirstActivityDay = (user: string, types: string[], tz: string): Promise<string | undefined> =>
   types.length === 0
     ? Promise.resolve(undefined)
@@ -20,7 +19,6 @@ export const getFirstActivityDay = (user: string, types: string[], tz: string): 
         [types, tz],
       )
 
-/** The first local day in `tz` of a live activity whose type matches the case-insensitive regex `pattern`. */
 export const getFirstActivityDayMatching = (
   user: string,
   pattern: string,
@@ -46,7 +44,6 @@ export const getFirstCategoryDay = (
     [categoryPath, tz, subcategoryLikePattern(categoryPath)],
   )
 
-/** The first local day in `tz` of a live sample of `metric`, from `sources` only when given. */
 export const getFirstMetricDay = (
   user: string,
   metric: string,

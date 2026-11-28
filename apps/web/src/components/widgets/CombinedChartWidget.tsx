@@ -10,7 +10,7 @@ import { useCallback, useMemo } from 'preact/hooks'
 
 import { fetchChartData, fetchTrend } from '../../state/api'
 import { CHART_PRIMARY } from '../../theme'
-import { allTimeLookbackDays } from '../../utils/chart-range'
+import { allTimeLookbackDays, widgetRange } from '../../utils/chart-range'
 import { BarChart } from '../charts/BarChart'
 import { useChartFirstDay } from '../charts/useChartFirstDay'
 import { barsFetchParams, trendFetchParams } from './chartFetchParams'
@@ -42,10 +42,12 @@ const combinedChartTitle = ({ layers, title }: CombinedChartConfig): string => {
 interface CombinedChartViewProps {
   config: CombinedChartConfig
   data: CombinedChartData | null
+  /** The range the bars were fetched for, when the widget fetched them itself. */
+  barsRange?: { start: string; end: string }
 }
 
-export function CombinedChartView({ config, data }: CombinedChartViewProps) {
-  const range = useMemo(() => axisRange(config.lookback_days), [config.lookback_days])
+export function CombinedChartView({ barsRange, config, data }: CombinedChartViewProps) {
+  const range = useMemo(() => barsRange ?? axisRange(config.lookback_days), [barsRange, config.lookback_days])
   const { bars, lines } = useMemo(() => combinedChartParts(config, data), [config, data])
 
   return (
@@ -78,6 +80,10 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     allTime,
   )
   const lookback_days = allTime ? allTimeLookbackDays(firstDay, new Date()) : config.lookback_days
+  const barsRange = useMemo(
+    () => widgetRange(config.lookback_days, undefined, new Date(), firstDay),
+    [config.lookback_days, firstDay],
+  )
 
   const combine = useCallback(
     (results: UseQueryResult<CombinedChartLayerData>[]) => ({
@@ -94,7 +100,7 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     queries: layers.map((layer) => ({
       queryFn: async (): Promise<CombinedChartLayerData> => {
         if (layer.kind === 'bars') {
-          const chart = await fetchChartData(barsFetchParams(layer, lookbackToRange(lookback_days)))
+          const chart = await fetchChartData(barsFetchParams(layer, barsRange))
           return { data: { buckets: chart.buckets }, kind: 'bars' }
         }
         const trend = await fetchTrend(trendFetchParams(layer, lookback_days))
@@ -125,5 +131,5 @@ export function CombinedChartWidget({ config }: { config: CombinedChartConfig })
     )
   }
 
-  return <CombinedChartView config={{ ...config, lookback_days }} data={data} />
+  return <CombinedChartView config={{ ...config, lookback_days }} data={data} barsRange={barsRange} />
 }
