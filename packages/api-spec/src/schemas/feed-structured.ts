@@ -349,12 +349,26 @@ export type FeedStructuredArticleBlock = z.infer<typeof feedStructuredArticleBlo
  * instance renders a native inline article — real interactive charts and
  * scatters — instead of only the Mastodon-style prose + attached PNGs.
  */
+/** Who a post mentions: the actor its federated `Mention` points at, and the handle snapshot naming it. */
+export const postMentionSchema = z
+  .object({
+    actor_uri: z.string().meta({ description: "The mentioned account's actor URI" }),
+    handle: z.string().meta({ description: 'Its `@user@host` handle when the post was written' }),
+  })
+  .meta({ description: 'An account a post mentions', id: 'PostMention' })
+
+export type PostMention = z.infer<typeof postMentionSchema>
+
 export const feedStructuredArticleSchema = z
   .object({
     blocks: z
       .array(feedStructuredArticleBlockSchema)
       .meta({ description: 'Ordered, resolved content blocks' }),
     kind: z.literal('article').meta({ description: 'Discriminator: an article post' }),
+    mentions: z.array(postMentionSchema).optional().meta({
+      description:
+        'The handles typed in the prose that resolved to an account, each linked to it where the prose shows it; absent when none',
+    }),
     title: z.string().meta({ description: 'Article title' }),
   })
   .meta({ id: 'FeedStructuredArticle' })

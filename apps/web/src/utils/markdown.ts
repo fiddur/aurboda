@@ -10,14 +10,13 @@
  * pages) — an unsanitised `<img src=x onerror=…>` in someone else's note would be
  * stored XSS.
  */
+import type { PostMention } from '@aurboda/api-spec'
+
+import { canPrecedeHandle, handleAtStart, handleKey, handleStartIndex } from '@aurboda/api-spec'
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
-import { marked } from 'marked'
+import { Marked, type MarkedExtension, type Tokens } from 'marked'
 
 import { attachmentIdOf } from './attachment-ref'
-
-// GFM + hard line breaks, shared by every sink. `async: false` keeps `parse`
-// returning a string, not a Promise.
-marked.setOptions({ breaks: true, gfm: true })
 
 const escapeAttribute = (value: string): string =>
   value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -25,7 +24,7 @@ const escapeAttribute = (value: string): string =>
 // A private attachment cannot be an `<img src>` (the bytes need the token, and the sanitisers below drop
 // non-http sources), so `attachment:<uuid>` becomes a source-less `<img>` carrying the id for the page
 // to fill in.
-marked.use({
+const attachmentImages: MarkedExtension = {
   renderer: {
     image({ href, text }) {
       const id = attachmentIdOf(href)
@@ -33,7 +32,50 @@ marked.use({
       return `<img data-attachment-id="${id}" alt="${escapeAttribute(text)}">`
     },
   },
-})
+}
+
+interface HandleToken extends Tokens.Generic {
+  type: 'handle'
+  raw: string
+  handle: string
+}
+
+// A typed `@user@host` is its own token ahead of GFM's e-mail autolink, as on the backend
+// (`note-prose.ts`): a mention the post stores links to the account, any other handle is plain
+// text, never a `mailto:` link.
+const handleMentions = (mentions: readonly PostMention[]): MarkedExtension => {
+  const byHandle = new Map(mentions.map((mention) => [handleKey(mention.handle), mention.actor_uri]))
+  return {
+    extensions: [
+      {
+        level: 'inline',
+        name: 'handle',
+        renderer(token) {
+          const { handle } = token as HandleToken
+          const href = byHandle.get(handleKey(handle))
+          const text = escapeAttribute(handle)
+          return href === undefined ? text : `<a href="${escapeAttribute(href)}">${text}</a>`
+        },
+        start: (src: string) => handleStartIndex(src),
+        tokenizer(src, tokens): HandleToken | undefined {
+          if (this.lexer.state.inLink) return undefined
+          const match = handleAtStart(src)
+          if (match == null || !canPrecedeHandle(tokens.at(-1)?.raw.at(-1))) return undefined
+          return { handle: match.handle, raw: match.handle, type: 'handle' }
+        },
+      },
+    ],
+  }
+}
+
+// GFM + hard line breaks, shared by every sink. `async: false` keeps `parse` returning a string.
+const markedWith = (mentions: readonly PostMention[]): Marked =>
+  new Marked({ async: false, breaks: true, gfm: true }, attachmentImages, handleMentions(mentions))
+
+const plainMarked = markedWith([])
+
+const parseMarkdown = (md: string, mentions: readonly PostMention[]): string =>
+  (mentions.length === 0 ? plainMarked : markedWith(mentions)).parse(md, { async: false })
 
 // Brought in line with the outbound article sanitiser (backend
 // `services/activitypub/article-object.ts`), so what the web shows is what
@@ -61,9 +103,12 @@ const ownContentPurifier = (): Purifier => {
   return ownPurifier
 }
 
-/** Render user/AI-authored markdown to sanitised HTML safe for a `dangerouslySetInnerHTML` sink. */
-export const renderMarkdown = (md: string): string =>
-  ownContentPurifier().sanitize(marked.parse(md, { async: false }), {
+/**
+ * Render user/AI-authored markdown to sanitised HTML safe for a `dangerouslySetInnerHTML` sink. A
+ * typed `@user@host` among `mentions` links to its account; any other is plain text.
+ */
+export const renderMarkdown = (md: string, mentions: readonly PostMention[] = []): string =>
+  ownContentPurifier().sanitize(parseMarkdown(md, mentions), {
     FORBID_ATTR: OWN_FORBID_ATTR,
     FORBID_TAGS: OWN_FORBID_TAGS,
   })
@@ -182,7 +227,10 @@ export const sanitizeRemoteHtml = (html: string, images: readonly DeclaredImage[
  * XSS-and-tracker boundary for untrusted federated content, mirroring the backend
  * `sanitizeRemoteHtml`. Use this (not `renderMarkdown`) for any markdown that
  * originates on another instance. Only the pictures in `images` (the payload's
- * declared ones) are drawn inline.
+ * declared ones) are drawn inline, and only the handles in `mentions` are links.
  */
-export const renderRemoteMarkdown = (md: string, images: readonly DeclaredImage[] = []): string =>
-  sanitizeRemoteHtml(marked.parse(md, { async: false }), images)
+export const renderRemoteMarkdown = (
+  md: string,
+  images: readonly DeclaredImage[] = [],
+  mentions: readonly PostMention[] = [],
+): string => sanitizeRemoteHtml(parseMarkdown(md, mentions), images)

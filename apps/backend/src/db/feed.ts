@@ -93,6 +93,8 @@ export interface ArticlePostInput {
   visibility: FeedVisibility
   article: ArticleContent
   tags?: string[]
+  /** The handles typed in its prose that resolved; omitted stores none. */
+  mentions?: PostMention[]
 }
 
 export interface ChallengePostInput {
@@ -257,10 +259,10 @@ export const createArticlePost = async (
 ): Promise<FeedPostRecord> => {
   const result = await query<FeedPostRow>(
     db,
-    `INSERT INTO feed_posts (kind, visibility, article, tags)
-     VALUES ('article', $1, $2, $3)
+    `INSERT INTO feed_posts (kind, visibility, article, tags, mentions)
+     VALUES ('article', $1, $2, $3, $4)
      RETURNING ${FEED_POST_COLUMNS}`,
-    [input.visibility, JSON.stringify(input.article), input.tags ?? []],
+    [input.visibility, JSON.stringify(input.article), input.tags ?? [], JSON.stringify(input.mentions ?? [])],
   )
   return mapFeedPost(result.rows[0])
 }

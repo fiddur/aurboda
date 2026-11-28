@@ -24,6 +24,7 @@ import type { AccountEmailDeps } from './services/account-email.ts'
 import type { AccountPlans } from './services/account-plan.ts'
 import type { PostUpdateResender } from './services/activitypub/post-update-resend.ts'
 import type { AdminUsers } from './services/admin-users.ts'
+import type { ArticleMentionDeps } from './services/article-mentions.ts'
 import type { ArticlePreviewer } from './services/article-preview.ts'
 import type { SkipAutoshare } from './services/autoshare-skip.ts'
 import type { CentralDb } from './services/central-db.ts'
@@ -186,6 +187,8 @@ interface McpDeps {
   onActivityDetailSynced?: DetailSyncedCallback
   onTrackWritten?: TrackWrittenCallback
   oura?: OuraClientType
+  /** How handles typed in an article's prose resolve to mentions, shared with the REST routes. */
+  articleMentions?: ArticleMentionDeps
   /** The article preview (`preview_article`), shared with the REST route. */
   previewArticle?: ArticlePreviewer
   reactionActions?: ReactionActions
@@ -290,6 +293,7 @@ const createMcpServer = (user: string, deps: McpDeps = {}): McpServer => {
   registerStrengthPlanTools(server, user)
   registerFeedTools(server, user, {
     apiBaseUrl: deps.apiBaseUrl,
+    articleMentions: deps.articleMentions,
     deliver: deps.feedDeliver,
     followActions: deps.followActions,
     threadFederation: deps.threadFederation,

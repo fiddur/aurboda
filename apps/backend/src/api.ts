@@ -5,6 +5,7 @@ import { Client } from 'pg'
 
 import type { FeedPostRecord } from './db/index.ts'
 import type { FeedDeliver } from './routes/feed-router.ts'
+import type { ArticleMentionDeps } from './services/article-mentions.ts'
 
 import { unhandledErrorAudit } from './api/audit-body.ts'
 import { accountSignupDeps, isValidUsername, registerAuthRoutes } from './api/auth-routes.ts'
@@ -972,11 +973,13 @@ const main = async () => {
         void deliverFeedArticlePost(feedDeps, user, article).catch(onDeliverError('create', user, post.id))
       }
     },
-    updatedArticle: (user, post) => {
+    updatedArticle: (user, post, droppedMentions) => {
       revokeUnsharedStamps(user, post)
       const article = toDeliverableArticle(post)
       if (article) {
-        void deliverFeedArticleUpdate(feedDeps, user, article).catch(onDeliverError('update', user, post.id))
+        void deliverFeedArticleUpdate(feedDeps, user, article, droppedMentions).catch(
+          onDeliverError('update', user, post.id),
+        )
       }
     },
     // Challenge invitations federate like articles: a self-contained Note (#994).
@@ -1342,6 +1345,15 @@ const main = async () => {
 
   // One preview, so REST and MCP share its cache of drawn figures.
   const previewArticle = createArticlePreviewer({ chartDeps: postChartDeps, webHost })
+  // Handles typed in an article's prose resolve to mentions on publish and edit, REST and MCP alike.
+  const articleMentions: ArticleMentionDeps = {
+    resolveRemote: async (user, handle) => {
+      const resolved = await resolveActorHandle(feedDeps, user, handle)
+      return resolved.ok ? resolved.actor.actor_uri : null
+    },
+    userExists: (username) => userExists(userDb, username),
+    webHost,
+  }
 
   // Mounted before the global body parser: the MCP router parses its own body
   // so it can trim tool-call arguments and keep JSON-RPC parse errors.
@@ -1363,6 +1375,7 @@ const main = async () => {
       oidcProviders: oidc.providers,
       postUpdateResender,
       centralDb,
+      articleMentions,
       previewArticle,
       publicTagActions,
       publicTagModeration,
@@ -1608,6 +1621,7 @@ const main = async () => {
     homeAssistant,
     httpd,
     postUpdateResender,
+    articleMentions,
     previewArticle,
     invitationAuth,
     onActivityDetailSynced,

@@ -14,7 +14,7 @@
  * tracking pixel (no more exposure than the attachment images it already sends); it
  * keeps a raw or undeclared `<img>` from an honest peer out of the reader's timeline.
  */
-import type { FeedStructuredArticle, FeedStructuredArticleBlock } from '@aurboda/api-spec'
+import type { FeedStructuredArticle, FeedStructuredArticleBlock, PostMention } from '@aurboda/api-spec'
 
 import { useMemo } from 'preact/hooks'
 
@@ -56,12 +56,18 @@ const TimelineArticleChart = ({ block }: { block: ChartBlock }) => {
   )
 }
 
-const TimelineArticleBlock = ({ block }: { block: FeedStructuredArticleBlock }) => {
+const TimelineArticleBlock = ({
+  block,
+  mentions,
+}: {
+  block: FeedStructuredArticleBlock
+  mentions?: readonly PostMention[]
+}) => {
   if (block.type === 'prose') {
     return (
       <div
         class="article-prose"
-        dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown, block.images) }}
+        dangerouslySetInnerHTML={{ __html: renderRemoteMarkdown(block.markdown, block.images, mentions) }}
       />
     )
   }
@@ -88,7 +94,7 @@ export const TimelineArticle = ({ article }: { article: FeedStructuredArticle })
   <div class="article-content">
     <h3 class="article-title">{article.title}</h3>
     {article.blocks.map((block, i) => (
-      <TimelineArticleBlock key={i} block={block} />
+      <TimelineArticleBlock key={i} block={block} mentions={article.mentions} />
     ))}
   </div>
 )

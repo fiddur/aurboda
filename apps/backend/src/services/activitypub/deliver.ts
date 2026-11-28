@@ -560,6 +560,8 @@ export interface DeliverableArticle {
   image_token: string
   article: ArticleContent
   tags?: readonly string[]
+  /** The handles typed in its prose that resolved: tagged, linked, addressed in `cc` and sent the post. */
+  mentions?: readonly PostMention[]
 }
 
 export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle | null =>
@@ -569,6 +571,7 @@ export const toDeliverableArticle = (post: FeedPostRecord): DeliverableArticle |
         created_at: post.created_at,
         id: post.id,
         image_token: post.image_token,
+        mentions: post.mentions,
         tags: post.tags,
         updated_at: post.updated_at,
         visibility: post.visibility,
@@ -603,7 +606,7 @@ export const buildArticleNote = (
   selectorNames: ArticleSelectorNames = {},
 ): Note => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, mentions, to } = activityAddressing(ctx, user, post)
   const hashtags = noteHashtags(ctx, user, post.tags)
   const { content, figures } = renderArticleNote(
     post.article,
@@ -618,6 +621,7 @@ export const buildArticleNote = (
         index,
       ),
     selectorNames,
+    post.mentions,
   )
   return new Note({
     attachments: figures.map(articleFigureImage),
@@ -628,7 +632,10 @@ export const buildArticleNote = (
     interactionPolicy: quoteInteractionPolicy(post.visibility, ctx.getActorUri(user)),
     name: post.article.title,
     published: dateToTemporalInstant(post.created_at),
-    tags: hashtagObjects(hashtags),
+    tags: [
+      ...mentions.map((m) => new Mention({ href: m.actorUri, name: m.handle })),
+      ...hashtagObjects(hashtags),
+    ],
     tos: to,
     updated: dateToTemporalInstant(post.updated_at),
     url: noteId,
@@ -644,7 +651,7 @@ export const buildArticleNoteCreate = (
   selectorNames: ArticleSelectorNames = {},
 ): Create => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = activityAddressing(ctx, user, post)
   return new Create({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -664,7 +671,7 @@ export const buildArticleNoteUpdate = (
   selectorNames: ArticleSelectorNames = {},
 ): Update => {
   const noteId = ctx.getObjectUri(Note, { identifier: user, postId: post.id })
-  const { cc, to } = recipients(post.visibility, ctx.getFollowersUri(user))
+  const { cc, to } = activityAddressing(ctx, user, post)
   return new Update({
     actor: ctx.getActorUri(user),
     ccs: cc,
@@ -682,18 +689,26 @@ export const deliverFeedArticlePost = async (
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const selectorNames = await articleSelectorNames(user, post.article.blocks)
   const create = buildArticleNoteCreate(ctx, user, post, deps.apiBaseUrl, selectorNames)
-  await fanOut(deps, ctx, user, create, { relayActivity: relayCreate(post, create) })
+  await fanOut(deps, ctx, user, create, {
+    mentions: postMentionRecipients(post),
+    relayActivity: relayCreate(post, create),
+  })
 }
 
+/** `droppedMentions` are the accounts an edit stopped mentioning, sent the `Update` too, as for a share. */
 export const deliverFeedArticleUpdate = async (
   deps: FeedDeliveryDeps,
   user: string,
   post: DeliverableArticle,
+  droppedMentions: readonly PostMention[] = [],
 ): Promise<void> => {
   const ctx = await deps.federation.createContext(new URL(deps.origin))
   const selectorNames = await articleSelectorNames(user, post.article.blocks)
   const update = buildArticleNoteUpdate(ctx, user, post, deps.apiBaseUrl, selectorNames)
-  await fanOut(deps, ctx, user, update, { relayActivity: relayEdit(ctx, user, post, update) })
+  await fanOut(deps, ctx, user, update, {
+    mentions: [...postMentionRecipients(post), ...postMentionRecipients({ mentions: droppedMentions })],
+    relayActivity: relayEdit(ctx, user, post, update),
+  })
 }
 
 // Challenge shares (#994). A challenge invitation federates as a `Note` (like

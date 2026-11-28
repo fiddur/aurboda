@@ -167,3 +167,54 @@ describe('declaredProseImages', () => {
     expect(declaredProseImages(fixture)).toEqual(rendered)
   })
 })
+
+describe('handles in prose', () => {
+  const mention = { actor_uri: 'https://aurboda.net/users/delvoriah', handle: '@delvoriah@aurboda.net' }
+  const link =
+    '<span class="h-card"><a href="https://aurboda.net/users/delvoriah" class="u-url mention" rel="nofollow noopener noreferrer" target="_blank">@delvoriah@aurboda.net</a></span>'
+
+  test.each([
+    ['renderNoteProse', renderNoteProse],
+    ['renderProse', renderProse],
+  ])('%s links a stored mention to its account', (_, render) => {
+    const html = render('Thanks @delvoriah@aurboda.net!', { mentions: [mention] })
+    expect(html).toContain(`Thanks ${link}!`)
+    expect(html).not.toContain('mailto:')
+  })
+
+  test.each([
+    ['renderNoteProse', renderNoteProse],
+    ['renderProse', renderProse],
+  ])('%s shows an unresolved handle as plain text', (_, render) => {
+    const html = render('Ask @someone@example.social.')
+    expect(html.trim()).toBe('<p>Ask @someone@example.social.</p>')
+  })
+
+  test('matches the stored handle case-insensitively, keeping the written spelling', () => {
+    expect(renderNoteProse('@Delvoriah@Aurboda.net', { mentions: [mention] })).toContain(
+      'class="u-url mention" rel="nofollow noopener noreferrer" target="_blank">@Delvoriah@Aurboda.net</a>',
+    )
+  })
+
+  test('a bare e-mail address still autolinks', () => {
+    expect(renderNoteProse('mail delvoriah@aurboda.net')).toContain('href="mailto:delvoriah@aurboda.net"')
+  })
+
+  test('the tail of an e-mail-like run is not a handle', () => {
+    expect(renderNoteProse('a@delvoriah@aurboda.net', { mentions: [mention] })).not.toContain('mention')
+  })
+
+  test('a handle inside code or a link is left alone', () => {
+    expect(renderNoteProse('`@delvoriah@aurboda.net`', { mentions: [mention] })).toBe(
+      '<p><code>@delvoriah@aurboda.net</code></p>\n',
+    )
+    const linked = renderNoteProse('[@delvoriah@aurboda.net](https://example.org)', { mentions: [mention] })
+    expect(linked).not.toContain('mention')
+    expect(linked).not.toContain('mailto:')
+  })
+
+  test('a handle in bold or after a bold run is still found', () => {
+    expect(renderNoteProse('**@delvoriah@aurboda.net**', { mentions: [mention] })).toContain(link)
+    expect(renderNoteProse('**Hi** @delvoriah@aurboda.net', { mentions: [mention] })).toContain(link)
+  })
+})

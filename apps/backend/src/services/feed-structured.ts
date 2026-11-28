@@ -30,6 +30,7 @@ import type {
   FeedStructuredArticleCorrelationBlock,
   FeedStructuredArticleImpactBlock,
   FeedStructuredPost,
+  PostMention,
 } from '@aurboda/api-spec'
 
 import {
@@ -272,7 +273,8 @@ const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(v
  * Build the structured payload for an article post: its title and every block,
  * resolved in order. A prose block passes its raw markdown through unchanged
  * (rendered by the receiver's own sanitising renderer — #910), declaring the
- * http(s) pictures it embeds as `images`; a chart,
+ * http(s) pictures it embeds as `images`, and the post's `mentions` let the
+ * receiver link the handles that prose types; a chart,
  * correlation or impact block resolves live over its locked window and is omitted only
  * when that window itself is invalid (unbounded or non-increasing) — the same
  * condition `resolveArticleBlock` treats as ineligible for an image. A challenge
@@ -289,6 +291,7 @@ const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(v
 const resolveStructuredArticle = async (
   user: string,
   article: ArticleContent,
+  mentions: readonly PostMention[] = [],
 ): Promise<FeedStructuredArticle> => {
   const settings = await getUserSettings(user)
   const tz = settings?.device_timezone ?? undefined
@@ -304,7 +307,8 @@ const resolveStructuredArticle = async (
     }
   }
 
-  const fixedBytes = jsonBytes({ blocks: resolved, kind: 'article', title: article.title })
+  const mentionsField = mentions.length > 0 ? { mentions: [...mentions] } : {}
+  const fixedBytes = jsonBytes({ blocks: resolved, kind: 'article', title: article.title, ...mentionsField })
   const chartEnvelopeBytes = charts.reduce((sum, { block }) => sum + jsonBytes(block), 0)
   const maxSamples = sharedSampleBudget(ARTICLE_PAYLOAD_BYTES, fixedBytes + chartEnvelopeBytes, charts.length)
   for (const { block, index } of charts) {
@@ -314,6 +318,7 @@ const resolveStructuredArticle = async (
   return {
     blocks: resolved.filter((block): block is FeedStructuredArticleBlock => block != null),
     kind: 'article',
+    ...mentionsField,
     title: article.title,
   }
 }
@@ -355,7 +360,7 @@ export const resolveStructuredContent = async (
 ): Promise<FeedStructuredPost | null> => {
   if (post.kind === 'article') {
     if (post.article == null) return null
-    return resolveStructuredArticle(user, post.article)
+    return resolveStructuredArticle(user, post.article, post.mentions)
   }
 
   if (post.kind === 'challenge') {

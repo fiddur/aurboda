@@ -79,7 +79,32 @@ A feed post has a **`kind`**:
   - a GFM **table** becomes one paragraph of lines — the corner header in italics, then one
     line per row, `**row**: Column value · Column value` — instead of run-together cell text;
   - a challenge block adds a **Join the challenge** link to the challenge page after its
-    reference.
+    reference;
+  - a fediverse **handle** typed in the prose (`@user@host`, at the start or after a space or
+    opening punctuation, not in code, a URL or a link's text) is a **mention** when it
+    resolved (below): a Mastodon-style mention link to the account
+    (`<span class="h-card"><a href="…" class="u-url mention">@user@host</a></span>`), plus a
+    `Mention` tag and the account in `cc`, as an [activity share's
+    mention](sharing.md#mentioning-people-in-an-activity-share) has.
+
+  **Handles in prose** (#1986). When an article is created, edited or published from a
+  draft (REST and MCP alike, through the same services), each distinct handle its prose
+  blocks type — at most 10 — is resolved and the ones that name an account are stored as the
+  post's `mentions` (the actor URI and the handle as written, like a share's): a handle on
+  this instance's own host names a local user without any network call, any other is looked
+  up through WebFinger, best effort, with a 5-second limit each. An edit keeps the account of
+  a handle the post already mentions without looking it up again, drops the mentions whose
+  handle left the prose (those accounts are sent the `Update`, so their copy loses the
+  mention), and looks up only new handles. The Create, Update and Delete go to each mentioned
+  account's inbox too, and a mentioned local user gets the usual "mentioned you" notification
+  once per post. A handle that did not resolve is stored nowhere and renders as **plain
+  text** `@user@host` everywhere — never as GFM's `mailto:` link of `user@host`; a bare
+  e-mail address still autolinks. The same rule holds on every surface: the Note `content`,
+  the Atom feed, the owner's view (the post's `mentions`), and a visitor's or an Aurboda
+  peer's view, whose `FeedStructuredArticle` carries the same `mentions`. The preview
+  (`POST /feed/articles/preview`, `preview_article`) resolves nothing, so a handle shows
+  there as plain text. Any other markdown rendered through the same renderers (a comment,
+  a share's note) gets the plain-text rule as well.
 
   The prose still passes the outbound sanitiser (no script, style or event handler; http(s)
   and mailto links only). The [Atom feed](#blog-view-and-atom-feed) and Aurboda peers keep

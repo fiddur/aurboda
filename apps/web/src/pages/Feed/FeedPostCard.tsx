@@ -199,7 +199,7 @@ const FeedPostBody = ({ post, visitor }: { post: FeedPost; visitor: boolean }) =
   return articleSource?.kind === 'resolved' ? (
     <TimelineArticle article={articleSource.article} />
   ) : articleSource?.kind === 'live' ? (
-    <ArticleContent article={articleSource.article} />
+    <ArticleContent article={articleSource.article} mentions={post.mentions} />
   ) : post.structured?.kind === 'challenge' ? (
     <TimelineStructured structured={post.structured} />
   ) : post.kind === 'challenge' && post.challenge ? (

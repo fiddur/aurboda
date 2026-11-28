@@ -44,7 +44,6 @@ export function BreakdownMaskPicker({
   )
 }
 
-/** On a shared board, the note that visitors see a journal chart's tag and text filters. */
 export function JournalFiltersNote({
   shared,
   source,

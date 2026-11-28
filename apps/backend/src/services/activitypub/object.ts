@@ -111,7 +111,8 @@ export interface FeedPostContentExtras {
   mentions?: readonly PostMention[]
 }
 
-const mentionLink = (mention: PostMention): string =>
+/** A mention as Mastodon marks one up, linked to the account like the Note's `Mention` tag. */
+export const mentionLink = (mention: PostMention): string =>
   `<span class="h-card"><a href="${escapeHtml(mention.actor_uri)}" class="u-url mention">${escapeHtml(mention.handle)}</a></span>`
 
 /** "with @a", "with @a and @b", "with @a, @b and @c", each a mention link like the Note's `Mention` tags. */

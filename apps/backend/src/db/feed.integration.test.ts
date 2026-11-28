@@ -154,6 +154,16 @@ describe('Feed posts integration', () => {
     expect(article.tags).toEqual(['qs'])
   })
 
+  test('stores an article post with the mentions its prose resolved, and patches them', async () => {
+    const user = getTestUser()
+    expect((await createArticlePost(user, articleInput())).mentions).toEqual([])
+    const mention = { actor_uri: 'https://example.social/users/anna', handle: '@anna@example.social' }
+    const article = await createArticlePost(user, articleInput({ mentions: [mention] }))
+    expect(article.mentions).toEqual([mention])
+    expect((await getFeedPostById(user, article.id))?.mentions).toEqual([mention])
+    expect((await updateFeedPost(user, article.id, { mentions: [] }))?.mentions).toEqual([])
+  })
+
   test('assigns an unguessable image_token that round-trips (#893)', async () => {
     const user = getTestUser()
     const created = await createFeedPost(user, postInput())

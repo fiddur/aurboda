@@ -1,13 +1,14 @@
 /**
  * Render an article post inline: its title followed by the ordered content
  * blocks. Prose blocks go through the shared markdown sanitiser (#910 — the XSS
- * boundary; article prose may be authored by AI or, later, a different user).
+ * boundary; article prose may be authored by AI or, later, a different user),
+ * linking the typed handles the post mentions.
  * Chart, correlation and impact blocks resolve their effective window (own override else
  * the article default) and render live via `ArticleChartBlock` /
  * `ArticleCorrelationBlock`, and an impact block via `ArticleImpactBlock`; a
  * challenge block renders live via `LiveArticleChallenge`.
  */
-import type { ArticleContent as ArticleContentType } from '@aurboda/api-spec'
+import type { ArticleContent as ArticleContentType, PostMention } from '@aurboda/api-spec'
 
 import { DEFAULT_IMPACT_WINDOW_MINUTES } from '@aurboda/api-spec'
 
@@ -17,7 +18,13 @@ import { ArticleChartBlock } from './ArticleChartBlock'
 import { ArticleCorrelationBlock } from './ArticleCorrelationBlock'
 import { ArticleImpactBlock } from './ArticleImpactBlock'
 
-export const ArticleContent = ({ article }: { article: ArticleContentType }) => (
+export const ArticleContent = ({
+  article,
+  mentions,
+}: {
+  article: ArticleContentType
+  mentions?: readonly PostMention[]
+}) => (
   <div class="article-content">
     <h3 class="article-title">{article.title}</h3>
     {article.blocks.map((block, i) => {
@@ -26,7 +33,7 @@ export const ArticleContent = ({ article }: { article: ArticleContentType }) => 
           <div
             key={`prose-${i}`}
             class="article-prose"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(block.markdown) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(block.markdown, mentions) }}
           />
         )
       }

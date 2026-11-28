@@ -254,6 +254,79 @@ describe('Article feed routes (integration)', () => {
       await spied.close()
     }
   })
+
+  test('handles typed in the prose are stored as mentions; an edit dropping one sends it the Update', async () => {
+    const deliver: FeedDeliver = {
+      created: vi.fn(),
+      createdArticle: vi.fn(),
+      createdChallenge: vi.fn(),
+      createdDashboard: vi.fn(),
+      createdExercise: vi.fn(),
+      createdReply: vi.fn(),
+      deleted: vi.fn(),
+      updated: vi.fn(),
+      updatedArticle: vi.fn(),
+      updatedChallenge: vi.fn(),
+      updatedDashboard: vi.fn(),
+      updatedExercise: vi.fn(),
+      updatedReply: vi.fn(),
+    }
+    const resolveRemote = vi.fn(async (_user: string, handle: string) =>
+      handle === '@anna@example.social' ? 'https://example.social/users/anna' : null,
+    )
+    const mentionApp = express()
+    mentionApp.use(express.json())
+    mentionApp.use(
+      '/feed',
+      createFeedRouter(
+        auth,
+        deliver,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {},
+        {
+          resolveRemote,
+          userExists: async (username) => username === 'delvoriah',
+          webHost: 'https://aurboda.example',
+        },
+      ),
+    )
+    const server = mentionApp.listen(0)
+    const request = supertest(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+    const prose = (markdown: string) => ({ ...articleBody(), blocks: [{ markdown, type: 'prose' }] })
+    const anna = { actor_uri: 'https://example.social/users/anna', handle: '@anna@example.social' }
+    const local = {
+      actor_uri: 'https://aurboda.example/users/delvoriah',
+      handle: '@delvoriah@aurboda.example',
+    }
+    try {
+      const created = await request
+        .post('/feed/articles')
+        .send(prose('With @delvoriah@aurboda.example, @anna@example.social and @ghost@example.org.'))
+      expect(created.status).toBe(200)
+      expect(created.body.post.mentions).toEqual([local, anna])
+      expect(resolveRemote).toHaveBeenCalledTimes(2)
+
+      const edited = await request
+        .patch(`/feed/articles/${created.body.post.id}`)
+        .send({ blocks: [{ markdown: 'Just @delvoriah@aurboda.example now.', type: 'prose' }] })
+      expect(edited.status).toBe(200)
+      expect(edited.body.post.mentions).toEqual([local])
+      expect(resolveRemote).toHaveBeenCalledTimes(2)
+      expect(deliver.updatedArticle).toHaveBeenCalledWith(
+        getTestUser(),
+        expect.objectContaining({ id: created.body.post.id }),
+        [anna],
+      )
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
 })
 
 describe('GET /feed/articles/:postId/export (Reddit/markdown export, C4)', () => {

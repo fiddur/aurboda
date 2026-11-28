@@ -51,6 +51,7 @@ import {
 
 import type { Activity, FeedPostRecord, FeedQuoteAuthorizationRecord } from '../db/index.ts'
 import type { ResolvedInbox } from '../services/activitypub/deliver.ts'
+import type { ArticleMentionDeps } from '../services/article-mentions.ts'
 import type { ArticlePreviewer } from '../services/article-preview.ts'
 import type { ReactionActions, ReactionResult } from '../services/feed-reactions.ts'
 import type { RetroEnrichTrigger } from '../services/timeline-retro-enrich.ts'
@@ -78,9 +79,11 @@ import {
   emptyArticleDraftContent,
   normalizeArticleDraftContent,
   publishArticleDraft,
+  publishDraftDeps,
   serializeArticleDraft,
 } from '../services/article-drafts.ts'
 import { buildArticleMarkdown, renderableArticleBlocks } from '../services/article-export.ts'
+import { resolveArticleMentions } from '../services/article-mentions.ts'
 import {
   articleSelectorNames,
   articleWarningsField,
@@ -152,7 +155,8 @@ export interface FeedDeliver {
   /** `stamps` are the post's FEP-044f quote approvals, read before the delete dropped them. */
   deleted: (user: string, post: FeedPostRecord, stamps: FeedQuoteAuthorizationRecord[]) => void
   createdArticle: (user: string, post: FeedPostRecord) => void
-  updatedArticle: (user: string, post: FeedPostRecord) => void
+  /** `droppedMentions` are the accounts the edit stopped mentioning, sent the `Update` as well. */
+  updatedArticle: (user: string, post: FeedPostRecord, droppedMentions?: PostMention[]) => void
   createdChallenge: (user: string, post: FeedPostRecord) => void
   updatedChallenge: (user: string, post: FeedPostRecord) => void
   createdExercise: (user: string, post: FeedPostRecord) => void
@@ -192,6 +196,8 @@ export const createFeedRouter = (
   tagActorHost: () => Promise<string> = async () => DEFAULT_TAG_ACTOR_HOST,
   /** How challenge comments are pushed and threads on other servers pulled. */
   threadFederation: ThreadFederation = {},
+  /** How handles typed in an article's prose resolve to mentions; absent, none are looked up. */
+  articleMentions?: ArticleMentionDeps,
 ): TypedRouter => {
   const router = typedRouter()
   const thread = webHost ? createThreadDeps({ deliver, webHost, ...threadFederation }) : undefined
@@ -403,7 +409,12 @@ export const createFeedRouter = (
       if (!UUID_RE.test(req.params.id)) {
         return res.status(404).json({ error: 'Draft not found', success: false })
       }
-      const result = await publishArticleDraft(user, req.params.id, req.body)
+      const result = await publishArticleDraft(
+        user,
+        req.params.id,
+        req.body,
+        publishDraftDeps(articleMentions),
+      )
       if (!result.ok) return res.status(result.status).json({ error: result.error, success: false })
       deliver?.createdArticle(user, result.post)
       res.json({
@@ -657,6 +668,7 @@ export const createFeedRouter = (
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await createArticlePost(user, {
         article: built.article,
+        mentions: await resolveArticleMentions(articleMentions, user, built.article),
         tags: await resolvePostTags(user, { explicit: req.body.tags, texts: articleTexts(built.article) }),
         visibility: req.body.visibility,
       })
@@ -685,6 +697,7 @@ export const createFeedRouter = (
       if (!built.ok) return res.status(400).json({ error: built.error, success: false })
       const record = await updateFeedPost(user, req.params.postId, {
         article: built.article,
+        mentions: await resolveArticleMentions(articleMentions, user, built.article, existing.mentions),
         tags: retagPost({
           after: articleTexts(built.article),
           before: articleTexts(existing.article),
@@ -694,7 +707,7 @@ export const createFeedRouter = (
         visibility: req.body.visibility,
       })
       if (!record) return res.status(404).json({ error: 'Article not found', success: false })
-      deliver?.updatedArticle(user, record)
+      deliverFeedPostEdit(deliver, user, record, existing)
       res.json({
         post: await serializeFeedPost(user, record, { webHost }),
         ...(await articleWarningsField(user, built.article.blocks)),
