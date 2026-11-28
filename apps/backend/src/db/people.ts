@@ -526,7 +526,8 @@ export const getPeopleForActivityGroups = async (
  * Links `personIds` to `activityId` as its whole set, and drops the links of `clearIds` (the
  * other rows of its merge group, so the set read back is exactly the one given). A person a rule
  * added who is not in the set is taken off by hand, so the rule's record stops saying it added them:
- * putting them back by hand later reads as set by hand.
+ * putting them back by hand later reads as set by hand. A person taken off with no record for a rule
+ * that names them (one linked before records existed) gets one, so that rule does not add them back.
  */
 export const setActivityPeople = async (
   user: string,
@@ -563,6 +564,18 @@ const replaceActivityPeopleIn = async (
   clearIds: string[],
 ) => {
   const rowIds = [activityId, ...clearIds]
+  await query(
+    tx,
+    `INSERT INTO rule_activity_people (rule_id, activity_id, person_id, added)
+     SELECT DISTINCT r.id, $3::uuid, ap.person_id, false
+       FROM activity_people ap JOIN deduction_rules r ON ap.person_id = ANY(r.output_people)
+      WHERE ap.activity_id = ANY($1::uuid[]) AND NOT (ap.person_id = ANY($2::uuid[]))
+        AND NOT EXISTS (
+          SELECT 1 FROM rule_activity_people x
+           WHERE x.rule_id = r.id AND x.person_id = ap.person_id AND x.activity_id = ANY($1::uuid[]))
+     ON CONFLICT DO NOTHING`,
+    [rowIds, personIds, activityId],
+  )
   await query(tx, 'DELETE FROM activity_people WHERE activity_id = ANY($1::uuid[])', [rowIds])
   await query(
     tx,
