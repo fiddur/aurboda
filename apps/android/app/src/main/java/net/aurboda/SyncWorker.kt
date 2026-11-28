@@ -274,7 +274,7 @@ class SyncWorker(
         is DataResult.Error -> {
           val stop = syncStopOf(result.statusCode, result.message)
           if (countsAsEntryFailure(stop)) {
-            markPendingEntryFailed(applicationContext, entry.id, result.message, isPermanentRefusal(result.statusCode))
+            markPendingEntryFailed(applicationContext, entry.id, result.message, result.statusCode)
             failed++
             Log.w(TAG, "Pending entry ${entry.id} failed: ${result.message}")
           } else {
