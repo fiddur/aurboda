@@ -111,7 +111,7 @@ Strava webhooks provide near-real-time notifications when activities are created
 ### How It Works
 
 1. On server startup, the webhook subscription is automatically created/verified
-2. Strava sends a POST to `{WEB_HOST}/webhooks/strava` when an activity changes
+2. Strava sends a POST to `{API_BASE_URL}/webhooks/strava` when an activity changes
 3. The server responds within 2 seconds (Strava requirement) and processes asynchronously
 4. Activity creates/updates enqueue a high-priority fetch job
 5. Activity deletes soft-delete the activity and related data
@@ -119,7 +119,7 @@ Strava webhooks provide near-real-time notifications when activities are created
 
 ### Requirements
 
-- `WEB_HOST` must be publicly accessible
+- `API_BASE_URL` must be publicly accessible
 - `strava_client_id` and `strava_client_secret` must be configured
 - A verify token is auto-generated for webhook validation
 

@@ -33,7 +33,7 @@ This starts:
 
 3. Open the web frontend at `http://localhost:8080` and create your account. The first account on a
    fresh server is its admin. To serve it under its own domain, set `WEB_HOST` in the compose file
-   to the public URL (see [Production Deployment](#production-deployment)).
+   to the public URL and `API_BASE_URL` to the same URL with `/api` (see [Production Deployment](#production-deployment)).
 
 ### Development Mode
 
@@ -56,7 +56,8 @@ This mounts your source code and watches for changes.
 | `PGUSER`                                 | PostgreSQL user                                                                                                                                                                                                                                                 | `aurboda_service`                      |
 | `PGPASSWORD`                             | PostgreSQL password                                                                                                                                                                                                                                             | (required)                             |
 | `SESSION_SECRET`                         | 32-byte secret for session encryption                                                                                                                                                                                                                           | (required)                             |
-| `WEB_HOST`                               | Public URL of the web UI (for OAuth redirects)                                                                                                                                                                                                                  | `http://localhost:8080`                |
+| `WEB_HOST`                               | Public URL of the web UI: the links the server hands out (share and federation URLs), passkeys and browser push                                                                                                                                                 | `http://localhost:8080`                |
+| `API_BASE_URL`                           | Public URL of the backend, which the image serves under `/api`. OAuth redirect URIs (Oura, Strava, Garmin, Gravl, SSO) and webhook callbacks are built from it, so it must be set for those to work                                                             | `http://localhost:3000`                |
 | `ALLOW_SIGNUP`                           | Initial signup mode of a fresh install: `true`, `1`, `yes`, `on` or empty = open; `false`, `0`, `no`, `off` = closed (case-insensitive); any other value closes signups and logs a warning. After the first start the admin settings decide and this is ignored | `true`                                 |
 | `WEBAUTHN_RP_ID`                         | Passkey Relying Party ID (must be the public hostname the browser sees)                                                                                                                                                                                         | derived from `WEB_HOST`                |
 | `WEBAUTHN_RP_NAME`                       | Display name shown by the user's authenticator                                                                                                                                                                                                                  | `Aurboda`                              |
@@ -170,6 +171,7 @@ services:
       - PGPASSWORD=your_password
       - SESSION_SECRET=your_32_byte_secret
       - WEB_HOST=http://localhost:8080
+      - API_BASE_URL=http://localhost:8080/api
     restart: unless-stopped
 ```
 
@@ -192,6 +194,7 @@ services:
       - PGPASSWORD=${PGPASSWORD}
       - SESSION_SECRET=${SESSION_SECRET}
       - WEB_HOST=https://health.example.com
+      - API_BASE_URL=https://health.example.com/api
       - TRUST_PROXY=loopback,uniquelocal # see "Behind your own proxy"
     networks:
       - traefik
