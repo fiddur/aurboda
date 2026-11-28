@@ -7,6 +7,7 @@ import {
   chartWidgetMaskedFields,
   chartWidgetTitle,
   initialMaskedFields,
+  journalFiltersWarning,
   parseChartOrigin,
   replaceWidgetInConfig,
   unmaskedNamesWarning,
@@ -199,5 +200,27 @@ describe('unmaskedNamesWarning', () => {
     )
     expect(unmaskedNamesWarning(['@people'], ['@people'])).toBeUndefined()
     expect(unmaskedNamesWarning(['mood'], [])).toBeUndefined()
+  })
+})
+
+describe('journalFiltersWarning', () => {
+  test('names the tag filter and the search text a journal chart shows visitors', () => {
+    expect(journalFiltersWarning({ journal_tags: 'travel', source_type: 'journal' })).toBe(
+      'Visitors of a shared board with this chart will see the tags it is filtered by (its default title names them).',
+    )
+    expect(journalFiltersWarning({ journal_q: 'sea', source_type: 'journal' })).toBe(
+      'Visitors of a shared board with this chart will see its search text.',
+    )
+    expect(journalFiltersWarning({ journal_q: 'sea', journal_tags: 'travel', source_type: 'journal' })).toBe(
+      'Visitors of a shared board with this chart will see the tags it is filtered by (its default title names them) and its search text.',
+    )
+  })
+
+  test('nothing without tag or text filters, or for another source', () => {
+    expect(journalFiltersWarning({ source_type: 'journal' })).toBeUndefined()
+    expect(
+      journalFiltersWarning({ journal_q: '  ', journal_tags: ' , ', source_type: 'journal' }),
+    ).toBeUndefined()
+    expect(journalFiltersWarning({ journal_q: 'sea', source_type: 'activity_type' })).toBeUndefined()
   })
 })

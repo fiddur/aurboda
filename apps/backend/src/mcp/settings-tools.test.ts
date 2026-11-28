@@ -1,3 +1,4 @@
+import { JOURNAL_BREAKDOWN_ERROR } from '@aurboda/api-spec'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { McpServer } from './helpers.ts'
@@ -93,5 +94,32 @@ describe('tz through the settings MCP tools', () => {
     expect(cleared.tz_follows_device).toBe(true)
     expect(store.settings).not.toHaveProperty('device_timezone')
     expect(store.settings).not.toHaveProperty('tz_follows_device')
+  })
+})
+
+describe('the home dashboard through update_user_settings', () => {
+  test('refuses a journal chart the chart tools refuse, without saving', async () => {
+    const call = setup()
+    const updated = await call('update_user_settings', {
+      dashboard: {
+        sections: [
+          {
+            id: 's',
+            title: 'Journal',
+            type: 'charts',
+            widgets: [
+              {
+                config: { breakdown_fields: ['mood'], source_type: 'journal' },
+                id: 'trend',
+                type: 'trend_chart',
+              },
+            ],
+          },
+        ],
+        version: 1,
+      },
+    })
+    expect(updated).toMatchObject({ error: JOURNAL_BREAKDOWN_ERROR, success: false })
+    expect(store.settings).not.toHaveProperty('dashboard')
   })
 })
