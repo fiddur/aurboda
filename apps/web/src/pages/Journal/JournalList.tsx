@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import {
   fetchDeletedEntries,
   fetchNoteTemplates,
+  JOURNAL_LIST_KEY,
   type JournalQuery,
   restoreJournalEntry,
   restoreNoteTemplate,
@@ -491,7 +492,7 @@ const useJournalPages = (query: JournalQuery): JournalPages =>
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       searchJournal({ ...query, cursor: pageParam }),
-    queryKey: [...JOURNAL_KEY, 'list', query],
+    queryKey: [...JOURNAL_LIST_KEY, query],
   })
 
 const JournalEntries = ({

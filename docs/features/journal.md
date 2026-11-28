@@ -558,8 +558,8 @@ when you have configured items. The lists carry it only when asked:
 `include_context=true` on `GET /notes/search` (MCP `search_notes`) and `GET
 /notes?from=&to=` (MCP `query_notes`) adds each journal entry's line, the same
 `context` `get_note` gives it, in the read's `tz` (default your timezone). It is
-computed once per day (and per timed entry's start, for the weather's hour), so
-leave it off when the figures are not needed. The journal page asks for it, and
+computed once per day (a trend once for each run of days at most 30 days apart),
+the weather once per timed entry's start, so leave it off when the figures are not needed. The journal page asks for it, and
 shows each entry's line, without the ⚙️ button, between its title and its text;
 the Timeline, On this day and the pickers do not. Replies and exports never carry
 it.

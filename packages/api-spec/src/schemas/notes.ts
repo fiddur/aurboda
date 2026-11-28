@@ -931,7 +931,6 @@ export const noteLinkSuggestionsPageQuerySchema = z
       description:
         "Earliest local date (YYYY-MM-DD, inclusive): a `day` entry's date, else its start_time's date in tz",
     }),
-    include_context: includeContextSchema,
     limit: z.coerce
       .number()
       .int()

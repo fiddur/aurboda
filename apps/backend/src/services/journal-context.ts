@@ -51,13 +51,23 @@ export interface ContextScope {
   user: string
   /** The weather, fetched once for every weather item of the context. */
   weather?: Promise<WeatherSummary | null>
+  /** A list's trend values, computed once per item for each cluster of its days; undefined when that failed. */
+  trends?: (item: ItemOf<'trend'>, day: string) => Promise<Map<string, number> | undefined>
 }
+
+/** What a trend computation shares across the days it is asked for. */
+export type TrendScope = Pick<ContextScope, 'customMetrics' | 'tz' | 'user'>
 
 export interface JournalContextDeps {
   getCustomMetrics: (user: string) => Promise<CustomMetricDefinition[]>
   getItems: (user: string) => Promise<JournalContextItem[]>
   metricValue: (scope: ContextScope, item: ItemOf<'metric'>) => Promise<number | undefined>
-  trendValue: (scope: ContextScope, item: ItemOf<'trend'>) => Promise<number | undefined>
+  /** The trend's value as of the end of each of `days` that has one. */
+  trendValues: (
+    scope: TrendScope,
+    item: ItemOf<'trend'>,
+    days: readonly string[],
+  ) => Promise<Map<string, number>>
   /** CTL, ATL and TSB at the end of the day; undefined when there is no training load data. */
   trainingLoadValue: (scope: ContextScope) => Promise<TrainingLoadValues | undefined>
   /** Whole days from the latest occurrence of `pattern` on or before `day` to `day`. */
@@ -199,6 +209,15 @@ export const weatherContextValue = (
     : (showCondition() ?? showTemperature())
 }
 
+const trendDayValue = async (
+  scope: ContextScope,
+  item: ItemOf<'trend'>,
+  deps: JournalContextDeps,
+): Promise<number | undefined> => {
+  const values = await (scope.trends?.(item, scope.day) ?? deps.trendValues(scope, item, [scope.day]))
+  return values?.get(scope.day)
+}
+
 export const computeContextValue = async (
   scope: ContextScope,
   item: JournalContextItem,
@@ -217,7 +236,7 @@ export const computeContextValue = async (
       return value === undefined ? undefined : formatContextValue(item, value)
     }
     case 'trend': {
-      const value = await deps.trendValue(scope, item)
+      const value = await trendDayValue(scope, item, deps)
       return value === undefined ? undefined : formatContextValue(item, value)
     }
     case 'days_since': {
@@ -239,11 +258,12 @@ export const computeContextValue = async (
 const needsCustomMetrics = (items: readonly JournalContextItem[]): boolean =>
   items.some((item) => item.kind === 'metric' || item.kind === 'trend')
 
-const contextForScope = async (
+/** The items' values for the scope, in order; undefined for an item without a value or whose computation fails. */
+const itemValues = async (
   items: readonly JournalContextItem[],
   base: ContextScope,
   deps: JournalContextDeps,
-): Promise<JournalContext> => {
+): Promise<(JournalContextValue | undefined)[]> => {
   const scope: ContextScope = {
     ...base,
     ...(items.some((item) => item.kind === 'training_load') && {
@@ -256,7 +276,7 @@ const contextForScope = async (
       }),
     }),
   }
-  const values = await Promise.all(
+  return Promise.all(
     items.map((item) =>
       computeContextValue(scope, item, deps).catch((error: unknown) => {
         console.warn(`Journal context item ${item.id} (${item.kind}) failed:`, error)
@@ -264,12 +284,16 @@ const contextForScope = async (
       }),
     ),
   )
-  return {
-    ...(base.at === undefined ? {} : { at: base.at }),
-    date: base.day,
-    items: values.filter((value) => value !== undefined),
-  }
 }
+
+const contextOf = (
+  { at, day }: { day: string; at?: string },
+  values: readonly (JournalContextValue | undefined)[],
+): JournalContext => ({
+  ...(at === undefined ? {} : { at }),
+  date: day,
+  items: values.filter((value) => value !== undefined),
+})
 
 /**
  * The items' values for `day`, in order; an item without a value, or whose computation fails, is left out. `at`, a
@@ -284,7 +308,8 @@ export const contextForItems = async (
   at?: string,
 ): Promise<JournalContext> => {
   const customMetrics = needsCustomMetrics(items) ? await deps.getCustomMetrics(user) : []
-  return contextForScope(items, { customMetrics, day, tz, user, ...(at === undefined ? {} : { at }) }, deps)
+  const target = { day, ...(at === undefined ? {} : { at }) }
+  return contextOf(target, await itemValues(items, { customMetrics, tz, user, ...target }, deps))
 }
 
 const mean = (values: readonly number[]): number | undefined =>
@@ -369,6 +394,78 @@ export const trainingLoadAt = async (
  */
 export const journalTrainingLoadDeps: TrainingLoadDeps = { ...createTrainingLoadDeps(), recomputeWaitMs: 500 }
 
+/** The lookback of a single trend read; a day's value is the EMA over the 90 days ending on it. */
+const TREND_LOOKBACK_DAYS = 90
+
+const TREND_CLUSTER_MAX_GAP_DAYS = 30
+
+const daysBetween = (from: string, to: string): number =>
+  Temporal.PlainDate.from(from).until(Temporal.PlainDate.from(to), { largestUnit: 'days' }).days
+
+/** `days` sorted and deduplicated, split where consecutive days are more than `maxGap` days apart. */
+export const clusterDays = (days: readonly string[], maxGap = TREND_CLUSTER_MAX_GAP_DAYS): string[][] => {
+  const clusters: string[][] = []
+  for (const day of [...new Set(days)].sort()) {
+    const current = clusters.at(-1)
+    const previous = current?.at(-1)
+    if (current && previous !== undefined && daysBetween(previous, day) <= maxGap) current.push(day)
+    else clusters.push([day])
+  }
+  return clusters
+}
+
+const readTrend = (
+  { customMetrics, tz, user }: TrendScope,
+  item: ItemOf<'trend'>,
+  end: string,
+  lookback: number,
+) =>
+  getTrend(user, {
+    aggregation: item.aggregation,
+    custom_metrics: customMetrics,
+    display_period: item.display_period,
+    end: dayEndInTz(end, tz),
+    exclude_flagged: true,
+    half_life_days: item.half_life_days,
+    lookback_days: lookback,
+    missing_days: item.missing_days,
+    pattern: item.pattern,
+    source_type: item.source_type,
+    tz,
+  })
+
+/**
+ * The trend for `days` from one read ending on the last of them, whose history reaches the lookback back from the
+ * first. A history point is a day's EMA over the 90 days ending on it, as the day's own read computes it, so it is the
+ * day's value. A day without a point has none, unless a point lies in its lookback: then its own read decides (only a
+ * metric trend that skips missing days has such gaps, and its read then answers an earlier day's value).
+ */
+const batchedTrendValues = async (
+  scope: TrendScope,
+  item: ItemOf<'trend'>,
+  days: readonly string[],
+): Promise<Map<string, number>> => {
+  const sorted = [...new Set(days)].sort()
+  const first = sorted[0]
+  const last = sorted.at(-1)
+  const values = new Map<string, number>()
+  if (first === undefined || last === undefined) return values
+  const batch = await readTrend(scope, item, last, daysBetween(first, last) + TREND_LOOKBACK_DAYS)
+  const points = new Map(batch.history.map((point) => [point.date, point.value]))
+  for (const day of sorted) {
+    const own = points.get(day)
+    if (own !== undefined) {
+      values.set(day, own)
+      continue
+    }
+    const since = shiftDayKey(day, -TREND_LOOKBACK_DAYS)
+    if (!batch.history.some((point) => point.date >= since && point.date < day)) continue
+    const single = sorted.length === 1 ? batch : await readTrend(scope, item, day, TREND_LOOKBACK_DAYS)
+    if (single.history.length > 0) values.set(day, single.current_value)
+  }
+  return values
+}
+
 export const defaultJournalContextDeps: JournalContextDeps = {
   daysSinceActivity: (user, pattern, day, tz) => getDaysSinceActivity(user, pattern, day, tz),
   getCustomMetrics: (user) => getCustomMetrics(user),
@@ -389,21 +486,7 @@ export const defaultJournalContextDeps: JournalContextDeps = {
       ? undefined
       : metricDayValue(scope, item.metric, dayKey(latest, tz), item.source)
   },
-  trendValue: async ({ customMetrics, day, tz, user }, item) => {
-    const result = await getTrend(user, {
-      aggregation: item.aggregation,
-      custom_metrics: customMetrics,
-      display_period: item.display_period,
-      end: dayEndInTz(day, tz),
-      exclude_flagged: true,
-      half_life_days: item.half_life_days,
-      missing_days: item.missing_days,
-      pattern: item.pattern,
-      source_type: item.source_type,
-      tz,
-    })
-    return result.history.length === 0 ? undefined : result.current_value
-  },
+  trendValues: (scope, item, days) => batchedTrendValues(scope, item, days),
   trainingLoadValue: ({ day, tz, user }) => trainingLoadAt(journalTrainingLoadDeps, user, day, tz),
   weather: async (user, query) => {
     const result = await getWeather(user, query)
@@ -455,11 +538,14 @@ const entryContextTarget = (note: JournalEntryLike, tz: string): { day: string; 
 
 const targetKey = ({ at, day }: { day: string; at?: string }): string => `${day}|${at ?? ''}`
 
+const isWeatherItem = (item: JournalContextItem): boolean => item.kind === 'weather'
+
 const JOURNAL_CONTEXTS_CONCURRENCY = 4
 
 /**
- * `notes` with each journal entry's context line, when the user configured one: one computation per distinct day (and
- * timed entry start), shared by the entries on it. A day whose computation fails leaves its entries without a line.
+ * `notes` with each journal entry's context line, when the user configured one. Only the weather depends on a timed
+ * entry's start, so every other item is computed once per distinct day and the weather once per distinct day entry
+ * or start; each entry's line is then the one the single-note read gives it.
  */
 export const withJournalContexts = async <T extends JournalEntryLike>(
   user: string,
@@ -468,28 +554,59 @@ export const withJournalContexts = async <T extends JournalEntryLike>(
   deps: JournalContextDeps = defaultJournalContextDeps,
 ): Promise<(T & { context?: JournalContext })[]> => {
   const targets = notes.map((note) => entryContextTarget(note, tz))
-  if (targets.every((target) => target === undefined)) return [...notes]
+  const present = targets.filter((target) => target !== undefined)
+  if (present.length === 0) return [...notes]
   const items = await deps.getItems(user)
   if (items.length === 0) return [...notes]
   const customMetrics = needsCustomMetrics(items) ? await deps.getCustomMetrics(user) : []
-  const distinct = [
-    ...new Map(
-      targets.filter((target) => target !== undefined).map((target) => [targetKey(target), target]),
-    ).values(),
+  const dayItems = items.filter((item) => !isWeatherItem(item))
+  const weatherItems = items.filter(isWeatherItem)
+  const tasks = [
+    ...(dayItems.length === 0
+      ? []
+      : [...new Set(present.map((target) => target.day))].map((day) => ({
+          items: dayItems,
+          key: `day:${day}`,
+          target: { day },
+        }))),
+    ...(weatherItems.length === 0
+      ? []
+      : [...new Map(present.map((target) => [targetKey(target), target])).values()].map((target) => ({
+          items: weatherItems,
+          key: `weather:${targetKey(target)}`,
+          target,
+        }))),
   ]
-  const computed = await mapWithConcurrency(distinct, JOURNAL_CONTEXTS_CONCURRENCY, async (target) => {
-    const base: ContextScope = { customMetrics, tz, user, ...target }
-    const context = await contextForScope(items, base, deps).catch((error: unknown) => {
-      console.warn(`Journal context for ${target.day} failed:`, error)
+  const clusterOf = new Map(
+    clusterDays(present.map((target) => target.day)).flatMap((cluster) =>
+      cluster.map((day) => [day, cluster]),
+    ),
+  )
+  const trendReads = new Map<string, Promise<Map<string, number> | undefined>>()
+  const trends = (item: ItemOf<'trend'>, day: string) => {
+    const cluster = clusterOf.get(day) ?? [day]
+    const key = `${item.id}|${cluster[0]}`
+    const known = trendReads.get(key)
+    if (known) return known
+    const read = deps.trendValues({ customMetrics, tz, user }, item, cluster).catch((error: unknown) => {
+      console.warn(`Journal context trend ${item.id} from ${cluster[0]} failed:`, error)
       return undefined
     })
-    return [targetKey(target), context] as const
+    trendReads.set(key, read)
+    return read
+  }
+  const computed = await mapWithConcurrency(tasks, JOURNAL_CONTEXTS_CONCURRENCY, async (task) => {
+    const values = await itemValues(task.items, { customMetrics, trends, tz, user, ...task.target }, deps)
+    return [task.key, new Map(task.items.map((item, i) => [item.id, values[i]]))] as const
   })
-  const contexts = new Map(computed)
+  const byKey = new Map(computed)
   return notes.map((note, i) => {
     const target = targets[i]
-    const context = target === undefined ? undefined : contexts.get(targetKey(target))
-    return context ? { ...note, context } : note
+    if (target === undefined) return note
+    const days = byKey.get(`day:${target.day}`)
+    const weather = byKey.get(`weather:${targetKey(target)}`)
+    const values = items.map((item) => (isWeatherItem(item) ? weather : days)?.get(item.id))
+    return { ...note, context: contextOf(target, values) }
   })
 }
 

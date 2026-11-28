@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'preact/hooks'
 
-import { fetchActivityById, fetchMeal, fetchNoteTags, fetchReport } from '../../state/api'
+import { fetchActivityById, fetchMeal, fetchNoteTags, fetchReport, JOURNAL_KEY } from '../../state/api'
 import { tagOptions } from './journal-tags'
 import { RelatedTabs, usePeople } from './Related'
 import {
@@ -15,7 +15,7 @@ import {
 } from './related'
 import './style.css'
 
-export const JOURNAL_KEY = ['journal'] as const
+export { JOURNAL_KEY }
 
 export const JOURNAL_TAGS_KEY = [...JOURNAL_KEY, 'tags'] as const
 

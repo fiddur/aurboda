@@ -2,6 +2,11 @@ import type { Note, NoteConflictResponse, NoteRelatedEntityType } from '@aurboda
 
 import axios from 'axios'
 
+export const JOURNAL_KEY = ['journal'] as const
+
+/** The journal list's pages, each entry with its context line. */
+export const JOURNAL_LIST_KEY = [...JOURNAL_KEY, 'list'] as const
+
 /** The journal reads entries through search, newest first, paged with `next_cursor`. */
 export interface JournalQuery {
   q?: string

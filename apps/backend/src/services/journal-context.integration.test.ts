@@ -1,9 +1,16 @@
 import { type JournalContextItem, journalContextItemSchema } from '@aurboda/api-spec'
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
-import { insertActivity, insertTimeSeries, upsertUserSettings } from '../db/index.ts'
-import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
 import {
+  insertActivity,
+  insertActivityTypeDefinition,
+  insertTimeSeries,
+  upsertUserSettings,
+} from '../db/index.ts'
+import { cleanTestDb, getTestUser, startTestDb, stopTestDb } from '../test/db-test-helper.ts'
+import { dayEndInTz, shiftDayKey } from './day-keys.ts'
+import {
+  clusterDays,
   defaultJournalContextDeps,
   getJournalContext,
   journalTrainingLoadDeps,
@@ -12,6 +19,7 @@ import {
   withJournalContexts,
 } from './journal-context.ts'
 import { addNote, getNoteForUser, searchNotesForUser } from './mutations.ts'
+import { getTrend } from './trends.ts'
 
 const CONTAINER_TIMEOUT = 120_000
 
@@ -296,26 +304,140 @@ describe('journal context (integration)', () => {
         time: new Date('2024-03-10T12:00:00Z'),
         value: 5.4,
       },
+      { metric: 'weather_code', source: 'open_meteo', time: new Date('2024-03-10T17:00:00Z'), value: 3 },
+      {
+        metric: 'weather_temperature',
+        source: 'open_meteo',
+        time: new Date('2024-03-10T17:00:00Z'),
+        value: 1.2,
+      },
     ])
     const timed = await addNote(user, {
       content: 'Lunch walk',
       entity_type: 'time',
       start_time: '2024-03-10T12:30:00.000Z',
     })
+    const evening = await addNote(user, {
+      content: 'Evening',
+      entity_type: 'time',
+      start_time: '2024-03-10T17:15:00.000Z',
+    })
     const day = await addNote(user, { content: 'A good day', date: '2024-03-10', entity_type: 'day' })
-    expect(timed.success && day.success).toBe(true)
+    expect(timed.success && evening.success && day.success).toBe(true)
 
     const found = await searchNotesForUser(user, { tz: 'UTC' })
     if (!found.success) throw new Error(found.error)
     const listed = await withJournalContexts(user, found.data, 'UTC')
 
-    for (const id of [timed.data?.id, day.data?.id]) {
+    const weatherOf = (id: string | undefined) =>
+      listed.find((note) => note.id === id)?.context?.items.find((v) => v.id === 'x')?.text
+    expect([weatherOf(timed.data?.id), weatherOf(evening.data?.id)]).toEqual(['☀️ 5 °C', '☁️ 1 °C'])
+
+    for (const id of [timed.data?.id, evening.data?.id, day.data?.id]) {
       const single = await getNoteForUser(user, id!)
       const detail = single.data && (await withJournalContext(user, single.data, 'UTC'))
       expect(detail?.context?.items.length).toBeGreaterThan(0)
       expect(listed.find((note) => note.id === id)?.context).toEqual(detail?.context)
     }
   })
+
+  test("a batched trend value is the day's own read, for every source, half-life and missing-day rule", async () => {
+    const user = getTestUser()
+    await insertActivityTypeDefinition(user, {
+      display_category: 'other',
+      display_name: 'Gathering',
+      name: 'gathering',
+    })
+    await insertActivity(user, {
+      activity_type: 'gathering',
+      data: { exclude_from_baseline: true },
+      end_time: new Date('2024-03-08T00:00:00Z'),
+      source: 'manual',
+      start_time: new Date('2024-03-05T00:00:00Z'),
+    })
+    for (let i = 0; i < 34; i++) {
+      const day = shiftDayKey('2024-01-10', i * 3 + (i % 2))
+      await insertActivity(user, {
+        activity_type: 'meditation',
+        end_time: new Date(`${day}T18:${String(20 + (i % 4) * 10).padStart(2, '0')}:00Z`),
+        source: 'manual',
+        start_time: new Date(`${day}T18:00:00Z`),
+      })
+    }
+    const weights = Array.from({ length: 17 }, (_, i) => ({
+      metric: 'weight',
+      source: 'garmin' as const,
+      time: new Date(`${shiftDayKey('2024-01-15', i * 4)}T07:00:00Z`),
+      value: 90 + ((i * 7) % 5) - i * 0.1,
+    }))
+    const steps = Array.from({ length: 60 }, (_, i) => ({
+      metric: 'steps',
+      source: 'health_connect_aggregate' as const,
+      time: new Date(`${shiftDayKey('2024-01-20', i * 2)}T12:00:00Z`),
+      value: 3000 + ((i * 937) % 5000),
+    }))
+    await insertTimeSeries(user, [...weights, ...steps])
+    expect(weights.at(-1)?.time.toISOString().slice(0, 10)).toBe('2024-03-19')
+
+    const days = [
+      '2024-01-05',
+      '2024-02-01',
+      '2024-02-25',
+      '2024-03-20',
+      '2024-04-15',
+      '2024-05-10',
+      '2024-06-08',
+      '2024-06-17',
+    ]
+    expect(clusterDays(days)).toHaveLength(1)
+    const trendScope = { customMetrics: [], tz: 'UTC', user }
+    const single = async (trend: Extract<JournalContextItem, { kind: 'trend' }>, day: string) => {
+      const result = await getTrend(user, {
+        aggregation: trend.aggregation,
+        display_period: trend.display_period,
+        end: dayEndInTz(day, 'UTC'),
+        exclude_flagged: true,
+        half_life_days: trend.half_life_days,
+        missing_days: trend.missing_days,
+        pattern: trend.pattern,
+        source_type: trend.source_type,
+        tz: 'UTC',
+      })
+      return result.history.length === 0 ? undefined : result.current_value
+    }
+    const trend = (raw: Record<string, unknown>) =>
+      journalContextItemSchema.parse({ id: 't', kind: 'trend', label: 'T', ...raw }) as Extract<
+        JournalContextItem,
+        { kind: 'trend' }
+      >
+
+    const compared: string[] = []
+    for (const half_life_days of [7, 15, 30]) {
+      for (const raw of [
+        { aggregation: 'count', pattern: 'meditation', source_type: 'activity_type' },
+        { aggregation: 'sum', display_period: 'weekly', pattern: 'meditation', source_type: 'activity_type' },
+        { pattern: 'meditation', source_type: 'tag' },
+        { pattern: 'weight', source_type: 'metric' },
+        { missing_days: 'zero', pattern: 'weight', source_type: 'metric' },
+        { display_period: 'daily', pattern: 'steps', source_type: 'metric' },
+        { missing_days: 'skip', pattern: 'steps', source_type: 'metric' },
+      ]) {
+        const item = trend({ half_life_days, ...raw })
+        const batched = await defaultJournalContextDeps.trendValues(trendScope, item, days)
+        for (const day of days) {
+          const label = `${JSON.stringify(raw)} h${half_life_days} ${day}`
+          expect({ label, value: batched.get(day) }).toEqual({ label, value: await single(item, day) })
+          compared.push(label)
+        }
+        expect(batched.has('2024-01-05')).toBe(false)
+        expect(batched.has('2024-03-19') || batched.has('2024-03-20')).toBe(true)
+        if (raw.pattern === 'weight' && raw.missing_days === undefined) {
+          expect(batched.get('2024-06-17')).toBeDefined()
+        }
+      }
+    }
+    expect(compared).toHaveLength(3 * 7 * days.length)
+  }, 300_000)
 
   test('getJournalContext is undefined without configured items', async () => {
     expect(await getJournalContext(getTestUser(), '2024-03-10', 'UTC')).toBeUndefined()
