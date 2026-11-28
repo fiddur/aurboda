@@ -1,4 +1,8 @@
-import { type DashboardConfig, MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE } from '@aurboda/api-spec'
+import {
+  type DashboardConfig,
+  JOURNAL_AGGREGATION_ERROR,
+  MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
+} from '@aurboda/api-spec'
 import express, { type RequestHandler } from 'express'
 import supertest from 'supertest'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -128,6 +132,32 @@ describe('PUT /dashboard', () => {
 
     expect(res.status).toBe(400)
     expect(res.body).toEqual({ error: MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE, success: false })
+    expect(upsertUserSettings).not.toHaveBeenCalled()
+  })
+
+  test('refuses a journal chart the chart data route refuses, without saving', async () => {
+    const res = await app()
+      .put('/dashboard')
+      .send({
+        sections: [
+          {
+            id: 's',
+            title: 'Journal',
+            type: 'charts',
+            widgets: [
+              {
+                config: { aggregation: 'mean', bucket_size: '1w', lookback_days: 90, source_type: 'journal' },
+                id: 'bar',
+                type: 'bar_chart',
+              },
+            ],
+          },
+        ],
+        version: 1,
+      })
+
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: JOURNAL_AGGREGATION_ERROR, success: false })
     expect(upsertUserSettings).not.toHaveBeenCalled()
   })
 })

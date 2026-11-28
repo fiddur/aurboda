@@ -8,7 +8,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'preact/hooks'
 
-import { initialMaskedFields, unmaskedNamesWarning } from '../pages/Chart/updateWidget'
+import { initialMaskedFields, journalFiltersWarning, unmaskedNamesWarning } from '../pages/Chart/updateWidget'
 import { fetchDashboard, listSharedDashboards, saveDashboard, updateSharedDashboard } from '../state/api'
 import { newSectionId } from '../utils/widget-id'
 import { journalChartTitle } from './widgets/chartTitle'
@@ -43,6 +43,20 @@ export function BreakdownMaskPicker({
     </div>
   )
 }
+
+/** On a shared board, the note that visitors see a journal chart's tag and text filters. */
+export function JournalFiltersNote({
+  shared,
+  source,
+}: {
+  shared: boolean
+  source: Parameters<typeof journalFiltersWarning>[0] | undefined
+}) {
+  const warning = shared && source ? journalFiltersWarning(source) : undefined
+  return warning ? <p class="mask-warning">{warning}</p> : null
+}
+
+const chartSourceOf = (config: DashboardWidget['config']) => ('source_type' in config ? config : undefined)
 
 /** The section kind a widget is added to: record and activity cards sit with the metric cards, the rest with the charts. */
 const sectionTypeFor = (type: DashboardWidget['type']): Exclude<SectionType, 'links'> =>
@@ -230,6 +244,10 @@ export function AddToDashboardModal({ widget, breakdownFields, onClose }: AddToD
               )}
 
               <BreakdownMaskPicker fields={breakdownFields} masked={masked} onToggle={toggleMasked} />
+              <JournalFiltersNote
+                shared={targetId !== 'home'}
+                source={chartSourceOf(placeholderWidget.config)}
+              />
             </div>
           )}
         </div>

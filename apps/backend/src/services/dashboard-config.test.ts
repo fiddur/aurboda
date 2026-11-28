@@ -2,10 +2,15 @@ import {
   type BarChartConfig,
   type DashboardConfig,
   type DashboardWidget,
+  JOURNAL_AGGREGATION_ERROR,
+  JOURNAL_BREAKDOWN_ERROR,
+  JOURNAL_FILTERS_NEED_JOURNAL_ERROR,
+  JOURNAL_MEASURE_ERROR,
   MUSCLE_GROUP_FILTER_NEEDS_GROUP,
   MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
   MUSCLE_GROUP_FILTER_WITH_MUSCLE_GROUP_BREAKDOWN,
   MUSCLE_GROUP_FILTER_WITH_OTHER_ITEM_PATH,
+  type TrendChartConfig,
 } from '@aurboda/api-spec'
 import { describe, expect, test } from 'vitest'
 
@@ -256,5 +261,73 @@ describe('dashboardConfigError', () => {
     expect(dashboardConfigError(combined({ measure: 'max_weight' }))).toBe(
       MUSCLE_GROUP_FILTER_NEEDS_SUMMED_MEASURE,
     )
+  })
+
+  describe('journal charts', () => {
+    const journalBars: BarChartConfig = {
+      aggregation: 'count',
+      breakdown_fields: ['@tags'],
+      bucket_size: '1w',
+      journal_tags: 'travel',
+      lookback_days: 90,
+      source_type: 'journal',
+    }
+
+    const journalBarWidget = (config: Partial<BarChartConfig>): DashboardConfig =>
+      withWidgets([{ config: { ...journalBars, ...config }, id: 'bar', type: 'bar_chart' }])
+
+    test('accepts the journal charts the Chart Explorer saves', () => {
+      expect(dashboardConfigError(journalBarWidget({}))).toBeUndefined()
+      expect(
+        dashboardConfigError(
+          withWidgets([
+            {
+              config: { aggregation: 'sum', breakdown_fields: ['@people'], source_type: 'journal' },
+              id: 'trend',
+              type: 'trend_chart',
+            },
+          ]),
+        ),
+      ).toBeUndefined()
+    })
+
+    test('refuses a bar chart that breaks a journal rule', () => {
+      expect(dashboardConfigError(journalBarWidget({ aggregation: 'mean' }))).toBe(JOURNAL_AGGREGATION_ERROR)
+      expect(dashboardConfigError(journalBarWidget({ breakdown_fields: ['mood'] }))).toBe(
+        JOURNAL_BREAKDOWN_ERROR,
+      )
+      expect(dashboardConfigError(journalBarWidget({ measure: 'volume' }))).toBe(JOURNAL_MEASURE_ERROR)
+      expect(dashboardConfigError(barWidget({ journal_q: 'sea' }))).toBe(JOURNAL_FILTERS_NEED_JOURNAL_ERROR)
+    })
+
+    test('refuses a trend chart that breaks a journal rule', () => {
+      expect(
+        dashboardConfigError(
+          withWidgets([
+            { config: { aggregation: 'mean', source_type: 'journal' }, id: 'trend', type: 'trend_chart' },
+          ]),
+        ),
+      ).toBe(JOURNAL_AGGREGATION_ERROR)
+    })
+
+    test("checks each of a combined chart's layers", () => {
+      const combined = (trend: Partial<TrendChartConfig>): DashboardConfig =>
+        withWidgets([
+          {
+            config: {
+              layers: [
+                { aggregation: 'count', bucket_size: '1w', kind: 'bars', source_type: 'journal' },
+                { kind: 'trend', source_type: 'journal', ...trend },
+              ],
+              lookback_days: 30,
+            },
+            id: 'combined',
+            type: 'combined_chart',
+          },
+        ])
+      expect(dashboardConfigError(combined({}))).toBeUndefined()
+      expect(dashboardConfigError(combined({ aggregation: 'mean' }))).toBe(JOURNAL_AGGREGATION_ERROR)
+      expect(dashboardConfigError(combined({ measure: 'volume' }))).toBe(JOURNAL_MEASURE_ERROR)
+    })
   })
 })

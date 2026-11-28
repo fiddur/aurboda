@@ -1,8 +1,11 @@
 import {
   type BarChartConfig,
   chartFilterError,
+  type CombinedChartLayer,
   type DashboardConfig,
   type DashboardWidget,
+  journalChartError,
+  type TrendChartConfig,
 } from '@aurboda/api-spec'
 
 type BarsFilter = Pick<BarChartConfig, 'breakdown_fields' | 'filter_field' | 'filter_value' | 'measure'>
@@ -10,22 +13,30 @@ type BarsFilter = Pick<BarChartConfig, 'breakdown_fields' | 'filter_field' | 'fi
 const barsFilterError = (bars: BarsFilter): string | undefined =>
   chartFilterError(bars.filter_field, bars.filter_value, bars.breakdown_fields, bars.measure)
 
-/** Not a refinement of `barChartConfigSchema`: the combined chart's bars layer `.omit()`s and `.extend()`s it. */
-export const dashboardConfigError = (config: DashboardConfig): string | undefined => {
-  for (const widget of config.sections.flatMap((section) => section.widgets)) {
-    const bars =
-      widget.type === 'bar_chart'
-        ? [widget.config]
-        : widget.type === 'combined_chart'
-          ? widget.config.layers.filter((layer) => layer.kind === 'bars')
-          : []
-    for (const layer of bars) {
-      const error = barsFilterError(layer)
-      if (error) return error
-    }
-  }
-  return undefined
+type ChartSource =
+  | ({ kind: 'bars' } & (BarChartConfig | Extract<CombinedChartLayer, { kind: 'bars' }>))
+  | ({ kind: 'trend' } & (TrendChartConfig | Extract<CombinedChartLayer, { kind: 'trend' }>))
+
+const chartSources = (widget: DashboardWidget): ChartSource[] => {
+  if (widget.type === 'bar_chart') return [{ ...widget.config, kind: 'bars' }]
+  if (widget.type === 'trend_chart') return [{ ...widget.config, kind: 'trend' }]
+  if (widget.type === 'combined_chart') return widget.config.layers
+  return []
 }
+
+const chartSourceError = (source: ChartSource): string | undefined =>
+  journalChartError(source) ?? (source.kind === 'bars' ? barsFilterError(source) : undefined)
+
+/**
+ * The first rule a stored chart breaks, with the message the chart endpoints give. Not a refinement of
+ * the chart config schemas: the combined chart's layers `.omit()` and `.extend()` them.
+ */
+export const dashboardConfigError = (config: DashboardConfig): string | undefined =>
+  config.sections
+    .flatMap((section) => section.widgets)
+    .flatMap(chartSources)
+    .map(chartSourceError)
+    .find((error) => error !== undefined)
 
 /**
  * A day overview and a latest activities card show what the owner did and when, so visitors see them

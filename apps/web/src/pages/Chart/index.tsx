@@ -28,7 +28,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks'
 import type { ChartOrigin } from '../../utils/chart-url'
 
 import { ActivityTypePicker } from '../../components/ActivityTypePicker'
-import { BreakdownMaskPicker } from '../../components/AddToDashboardModal'
+import { BreakdownMaskPicker, JournalFiltersNote } from '../../components/AddToDashboardModal'
 import { BarChart, type BarClickInfo } from '../../components/charts/BarChart'
 import { BreakdownLegend, SERIES_COLORS } from '../../components/charts/breakdown'
 import { ChartMenu } from '../../components/charts/ChartMenu'
@@ -1215,6 +1215,10 @@ function UpdateChartOnBoard({ state, origin }: { state: ChartState; origin: Char
         </label>
       </div>
       <BreakdownMaskPicker fields={state.breakdown_fields} masked={masked} onToggle={toggleMasked} />
+      <JournalFiltersNote
+        shared={!isHome}
+        source={{ ...journalFilters(state), source_type: state.source_type }}
+      />
       <div class="goal-form-actions">
         <button class="btn-cancel" onClick={() => setExpanded(false)}>
           Cancel

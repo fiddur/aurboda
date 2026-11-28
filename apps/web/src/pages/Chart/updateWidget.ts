@@ -6,6 +6,7 @@ import {
   type DashboardConfig,
   type DashboardWidget,
   isPeopleBreakdownField,
+  type JournalChartFilters,
   isTagsBreakdownField,
   measureGoalTitle,
 } from '@aurboda/api-spec'
@@ -13,6 +14,7 @@ import {
 import type { ChartOrigin } from '../../utils/chart-url'
 
 import { filterSubject } from '../../components/widgets/chartTitle'
+import { tagList } from '../Journal/journal-list'
 
 /** Read the origin of a board chart from the chart page's query params. */
 export function parseChartOrigin(query: Record<string, string>): ChartOrigin | null {
@@ -67,6 +69,25 @@ export const unmaskedNamesWarning = (breakdownFields: string[], masked: string[]
     .filter(Boolean)
     .join(' and ')
   return `Visitors of a shared board with this chart will see ${what}.`
+}
+
+/**
+ * What visitors of a shared board would see of a journal chart's filters: a shared board's public
+ * config carries them, and the generated title names the tags.
+ */
+export const journalFiltersWarning = ({
+  journal_q,
+  journal_tags,
+  source_type,
+}: Pick<JournalChartFilters, 'journal_q' | 'journal_tags'> & { source_type: string }): string | undefined => {
+  if (source_type !== 'journal') return undefined
+  const what = [
+    tagList(journal_tags).length > 0 ? 'the tags it is filtered by (its default title names them)' : '',
+    journal_q?.trim() ? 'its search text' : '',
+  ]
+    .filter(Boolean)
+    .join(' and ')
+  return what ? `Visitors of a shared board with this chart will see ${what}.` : undefined
 }
 
 const chartWidgetBreakdownFields = (widget: DashboardWidget): string[] =>
